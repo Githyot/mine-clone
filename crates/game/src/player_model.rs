@@ -63,6 +63,11 @@ fn wrap(a: f32) -> f32 {
 }
 
 impl Animator {
+    /// A body lying still (a corpse), facing `yaw`.
+    pub fn lying(yaw: f32) -> Animator {
+        Animator { body_yaw: yaw, ..Default::default() }
+    }
+
     pub fn start_swing(&mut self) {
         if self.swing <= 0.0 || self.swing > 0.5 {
             self.swing = 0.001;

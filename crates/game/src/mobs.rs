@@ -202,7 +202,7 @@ impl Mobs {
     }
 }
 
-fn ray_box(o: Vec3, d: Vec3, lo: Vec3, hi: Vec3) -> Option<f32> {
+pub(crate) fn ray_box(o: Vec3, d: Vec3, lo: Vec3, hi: Vec3) -> Option<f32> {
     let inv = Vec3::ONE / d;
     let t1 = (lo - o) * inv;
     let t2 = (hi - o) * inv;

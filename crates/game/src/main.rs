@@ -362,6 +362,8 @@ struct Game {
     item_base: u16,
     surv: survival::Survival,
     rclicked: bool,
+    /// Right button held (menus: drag one item into each slot passed over).
+    rdown: bool,
     /// Last frame's camera (view-projection and camera block) for drawing labels over mobs.
     ui_view_proj: Option<(glam::Mat4, IVec3)>,
     inv_number_key: Option<usize>,
@@ -605,6 +607,7 @@ impl Game {
             item_base,
             surv,
             rclicked: false,
+            rdown: false,
             inv_number_key: None,
             bubble_cd: 4.0,
             ui,
@@ -843,6 +846,7 @@ impl Game {
             KeyCode::F2 => self.screenshot_request = true,
             KeyCode::F5 => self.camera_mode = (self.camera_mode + 1) % 3,
             KeyCode::KeyZ if self.screen == Screen::Playing => self.prone = !self.prone,
+            KeyCode::KeyR if self.screen == Screen::Inventory && self.survival => self.surv.want_recipe = true,
             KeyCode::KeyQ if self.screen == Screen::Playing && self.survival => {
                 let all = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
                 self.surv_throw(all);
@@ -936,6 +940,13 @@ impl Game {
                     self.shader_scroll = self.shader_scroll.saturating_sub(1);
                 } else {
                     self.shader_scroll += 1;
+                }
+            }
+            Screen::Inventory if self.survival => {
+                if lines > 0.0 {
+                    self.surv.book_scroll = self.surv.book_scroll.saturating_sub(1);
+                } else {
+                    self.surv.book_scroll += 1;
                 }
             }
             Screen::Inventory => {
@@ -1036,7 +1047,7 @@ impl Game {
                         self.particles.update(&self.world, 0.03);
                     }
                 }
-                if self.args.show_inventory || self.args.open.is_some() {
+                if self.args.show_inventory || self.args.open.as_deref().is_some_and(|o| o != "corpse") {
                     self.set_screen(Screen::Inventory);
                 } else if self.args.show_pause {
                     self.set_screen(Screen::Paused);
@@ -2825,6 +2836,17 @@ impl Game {
         for p in &self.paintings {
             items.push((self.entities.painting_mesh(p.def), p.bones(block, &self.world)));
         }
+        if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
+            let def = &self.mobs.reg.defs[pd];
+            for c in &self.surv.corpses {
+                if (c.pos - eye).length() > rd + 16.0 {
+                    continue;
+                }
+                let pose = player_model::Pose { pos: c.pos, crawling: 1.0, look_yaw: c.yaw, on_ground: true, ..Default::default() };
+                let l = self.world.light((c.pos + Vec3::Y * 0.3).floor().as_ivec3());
+                items.push((pd, player_model::Animator::lying(c.yaw).bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0)));
+            }
+        }
         if let (Screen::Paintings, Some((d, anchor)), Some((_, n))) = (self.screen, self.painting_preview, self.painting_spot) {
             let p = paintings::Painting { name: String::new(), anchor: anchor.to_array(), facing: n.to_array(), def: d };
             items.push((self.entities.painting_mesh(d), p.bones(block, &self.world)));
@@ -2922,6 +2944,9 @@ impl ApplicationHandler for App {
                     _ => return,
                 };
                 let pressed = state == ElementState::Pressed;
+                if idx == 1 {
+                    game.rdown = pressed;
+                }
                 if game.screen == Screen::Playing {
                     if !game.grabbed {
                         game.set_grab(true);

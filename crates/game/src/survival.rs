@@ -48,6 +48,14 @@ pub struct Furnace {
     pub xp: f32,
 }
 
+/// The player's body left where they died, holding everything they carried (like the Corpse
+/// mod): nothing scatters or despawns, right-click it to take it all back.
+pub struct Corpse {
+    pub pos: Vec3,
+    pub yaw: f32,
+    pub items: Vec<ItemStack>,
+}
+
 pub enum Container {
     Chest(Inventory),
     Furnace(Furnace),
@@ -78,6 +86,14 @@ pub struct Survival {
     pub containers: HashMap<IVec3, Container>,
     pub drops: Vec<Dropped>,
     pub orbs: Vec<Orb>,
+    pub corpses: Vec<Corpse>,
+    /// Recipe book: first row shown, and the item whose recipes are open (with which one).
+    pub book_scroll: usize,
+    pub book_view: Option<(ItemId, usize)>,
+    /// R was pressed over an item: show its recipes.
+    pub want_recipe: bool,
+    /// Slot the right-button drag last dropped into.
+    drag_last: Option<Slot>,
     /// Saplings planted by the player and seconds until they grow.
     pub saplings: Vec<(IVec3, f32)>,
     pub eat: f32,
@@ -108,6 +124,11 @@ impl Survival {
             containers: HashMap::new(),
             drops: Vec::new(),
             orbs: Vec::new(),
+            corpses: Vec::new(),
+            book_scroll: 0,
+            book_view: None,
+            want_recipe: false,
+            drag_last: None,
             saplings: Vec::new(),
             eat: 0.0,
             attack_t: 10.0,
@@ -184,6 +205,8 @@ struct Saved {
     saplings: Vec<([i32; 3], f32)>,
     #[serde(default)]
     armor: Vec<SavedStack>,
+    #[serde(default)]
+    corpses: Vec<([f32; 3], f32, Vec<SavedStack>)>,
 }
 
 fn save_stacks(items: &ItemRegistry, inv: &Inventory) -> Vec<SavedStack> {
@@ -220,6 +243,11 @@ impl Survival {
             containers,
             saplings: self.saplings.iter().map(|(p, t)| (p.to_array(), *t)).collect(),
             armor: self.armor.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect(),
+            corpses: self
+                .corpses
+                .iter()
+                .map(|c| (c.pos.to_array(), c.yaw, c.items.iter().map(|s| Some((items.get(s.item).name.clone(), s.count, s.damage))).collect()))
+                .collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
@@ -247,6 +275,10 @@ impl Survival {
                 Container::Chest(load_stacks(items, &c.slots, CHEST_SIZE))
             };
             sv.containers.insert(pos, cont);
+        }
+        for (pos, yaw, list) in &s.corpses {
+            let inv = load_stacks(items, list, list.len());
+            sv.corpses.push(Corpse { pos: Vec3::from(*pos), yaw: *yaw, items: inv.slots.into_iter().flatten().collect() });
         }
         let worn = load_stacks(items, &s.armor, 4);
         for (i, a) in worn.slots.into_iter().enumerate() {
@@ -511,21 +543,25 @@ impl Game {
 
     pub(crate) fn surv_died(&mut self) {
         let at = self.body.pos + Vec3::Y * 0.8;
-        let slots: Vec<ItemStack> = self.surv.inv.slots.iter_mut().filter_map(|s| s.take()).collect();
-        for s in slots {
-            self.pop_drop(at, s);
-        }
-        if let Some(c) = self.surv.cursor.take() {
-            self.pop_drop(at, c);
-        }
-        for i in 0..4 {
-            if let Some(a) = self.surv.armor[i].take() {
-                self.pop_drop(at, a);
+        // Armor first, so taking it back puts it on again.
+        let mut items: Vec<ItemStack> = self.surv.armor.iter_mut().filter_map(|s| s.take()).collect();
+        items.extend(self.surv.inv.slots.iter_mut().filter_map(|s| s.take()));
+        items.extend(self.surv.cursor.take());
+        items.extend(self.surv.craft.iter_mut().filter_map(|s| s.take()));
+        if !items.is_empty() {
+            // Out of the void or lava, the body rests on the ground above.
+            let mut pos = self.body.pos;
+            pos.y = pos.y.max(1.0);
+            let p = pos.floor().as_ivec3();
+            let lava = self.reg.id_or_air("lava");
+            let mut q = p;
+            while q.y < p.y + 40 && (Terrain::solid(&self.world, q) || self.world.block_or_air(q) == lava) {
+                q.y += 1;
             }
-        }
-        let grid: Vec<ItemStack> = self.surv.craft.iter_mut().filter_map(|s| s.take()).collect();
-        for s in grid {
-            self.pop_drop(at, s);
+            pos.y = q.y as f32;
+            let msg = format!("Seus itens ficaram no seu corpo em {} {} {}", pos.x.floor(), pos.y.floor(), pos.z.floor());
+            self.surv.corpses.push(Corpse { pos, yaw: self.yaw, items });
+            self.toast(msg, 8.0);
         }
         let (lvl, _) = self.surv.level();
         let keep = (lvl * 7).min(100);
@@ -550,6 +586,9 @@ impl Game {
 
     /// Right click in survival. Returns true when something happened.
     pub(crate) fn surv_use(&mut self) -> bool {
+        if self.loot_corpse() {
+            return true;
+        }
         if let Some(hit) = self.target {
             let id = self.world.block_or_air(hit.block);
             let name = self.reg.get(id).name.clone();
@@ -601,6 +640,40 @@ impl Game {
             return true;
         }
         false
+    }
+
+    /// Right-click on a corpse: everything comes back, armor onto the body.
+    fn loot_corpse(&mut self) -> bool {
+        let eye = self.body.eye();
+        let f = self.forward();
+        let block_dist = self.target.map(|t| t.distance).unwrap_or(f32::MAX);
+        let mut best: Option<(usize, f32)> = None;
+        for (i, c) in self.surv.corpses.iter().enumerate() {
+            let lo = c.pos - Vec3::new(0.9, 0.0, 0.9);
+            let hi = c.pos + Vec3::new(0.9, 0.5, 0.9);
+            if let Some(t) = crate::mobs::ray_box(eye, f, lo, hi) {
+                if t < 4.0 && t <= block_dist + 0.5 && best.is_none_or(|(_, b)| t < b) {
+                    best = Some((i, t));
+                }
+            }
+        }
+        let Some((i, _)) = best else { return false };
+        let c = self.surv.corpses.swap_remove(i);
+        for st in c.items {
+            if let Some(a) = self.items.get(st.item).armor {
+                let slot = (a.slot as usize).min(3);
+                if self.surv.armor[slot].is_none() {
+                    self.surv.armor[slot] = Some(st);
+                    continue;
+                }
+            }
+            if let Some(left) = self.surv.inv.add(&self.items, st) {
+                self.pop_drop(c.pos + Vec3::Y * 0.5, left);
+            }
+        }
+        self.sfx(Sfx::Pickup);
+        self.toast("Você pegou seus itens de volta", 2.5);
+        true
     }
 
     fn open_container(&mut self, open: Open) {
@@ -1148,9 +1221,23 @@ impl Game {
                 item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &st, sx, sy, 16.0 * s);
             }
         }
+        // R over any item opens its recipes in the book.
+        if self.surv.want_recipe && hovered.is_some() {
+            self.surv.want_recipe = false;
+            let st = match hovered {
+                Some(Slot::CraftOut) => result,
+                Some(sl) => self.slot_get(sl),
+                None => None,
+            };
+            if let Some(st) = st {
+                self.surv.book_view = Some((st.item, 0));
+            }
+        }
+        let over_book = self.draw_recipe_book(x0, y0, pw, ph, w, h, mouse);
+        self.surv.want_recipe = false;
         // Clicks.
         let shift = self.keys.contains(&winit::keyboard::KeyCode::ShiftLeft) || self.keys.contains(&winit::keyboard::KeyCode::ShiftRight);
-        let inside = mouse.0 >= x0 && mouse.0 < x0 + pw && mouse.1 >= y0 && mouse.1 < y0 + ph;
+        let inside = over_book || (mouse.0 >= x0 && mouse.0 < x0 + pw && mouse.1 >= y0 && mouse.1 < y0 + ph);
         if self.clicked || self.rclicked {
             let right = self.rclicked && !self.clicked;
             match hovered {
@@ -1169,6 +1256,20 @@ impl Game {
                 None => {}
             }
         }
+        // Right-drag (like Mouse Tweaks): one item into each slot the mouse passes over.
+        if self.rdown && !self.rclicked {
+            if let (Some(slot), Some(c)) = (hovered, self.surv.cursor) {
+                let fresh = self.surv.drag_last != Some(slot) && !matches!(slot, Slot::CraftOut | Slot::Armor(_)) && !(slot == Slot::Cont(2) && matches!(open, Open::Furnace(_)));
+                let fits = match self.slot_get(slot) {
+                    None => true,
+                    Some(st) => st.stacks_with(&c) && st.count < self.items.get(st.item).max_stack,
+                };
+                if fresh && fits {
+                    self.click_slot(slot, true, false);
+                }
+            }
+        }
+        self.surv.drag_last = if self.rdown { hovered.or(self.surv.drag_last) } else { None };
         // Number keys over a slot swap it with that hotbar slot.
         if let (Some(slot), Some(k)) = (hovered, self.inv_number_key.take()) {
             if slot != Slot::CraftOut {
@@ -1180,7 +1281,7 @@ impl Game {
         }
         self.inv_number_key = None;
         // Tooltip and the stack on the cursor.
-        if self.surv.cursor.is_none() {
+        if self.surv.cursor.is_none() && !over_book {
             let st = match hovered {
                 Some(Slot::CraftOut) => result,
                 Some(sl) => self.slot_get(sl),
@@ -1203,7 +1304,7 @@ impl Game {
         if let Some(c) = self.surv.cursor {
             item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &c, mouse.0 - 8.0 * s, mouse.1 - 8.0 * s, 16.0 * s);
         }
-        self.ui.text_centered(w / 2.0, y0 + ph + 4.0 * s, "Esq.: pegar/pôr  Dir.: metade/um  Shift: mover  1-9: trocar", WHITE);
+        self.ui.text_centered(w / 2.0, y0 + ph + 4.0 * s, "Esq.: pegar/pôr  Dir.: metade/um  Shift: mover  1-9: trocar  R: receita", WHITE);
     }
 
     pub(crate) fn close_survival_screen(&mut self) {
@@ -1491,6 +1592,7 @@ impl Game {
                 self.surv.open = Open::Table;
                 // A pickaxe in the making.
                 self.surv.craft = [one(cobble), one(cobble), one(cobble), None, one(stick), None, None, one(stick), None];
+                self.surv.book_view = self.items.id("iron_chestplate").map(|i| (i, 0));
             }
             Some("furnace") => {
                 let p = IVec3::new(0, -100, 0);
@@ -1500,6 +1602,12 @@ impl Game {
                 inv.slots[2] = self.items.id("iron_ingot").map(|i| ItemStack::new(i, 2));
                 self.surv.containers.insert(p, Container::Furnace(Furnace { inv, burn: 50.0, burn_max: 80.0, cook: 6.0, xp: 0.0 }));
                 self.surv.open = Open::Furnace(p);
+            }
+            Some("corpse") => {
+                let at = self.body.pos + fwd * 3.0;
+                let y = self.world.surface_y(at.x.floor() as i32, at.z.floor() as i32).unwrap_or(at.y as i32) + 1;
+                let items = self.surv.inv.slots.iter().flatten().copied().collect();
+                self.surv.corpses.push(Corpse { pos: Vec3::new(at.x, y as f32, at.z), yaw: self.yaw + 2.0, items });
             }
             Some("chest") => {
                 let p = IVec3::new(0, -101, 0);
@@ -1563,3 +1671,210 @@ impl Game {
         self.reg.light_of(id) as f32 / 15.0
     }
 }
+
+/// One way to make an item, for the recipe book.
+enum BookRecipe {
+    Grid { w: usize, cells: Vec<Option<Vec<ItemId>>>, result: ItemStack },
+    Smelt { input: Vec<ItemId>, result: ItemStack },
+}
+
+impl Game {
+    fn recipes_for(&self, item: ItemId) -> Vec<BookRecipe> {
+        let mut out = Vec::new();
+        for r in &self.recipes.shaped {
+            if r.result.item == item {
+                out.push(BookRecipe::Grid { w: r.w, cells: r.cells.clone(), result: r.result });
+            }
+        }
+        for r in &self.recipes.shapeless {
+            if r.result.item == item {
+                let w = if r.ingredients.len() > 4 { 3 } else { 2 };
+                out.push(BookRecipe::Grid { w, cells: r.ingredients.iter().map(|i| Some(i.clone())).collect(), result: r.result });
+            }
+        }
+        for r in &self.recipes.smelting {
+            if r.result.item == item {
+                out.push(BookRecipe::Smelt { input: r.input.clone(), result: r.result });
+            }
+        }
+        out
+    }
+
+    /// The recipe book beside the inventory (like JEI): every item on the right, and the recipes
+    /// of the chosen one on the left. Returns whether the mouse is over it.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_recipe_book(&mut self, x0: f32, y0: f32, pw: f32, ph: f32, w: f32, _h: f32, mouse: (f32, f32)) -> bool {
+        let s = self.ui.scale;
+        let cell = 18.0 * s;
+        let mut over = false;
+        let click = self.clicked;
+        // Item list on the right.
+        let bx = x0 + pw + 4.0 * s;
+        let cols = (((w - bx - 4.0 * s) / cell).floor() as usize).min(9);
+        if cols >= 2 {
+            let rows = ((ph - 14.0 * s) / cell).floor() as usize;
+            let all: Vec<ItemId> = (1..self.items.items.len() as ItemId).collect();
+            let total_rows = all.len().div_ceil(cols);
+            let max_scroll = total_rows.saturating_sub(rows);
+            self.surv.book_scroll = self.surv.book_scroll.min(max_scroll);
+            let bw = cols as f32 * cell + 4.0 * s;
+            self.ui.rect(bx, y0, bw, ph, [0, 0, 0, 150]);
+            let title = format!("Itens {}/{}", self.surv.book_scroll + 1, max_scroll + 1);
+            self.ui.text(bx + 3.0 * s, y0 + 3.0 * s, &title, [200, 200, 200, 255]);
+            if mouse.0 >= bx && mouse.0 < bx + bw && mouse.1 >= y0 && mouse.1 < y0 + ph {
+                over = true;
+            }
+            let mut tip: Option<ItemId> = None;
+            for r in 0..rows {
+                for c in 0..cols {
+                    let Some(&id) = all.get((r + self.surv.book_scroll) * cols + c) else { continue };
+                    let (sx, sy) = (bx + 2.0 * s + c as f32 * cell, y0 + 13.0 * s + r as f32 * cell);
+                    let hov = mouse.0 >= sx && mouse.0 < sx + cell && mouse.1 >= sy && mouse.1 < sy + cell;
+                    if hov {
+                        self.ui.rect(sx, sy, cell, cell, [255, 255, 255, 60]);
+                        tip = Some(id);
+                        if click || std::mem::take(&mut self.surv.want_recipe) {
+                            self.surv.book_view = Some((id, 0));
+                        }
+                    }
+                    item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &ItemStack::new(id, 1), sx + s, sy + s, 16.0 * s);
+                }
+            }
+            if let Some(id) = tip {
+                let name = self.items.get(id).display_name.clone();
+                let tw = self.ui.text_width(&name, s);
+                let tx = (mouse.0 + 8.0 * s).min(w - tw - 8.0 * s);
+                self.ui.rect(tx, mouse.1 - 14.0 * s, tw + 6.0 * s, 12.0 * s, [16, 0, 16, 235]);
+                self.ui.text(tx + 3.0 * s, mouse.1 - 12.0 * s, &name, WHITE);
+            }
+        }
+        // Recipes of the chosen item on the left.
+        let Some((item, idx)) = self.surv.book_view else { return over };
+        let list = self.recipes_for(item);
+        let pw2 = 124.0 * s;
+        let px = x0 - pw2 - 4.0 * s;
+        if px < 0.0 {
+            return over;
+        }
+        let ph2 = 104.0 * s;
+        self.ui.rect(px, y0, pw2, ph2, [0, 0, 0, 170]);
+        let in_panel = mouse.0 >= px && mouse.0 < px + pw2 && mouse.1 >= y0 && mouse.1 < y0 + ph2;
+        over |= in_panel;
+        let mut name = self.items.get(item).display_name.clone();
+        while name.chars().count() > 3 && self.ui.text_width(&name, s) > pw2 - 16.0 * s {
+            name.pop();
+        }
+        self.ui.text(px + 3.0 * s, y0 + 3.0 * s, &name, YELLOWISH);
+        // Close button.
+        let (cx, cy) = (px + pw2 - 9.0 * s, y0 + 2.0 * s);
+        self.ui.text(cx, cy, "x", WHITE);
+        if click && mouse.0 >= cx - 2.0 * s && mouse.0 < cx + 8.0 * s && mouse.1 >= cy && mouse.1 < cy + 9.0 * s {
+            self.surv.book_view = None;
+            return over;
+        }
+        if list.is_empty() {
+            self.ui.text(px + 3.0 * s, y0 + 20.0 * s, "Sem receita:", [200, 200, 200, 255]);
+            self.ui.text(px + 3.0 * s, y0 + 30.0 * s, "ache no mundo", [200, 200, 200, 255]);
+            return over;
+        }
+        let idx = idx % list.len();
+        // Ingredient choices (any plank...) take turns once a second.
+        let tick = self.now as usize;
+        let pick = |opts: &Vec<ItemId>| opts[tick % opts.len().max(1)];
+        let gy = y0 + 16.0 * s;
+        let gx = px + 4.0 * s;
+        let slot_bg = |ui: &mut UiBatch, x: f32, y: f32| {
+            ui.rect(x, y, cell - s, cell - s, [139, 139, 139, 255]);
+        };
+        let mut fill: Option<(usize, Vec<Option<Vec<ItemId>>>)> = None;
+        match &list[idx] {
+            BookRecipe::Grid { w: rw, cells, result } => {
+                for r in 0..3 {
+                    for c in 0..3 {
+                        slot_bg(&mut self.ui, gx + c as f32 * cell, gy + r as f32 * cell);
+                    }
+                }
+                for (i, cellv) in cells.iter().enumerate() {
+                    if let Some(opts) = cellv {
+                        if opts.is_empty() {
+                            continue;
+                        }
+                        let (c, r) = (i % rw, i / rw);
+                        item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &ItemStack::new(pick(opts), 1), gx + c as f32 * cell, gy + r as f32 * cell, 16.0 * s);
+                    }
+                }
+                let rx = gx + 3.0 * cell + 6.0 * s;
+                self.ui.text(rx, gy + cell + 4.0 * s, ">", WHITE);
+                slot_bg(&mut self.ui, rx + 8.0 * s, gy + cell);
+                item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, result, rx + 8.0 * s, gy + cell, 16.0 * s);
+                let rows = cells.len().div_ceil(*rw);
+                let need = (*rw).max(rows);
+                let label = if need <= 2 { "Grade 2x2" } else { "Mesa 3x3" };
+                self.ui.text(gx, gy + 3.0 * cell + 3.0 * s, label, [200, 200, 200, 255]);
+                fill = Some((*rw, cells.clone()));
+            }
+            BookRecipe::Smelt { input, result } => {
+                slot_bg(&mut self.ui, gx, gy + cell);
+                if !input.is_empty() {
+                    item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &ItemStack::new(pick(input), 1), gx, gy + cell, 16.0 * s);
+                }
+                self.ui.text(gx + cell + 4.0 * s, gy + cell + 4.0 * s, ">", WHITE);
+                slot_bg(&mut self.ui, gx + cell + 14.0 * s, gy + cell);
+                item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, result, gx + cell + 14.0 * s, gy + cell, 16.0 * s);
+                self.ui.text(gx, gy + 3.0 * cell + 3.0 * s, "Fornalha", [200, 200, 200, 255]);
+            }
+        }
+        // Next recipe, and fill the crafting grid from the inventory.
+        let by = y0 + ph2 - 13.0 * s;
+        if list.len() > 1 {
+            let t = format!("{}/{} >", idx + 1, list.len());
+            if self.ui.button(px + 3.0 * s, by, 44.0 * s, 11.0 * s, &t, mouse) && click {
+                self.surv.book_view = Some((item, idx + 1));
+            }
+        }
+        let grid_open = matches!(self.surv.open, Open::Craft | Open::Table);
+        if let (Some((rw, cells)), true) = (fill, grid_open) {
+            let n = self.surv.grid_size();
+            let rows = cells.len().div_ceil(rw);
+            if rw <= n && rows <= n && self.ui.button(px + 50.0 * s, by, 70.0 * s, 11.0 * s, "Preencher", mouse) && click {
+                self.fill_grid(rw, &cells);
+            }
+        }
+        over
+    }
+
+    /// Move one of each ingredient from the inventory into the crafting grid.
+    fn fill_grid(&mut self, rw: usize, cells: &[Option<Vec<ItemId>>]) {
+        let n = self.surv.grid_size();
+        // Clear the grid back into the inventory first.
+        for i in 0..9 {
+            if let Some(st) = self.surv.craft[i].take() {
+                if let Some(left) = self.surv.inv.add(&self.items, st) {
+                    self.surv.craft[i] = Some(left);
+                    return;
+                }
+            }
+        }
+        let mut taken: Vec<(usize, ItemStack)> = Vec::new();
+        for (i, c) in cells.iter().enumerate() {
+            let Some(opts) = c else { continue };
+            let slot = (0..INV_SIZE).find(|&k| self.surv.inv.slots[k].is_some_and(|st| opts.contains(&st.item) && st.damage == 0));
+            let Some(k) = slot else {
+                // Missing something: put back what was moved.
+                for (_, st) in taken {
+                    let _ = self.surv.inv.add(&self.items, st);
+                }
+                self.toast("Faltam ingredientes", 2.0);
+                return;
+            };
+            let st = self.surv.inv.take(k, 1).unwrap();
+            let (cx, cy) = (i % rw, i / rw);
+            taken.push((cy * n + cx, st));
+        }
+        for (g, st) in taken {
+            self.surv.craft[g] = Some(st);
+        }
+    }
+}
+
+const YELLOWISH: [u8; 4] = [255, 255, 160, 255];
