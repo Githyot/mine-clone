@@ -80,6 +80,8 @@ pub struct Settings {
     /// Option values chosen for each shader pack: pack → option name → value.
     pub shader_options: BTreeMap<String, BTreeMap<String, f32>>,
     pub shader_quality: ShaderQuality,
+    /// Low-detail distant terrain drawn this many blocks past the render distance (0 = off).
+    pub lod_distance: i32,
 }
 
 impl Default for Settings {
@@ -104,6 +106,7 @@ impl Default for Settings {
             shader_pack: String::new(),
             shader_options: BTreeMap::new(),
             shader_quality: ShaderQuality::Fancy,
+            lod_distance: 0,
         }
     }
 }

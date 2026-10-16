@@ -52,6 +52,9 @@ struct GpuSection {
 pub struct FrameInfo {
     pub sections_drawn: usize,
     pub quads_drawn: usize,
+    /// Distant terrain tiles and quads drawn.
+    pub lod_drawn: usize,
+    pub lod_quads: usize,
 }
 
 pub struct Camera {
@@ -72,6 +75,7 @@ struct ScenePipes {
     sky: wgpu::RenderPipeline,
     cloud: wgpu::RenderPipeline,
     line: wgpu::RenderPipeline,
+    lod: wgpu::RenderPipeline,
 }
 
 pub struct Renderer {
@@ -226,6 +230,7 @@ impl Renderer {
         let terrain = shader(&device, "terrain", include_str!("shaders/terrain.wgsl"));
         let sky = shader(&device, "sky", include_str!("shaders/sky.wgsl"));
         let lines = shader(&device, "lines", include_str!("shaders/lines.wgsl"));
+        let lod = shader(&device, "lod", include_str!("shaders/lod.wgsl"));
         let ui = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("ui"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/ui.wgsl").into()),
@@ -299,6 +304,18 @@ impl Renderer {
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4],
         }];
+        let lod_layout = [
+            wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<crate::lod::LodVertex>() as u64,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Unorm8x4],
+            },
+            wgpu::VertexBufferLayout {
+                array_stride: 12,
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: &wgpu::vertex_attr_array![2 => Float32x3],
+            },
+        ];
         let scene_pipes = |f: wgpu::TextureFormat| ScenePipes {
             solid: make("solid", f, &terrain_layout, &terrain, "vs_main", "fs_solid", &vbufs, None, Some(wgpu::Face::Back), depth_state(true, C::Less), T::TriangleList),
             translucent: make(
@@ -317,6 +334,7 @@ impl Renderer {
             sky: make("sky", f, &globals_only, &sky, "vs_sky", "fs_sky", &[], None, None, depth_state(false, C::Always), T::TriangleList),
             cloud: make("clouds", f, &globals_only, &sky, "vs_sky", "fs_clouds", &[], blend_alpha, None, depth_state(false, C::Less), T::TriangleList),
             line: make("lines", f, &globals_only, &lines, "vs_lines", "fs_lines", &line_layout, blend_alpha, None, depth_state(false, C::LessEqual), T::LineList),
+            lod: make("lod", f, &globals_only, &lod, "vs_lod", "fs_lod", &lod_layout, None, None, depth_state(true, C::Less), T::TriangleList),
         };
         let pipes = [scene_pipes(format), scene_pipes(HDR)];
         let post = PostFx::new(&device, format);
@@ -653,6 +671,7 @@ impl Renderer {
         selection: Option<IVec3>,
         clouds: bool,
         entities: Option<&crate::entity::EntityRenderer>,
+        lod: Option<&crate::lod::Lod>,
         ui: &UiBatch,
         capture: bool,
     ) -> (FrameInfo, Option<(u32, u32, Vec<u8>)>) {
@@ -709,6 +728,24 @@ impl Renderer {
                 }
             }
         }
+        // Distant terrain tiles share the instance buffer (their corner relative to the camera).
+        let mut lod_draws: Vec<(usize, &wgpu::Buffer, u32)> = Vec::new();
+        for (t, tile) in lod.map(|l| &l.tiles).into_iter().flatten() {
+            let s = crate::lod::TILE;
+            let origin = Vec3::new((t.x * s - cam.block.x) as f32, -cam.block.y as f32, (t.y * s - cam.block.z) as f32);
+            let lo = origin + Vec3::new(0.0, tile.min_y - 8.0, 0.0);
+            let hi = origin + Vec3::new(s as f32, tile.max_y + 1.0, s as f32);
+            if !visible(lo, hi) {
+                continue;
+            }
+            if tile.quads > self.quad_cap {
+                self.quad_cap = tile.quads.next_power_of_two();
+                self.quad_ibuf = Self::make_quad_ibuf(&self.device, self.quad_cap);
+            }
+            lod_draws.push((instances.len(), &tile.buf, tile.quads));
+            instances.push(origin.to_array());
+        }
+        lod_draws.sort_by(|a, b| Vec3::from(instances[a.0]).length_squared().total_cmp(&Vec3::from(instances[b.0]).length_squared()));
         trans_draws.sort_by(|a, b| b.0.total_cmp(&a.0));
         // Near-to-far for opaque geometry so the depth test rejects hidden pixels early.
         solid_draws.sort_by(|a, b| {
@@ -762,11 +799,11 @@ impl Renderer {
             Ok(f) => f,
             Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
                 self.surface.configure(&self.device, &self.config);
-                return (FrameInfo { sections_drawn: 0, quads_drawn: 0 }, None);
+                return (FrameInfo { sections_drawn: 0, quads_drawn: 0, lod_drawn: 0, lod_quads: 0 }, None);
             }
             Err(e) => {
                 log::warn!("frame skipped: {e:?}");
-                return (FrameInfo { sections_drawn: 0, quads_drawn: 0 }, None);
+                return (FrameInfo { sections_drawn: 0, quads_drawn: 0, lod_drawn: 0, lod_quads: 0 }, None);
             }
         };
         let view = frame.texture.create_view(&Default::default());
@@ -808,6 +845,13 @@ impl Renderer {
                 pass.set_vertex_buffer(0, b.slice(..));
                 pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
                 quads += *q as usize;
+            }
+            if !lod_draws.is_empty() {
+                pass.set_pipeline(&pipes.lod);
+                for (i, b, q) in &lod_draws {
+                    pass.set_vertex_buffer(0, b.slice(..));
+                    pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
+                }
             }
             if let Some(e) = entities {
                 e.draw(&mut pass, hdr);
@@ -895,7 +939,8 @@ impl Renderer {
             Some((w, h, out))
         });
         frame.present();
-        (FrameInfo { sections_drawn: solid_draws.len() + trans_draws.len(), quads_drawn: quads }, shot)
+        let lod_quads = lod_draws.iter().map(|d| d.2 as usize).sum();
+        (FrameInfo { sections_drawn: solid_draws.len() + trans_draws.len(), quads_drawn: quads, lod_drawn: lod_draws.len(), lod_quads }, shot)
     }
 }
 

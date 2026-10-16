@@ -52,9 +52,12 @@ SHADERS
                 água ondulante
     Suave       só um pouco de brilho e cores mais quentes (leve)
   Qualidade: Rápido ou Bonito (Bonito tem brilho mais largo e raios de sol mais finos).
+  Distância LOD (Esc > Shaders): desenha o relevo além da distância de visão (256, 512 ou 1024
+  blocos a mais), em blocos grandes e simples, como o mod Distant Horizons. Montanhas,
+  florestas e o mar aparecem no horizonte sem carregar chunks. Funciona com ou sem shader.
   Para criar o seu, copie shaderpacks/sepia com outro nome, edite post.wgsl e clique em
   "Recarregar pacotes". Se o shader tiver erro, o jogo mostra a linha e desliga o shader.
 
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
-  --shader NOME (ou off)   --shaders-menu
+  --shader NOME (ou off)   --shaders-menu   --lod BLOCOS

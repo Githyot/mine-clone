@@ -164,6 +164,20 @@ pub struct Generator {
     pal: Palette,
 }
 
+/// What the top of one column looks like, without generating the chunk (distant terrain).
+#[derive(Clone, Copy, Debug)]
+pub struct Surface {
+    /// Highest solid block.
+    pub height: i32,
+    pub biome: Biome,
+    /// Block on top of the ground (before trees and plants).
+    pub top: BlockId,
+    /// Water or ice above the ground, up to `SEA_LEVEL`.
+    pub liquid: Option<BlockId>,
+    /// Leaves of the trees that grow here, and roughly how much of the ground they cover (0..1).
+    pub trees: Option<(BlockId, f32)>,
+}
+
 /// What the generator decided for one column.
 struct Column {
     height: i32,
@@ -235,6 +249,61 @@ impl Generator {
         self.column(wx, wz).height
     }
 
+    /// Top, filler and filler depth for a column.
+    fn top_blocks(&self, col: &Column, wx: i32, wz: i32) -> (BlockId, BlockId, i32) {
+        let p = &self.pal;
+        let h = col.height;
+        match col.biome {
+            Biome::Desert => (p.sand, p.sandstone, 4),
+            Biome::Beach => (p.sand, p.sand, 3),
+            Biome::Ocean => {
+                if (wx ^ wz) & 7 == 0 && h > SEA_LEVEL - 12 {
+                    (p.clay, p.sand, 2)
+                } else if h < SEA_LEVEL - 14 {
+                    (p.gravel, p.gravel, 2)
+                } else {
+                    (p.sand, p.sand, 3)
+                }
+            }
+            Biome::Mountains => {
+                if h > 150 {
+                    (p.snow_grass, p.stone, 1)
+                } else if h > 128 {
+                    (p.stone, p.stone, 1)
+                } else {
+                    (p.grass, p.dirt, 3)
+                }
+            }
+            Biome::Snowy | Biome::Taiga => (p.snow_grass, p.dirt, 3),
+            _ => (p.grass, p.dirt, 3),
+        }
+    }
+
+    /// The surface of one column, cheaply: no caves, ores or chunk. Matches `generate` except
+    /// for trees, which are only a density here.
+    pub fn surface(&self, wx: i32, wz: i32) -> Surface {
+        let p = &self.pal;
+        let col = self.column(wx, wz);
+        let (top, _, _) = self.top_blocks(&col, wx, wz);
+        let h = col.height;
+        let top = if h < SEA_LEVEL && (top == p.grass || top == p.snow_grass) { p.dirt } else { top };
+        let liquid = (h < SEA_LEVEL).then_some(if matches!(col.biome, Biome::Snowy | Biome::Taiga) { p.ice } else { p.water });
+        // Tree attempts per chunk in `decorate`, out of the forest's 9.
+        let trees = if !(SEA_LEVEL..=200).contains(&h) {
+            None
+        } else {
+            match col.biome {
+                Biome::Forest => Some((p.oak_leaves, 1.0)),
+                Biome::BirchForest => Some((p.birch_leaves, 1.0)),
+                Biome::Taiga => Some((p.spruce_leaves, 1.0)),
+                Biome::Plains => Some((p.oak_leaves, 0.11)),
+                Biome::Snowy | Biome::Mountains if h <= 128 => Some((p.spruce_leaves, 0.11)),
+                _ => None,
+            }
+        };
+        Surface { height: h, biome: col.biome, top, liquid, trees }
+    }
+
     #[inline]
     fn is_cave(&self, wx: i32, y: i32, wz: i32, surface: i32) -> bool {
         if y < 6 || y > surface - 3 {
@@ -278,30 +347,7 @@ impl Generator {
                 let wz = base_z + lz as i32;
                 chunk.biomes[lx + lz * 16] = col.biome as u8;
                 let h = col.height;
-                let (top, filler, filler_depth) = match col.biome {
-                    Biome::Desert => (p.sand, p.sandstone, 4),
-                    Biome::Beach => (p.sand, p.sand, 3),
-                    Biome::Ocean => {
-                        if (wx ^ wz) & 7 == 0 && h > SEA_LEVEL - 12 {
-                            (p.clay, p.sand, 2)
-                        } else if h < SEA_LEVEL - 14 {
-                            (p.gravel, p.gravel, 2)
-                        } else {
-                            (p.sand, p.sand, 3)
-                        }
-                    }
-                    Biome::Mountains => {
-                        if h > 150 {
-                            (p.snow_grass, p.stone, 1)
-                        } else if h > 128 {
-                            (p.stone, p.stone, 1)
-                        } else {
-                            (p.grass, p.dirt, 3)
-                        }
-                    }
-                    Biome::Snowy | Biome::Taiga => (p.snow_grass, p.dirt, 3),
-                    _ => (p.grass, p.dirt, 3),
-                };
+                let (top, filler, filler_depth) = self.top_blocks(col, wx, wz);
                 for y in 0..=h.max(SEA_LEVEL) {
                     let id = if y == 0 || (y <= 4 && rng.below(5) < (5 - y) as u32) {
                         p.bedrock
@@ -573,5 +619,21 @@ mod tests {
         let c = g.generate(ChunkPos::new(sx >> 4, sz >> 4));
         assert_eq!(c.get(0, 0, 0), reg.id("bedrock").unwrap());
         assert!(c.top_y((sx & 15) as usize, (sz & 15) as usize) >= SEA_LEVEL);
+    }
+
+    #[test]
+    fn surface_matches_generated_chunks() {
+        let reg = registry();
+        let g = Generator::new(4321, &reg);
+        for (cx, cz) in [(0, 0), (40, -12), (-75, 33), (120, 120)] {
+            let c = g.generate(ChunkPos::new(cx, cz));
+            for (lx, lz) in [(0usize, 0usize), (5, 9), (15, 15)] {
+                let s = g.surface(cx * 16 + lx as i32, cz * 16 + lz as i32);
+                assert_eq!(c.get(lx, s.height as usize, lz), s.top, "top at chunk {cx},{cz}");
+                if let Some(l) = s.liquid {
+                    assert_eq!(c.get(lx, SEA_LEVEL as usize, lz), l);
+                }
+            }
+        }
     }
 }

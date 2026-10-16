@@ -6,6 +6,7 @@
 mod audio;
 mod controller;
 mod entity;
+mod lod;
 mod mobs;
 mod paintings;
 mod post;
@@ -75,6 +76,8 @@ struct Args {
     survival: bool,
     /// Shader pack to use ("off" turns shaders off).
     shader: Option<String>,
+    /// Distant terrain past the render distance, in blocks (0 = off).
+    lod: Option<i32>,
 }
 
 fn parse_args() -> Args {
@@ -113,11 +116,12 @@ fn parse_args() -> Args {
             "--mobs" => a.mobs = true,
             "--survival" => a.survival = true,
             "--shader" => a.shader = it.next(),
+            "--lod" => a.lod = it.next().and_then(|s| s.parse().ok()),
             "--help" | "-h" => {
                 println!(
                     "mine-clone [--world NAME] [--seed N] [--render-distance N] [--size WxH]\n\
                      Testing: [--screenshot out.png] [--pos x,y,z] [--look yaw,pitch] [--time ticks] [--fly] [--demo] [--inventory] [--pause] [--debug]\n\
-                     \x20        [--shader NAME|off] [--shaders-menu]"
+                     \x20        [--shader NAME|off] [--shaders-menu] [--lod BLOCKS]"
                 );
                 std::process::exit(0);
             }
@@ -197,6 +201,8 @@ enum ShaderRow {
     Pack(Option<usize>),
     /// Change an option of the pack in use.
     Opt(usize),
+    /// Distant terrain distance.
+    Lod,
 }
 
 struct Toast {
@@ -282,13 +288,14 @@ struct Game {
     /// Why the chosen shader pack is not running (shown in the shader menu).
     shader_error: Option<String>,
     shader_scroll: usize,
+    lod: lod::Lod,
 
     start: Instant,
     last: Instant,
     now: f32,
     frame_times: Vec<f32>,
     fps: f32,
-    last_frame_info: (usize, usize),
+    last_frame_info: (usize, usize, usize),
     autosave: f32,
     loaded_frames: u32,
     screenshot_request: bool,
@@ -306,6 +313,9 @@ impl Game {
         let mut settings = Settings::load(&settings_path);
         if let Some(rd) = args.render_distance {
             settings.render_distance = rd;
+        }
+        if let Some(l) = args.lod {
+            settings.lod_distance = l.max(0);
         }
         if let Some(sh) = &args.shader {
             settings.shader_pack = if sh == "off" { String::new() } else { sh.clone() };
@@ -332,6 +342,7 @@ impl Game {
 
         let tex = textures::load(&reg.textures, &base, &settings.resource_packs);
         let textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
+        let lod = lod::Lod::new(gen.clone(), lod::LodColors::new(&reg, &tex));
         let font = FontAtlas::new();
         let renderer = pollster::block_on(Renderer::new(window.clone(), settings.vsync, &tex, &font));
         let ui = UiBatch::new(&font);
@@ -463,12 +474,13 @@ impl Game {
             shader_packs,
             shader_error: None,
             shader_scroll: 0,
+            lod,
             start: now,
             last: now,
             now: 0.0,
             frame_times: Vec::new(),
             fps: 0.0,
-            last_frame_info: (0, 0),
+            last_frame_info: (0, 0, 0),
             autosave: 0.0,
             loaded_frames: 0,
             screenshot_request: false,
@@ -609,6 +621,7 @@ impl Game {
         let tex = textures::load(&self.reg.textures, &self.base, &self.settings.resource_packs);
         self.textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
         self.renderer.reload_textures(&tex);
+        self.lod.set_colors(lod::LodColors::new(&self.reg, &tex));
         self.toast(format!("Texturas: {}", self.textures_name), 3.0);
     }
 
@@ -1090,6 +1103,14 @@ impl Game {
             ("Voltar".to_string(), ShaderRow::Back, false),
             (format!("Qualidade: {}", self.settings.shader_quality.label()), ShaderRow::Quality, false),
             ("Recarregar pacotes".to_string(), ShaderRow::Reload, false),
+            (
+                match self.settings.lod_distance {
+                    0 => "Distância LOD: Não".to_string(),
+                    d => format!("Distância LOD: +{d}"),
+                },
+                ShaderRow::Lod,
+                false,
+            ),
             (mark(cur.is_none(), "Desligado"), ShaderRow::Pack(None), false),
         ];
         for (i, p) in self.shader_packs.iter().enumerate() {
@@ -1111,7 +1132,7 @@ impl Game {
     fn draw_shaders_menu(&mut self, w: f32, h: f32, mouse: (f32, f32)) -> Option<usize> {
         let s = self.ui.scale;
         let rows = self.shader_rows();
-        let pw = (150.0 * s).min(w * 0.42);
+        let pw = (170.0 * s).min(w * 0.42);
         let bh = 14.0 * s;
         let step = bh + 2.0 * s;
         let top = 22.0 * s;
@@ -1120,8 +1141,8 @@ impl Game {
         let fits = (((h - top - 40.0 * s) / step).floor() as usize).max(4);
         let left: Vec<usize> = (0..rows.len()).filter(|&i| !rows[i].2).collect();
         let right: Vec<usize> = (0..rows.len()).filter(|&i| rows[i].2).collect();
-        // The first four rows always show; the pack list scrolls with the wheel.
-        let fixed = 4.min(left.len());
+        // The first five rows always show; the pack list scrolls with the wheel.
+        let fixed = 5.min(left.len());
         let scroll_max = left.len().saturating_sub(fits);
         self.shader_scroll = self.shader_scroll.min(scroll_max);
         let mut hit = None;
@@ -1194,6 +1215,11 @@ impl Game {
                 self.apply_shader();
             }
             ShaderRow::Reload => self.reload_shader_packs(),
+            ShaderRow::Lod => {
+                let d = &lod::DISTANCES;
+                let cur = d.iter().position(|&x| x >= self.settings.lod_distance).unwrap_or(0);
+                self.settings.lod_distance = d[(cur + 1) % d.len()];
+            }
             ShaderRow::Pack(p) => {
                 self.settings.shader_pack = p.map(|p| self.shader_packs[p].id.clone()).unwrap_or_default();
                 self.apply_shader();
@@ -2025,8 +2051,21 @@ impl Game {
         let (top, horizon, daylight, sun) = self.sky();
         let underwater = self.body.head_in_water;
         let rd = self.settings.render_distance as f32 * 16.0;
-        let (fog_color, fog_start, fog_end) =
-            if underwater { ([0.04, 0.12, 0.35], 0.0, 28.0) } else { (horizon, rd * 0.55, rd - 2.0) };
+        // Distant terrain pushes the fog out to its own edge.
+        let extra = self.settings.lod_distance.max(0) as f32;
+        let view_end = rd + extra;
+        let (fog_color, fog_start, fog_end) = if underwater {
+            ([0.04, 0.12, 0.35], 0.0, 28.0)
+        } else if extra > 0.0 {
+            (horizon, rd * 0.6, view_end - 8.0)
+        } else {
+            (horizon, rd * 0.55, rd - 2.0)
+        };
+        // Real chunks surely cover this radius (see World::update); distant terrain starts here.
+        let lod_inner = (self.settings.render_distance as f32 - 0.5) * 16.0;
+        self.lod.update(&self.renderer.device, eye, lod_inner, if extra > 0.0 { view_end } else { 0.0 });
+        let mut effects = self.terrain_effects();
+        effects[3] = lod_inner;
         let mut g = Globals {
             cam_pos: [eye.x - block.x as f32, eye.y - block.y as f32, eye.z - block.z as f32, (self.now % 3600.0) + self.start.elapsed().as_secs_f32() * 0.0],
             cam_world: [eye.x, eye.y, eye.z, CLOUD_HEIGHT],
@@ -2035,7 +2074,7 @@ impl Game {
             sun_dir: [sun.x, sun.y, sun.z, 0.0],
             sky_top: [top[0], top[1], top[2], 1.0],
             sky_horizon: [horizon[0], horizon[1], horizon[2], 1.0],
-            effects: self.terrain_effects(),
+            effects,
             ..Default::default()
         };
         let cam = Camera {
@@ -2043,7 +2082,7 @@ impl Game {
             frac: Vec3::from_slice(&g.cam_pos[..3]),
             forward: self.forward(),
             fov_y: self.settings.fov.to_radians(),
-            far: rd + 32.0,
+            far: view_end + 32.0,
         };
 
         let mut lines = Vec::new();
@@ -2069,6 +2108,17 @@ impl Game {
             lines.push(format!("GPU: {} ({:?})", self.renderer.adapter_info.name, self.renderer.adapter_info.backend));
             lines.push(format!("Texturas: {} ({}px)", self.textures_name, self.renderer.texture_size));
             lines.push(format!("Shader: {} ({})", self.shader_name(), self.settings.shader_quality.label()));
+            if self.settings.lod_distance > 0 {
+                lines.push(format!(
+                    "LOD: +{} blocos, {} de {} tiles desenhados, {} tarefas ({} threads), {:.1} MB",
+                    self.settings.lod_distance,
+                    self.last_frame_info.2,
+                    self.lod.tiles.len(),
+                    self.lod.pending_jobs(),
+                    self.lod.workers,
+                    self.lod.vram_bytes as f64 / 1e6
+                ));
+            }
             if let Some(t) = self.target {
                 let id = self.world.block_or_air(t.block);
                 lines.push(format!("Mirando: {} em {} {} {}", self.reg.get(id).name, t.block.x, t.block.y, t.block.z));
@@ -2100,7 +2150,7 @@ impl Game {
         let mut exit_after = false;
         if self.args.screenshot.is_some() && self.screen != Screen::Loading {
             self.loaded_frames += 1;
-            if (self.loaded_frames > 30 && self.world.pending_jobs() == 0) || self.loaded_frames > 1500 {
+            if (self.loaded_frames > 30 && self.world.pending_jobs() == 0 && self.lod.is_complete()) || self.loaded_frames > 1500 {
                 capture = true;
                 exit_after = true;
             }
@@ -2115,8 +2165,8 @@ impl Game {
             items.push((self.entities.painting_mesh(d), p.bones(block, &self.world)));
         }
         self.entities.prepare(&self.renderer, items);
-        let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds, Some(&self.entities), &self.ui, capture);
-        self.last_frame_info = (info.sections_drawn, info.quads_drawn);
+        let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds, Some(&self.entities), Some(&self.lod), &self.ui, capture);
+        self.last_frame_info = (info.sections_drawn, info.quads_drawn, info.lod_drawn);
         if let Some((w, h, px)) = shot {
             let path = if exit_after {
                 self.args.screenshot.clone().unwrap()
@@ -2138,7 +2188,15 @@ impl Game {
         }
         self.screenshot_request = false;
         if exit_after {
-            println!("frame stats: {:.0} fps, {} sections, {} quads, shader {}", self.fps, info.sections_drawn, info.quads_drawn, self.shader_name());
+            println!(
+                "frame stats: {:.0} fps, {} sections, {} quads, {} lod tiles ({} quads), shader {}",
+                self.fps,
+                info.sections_drawn,
+                info.quads_drawn,
+                info.lod_drawn,
+                info.lod_quads,
+                self.shader_name()
+            );
             std::process::exit(0);
         }
     }
