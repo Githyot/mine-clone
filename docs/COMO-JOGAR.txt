@@ -125,6 +125,7 @@ MÚSICA
 TEXTURAS
   Coloque o pacote em resourcepacks/ e escolha em Esc > Pacote de texturas.
   Pacotes do Minecraft (assets/minecraft/textures/block/...) funcionam, inclusive 32x, 64x etc.
+  O jogo já vem com o pacote "Vanilla Experience" (feito pelo HP) em resourcepacks/.
 
 SHADERS
   Esc > Shaders escolhe o pacote de shader e mostra as opções dele:
