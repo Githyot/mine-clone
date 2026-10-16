@@ -25,6 +25,14 @@ pub struct Bobber {
 
 /// (item, weight): what comes up on the line.
 const FISH: &[(&str, u32)] = &[("cod", 40), ("salmon", 22), ("trout", 14), ("catfish", 9), ("tilapia", 10)];
+/// Extra fish that only live in some biomes (Aquaculture idea): (biomes, item, weight).
+const LOCAL_FISH: &[(&[&str], &str, u32)] = &[
+    (&["Jungle", "Swamp"], "piranha", 18),
+    (&["Jungle", "Swamp"], "pirarucu", 8),
+    (&["Snowy Plains", "Taiga", "Mountains"], "arctic_char", 22),
+    (&["Plains", "Forest", "Birch Forest", "Dark Forest", "Cherry Grove", "Savanna"], "perch", 18),
+    (&["Ocean", "Beach"], "tuna", 16),
+];
 const JUNK: &[(&str, u32)] = &[("stick", 3), ("bone", 2), ("leather", 2), ("string", 2), ("rotten_flesh", 2)];
 const TREASURE: &[(&str, u32)] = &[("emerald", 3), ("gold_ingot", 3), ("bow", 2), ("diamond", 1), ("lapis_lazuli", 3)];
 
@@ -80,7 +88,9 @@ impl Game {
 
     fn catch_fish(&mut self, at: Vec3) {
         let roll = self.surv.rng.f32();
-        let table = if roll < 0.85 { FISH } else if roll < 0.95 { JUNK } else { TREASURE };
+        let biome = self.world.gen.biome_at(at.x.floor() as i32, at.z.floor() as i32).name();
+        let fish: Vec<(&'static str, u32)> = FISH.iter().copied().chain(LOCAL_FISH.iter().filter(|f| f.0.contains(&biome)).map(|f| (f.1, f.2))).collect();
+        let table: &[(&'static str, u32)] = if roll < 0.85 { &fish } else if roll < 0.95 { JUNK } else { TREASURE };
         let Some(name) = self.pick(table) else { return };
         let Some(id) = self.items.id(name) else { return };
         // The catch flies to the player.

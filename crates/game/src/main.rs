@@ -931,6 +931,7 @@ impl Game {
     }
 
     fn set_screen(&mut self, s: Screen) {
+        self.surv.opened_at = None;
         if self.screen == Screen::Loading && s != Screen::Loading {
             // Loading frames say nothing about how the game runs.
             self.perf.reset();

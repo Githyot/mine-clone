@@ -291,8 +291,8 @@ impl Mobs {
             let from = self.list[i].body.center();
             if self.list[j].hurt(damage, from) {
                 out.deaths.push((self.list[j].def, self.list[j].body.pos));
-                // A full hunter naps rather than hunting again soon.
-                self.list[i].fed = 90.0 + (self.next_rand() % 60) as f32;
+                // A full hunter naps rather than hunting again soon; a town guard keeps watch.
+                self.list[i].fed = if self.reg.defs[self.list[i].def].town { 1.0 } else { 90.0 + (self.next_rand() % 60) as f32 };
             }
         }
         self.update_arrows(world, player, dt, &mut out);

@@ -75,6 +75,7 @@ ROLES = {
     "npc_nurse": ["head", "body", "arm", "arm", "leg", "leg"],
     "npc_wizard": ["head", "body", "arm", "arm", "leg", "leg"],
     "npc_smith": ["head", "body", "arm", "arm", "leg", "leg"],
+    "npc_guard": ["head", "body", "arm", "arm", "leg", "leg"],
 }
 
 # (size, origin, uv) per part, mirroring mobs.ron.
@@ -143,7 +144,7 @@ HARDCODED = {
                         ((2, 6, 2), (-6, 34, -1), (54, 0)), ((2, 6, 2), (4, 34, -1), (54, 0))],
 }
 # Town NPCs share the player's model.
-for _n in ("npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith"):
+for _n in ("npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", "npc_guard"):
     HARDCODED[_n] = HARDCODED["player"]
 
 
@@ -165,7 +166,7 @@ HARDCODED_LAYERS = {
     "duck": [(0, 0.3), (4, 0.3), (5, 0.3)],
     "forest_guardian": [(0, 0.8), (1, 0.6), (2, 0.5), (3, 0.5)],
 }
-for _n in ("npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith"):
+for _n in ("npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", "npc_guard"):
     HARDCODED_LAYERS[_n] = HARDCODED_LAYERS["player"]
 
 
@@ -1483,6 +1484,10 @@ TOWNSFOLK = {
                       PTUNIC=pal("#2a2a2c", "#343436", "#3e3e40", "#48484a", "#525254"),
                       PTROUSER=pal("#3a2a1a", "#463220", "#523a26", "#5e442c"),
                       PSKIN=pal("#7a4a30", "#8a563a", "#9a6244", "#a86e4e", "#b47a58")),
+    "npc_guard": dict(PHAIR=pal("#2a1a0e", "#3a2412", "#4c3018", "#5e3c1e", "#6e4824"),
+                      PTUNIC=pal("#5a5e66", "#6c7078", "#80848c", "#9498a0", "#a8acb4"),
+                      PTROUSER=pal("#1e2a48", "#263456", "#2e3e64", "#384872"),
+                      PLEATHER=pal("#5a3a1a", "#6c4620", "#7e5226", "#905e2c")),
 }
 
 
@@ -1513,6 +1518,24 @@ RECOLORED = {
         ZSKIN=pal("#2e4430", "#3a5438", "#466444", "#52724e", "#5e7e58"),
         ZSHIRT=pal("#2a1a14", "#36221a", "#422a20", "#4e3226"),
         ZPANTS=pal("#141420", "#1c1c2c", "#242438", "#2c2c44"))),
+    "polar_bear": ("bear", dict(
+        BEAR=pal("#b8b4a8", "#c8c4b8", "#d6d2c8", "#e2dfd6", "#ecead2", "#f6f4ec"),
+        BEAR_MUZZLE=pal("#a8a498", "#bab6aa", "#ccc8bc", "#dcd8cc"))),
+    "penguin": ("duck", dict(
+        DUCK_GRAY=pal("#16181e", "#1e2028", "#262a32", "#2e323c", "#363a46"),
+        DUCK_BACK=pal("#101216", "#16181e", "#1e2026"),
+        DUCK_CHEST=pal("#d8d6d0", "#e4e2dc", "#eeece6", "#f8f6f2"),
+        DUCK_GREEN=pal("#0e1014", "#14161c", "#1a1d24", "#20242c", "#262a34"),
+        DUCK_BILL=pal("#b85a14", "#d06c1a", "#e07e22", "#f0902c"),
+        SPECULUM=pal("#16181e", "#1e2028", "#262a32"))),
+    "boar": ("pig", dict(
+        PIG=pal("#3a2a1e", "#4a3626", "#5a422e", "#6a4e36", "#7a5a40"),
+        PIG_SNOUT=pal("#6a4a3a", "#7a5848", "#8a6656", "#9a7464"),
+        PIG_HOOF=pal("#1a1210", "#2a1e18"))),
+    "squirrel": ("fox", dict(
+        FOX=pal("#6a3a1e", "#7c4624", "#8e522a", "#a05e32", "#b06a3a", "#be7844"),
+        FOX_WHITE=pal("#bcae98", "#ccc0aa", "#dcd2c0", "#e8e0d2"),
+        FOX_BLACK=pal("#2a1a12", "#36241a", "#422e20"))),
 }
 for _n, (_b, _) in RECOLORED.items():
     ROLES[_n] = ROLES[_b]
@@ -1965,7 +1988,7 @@ def main():
     order = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "stalker", "spider",
              "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian",
              "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
-             "goblin_trader", "mutant_zombie"]
+             "goblin_trader", "mutant_zombie", "npc_guard", "polar_bear", "penguin", "boar", "squirrel"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols

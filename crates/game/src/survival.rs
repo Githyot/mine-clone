@@ -133,6 +133,8 @@ pub struct Survival {
     pub figure_box: Option<(f32, f32, f32, f32)>,
     /// The slot under the mouse last frame (for the wheel).
     pub(crate) hover_slot: Option<Slot>,
+    /// When the inventory screen opened, for its slide-in.
+    pub(crate) opened_at: Option<std::time::Instant>,
     /// Slot the right-button drag last dropped into.
     drag_last: Option<Slot>,
     /// Saplings planted by the player and seconds until they grow.
@@ -187,6 +189,7 @@ impl Survival {
             want_recipe: false,
             figure_box: None,
             hover_slot: None,
+            opened_at: None,
             drag_last: None,
             saplings: Vec::new(),
             leaf_decay: Vec::new(),
@@ -1546,7 +1549,12 @@ impl Game {
         let extra = rows.saturating_sub(3) as f32 * 18.0;
         let (pw, ph) = (176.0 * s, (166.0 + extra) * s);
         let x0 = ((w - pw) / 2.0).floor();
-        let y0 = ((h - ph) / 2.0).floor();
+        // Opening slides the panel up into place and fades the backdrop in (Immersive UI idea).
+        // Screenshots skip it so they show the panel where it rests.
+        let since = *self.surv.opened_at.get_or_insert_with(std::time::Instant::now);
+        let t = if self.args.screenshot.is_some() { 1.0 } else { (since.elapsed().as_secs_f32() / 0.16).min(1.0) };
+        let ease = 1.0 - (1.0 - t) * (1.0 - t) * (1.0 - t);
+        let y0 = ((h - ph) / 2.0 + (1.0 - ease) * 28.0 * s).floor();
         // Furnace and chest close when the block is gone.
         if let Open::Furnace(p) | Open::Chest(p) = open {
             if !self.surv.containers.contains_key(&p) {
@@ -1557,7 +1565,7 @@ impl Game {
         // The player figure is drawn in 3D behind the interface, seen through a hole in it.
         let hole = (open == Open::Craft).then_some((x0 + 27.0 * s, y0 + 9.0 * s, 50.0 * s, 60.0 * s));
         self.surv.figure_box = hole;
-        rect_around(&mut self.ui, (0.0, 0.0, w, h), hole, [0, 0, 0, 110]);
+        rect_around(&mut self.ui, (0.0, 0.0, w, h), hole, [0, 0, 0, (110.0 * ease) as u8]);
         rect_around(&mut self.ui, (x0, y0, pw, ph), hole, [198, 198, 198, 255]);
         self.ui.frame(x0, y0, pw, ph, s, [255, 255, 255, 255]);
         self.ui.rect(x0 + pw - s, y0, s, ph, [85, 85, 85, 255]);

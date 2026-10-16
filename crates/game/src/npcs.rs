@@ -76,6 +76,8 @@ impl Game {
             "npc_nurse" => self.max_health > 20.0,
             "npc_wizard" => self.magic.max_mana > 20.0 || self.surv.inv.slots.iter().flatten().any(|s| crate::magic::is_caster(&self.items.get(s.item).name)),
             "npc_smith" => self.boss.defeated.iter().any(|b| b == "forest_guardian"),
+            // A guard comes once a few people live here.
+            "npc_guard" => self.town.npcs.len() >= 2,
             _ => false,
         }
     }
@@ -102,6 +104,7 @@ impl Game {
             if self.mobs.spawn(&n.name, home) {
                 if let Some(m) = self.mobs.list.last_mut() {
                     m.home = Some(home);
+                    m.fed = 0.0;
                 }
             }
         }
@@ -119,7 +122,7 @@ impl Game {
         self.town.check_t = 6.0;
         self.find_houses();
         // One newcomer per check, into a house nobody lives in.
-        for name in ["npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith"] {
+        for name in ["npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", "npc_guard"] {
             if self.town_has(name) || !self.npc_wish_met(name) {
                 continue;
             }
@@ -129,6 +132,7 @@ impl Game {
             if self.mobs.spawn(name, spot) {
                 if let Some(m) = self.mobs.list.last_mut() {
                     m.home = Some(spot);
+                    m.fed = 0.0;
                 }
             }
             let dn = self.mobs.reg.id(name).map(|i| self.mobs.reg.defs[i].display_name.clone()).unwrap_or_default();
@@ -245,6 +249,7 @@ impl Game {
                 self.town.tip += 1;
                 self.toast(format!("{dn}: {tip}"), 6.0);
             }
+            "npc_guard" => self.toast(format!("{dn}: Fico de olho nos monstros por aqui. Durma tranquilo!"), 4.0),
             "npc_nurse" => {
                 let missing = self.max_health - self.health;
                 if missing < 1.0 {
