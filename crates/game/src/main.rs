@@ -2586,7 +2586,11 @@ impl Game {
                 if b.variant < 3 && self.surv.rng.chance(0.2) {
                     self.world.set_block(p, self.variant_id(layer, b.variant + 1));
                 }
-            } else if self.reg.is_opaque(id) && b.shape == Shape::Cube && self.world.block_or_air(p + IVec3::Y) == AIR {
+            } else if (self.reg.is_opaque(id) || b.name.ends_with("_leaves")) && b.shape == Shape::Cube && self.world.block_or_air(p + IVec3::Y) == AIR {
+                // Also on treetops (Snow! Real Magic! idea).
+                self.world.set_block(p + IVec3::Y, layer);
+            } else if self.reg.is_opaque(id) && self.reg.get(self.world.block_or_air(p + IVec3::Y)).name == "short_grass" {
+                // Grass gets buried.
                 self.world.set_block(p + IVec3::Y, layer);
             }
         }

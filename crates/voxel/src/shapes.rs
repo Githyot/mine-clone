@@ -317,6 +317,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn tables_share_legs_and_chairs_turn() {
+        let mut v = Vec::new();
+        boxes(Shape::Table, 0, 0, false, &mut v);
+        assert_eq!(v.len(), 5, "a lone table has a top and four legs");
+        v.clear();
+        boxes(Shape::Table, 0, CONN_PX | CONN_NX, false, &mut v);
+        assert_eq!(v.len(), 1, "in the middle of a row only the top is left");
+        v.clear();
+        boxes(Shape::Chair, 2, 0, false, &mut v);
+        // Facing south: the back stands on the north side.
+        assert!(v[5][2] < 8 && v[5][4] == 16);
+        assert!(joins(Shape::Table, Shape::Table, false) && !joins(Shape::Table, Shape::Cube, true));
+    }
+
+    #[test]
     fn stairs_rotate_their_step() {
         let mut v = Vec::new();
         boxes(Shape::Stairs, 1, 0, false, &mut v);

@@ -32,6 +32,8 @@ CONTROLES
   Botão do meio   copiar o bloco que você está olhando
   1 a 9 / roda    escolher bloco da barra
   E               inventário (criativo: abas com todos os itens; sobrevivência: fabricação 2x2)
+                  No inventário: roda do mouse sobre um item move 1 por vez; R mostra a
+                  receita do item e U mostra para que ele serve; a lista "Itens" tem busca.
   Q               jogar fora o item da mão (Ctrl+Q joga a pilha toda)
   P               pendurar uma pintura na parede que você está olhando
   Esc             menu (distância de visão, música, texturas, salvar e sair)
@@ -158,6 +160,32 @@ FORMAS DE BLOCO
   alçapões também ficam em cima). Laje sobre laje igual vira bloco inteiro. Cercas, muros e
   painéis se ligam sozinhos aos vizinhos; cercas e muros não dá para pular. Botão direito
   abre e fecha portas e alçapões (agachado, coloca bloco em vez de abrir).
+
+MÓVEIS E LUZES
+  Cadeiras e mesas nas 7 madeiras. A cadeira vira de frente para você; botão direito senta,
+  Shift levanta. Mesas lado a lado formam uma mesa só (as pernas do meio somem).
+  Lanternas (ferro ou cobre) ficam no chão ou penduradas embaixo de um bloco. Luminárias de
+  papel (branca e vermelha) iluminam como bloco inteiro. Janelas de madeira em 7 madeiras
+  funcionam como painéis de vidro com moldura.
+
+MOCHILAS
+  Mochila de couro (27 espaços), depois ferro (36), ouro (45) e diamante (54): cerque a
+  mochila com o material na mesa para melhorar, sem perder o que está dentro. Botão direito
+  com ela na mão abre. Mochila dentro de mochila é devolvida ao fechar.
+
+VISITANTES E MONSTROS RAROS
+  Mercador goblin: às vezes aparece perto de você em cavernas escuras, fica 5 minutos e
+  vende diamante, redstone, cristal de vida, mochila e mais, por esmeraldas.
+  Zumbi mutante (sobrevivência, à noite, raro): gigante, pula em você e esmaga o chão.
+  Guarda: muda para uma casa quando a vila já tem 2 moradores e caça monstros por perto.
+  Animais novos: urso polar e pinguim (neve), javali (florestas), esquilo (bosques).
+  Peixes por bioma: piranha e pirarucu (selva, pântano), truta ártica (frio), perca
+  (campos e florestas), atum (mar e praia).
+
+ESTRUTURAS
+  Casas, torre de vigia, ruína e poço como antes, e agora: cripta enterrada (escada de pedra
+  descendo de uma abertura com musgo, baús com ouro, diamante e cristal de vida), acampamento
+  com barraca de lã e santuário de pedra nas montanhas e na neve.
 
 PINTURAS
   Mire numa parede e aperte P (no controle: seta para a esquerda). Passe o mouse sobre um nome
