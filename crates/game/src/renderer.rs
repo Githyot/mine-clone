@@ -868,6 +868,9 @@ impl Renderer {
             }
             pass.set_pipeline(&pipes.translucent);
             pass.set_bind_group(1, &self.tex_bg, &[]);
+            // Mobs and paintings bind their own index buffers; water needs the shared quad one back.
+            pass.set_index_buffer(self.quad_ibuf.slice(..), wgpu::IndexFormat::Uint32);
+            pass.set_vertex_buffer(1, self.inst_buf.slice(..));
             for (_, i, b, q) in &trans_draws {
                 pass.set_vertex_buffer(0, b.slice(..));
                 pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
