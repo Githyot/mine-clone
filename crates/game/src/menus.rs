@@ -153,7 +153,7 @@ impl Game {
         if self.needs_spawn {
             let (sx, sz) = self.spawn_xz;
             if let Some(y) = self.world.surface_y(sx, sz) {
-                self.body.pos = Vec3::new(sx as f32 + 0.5, y as f32 + 1.0, sz as f32 + 0.5);
+                self.body.pos = Vec3::new(sx as f32 + 0.5, y as f32 + 4.0, sz as f32 + 0.5);
                 self.needs_spawn = false;
             }
         }

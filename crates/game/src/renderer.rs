@@ -860,7 +860,7 @@ impl Renderer {
                 }
             }
             if let Some(e) = entities {
-                e.draw(&mut pass, hdr);
+                e.draw(&mut pass, hdr, &self.tex_bg);
             }
             if clouds {
                 pass.set_pipeline(&pipes.cloud);

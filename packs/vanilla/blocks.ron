@@ -30,7 +30,7 @@
     (name: "poppy", display_name: Some("Papoula"), shape: Cross, transparency: Cutout, solid: false, hardness: 0.0),
     (name: "dandelion", display_name: Some("Dente-de-leão"), shape: Cross, transparency: Cutout, solid: false, hardness: 0.0),
     (name: "dead_bush", display_name: Some("Arbusto Seco"), shape: Cross, transparency: Cutout, solid: false, hardness: 0.0),
-    (name: "torch", display_name: Some("Tocha"), shape: Cross, transparency: Cutout, solid: false, light: 14, hardness: 0.0),
+    (name: "torch", display_name: Some("Tocha"), shape: Torch, transparency: Cutout, solid: false, light: 14, hardness: 0.0),
     (name: "coal_ore", display_name: Some("Minério de Carvão"), hardness: 3.0),
     (name: "copper_ore", display_name: Some("Minério de Cobre"), hardness: 3.0),
     (name: "tin_ore", display_name: Some("Minério de Estanho"), hardness: 3.0),

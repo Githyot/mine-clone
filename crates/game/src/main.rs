@@ -10,6 +10,7 @@ mod menus;
 mod lod;
 mod mobs;
 mod paintings;
+mod particles;
 mod post;
 mod renderer;
 mod settings;
@@ -76,6 +77,7 @@ struct Args {
     /// Spawn a few mobs in front of the player (test screenshots).
     mobs: bool,
     survival: bool,
+    particles: bool,
     /// Show the title screen even with --world/--screenshot.
     title: bool,
     /// Shader pack to use ("off" turns shaders off).
@@ -118,6 +120,7 @@ fn parse_args() -> Args {
             "--shaders-menu" => a.show_shaders = true,
             "--debug" => a.debug = true,
             "--mobs" => a.mobs = true,
+            "--particles" => a.particles = true,
             "--title" => a.title = true,
             "--survival" => a.survival = true,
             "--shader" => a.shader = it.next(),
@@ -303,6 +306,7 @@ struct Game {
 
     /// Survival mining: block being broken and how far along (seconds).
     mining: Option<(IVec3, f32)>,
+    particles: particles::Particles,
     /// A world is being played (not just shown behind the title).
     world_open: bool,
     /// The world loaded behind the menus.
@@ -514,6 +518,7 @@ impl Game {
             painting_scroll: 0,
             painting_check: 0.0,
             mining: None,
+            particles: particles::Particles::new(),
             world_open: !title_mode,
             title_world: world_name,
             title_spin: 0.0,
@@ -902,6 +907,23 @@ impl Game {
                 if self.args.mobs {
                     self.spawn_demo_mobs();
                 }
+                if self.args.particles {
+                    // Frozen in mid-air for a test picture: a broken block and a splash.
+                    let f = self.forward();
+                    let at = (self.body.eye() + Vec3::new(f.x, 0.0, f.z).normalize_or_zero() * 3.0).floor().as_ivec3();
+                    let id = self.reg.id_or_air("grass_block");
+                    let (layer, tint) = self.block_look(id);
+                    self.particles.block_bits(at, layer, tint, 18, 1.0);
+                    for _ in 0..5 {
+                        self.particles.update(&self.world, 0.03);
+                    }
+                    let stone = self.reg.id_or_air("stone");
+                    let (layer, tint) = self.block_look(stone);
+                    self.particles.block_bits(at + IVec3::new(1, 0, 0), layer, tint, 18, 1.0);
+                    for _ in 0..3 {
+                        self.particles.update(&self.world, 0.03);
+                    }
+                }
                 if self.args.show_inventory {
                     self.set_screen(Screen::Inventory);
                 } else if self.args.show_pause {
@@ -922,6 +944,9 @@ impl Game {
 
         if self.is_title_screen() {
             self.update_title(dt);
+        }
+        if self.args.screenshot.is_none() {
+            self.particles.update(&self.world, dt);
         }
         if self.screen == Screen::Playing || self.screen == Screen::Inventory || self.screen == Screen::Paused {
             self.update_player(dt);
@@ -1040,6 +1065,14 @@ impl Game {
         if in_water && !self.was_in_water {
             let strength = (-self.body.vel.y / 14.0).clamp(0.25, 1.0);
             self.sfx(Sfx::Splash(strength));
+            let water = self.reg.id_or_air("water");
+            let mut top = self.body.pos;
+            // Find the surface so the drops start on the water, not under it.
+            while self.world.is_liquid(self.world.block_or_air((top + Vec3::Y).floor().as_ivec3())) && top.y < self.body.pos.y + 3.0 {
+                top.y += 1.0;
+            }
+            top.y = top.y.floor() + 0.9;
+            self.particles.splash(top, self.reg.get(water).faces[2], strength);
             self.swim_dist = 0.0;
         } else if !in_water && self.was_in_water && self.body.vel.y > -1.0 {
             self.sfx(Sfx::WaterExit);
@@ -1050,6 +1083,12 @@ impl Game {
             if self.swim_dist > 2.2 {
                 self.swim_dist = 0.0;
                 self.sfx(if self.body.head_in_water { Sfx::Bubbles } else { Sfx::Swim });
+                let water = self.reg.get(self.reg.id_or_air("water")).faces[2];
+                if self.body.head_in_water {
+                    self.particles.bubbles(self.body.eye(), water, 3);
+                } else {
+                    self.particles.splash(self.body.pos + Vec3::Y * 0.8, water, 0.15);
+                }
             }
         }
         if self.body.head_in_water {
@@ -1057,6 +1096,8 @@ impl Game {
             if self.bubble_cd <= 0.0 {
                 self.bubble_cd = 3.0 + (self.now * 7.3).sin().abs() * 4.0;
                 self.sfx(Sfx::Bubbles);
+                let water = self.reg.get(self.reg.id_or_air("water")).faces[2];
+                self.particles.bubbles(self.body.eye() + self.forward() * 0.3, water, 5);
             }
         }
 
@@ -1121,6 +1162,8 @@ impl Game {
                     if self.mining_tick <= 0.0 && id != AIR {
                         self.mining_tick = 0.24;
                         self.sfx(Sfx::Hit(Material::of(&self.reg.get(id).name)));
+                        let (layer, tint) = self.block_look(id);
+                        self.particles.block_bits(b, layer, tint, 3, 0.6);
                     }
                 }
                 _ => self.mining = None,
@@ -1138,6 +1181,8 @@ impl Game {
                 let id = self.world.block_or_air(hit.block);
                 if id != AIR && self.reg.get(id).hardness >= 0.0 && self.world.break_block(hit.block) {
                     self.mining = None;
+                    let (layer, tint) = self.block_look(id);
+                    self.particles.block_bits(hit.block, layer, tint, 18, 1.0);
                     self.break_cd = if self.survival { 0.25 } else { 0.22 };
                     let m = Material::of(&self.reg.get(id).name);
                     let vol = self.settings.sound_volume;
@@ -1400,6 +1445,13 @@ impl Game {
         self.settings.save(&self.base.join("settings.ron"));
     }
 
+    /// Texture layer and tint for particles of a block.
+    fn block_look(&self, id: BlockId) -> (u16, [f32; 3]) {
+        let b = self.reg.get(id);
+        let tint = if b.tint { [0.55, 0.8, 0.4] } else { [1.0, 1.0, 1.0] };
+        (b.faces[0], tint)
+    }
+
     fn sfx(&mut self, s: Sfx) {
         let vol = self.settings.sound_volume;
         if let Some(a) = self.audio.as_mut() {
@@ -1492,7 +1544,10 @@ impl Game {
                     if b.hardness < 0.0 || b.hardness >= 50.0 {
                         continue;
                     }
-                    self.world.break_block(p);
+                    if self.world.break_block(p) && (dx + dy + dz) % 3 == 0 {
+                        let (layer, tint) = self.block_look(id);
+                        self.particles.block_bits(p, layer, tint, 3, 2.0);
+                    }
                 }
             }
         }
@@ -1565,7 +1620,7 @@ impl Game {
             return;
         }
         // Plants and torches need something under them.
-        if b.shape == Shape::Cross {
+        if matches!(b.shape, Shape::Cross | Shape::Torch) {
             let under = self.world.block_or_air(pos - IVec3::Y);
             if under == AIR || !self.reg.get(under).solid {
                 return;
@@ -2367,6 +2422,7 @@ impl Game {
             items.push((self.entities.painting_mesh(d), p.bones(block, &self.world)));
         }
         self.entities.prepare(&self.renderer, items);
+        self.entities.particles.prepare(&self.renderer, &self.particles, &self.world, block);
         let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds, Some(&self.entities), Some(&self.lod), &self.ui, capture);
         self.last_frame_info = (info.sections_drawn, info.quads_drawn, info.lod_drawn);
         if let Some((w, h, px)) = shot {

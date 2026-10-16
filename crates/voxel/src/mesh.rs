@@ -235,6 +235,27 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     continue;
                 }
 
+                if shape == Shape::Torch {
+                    let l = light[i];
+                    let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
+                    for (f, fi) in FACES.iter().enumerate() {
+                        let layer = t.faces[idu][f] as u32;
+                        for (k, c) in fi.corners.iter().enumerate() {
+                            let pos = [base[0] + if c[0] == 1 { 9 } else { 7 }, base[1] + if c[1] == 1 { 10 } else { 0 }, base[2] + if c[2] == 1 { 9 } else { 7 }];
+                            let [u, v] = fi.uv[k];
+                            let u = if u == 0 { 7 } else { 9 };
+                            // Sides show the whole stick; the top shows the flame, the bottom the handle end.
+                            let v = match f {
+                                2 => if v == 0 { 6 } else { 8 },
+                                3 => if v == 0 { 14 } else { 16 },
+                                _ => if v == 0 { 6 } else { 16 },
+                            };
+                            out.solid.push(pack(pos, 3, [u, v], layer, f as u32, 0, sky, blk, white));
+                        }
+                    }
+                    continue;
+                }
+
                 let liquid = shape == Shape::Liquid;
                 let transp = t.transp[idu];
                 let target = if transp == Transparency::Translucent { &mut out.translucent } else { &mut out.solid };

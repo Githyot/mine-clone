@@ -138,7 +138,7 @@ impl UiBatch {
     pub fn block_icon(&mut self, reg: &BlockRegistry, id: BlockId, x: f32, y: f32, size: f32) {
         let b = reg.get(id);
         let full = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
-        if b.shape == Shape::Cross {
+        if matches!(b.shape, Shape::Cross | Shape::Torch) {
             let l = b.faces[0] as i32;
             self.quad([[x, y], [x + size, y], [x + size, y + size], [x, y + size]], full, WHITE, l);
             return;

@@ -14,8 +14,10 @@ pub const FACE_DIRS: [[i32; 3]; 6] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 
 pub enum Shape {
     #[default]
     Cube,
-    /// Two crossed quads (flowers, grass, torches).
+    /// Two crossed quads (flowers, grass).
     Cross,
+    /// A small 3D stick (2×10×2 pixels) cut from the middle of its texture.
+    Torch,
     /// Water and lava: cube with a lowered top, drawn in the translucent pass.
     Liquid,
     /// Nothing to draw.
