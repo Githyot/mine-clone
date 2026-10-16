@@ -46,6 +46,18 @@ fn vs_main(@location(0) w: vec3<u32>, @location(1) origin: vec3<f32>) -> VOut {
     var out: VOut;
     out.clip = g.view_proj * vec4<f32>(p, 1.0);
     out.uv = uv;
+    if ((flags & 4u) != 0u) {
+        // Merged quad: repeat the texture once per block, from the position in the section.
+        let q = vec3<f32>(f32(w.x & 1023u), f32((w.x >> 10u) & 1023u), f32((w.x >> 20u) & 1023u)) / 16.0;
+        switch face {
+            case 0u: { out.uv = vec2<f32>(1.0 - q.z, 1.0 - q.y); }
+            case 1u: { out.uv = vec2<f32>(q.z, 1.0 - q.y); }
+            case 2u: { out.uv = vec2<f32>(q.x, q.z); }
+            case 3u: { out.uv = vec2<f32>(q.x, 1.0 - q.z); }
+            case 4u: { out.uv = vec2<f32>(q.x, 1.0 - q.y); }
+            default: { out.uv = vec2<f32>(1.0 - q.x, 1.0 - q.y); }
+        }
+    }
     out.layer = layer;
     let tint = vec3<f32>(f32((w.z >> 8u) & 255u), f32((w.z >> 16u) & 255u), f32((w.z >> 24u) & 255u)) / 200.0;
     out.color = tint * shades[face] * ao_curve[ao];

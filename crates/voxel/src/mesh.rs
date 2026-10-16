@@ -11,6 +11,34 @@ use crate::chunk::{Chunk, CHUNK_HEIGHT};
 
 pub const FLAG_WAVE: u32 = 1;
 pub const FLAG_LIQUID: u32 = 2;
+/// Merged quad (greedy meshing): the shader repeats the texture once per block from the
+/// position instead of reading the vertex UVs.
+pub const FLAG_TILE: u32 = 4;
+
+/// A face that looks the same as its neighbours can merge with them: same texture, tint and
+/// flags, no ambient occlusion and the same light at every corner.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct FaceKey {
+    layer: u32,
+    tint: [u8; 3],
+    sky: u32,
+    blk: u32,
+    flags: u32,
+    /// Liquid top lowered (no liquid above).
+    low: bool,
+    translucent: bool,
+}
+
+/// For each face direction, indexes into [x, y, z]: the normal axis, then the two axes the
+/// merge mask spans.
+#[inline(always)]
+fn face_axes(f: usize) -> (usize, usize, usize) {
+    match f {
+        0 | 1 => (0, 2, 1),
+        2 | 3 => (1, 0, 2),
+        _ => (2, 0, 1),
+    }
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
@@ -187,6 +215,8 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
     let light = &input.light;
     let y0 = section * 16;
     let white = [200u8, 200, 200];
+    // Uniform faces wait here, per direction and slice, to be merged into bigger quads.
+    let mut masks: Vec<[Option<FaceKey>; 256]> = vec![[None; 256]; 6 * 16];
     for ly in 0..16usize {
         let py = y0 + ly + 1;
         for lz in 0..16usize {
@@ -261,7 +291,6 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
 
                 let liquid = shape == Shape::Liquid;
                 let transp = t.transp[idu];
-                let target = if transp == Transparency::Translucent { &mut out.translucent } else { &mut out.solid };
                 let above_same = blocks[i + P * P] == id;
                 // Low blocks (slabs, beds): the top sits lower and is always drawn.
                 let hgt = t.height[idu];
@@ -284,6 +313,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     let tint = if t.tint[idu] & (1 << f) != 0 { biome_tint } else { white };
                     let mut verts = [Vertex::default(); 4];
                     let mut aos = [3u32; 4];
+                    let mut lights = [(0u32, 0u32); 4];
                     for (k, c) in fi.corners.iter().enumerate() {
                         // Neighbour cells around this corner, in the plane in front of the face.
                         let (mut sky_sum, mut blk_sum, mut cnt) = (0u32, 0u32, 0u32);
@@ -336,8 +366,26 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                             }
                         }
                         aos[k] = ao;
+                        lights[k] = (sky, blk);
                         verts[k] = pack(pos, ao, uv, layer, f as u32, wave | if liquid { FLAG_LIQUID } else { 0 }, sky, blk, tint);
                     }
+                    // Plain full faces with even light go to the merge masks instead.
+                    let uniform = aos.iter().all(|&a| a == 3) && lights.iter().all(|&l| l == lights[0]);
+                    if uniform && hgt == 16 && (!liquid || f == 2) {
+                        let (na, aa, ba) = face_axes(f);
+                        let lp = [lx, ly, lz];
+                        masks[f * 16 + lp[na]][lp[aa] + lp[ba] * 16] = Some(FaceKey {
+                            layer,
+                            tint,
+                            sky: lights[0].0,
+                            blk: lights[0].1,
+                            flags: wave | if liquid { FLAG_LIQUID } else { 0 },
+                            low: liquid && !above_same,
+                            translucent: transp == Transparency::Translucent,
+                        });
+                        continue;
+                    }
+                    let target = if transp == Transparency::Translucent { &mut out.translucent } else { &mut out.solid };
                     // Flip the quad's diagonal when it makes the AO gradient look right.
                     if aos[0] + aos[2] < aos[1] + aos[3] {
                         target.extend_from_slice(&[verts[1], verts[2], verts[3], verts[0]]);
@@ -348,7 +396,58 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
             }
         }
     }
+    greedy(&mut masks, &mut out);
     out
+}
+
+/// Merge each mask into as few rectangles as possible (grow along a, then along b).
+fn greedy(masks: &mut [[Option<FaceKey>; 256]], out: &mut SectionMesh) {
+    for f in 0..6 {
+        let fi = &FACES[f];
+        let (na, aa, ba) = face_axes(f);
+        for slice in 0..16 {
+            let m = &mut masks[f * 16 + slice];
+            for b in 0..16 {
+                let mut a = 0;
+                while a < 16 {
+                    let Some(key) = m[a + b * 16] else {
+                        a += 1;
+                        continue;
+                    };
+                    let mut w = 1;
+                    while a + w < 16 && m[a + w + b * 16] == Some(key) {
+                        w += 1;
+                    }
+                    let mut h = 1;
+                    'grow: while b + h < 16 {
+                        for k in 0..w {
+                            if m[a + k + (b + h) * 16] != Some(key) {
+                                break 'grow;
+                            }
+                        }
+                        h += 1;
+                    }
+                    for bb in b..b + h {
+                        for k in 0..w {
+                            m[a + k + bb * 16] = None;
+                        }
+                    }
+                    let target = if key.translucent { &mut out.translucent } else { &mut out.solid };
+                    for c in fi.corners.iter() {
+                        let mut pos = [0u32; 3];
+                        pos[na] = (slice as u32 + c[na]) * 16;
+                        pos[aa] = (a as u32 + if c[aa] == 1 { w as u32 } else { 0 }) * 16;
+                        pos[ba] = (b as u32 + if c[ba] == 1 { h as u32 } else { 0 }) * 16;
+                        if key.low && c[1] == 1 {
+                            pos[1] -= 2;
+                        }
+                        target.push(pack(pos, 3, [0, 0], key.layer, f as u32, key.flags | FLAG_TILE, key.sky, key.blk, key.tint));
+                    }
+                    a += w;
+                }
+            }
+        }
+    }
 }
 
 /// Index buffer for `quads` quads (0,1,2, 0,2,3 pattern), shared by every chunk.
@@ -377,9 +476,11 @@ mod tests {
         assert_eq!(m.solid.len(), 24);
         assert!(input.section_has_blocks(0));
         assert!(!input.section_has_blocks(3));
-        // Two touching blocks hide two faces.
+        // Two touching blocks hide two faces, and the evenly lit faces left merge into a 2x1 box.
         c.set(6, 5, 5, 1);
         let input = MeshInput::new([None, None, None, None, Some(&c), None, None, None, None]);
-        assert_eq!(mesh_section(&t, &input, 0).solid.len(), 40);
+        let m = mesh_section(&t, &input, 0);
+        assert_eq!(m.solid.len(), 24);
+        assert!(m.solid.iter().all(|v| (v.w[1] >> 25) & FLAG_TILE != 0));
     }
 }
