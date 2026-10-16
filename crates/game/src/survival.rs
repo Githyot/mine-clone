@@ -30,6 +30,8 @@ pub struct Dropped {
     pub body: Body,
     pub age: f32,
     pub spin: f32,
+    /// Fixed turn when lying on the ground.
+    pub spin_rest: f32,
 }
 
 pub struct Orb {
@@ -92,6 +94,8 @@ pub struct Survival {
     pub book_view: Option<(ItemId, usize)>,
     /// R was pressed over an item: show its recipes.
     pub want_recipe: bool,
+    /// Screen box where the 3D player figure goes this frame (inventory open).
+    pub figure_box: Option<(f32, f32, f32, f32)>,
     /// Slot the right-button drag last dropped into.
     drag_last: Option<Slot>,
     /// Saplings planted by the player and seconds until they grow.
@@ -128,6 +132,7 @@ impl Survival {
             book_scroll: 0,
             book_view: None,
             want_recipe: false,
+            figure_box: None,
             drag_last: None,
             saplings: Vec::new(),
             eat: 0.0,
@@ -322,6 +327,19 @@ pub fn item_icon(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRegistry,
     }
 }
 
+/// Fill `r` except for the `hole` rectangle inside it.
+fn rect_around(ui: &mut UiBatch, r: (f32, f32, f32, f32), hole: Option<(f32, f32, f32, f32)>, c: [u8; 4]) {
+    let (x, y, w, h) = r;
+    let Some((hx, hy, hw, hh)) = hole else {
+        ui.rect(x, y, w, h, c);
+        return;
+    };
+    ui.rect(x, y, w, hy - y, c);
+    ui.rect(x, hy + hh, w, y + h - hy - hh, c);
+    ui.rect(x, hy, hx - x, hh, c);
+    ui.rect(hx + hw, hy, x + w - hx - hw, hh, c);
+}
+
 fn draw_drumstick(ui: &mut UiBatch, x: f32, y: f32, s: f32, fill: f32, empty: bool) {
     // Seven by seven pixels: meat at the top right, bone at the bottom left.
     const ROWS: [&str; 7] = ["...MMM.", "..MMMMM", "..MMMMM", "..MMMM.", ".B.MM..", "B.B....", ".B....."];
@@ -450,7 +468,7 @@ impl Game {
         body.vel = vel;
         body.no_jump = true;
         let spin = self.surv.rng.f32() * 6.28;
-        self.surv.drops.push(Dropped { stack, body, age: 0.0, spin });
+        self.surv.drops.push(Dropped { stack, body, age: 0.0, spin, spin_rest: spin });
     }
 
     fn pop_drop(&mut self, center: Vec3, stack: ItemStack) {
@@ -1024,12 +1042,14 @@ impl Game {
         let eye = self.body.eye();
         for d in &self.surv.drops {
             let it = self.items.get(d.stack.item);
-            let bob = (d.age * 2.5).sin() * 0.06 + 0.18;
+            // Lying flat once landed (Item Drops style), or the classic floating spin.
+            let lying = self.settings.flat_drops && (d.body.on_ground || d.body.vel.length_squared() < 0.01) && !d.body.in_water;
+            let bob = if lying { 0.0 } else { (d.age * 2.5).sin() * 0.06 + 0.18 };
             let p = d.body.pos + Vec3::Y * bob - c;
             let l = self.world.light((d.body.pos + Vec3::Y * 0.2).floor().as_ivec3());
             let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
             let blk = blk.max(hand - (d.body.pos - eye).length() / 15.0);
-            let (flat, layers, size) = match it.look {
+            let (flat, layers, mut size) = match it.look {
                 Look::Block(b) => {
                     let bl = self.reg.get(b);
                     if matches!(bl.shape, Shape::Cross | Shape::Torch) {
@@ -1042,9 +1062,21 @@ impl Game {
             };
             // Stacks show as two or three copies, like the classic game.
             let copies = if d.stack.count > 16 { 3 } else if d.stack.count > 1 { 2 } else { 1 };
+            if lying {
+                size *= 1.15;
+            }
             for k in 0..copies {
-                let off = Vec3::new(k as f32 * 0.05, k as f32 * 0.04, -(k as f32) * 0.05);
-                out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0; 4] });
+                let kf = k as f32;
+                if lying {
+                    // Flat on the ground, a little scattered; blocks sit on their base.
+                    let yaw = d.spin_rest + kf * 0.7;
+                    let (lift, pitch, spread) = if flat > 0.5 { (0.02 + kf * 0.02, -std::f32::consts::FRAC_PI_2, 0.07) } else { (size * 0.5, 0.0, size * 1.1) };
+                    let off = Vec3::new(yaw.cos(), 0.0, yaw.sin()) * kf * spread;
+                    out.push(GpuItem { pos: [p.x + off.x, p.y + lift, p.z + off.z, size], info: [yaw, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [pitch, 0.0, 0.0, 0.0] });
+                } else {
+                    let off = Vec3::new(kf * 0.05, kf * 0.04, -kf * 0.05);
+                    out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0; 4] });
+                }
             }
         }
         for o in &self.surv.orbs {
@@ -1126,8 +1158,11 @@ impl Game {
                 return;
             }
         }
-        self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 110]);
-        self.ui.rect(x0, y0, pw, ph, [198, 198, 198, 255]);
+        // The player figure is drawn in 3D behind the interface, seen through a hole in it.
+        let hole = (open == Open::Craft).then_some((x0 + 27.0 * s, y0 + 9.0 * s, 50.0 * s, 60.0 * s));
+        self.surv.figure_box = hole;
+        rect_around(&mut self.ui, (0.0, 0.0, w, h), hole, [0, 0, 0, 110]);
+        rect_around(&mut self.ui, (x0, y0, pw, ph), hole, [198, 198, 198, 255]);
         self.ui.frame(x0, y0, pw, ph, s, [255, 255, 255, 255]);
         self.ui.rect(x0 + pw - s, y0, s, ph, [85, 85, 85, 255]);
         self.ui.rect(x0, y0 + ph - s, pw, s, [85, 85, 85, 255]);
@@ -1162,18 +1197,8 @@ impl Game {
                         slots.push((Slot::Armor(i), x0 + 8.0 * s, y0 + (8 + i * 18) as f32 * s));
                     }
                     // A little figure of the player in the corner, like the classic screen.
-                    self.ui.rect(x0 + 26.0 * s, y0 + 8.0 * s, 52.0 * s, 62.0 * s, [0, 0, 0, 255]);
-                    self.ui.rect(x0 + 27.0 * s, y0 + 9.0 * s, 50.0 * s, 60.0 * s, [110, 110, 110, 255]);
-                    let (cx, cy) = (x0 + 52.0 * s, y0 + 12.0 * s);
-                    self.ui.rect(cx - 4.0 * s, cy, 8.0 * s, 8.0 * s, [200, 150, 110, 255]);
-                    self.ui.rect(cx - 4.0 * s, cy, 8.0 * s, 3.0 * s, [110, 50, 30, 255]);
-                    self.ui.rect(cx - 4.0 * s, cy + 8.0 * s, 8.0 * s, 12.0 * s, [60, 110, 50, 255]);
-                    self.ui.rect(cx - 8.0 * s, cy + 8.0 * s, 4.0 * s, 12.0 * s, [60, 110, 50, 255]);
-                    self.ui.rect(cx + 4.0 * s, cy + 8.0 * s, 4.0 * s, 12.0 * s, [60, 110, 50, 255]);
-                    self.ui.rect(cx - 4.0 * s, cy + 20.0 * s, 8.0 * s, 12.0 * s, [170, 90, 50, 255]);
-                    self.ui.rect(cx - 4.0 * s, cy + 32.0 * s, 8.0 * s, 3.0 * s, [50, 35, 25, 255]);
-                    let lvl = self.surv.level().0;
-                    self.ui.label(x0 + 29.0 * s, y0 + 59.0 * s, &format!("Nível {lvl}"), WHITE, s);
+                    self.ui.frame(x0 + 26.0 * s, y0 + 8.0 * s, 52.0 * s, 62.0 * s, s, [0, 0, 0, 255]);
+
                 }
             }
             Open::Furnace(p) => {
@@ -1577,7 +1602,9 @@ impl Game {
             let y = self.world.surface_y(p.x.floor() as i32, p.z.floor() as i32).unwrap_or(p.y as i32) + 1;
             let st = ItemStack::new(id, if i % 3 == 0 { 20 } else { 1 });
             self.spawn_drop(Vec3::new(p.x, y as f32, p.z), st, Vec3::ZERO);
-            self.surv.drops.last_mut().unwrap().age = 1.0 + i as f32 * 0.7;
+            let d = self.surv.drops.last_mut().unwrap();
+            d.age = 1.0 + i as f32 * 0.7;
+            d.body.on_ground = true;
         }
         let at = self.body.pos + fwd * 1.8 + Vec3::Y * 0.6;
         for k in 0..3 {

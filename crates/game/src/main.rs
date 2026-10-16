@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use glam::{IVec3, Vec3};
+use glam::{IVec3, Vec3, Vec4};
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -59,6 +59,14 @@ use voxel::{BlockId, BlockRegistry, AIR};
 use world::World;
 
 const REACH: f32 = 6.0;
+
+/// Textures loaded after the block and item ones: the experience orb, then the ten cracks
+/// drawn over a block while it is being broken.
+fn extra_textures() -> Vec<String> {
+    let mut v = vec!["item/xp_orb".to_string()];
+    v.extend((0..10).map(|i| format!("destroy_stage_{i}")));
+    v
+}
 const CLOUD_HEIGHT: f32 = 160.0;
 const RENDER_DISTANCES: [i32; 9] = [4, 6, 8, 10, 12, 16, 20, 24, 32];
 
@@ -85,6 +93,8 @@ struct Args {
     survival: bool,
     /// Test: fill the survival inventory and drop items in front of the player.
     kit: bool,
+    /// Test: show the target block this far broken (0..1).
+    mine: Option<f32>,
     /// Test: hotbar slot in hand (1-9).
     slot: Option<usize>,
     /// Test: open a survival screen (table, furnace or chest).
@@ -142,6 +152,7 @@ fn parse_args() -> Args {
             "--title" => a.title = true,
             "--survival" => a.survival = true,
             "--kit" => a.kit = true,
+            "--mine" => a.mine = it.next().and_then(|v| v.parse().ok()),
             "--slot" => a.slot = it.next().and_then(|v| v.parse::<usize>().ok()).map(|v| v.clamp(1, 9) - 1),
             "--open" => a.open = it.next(),
             "--shader" => a.shader = it.next(),
@@ -436,7 +447,7 @@ impl Game {
             Recipes::from_ron(embedded::RECIPES_RON, &items).unwrap()
         });
         let item_base = reg.textures.len() as u16;
-        let texture_names: Vec<String> = reg.textures.iter().chain(items.textures.iter()).cloned().chain(["item/xp_orb".to_string()]).collect();
+        let texture_names: Vec<String> = reg.textures.iter().chain(items.textures.iter()).cloned().chain(extra_textures()).collect();
 
         // Without --world the game opens on the title screen, with the last played world behind it.
         let camera_mode = args.camera.min(2);
@@ -779,7 +790,7 @@ impl Game {
     }
 
     fn reload_textures(&mut self) {
-        let names: Vec<String> = self.reg.textures.iter().chain(self.items.textures.iter()).cloned().chain(["item/xp_orb".to_string()]).collect();
+        let names: Vec<String> = self.reg.textures.iter().chain(self.items.textures.iter()).cloned().chain(extra_textures()).collect();
         let tex = textures::load(&names, &self.base, &self.settings.resource_packs);
         self.textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
         self.renderer.reload_textures(&tex);
@@ -2836,6 +2847,38 @@ impl Game {
         for p in &self.paintings {
             items.push((self.entities.painting_mesh(p.def), p.bones(block, &self.world)));
         }
+        // The player figure in the inventory, in 3D, turning its head toward the mouse.
+        let mut figure_backdrop = None;
+        if let (Some((bx, by, bw, bh)), Some(pd)) = (self.surv.figure_box.take(), self.mobs.reg.id("player")) {
+            let (sw, sh) = (self.renderer.config.width as f32, self.renderer.config.height as f32);
+            let d = 0.3;
+            let half_h = (cam.fov_y * 0.5).tan() * d;
+            let half_w = half_h * sw / sh.max(1.0);
+            let f = cam.forward.normalize();
+            let right = f.cross(Vec3::Y).normalize_or_zero();
+            let up = right.cross(f);
+            let to_world = |x: f32, y: f32| eye + f * d + right * ((x / sw * 2.0 - 1.0) * half_w) + up * ((1.0 - y / sh * 2.0) * half_h);
+            let center = to_world(bx + bw / 2.0, by + bh / 2.0);
+            let world_h = bh / sh * 2.0 * half_h;
+            let k = world_h * 0.8 / 2.0;
+            let feet = center - up * (world_h * 0.44);
+            let (mx, my) = self.mouse_pos;
+            let look_x = ((mx - (bx + bw / 2.0)) / (bw * 0.6)).atan();
+            let look_y = (((by + bh * 0.25) - my) / (bh * 0.6)).atan();
+            let def = &self.mobs.reg.defs[pd];
+            let pose = player_model::Pose { pos: block.as_vec3(), look_yaw: -look_x - std::f32::consts::PI, look_pitch: look_y, on_ground: true, ..Default::default() };
+            let base = player_model::Animator::lying(0.0).bones(def, &pose, block, 1.0, 1.0);
+            // Stand it up facing the camera, scaled into the box.
+            let face = glam::Mat4::from_cols(right.extend(0.0), up.extend(0.0), (-f).extend(0.0), Vec4::W);
+            let m = glam::Mat4::from_translation(feet - block.as_vec3()) * face * glam::Mat4::from_rotation_y(-look_x * 0.35) * glam::Mat4::from_scale(Vec3::splat(k));
+            let mut b = base;
+            for mm in b.m.iter_mut() {
+                *mm = (m * glam::Mat4::from_cols_array_2d(mm)).to_cols_array_2d();
+            }
+            items.push((pd, b));
+            let back = center + f * (world_h * 1.3) - block.as_vec3();
+            figure_backdrop = Some(item_render::GpuItem { pos: [back.x, back.y, back.z, world_h * 1.12 * (d + world_h * 1.3) / d], info: [0.0, 0.0, 0.0, 0.0], layers: [0.0; 4], rot: [0.0; 4] });
+        }
         if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
             let def = &self.mobs.reg.defs[pd];
             for c in &self.surv.corpses {
@@ -2854,8 +2897,30 @@ impl Game {
         self.entities.prepare(&self.renderer, items);
         self.entities.particles.prepare(&self.renderer, &self.particles, &self.world, block);
         let mut drops = self.drop_instances(block);
+        drops.extend(figure_backdrop);
         if self.survival && !third && self.screen == Screen::Playing && !self.hide_hud && self.camera_mode == 0 {
             drops.extend(self.held_item_instance(eye, block));
+        }
+        if let (Some(k), Some(h)) = (self.args.mine, self.target) {
+            let id = self.world.block_or_air(h.block);
+            self.mining = Some((h.block, k * self.dig_time(id)));
+        }
+        // Cracks spreading over the block being broken.
+        if let Some((b, t)) = self.mining {
+            let id = self.world.block_or_air(b);
+            let k = t / self.dig_time(id).max(0.01);
+            if id != AIR && k > 0.0 {
+                let layer = (self.item_base as usize + self.items.textures.len() + 1 + ((k * 10.0) as usize).min(9)) as f32;
+                let p = b.as_vec3() + Vec3::splat(0.5) - block.as_vec3();
+                let lp = self.target.map(|h| h.block + h.normal).unwrap_or(b + IVec3::Y);
+                let l = self.world.light(lp);
+                drops.push(item_render::GpuItem {
+                    pos: [p.x, p.y, p.z, 1.004],
+                    info: [0.0, 0.0, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0],
+                    layers: [layer, layer, layer, 0.0],
+                    rot: [0.0; 4],
+                });
+            }
         }
         self.entities.items.prepare(&self.renderer, &drops);
         let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds, Some(&self.entities), Some(&self.lod), &self.ui, capture);

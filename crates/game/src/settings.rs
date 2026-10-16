@@ -73,6 +73,8 @@ pub struct Settings {
     pub show_clouds: bool,
     /// The view sways a little while walking.
     pub view_bobbing: bool,
+    /// Items on the ground lie flat and still (like the Item Drops mod) instead of floating.
+    pub flat_drops: bool,
     /// Animals and monsters spawn in the world.
     pub mobs: bool,
     pub gui_scale: u32,
@@ -103,6 +105,7 @@ impl Default for Settings {
             resource_packs: Vec::new(),
             show_clouds: true,
             view_bobbing: true,
+            flat_drops: true,
             mobs: true,
             gui_scale: 0,
             controller: ControllerSettings::default(),
