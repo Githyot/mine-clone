@@ -8,6 +8,7 @@
 
 use crate::block::{BlockId, BlockRegistry, Shape, Transparency, AIR};
 use crate::chunk::{Chunk, CHUNK_HEIGHT};
+use crate::shapes::{CONN_NX, CONN_NZ, CONN_PX, CONN_PZ};
 
 pub const FLAG_WAVE: u32 = 1;
 pub const FLAG_LIQUID: u32 = 2;
@@ -131,6 +132,7 @@ pub struct MeshTables {
     cull_same: Vec<bool>,
     wave: Vec<bool>,
     height: Vec<u32>,
+    variant: Vec<u8>,
     biome_tints: Vec<[u8; 3]>,
 }
 
@@ -145,6 +147,7 @@ impl MeshTables {
             cull_same: vec![],
             wave: vec![],
             height: vec![],
+            variant: vec![],
             biome_tints: biome_tints
                 .iter()
                 .map(|c| [(c[0] * 200.0).min(255.0) as u8, (c[1] * 200.0).min(255.0) as u8, (c[2] * 200.0).min(255.0) as u8])
@@ -170,6 +173,7 @@ impl MeshTables {
             t.cull_same.push(!leaves);
             t.wave.push(leaves || (b.shape == Shape::Cross && b.light == 0));
             t.height.push(b.height as u32);
+            t.variant.push(b.variant);
         }
         if t.biome_tints.is_empty() {
             t.biome_tints.push([200, 200, 200]);
@@ -214,7 +218,6 @@ fn pack(pos: [u32; 3], ao: u32, uv: [u32; 2], layer: u32, face: u32, flags: u32,
     }
 }
 
-/// Mesh one 16-block-tall section of the chunk described by `input`.
 /// Flood-fill the open cells of a section and record which of its faces are connected.
 pub fn section_visibility(t: &MeshTables, input: &MeshInput, section: usize) -> u64 {
     let y0 = section * 16 + 1;
@@ -268,6 +271,7 @@ pub fn section_visibility(t: &MeshTables, input: &MeshInput, section: usize) -> 
     vis
 }
 
+/// Mesh one 16-block-tall section of the chunk described by `input`.
 pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> SectionMesh {
     let mut out = SectionMesh { vis: section_visibility(t, input, section), ..Default::default() };
     let blocks = &input.blocks;
@@ -276,6 +280,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
     let white = [200u8, 200, 200];
     // Uniform faces wait here, per direction and slice, to be merged into bigger quads.
     let mut masks: Vec<[Option<FaceKey>; 256]> = vec![[None; 256]; 6 * 16];
+    let mut boxes: Vec<crate::shapes::PBox> = Vec::new();
     for ly in 0..16usize {
         let py = y0 + ly + 1;
         for lz in 0..16usize {
@@ -343,6 +348,54 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                                 _ => if v == 0 { 6 } else { 16 },
                             };
                             out.solid.push(pack(pos, 3, [u, v], layer, f as u32, 0, sky, blk, white));
+                        }
+                    }
+                    continue;
+                }
+
+                if shape.is_boxes() {
+                    let nb = |o: isize| blocks[(i as isize + o) as usize] as usize;
+                    let mut conn = 0;
+                    for (bit, o) in [(CONN_PX, 1isize), (CONN_NX, -1), (CONN_PZ, P as isize), (CONN_NZ, -(P as isize))] {
+                        let n = nb(o);
+                        if crate::shapes::joins(shape, t.shape[n], t.opaque[n]) {
+                            conn |= bit;
+                        }
+                    }
+                    boxes.clear();
+                    crate::shapes::boxes(shape, t.variant[idu], conn, false, &mut boxes);
+                    let tint = |f: usize| if t.tint[idu] & (1 << f) != 0 { biome_tint } else { white };
+                    for b in &boxes {
+                        let (lo, hi) = ([b[0] as u32, b[1] as u32, b[2] as u32], [b[3] as u32, b[4] as u32, b[5] as u32]);
+                        for (f, fi) in FACES.iter().enumerate() {
+                            let n = fi.normal;
+                            let edge = match f {
+                                0 => hi[0] == 16,
+                                1 => lo[0] == 0,
+                                2 => hi[1] >= 16,
+                                3 => lo[1] == 0,
+                                4 => hi[2] == 16,
+                                _ => lo[2] == 0,
+                            };
+                            let ni = (i as isize + n[0] as isize + n[2] as isize * P as isize + n[1] as isize * (P * P) as isize) as usize;
+                            if edge && t.opaque[blocks[ni] as usize] {
+                                continue;
+                            }
+                            let l = if edge { light[ni] } else { light[i] };
+                            let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
+                            let layer = t.faces[idu][f] as u32;
+                            for c in fi.corners {
+                                let q = [if c[0] == 1 { hi[0] } else { lo[0] }, if c[1] == 1 { hi[1] } else { lo[1] }, if c[2] == 1 { hi[2] } else { lo[2] }];
+                                let uv = match f {
+                                    0 => [16 - q[2], 16 - q[1]],
+                                    1 => [q[2], 16 - q[1]],
+                                    2 => [q[0], q[2]],
+                                    3 => [q[0], 16 - q[2]],
+                                    4 => [q[0], 16 - q[1]],
+                                    _ => [16 - q[0], 16 - q[1]],
+                                };
+                                out.solid.push(pack([base[0] + q[0], base[1] + q[1], base[2] + q[2]], 3, uv, layer, f as u32, 0, sky, blk, tint(f)));
+                            }
                         }
                     }
                     continue;

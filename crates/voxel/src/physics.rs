@@ -24,6 +24,34 @@ pub trait Terrain {
     fn top(&self, _p: IVec3) -> f32 {
         1.0
     }
+    /// Collision boxes of the cell, in block units relative to its corner (stairs and fences
+    /// have several, fences reach 1.5 high). By default one box up to `top`.
+    fn boxes(&self, p: IVec3, out: &mut Vec<[f32; 6]>) {
+        if self.solid(p) {
+            out.push([0.0, 0.0, 0.0, 1.0, self.top(p), 1.0]);
+        }
+    }
+}
+
+/// World-space boxes of every cell overlapping the region (cells one lower too, for fences).
+fn boxes_in(world: &impl Terrain, lo: Vec3, hi: Vec3) -> Vec<[f32; 6]> {
+    let mut out = Vec::new();
+    let mut cell = Vec::new();
+    let (a, b) = (lo.floor().as_ivec3() - IVec3::Y, hi.floor().as_ivec3());
+    for x in a.x..=b.x {
+        for y in a.y..=b.y {
+            for z in a.z..=b.z {
+                let p = IVec3::new(x, y, z);
+                cell.clear();
+                world.boxes(p, &mut cell);
+                let o = p.as_vec3();
+                for c in &cell {
+                    out.push([c[0] + o.x, c[1] + o.y, c[2] + o.z, c[3] + o.x, c[4] + o.y, c[5] + o.z]);
+                }
+            }
+        }
+    }
+    out
 }
 
 /// How high a walking body climbs onto a low block (slab, bed) without jumping.
@@ -102,18 +130,9 @@ impl Body {
     /// True if a box of this body's width and the given height fits where the body stands.
     pub fn fits(&self, world: &impl Terrain, height: f32) -> bool {
         let h = self.half_width - 0.001;
-        let lo = (self.pos - Vec3::new(h, -0.001, h)).floor().as_ivec3();
-        let hi = (self.pos + Vec3::new(h, height - 0.001, h)).floor().as_ivec3();
-        for x in lo.x..=hi.x {
-            for y in lo.y..=hi.y {
-                for z in lo.z..=hi.z {
-                    if world.solid(IVec3::new(x, y, z)) {
-                        return false;
-                    }
-                }
-            }
-        }
-        true
+        let lo = self.pos - Vec3::new(h, -0.001, h);
+        let hi = self.pos + Vec3::new(h, height - 0.001, h);
+        !boxes_in(world, lo, hi).iter().any(|b| lo.x < b[3] && hi.x > b[0] && lo.y < b[4] && hi.y > b[1] && lo.z < b[5] && hi.z > b[2])
     }
 
     /// True if the player's box overlaps the given block cell.
@@ -211,77 +230,41 @@ impl Body {
 
     fn has_ground_below(&self, world: &impl Terrain) -> bool {
         let (lo, hi) = self.aabb();
-        let y = (lo.y - 0.05).floor() as i32;
-        for x in lo.x.floor() as i32..=(hi.x - 1e-4).floor() as i32 {
-            for z in lo.z.floor() as i32..=(hi.z - 1e-4).floor() as i32 {
-                let p = IVec3::new(x, y, z);
-                if world.solid(p) && y as f32 + world.top(p) >= lo.y - 0.6 {
-                    return true;
-                }
-            }
-        }
-        false
+        let probe_lo = Vec3::new(lo.x, lo.y - 0.6, lo.z);
+        let probe_hi = Vec3::new(hi.x, lo.y, hi.z);
+        boxes_in(world, probe_lo, probe_hi).iter().any(|b| lo.x < b[3] && hi.x > b[0] && lo.z < b[5] && hi.z > b[2] && b[4] >= lo.y - 0.6 && b[4] <= lo.y + 1e-3)
     }
 
-    /// Move along one axis, stopping at the first solid block. Returns the distance actually moved.
+    /// Move along one axis, stopping at the first box in the way. Returns the distance moved.
     fn move_axis(&mut self, world: &impl Terrain, axis: usize, d: f32) -> f32 {
         if d == 0.0 {
             return 0.0;
         }
         let (lo, hi) = self.aabb();
-        let mut allowed = d;
         let eps = 1e-4;
-        let range = |a: usize| -> (i32, i32) { ((lo[a] + eps).floor() as i32, (hi[a] - eps).floor() as i32) };
-        let (a1, a2) = match axis {
-            0 => (1, 2),
-            1 => (0, 2),
-            _ => (0, 1),
-        };
-        let (r1, r2) = (range(a1), range(a2));
-        let (start, end) = if d > 0.0 {
-            ((hi[axis] - eps).floor() as i32 + 1, (hi[axis] + d).floor() as i32)
-        } else if axis == 1 {
-            // Falling also checks the cell around the feet: a low block's top can be inside it.
-            ((lo[axis] + eps).floor() as i32, (lo[axis] + d).floor() as i32)
+        let mut slo = lo;
+        let mut shi = hi;
+        if d > 0.0 {
+            shi[axis] += d;
         } else {
-            ((lo[axis] + eps).floor() as i32 - 1, (lo[axis] + d).floor() as i32)
-        };
-        let dirn = if d > 0.0 { 1 } else { -1 };
-        let mut c = start;
-        'outer: loop {
-            if (dirn > 0 && c > end) || (dirn < 0 && c < end) {
-                break;
+            slo[axis] += d;
+        }
+        let mut allowed = d;
+        for b in boxes_in(world, slo, shi) {
+            // Overlap on the other two axes.
+            let other = (0..3).filter(|&a| a != axis).all(|a| lo[a] < b[a + 3] - eps && hi[a] > b[a] + eps);
+            if !other {
+                continue;
             }
-            for u in r1.0..=r1.1 {
-                for v in r2.0..=r2.1 {
-                    let mut p = IVec3::ZERO;
-                    p[axis] = c;
-                    p[a1] = u;
-                    p[a2] = v;
-                    if world.solid(p) {
-                        let top = world.top(p);
-                        if axis == 1 && d < 0.0 {
-                            // Land on the block's top, if it is under the feet and within this step.
-                            let surface = c as f32 + top;
-                            if surface > lo.y + eps || surface < lo.y + d - eps {
-                                continue;
-                            }
-                            allowed = surface - lo.y;
-                        } else if axis != 1 && lo.y >= p.y as f32 + top - eps {
-                            // Above a low block: no wall.
-                            continue;
-                        } else {
-                            allowed = if d > 0.0 { c as f32 - hi[axis] } else { (c + 1) as f32 - lo[axis] };
-                        }
-                        // Never move backwards because of float error.
-                        if allowed * d < 0.0 {
-                            allowed = 0.0;
-                        }
-                        break 'outer;
-                    }
-                }
+            if d > 0.0 && b[axis] >= hi[axis] - eps {
+                allowed = allowed.min(b[axis] - hi[axis]);
+            } else if d < 0.0 && b[axis + 3] <= lo[axis] + eps {
+                allowed = allowed.max(b[axis + 3] - lo[axis]);
             }
-            c += dirn;
+        }
+        // Never move backwards because of float error.
+        if allowed * d < 0.0 {
+            allowed = 0.0;
         }
         self.pos[axis] += allowed;
         allowed

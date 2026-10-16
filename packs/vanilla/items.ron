@@ -78,6 +78,7 @@
     (name: "cooked_mutton", display_name: Some("Carneiro Assado"), food: Some((hunger: 6, saturation: 9.6))),
     (name: "rotten_flesh", display_name: Some("Carne Podre"), food: Some((hunger: 4, saturation: 0.8))),
     (name: "red_bed", display_name: Some("Cama Vermelha"), texture: Some("red_bed"), max_stack: Some(1)),
+    (name: "oak_door", texture: Some("oak_door"), max_stack: Some(16), fuel: 10.0),
     // Fuel values for block items.
     (name: "oak_planks", fuel: 15.0),
     (name: "birch_planks", fuel: 15.0),

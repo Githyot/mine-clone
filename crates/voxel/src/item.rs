@@ -111,6 +111,11 @@ impl ItemRegistry {
             if i as BlockId == AIR || matches!(b.shape, Shape::Liquid | Shape::Invisible) {
                 continue;
             }
+            if b.variant != 0 {
+                // An orientation of another block: it is that block's item.
+                reg.block_item[i] = reg.block_item[b.base as usize];
+                continue;
+            }
             let id = reg.items.len() as ItemId;
             reg.items.push(Item {
                 name: b.name.clone(),
@@ -198,8 +203,11 @@ impl ItemRegistry {
         let mut out = Vec::new();
         match &b.drops {
             None => {
-                if let Some(i) = self.of_block(block) {
-                    out.push(ItemStack::new(i, 1));
+                // A double slab gives both halves; a door drops from its lower half only.
+                let n = if b.shape == Shape::Slab && b.variant == 2 { 2 } else { 1 };
+                let upper_door = b.shape == Shape::Door && b.variant & 8 != 0;
+                if let (Some(i), false) = (self.of_block(block), upper_door) {
+                    out.push(ItemStack::new(i, n));
                 }
             }
             Some(list) => {

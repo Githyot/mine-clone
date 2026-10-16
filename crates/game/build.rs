@@ -5,6 +5,7 @@ use std::path::Path;
 
 fn main() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
+    windows_icon(&root);
     let out = Path::new(&std::env::var("OUT_DIR").unwrap()).join("embedded.rs");
     let mut code = String::new();
 
@@ -71,4 +72,28 @@ fn main() {
     let tracks_src = if tracks.exists() { format!("include_str!({:?})", tracks.display().to_string()) } else { "\"[]\"".into() };
     code.push_str(&format!("pub static TRACKS_JSON: &str = {tracks_src};\n"));
     fs::write(out, code).unwrap();
+}
+
+/// The program icon of the Windows .exe (the chameleon on a dirt block), compiled with windres
+/// when it is available (the MinGW cross build); other builds simply go without it.
+fn windows_icon(root: &Path) {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+    let ico = root.join("assets/icon/icon.ico");
+    println!("cargo:rerun-if-changed={}", ico.display());
+    let out = Path::new(&std::env::var("OUT_DIR").unwrap()).to_path_buf();
+    let rc = out.join("icon.rc");
+    let obj = out.join("icon.o");
+    let ico_path = ico.display().to_string().replace('\\', "/");
+    if fs::write(&rc, format!("1 ICON \"{ico_path}\"\n")).is_err() {
+        return;
+    }
+    for tool in ["x86_64-w64-mingw32-windres", "windres"] {
+        let ok = std::process::Command::new(tool).arg(&rc).args(["-O", "coff", "-o"]).arg(&obj).status().is_ok_and(|s| s.success());
+        if ok {
+            println!("cargo:rustc-link-arg-bins={}", obj.display());
+            return;
+        }
+    }
 }

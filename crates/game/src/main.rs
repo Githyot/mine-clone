@@ -83,6 +83,7 @@ struct Args {
     fly: bool,
     /// Build a few things in front of the player (used for test screenshots).
     demo: bool,
+    shapes: bool,
     show_inventory: bool,
     show_pause: bool,
     /// Open the shader menu once the world is ready (test screenshots).
@@ -141,6 +142,7 @@ fn parse_args() -> Args {
             }
             "--fly" => a.fly = true,
             "--demo" => a.demo = true,
+            "--shapes" => a.shapes = true,
             "--inventory" => a.show_inventory = true,
             "--pause" => a.show_pause = true,
             "--shaders-menu" => a.show_shaders = true,
@@ -1035,6 +1037,9 @@ impl Game {
                 if self.args.demo {
                     self.build_demo();
                 }
+                if self.args.shapes {
+                    self.build_shapes();
+                }
                 if self.args.mobs {
                     self.spawn_demo_mobs();
                 }
@@ -1276,10 +1281,18 @@ impl Game {
 
         // What the player is looking at.
         let world = &self.world;
-        self.target = raycast(self.body.eye(), self.forward(), REACH, |p| match world.block(p) {
-            Some(id) => id != AIR && !world.is_liquid(id),
+        let (eye, fwd) = (self.body.eye(), self.forward());
+        self.target = raycast(eye, fwd, REACH, |p| match world.block(p) {
+            Some(id) => id != AIR && !world.is_liquid(id) && (!self.reg.get(id).shape.is_boxes() || world.ray_shape(eye, fwd, p).is_some()),
             None => false,
         });
+        // Shaped blocks: the face actually hit (the top of a slab, the side of a stair step).
+        if let Some(h) = self.target.as_mut() {
+            if let Some((d, n)) = world.ray_shape(eye, fwd, h.block) {
+                h.distance = d;
+                h.normal = n;
+            }
+        }
 
         self.break_cd -= dt;
         self.place_cd -= dt;
@@ -1410,7 +1423,9 @@ impl Game {
             }
         }
         if use_ && self.place_cd <= 0.0 {
-            if !self.survival {
+            if self.crouch <= 0.5 && self.toggle_shaped() {
+                self.place_cd = 0.25;
+            } else if !self.survival {
                 self.try_place();
             } else if self.surv_use() {
                 self.place_cd = self.place_cd.max(0.22);
@@ -1897,16 +1912,54 @@ impl Game {
     fn place_block_as(&mut self, id: BlockId) -> Option<IVec3> {
         let hit = self.target?;
         let clicked = self.world.block_or_air(hit.block);
+        let shape = self.reg.get(id).shape;
+        // A half slab clicked on its open side becomes a double slab.
+        let cb = self.reg.get(clicked);
+        if shape == Shape::Slab && cb.base == id && ((cb.variant == 0 && hit.normal == IVec3::Y) || (cb.variant == 1 && hit.normal == -IVec3::Y)) {
+            let double = self.variant_id(id, 2);
+            if self.body.intersects_block(hit.block) || !self.world.set_block(hit.block, double) {
+                return None;
+            }
+            return self.placed(hit.block, id);
+        }
         // Plants are replaced instead of placed against.
-        let pos = if self.reg.get(clicked).shape == Shape::Cross && clicked != id { hit.block } else { hit.block + hit.normal };
+        let pos = if cb.shape == Shape::Cross && clicked != id { hit.block } else { hit.block + hit.normal };
         let cur = self.world.block_or_air(pos);
         if cur != AIR && !self.world.is_liquid(cur) && self.reg.get(cur).shape != Shape::Cross {
             return None;
         }
         let b = self.reg.get(id);
-        if b.solid && b.shape == Shape::Cube && self.body.intersects_block(pos) {
+        if b.solid && !matches!(b.shape, Shape::Cross | Shape::Torch) && self.body.intersects_block(pos) {
             return None;
         }
+        // Orientation from where the player looks and which half of the face was clicked.
+        let f = self.forward();
+        let facing = |x: f32, z: f32| if x.abs() > z.abs() { if x > 0.0 { 1 } else { 3 } } else if z > 0.0 { 2 } else { 0 };
+        let at = self.body.eye() + f * hit.distance;
+        let upper = if hit.normal.y != 0 { hit.normal.y < 0 } else { at.y - pos.y as f32 > 0.5 };
+        let v = match shape {
+            Shape::Slab => upper as u8,
+            Shape::Stairs => facing(f.x, f.z) | if upper { 4 } else { 0 },
+            Shape::Door => facing(f.x, f.z),
+            Shape::Trapdoor => {
+                let side = if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) ^ 2 } else { facing(-f.x, -f.z) };
+                side | if upper { 8 } else { 0 }
+            }
+            _ => 0,
+        };
+        if shape == Shape::Door {
+            let above = pos + IVec3::Y;
+            if self.world.block_or_air(above) != AIR || self.body.intersects_block(above) {
+                return None;
+            }
+            let (lower, top) = (self.variant_id(id, v), self.variant_id(id, v | 8));
+            if self.world.set_block(pos, lower) {
+                self.world.set_block(above, top);
+                return self.placed(pos, id);
+            }
+            return None;
+        }
+        let id_v = self.variant_id(id, v);
         // Plants and torches need something under them.
         if matches!(b.shape, Shape::Cross | Shape::Torch) {
             let under = self.world.block_or_air(pos - IVec3::Y);
@@ -1914,18 +1967,109 @@ impl Game {
                 return None;
             }
         }
-        if self.world.place_block(pos, id) {
-            self.place_cd = 0.22;
-            self.anim.start_swing();
-            self.pads.rumble(0.0, 0.35, 0.05);
-            let m = Material::of(&b.name);
-            let vol = self.settings.sound_volume;
-            if let Some(a) = self.audio.as_mut() {
-                a.play(Sfx::Place(m), vol);
-            }
-            return Some(pos);
+        if self.world.place_block(pos, id_v) {
+            return self.placed(pos, id);
         }
         None
+    }
+
+    /// The id of an orientation of a shaped block (see `voxel::shapes`).
+    fn variant_id(&self, id: BlockId, v: u8) -> BlockId {
+        if v == 0 {
+            return id;
+        }
+        self.reg.id(&format!("{}:{}", self.reg.get(id).name, v)).unwrap_or(id)
+    }
+
+    /// Right click on a door or trapdoor opens or closes it. Returns true when it did.
+    fn toggle_shaped(&mut self) -> bool {
+        let Some(hit) = self.target else { return false };
+        let id = self.world.block_or_air(hit.block);
+        let b = self.reg.get(id);
+        if !matches!(b.shape, Shape::Door | Shape::Trapdoor) {
+            return false;
+        }
+        let (base, v, door) = (b.base, b.variant ^ 4, b.shape == Shape::Door);
+        let new = self.variant_id(base, v);
+        self.world.set_block(hit.block, new);
+        if door {
+            let other = if v & 8 != 0 { hit.block - IVec3::Y } else { hit.block + IVec3::Y };
+            if self.reg.get(self.world.block_or_air(other)).base == base {
+                let ov = self.variant_id(base, v ^ 8);
+                self.world.set_block(other, ov);
+            }
+        }
+        self.anim.start_swing();
+        self.sfx(Sfx::Place(Material::Wood));
+        true
+    }
+
+    /// Effects after a block went down.
+    fn placed(&mut self, pos: IVec3, id: BlockId) -> Option<IVec3> {
+        self.place_cd = 0.22;
+        self.anim.start_swing();
+        self.pads.rumble(0.0, 0.35, 0.05);
+        let m = Material::of(&self.reg.get(id).name);
+        let vol = self.settings.sound_volume;
+        if let Some(a) = self.audio.as_mut() {
+            a.play(Sfx::Place(m), vol);
+        }
+        Some(pos)
+    }
+
+    /// Test scene: every block shape in a few orientations, on a stone floor in front of the player.
+    fn build_shapes(&mut self) {
+        let p = self.body.pos.floor().as_ivec3();
+        let g = |n: &str| self.reg.id_or_air(n);
+        let floor = g("stone");
+        for x in -6..=6 {
+            for z in 2..=12 {
+                self.world.set_block(IVec3::new(p.x + x, p.y - 1, p.z - z), floor);
+                for y in 0..4 {
+                    self.world.set_block(IVec3::new(p.x + x, p.y + y, p.z - z), AIR);
+                }
+            }
+        }
+        let put = |w: &mut World, x: i32, y: i32, z: i32, name: &str| {
+            w.set_block(IVec3::new(p.x + x, p.y + y, p.z - z - 2), self.reg.id_or_air(name));
+        };
+        let w = &mut self.world;
+        // Stairs facing each way, and upside down.
+        for (i, v) in ["", ":1", ":2", ":3", ":4", ":5"].iter().enumerate() {
+            put(w, -5 + i as i32, 0, 3, &format!("oak_stairs{v}"));
+        }
+        put(w, 2, 0, 3, "cobblestone_stairs:2");
+        put(w, 3, 0, 3, "stone_brick_stairs:3");
+        // Slabs: bottom, top, double.
+        put(w, 4, 0, 3, "stone_slab");
+        put(w, 5, 0, 3, "stone_slab:1");
+        put(w, 6, 0, 3, "stone_slab:2");
+        // A fence corner, a wall and a pane line.
+        for x in -5..=-2 {
+            put(w, x, 0, 6, "oak_fence");
+        }
+        put(w, -2, 0, 7, "oak_fence");
+        for x in -1..=2 {
+            put(w, x, 0, 6, "cobblestone_wall");
+        }
+        put(w, 2, 0, 7, "cobblestone_wall");
+        for x in 3..=6 {
+            put(w, x, 0, 6, "glass_pane");
+            put(w, x, 1, 6, "glass_pane");
+        }
+        // Doors: closed and open, and trapdoors.
+        put(w, -4, 0, 9, "oak_door:2");
+        put(w, -4, 1, 9, "oak_door:10");
+        put(w, -2, 0, 9, "oak_door:6");
+        put(w, -2, 1, 9, "oak_door:14");
+        put(w, 0, 0, 9, "oak_trapdoor");
+        put(w, 1, 0, 9, "oak_trapdoor:8");
+        put(w, 2, 0, 9, "oak_trapdoor:6");
+        put(w, 4, 0, 9, "oak_planks");
+        put(w, 4, 1, 9, "oak_planks");
+        // Look from above.
+        self.body.pos.y += 3.5;
+        self.body.flying = true;
     }
 
     /// A little scene for test screenshots: a house with glass, torches and a glowstone lamp.
@@ -2974,7 +3118,14 @@ impl ApplicationHandler for App {
             return;
         }
         let (w, h) = self.args.size.unwrap_or((1280, 720));
-        let attrs = Window::default_attributes().with_title("Mine Clone").with_inner_size(winit::dpi::PhysicalSize::new(w, h));
+        let icon = image::load_from_memory(include_bytes!("../../../assets/icon/icon_64.png"))
+            .ok()
+            .and_then(|i| {
+                let i = i.to_rgba8();
+                let (iw, ih) = i.dimensions();
+                winit::window::Icon::from_rgba(i.into_raw(), iw, ih).ok()
+            });
+        let attrs = Window::default_attributes().with_title("Mine Clone").with_window_icon(icon).with_inner_size(winit::dpi::PhysicalSize::new(w, h));
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
         self.game = Some(Game::new(window, self.args.clone()));
     }

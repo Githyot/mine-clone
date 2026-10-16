@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::thread;
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use glam::{IVec2, IVec3};
+use glam::{IVec2, IVec3, Vec3};
 use voxel::block::Shape;
 use voxel::chunk::{split_xz, Chunk, ChunkPos, CHUNK_HEIGHT};
 use voxel::light::compute_light;
@@ -383,8 +383,18 @@ impl World {
 
     /// Remove a block; sand and gravel above it fall down.
     pub fn break_block(&mut self, p: IVec3) -> bool {
+        let was = self.block_or_air(p);
         if !self.set_block(p, AIR) {
             return false;
+        }
+        // A door goes as a whole.
+        let wb = self.reg.get(was);
+        if wb.shape == Shape::Door {
+            let other = if wb.variant & 8 != 0 { p - IVec3::Y } else { p + IVec3::Y };
+            let o = self.block_or_air(other);
+            if self.reg.get(o).base == wb.base && o != AIR {
+                self.set_block(other, AIR);
+            }
         }
         let mut y = p.y + 1;
         loop {
@@ -456,5 +466,71 @@ impl Terrain for World {
     }
     fn top(&self, p: IVec3) -> f32 {
         self.block(p).map(|id| self.top[id as usize]).unwrap_or(1.0)
+    }
+    fn boxes(&self, p: IVec3, out: &mut Vec<[f32; 6]>) {
+        let Some(id) = self.block(p) else {
+            out.push([0.0, 0.0, 0.0, 1.0, 1.0, 1.0]);
+            return;
+        };
+        if !self.solid[id as usize] {
+            return;
+        }
+        let b = self.reg.get(id);
+        if b.shape.is_boxes() {
+            let mut v = Vec::new();
+            voxel::shapes::boxes(b.shape, b.variant, self.connections(p, b.shape), true, &mut v);
+            out.extend(v.iter().map(|q| q.map(|c| c as f32 / 16.0)));
+        } else {
+            out.push([0.0, 0.0, 0.0, 1.0, self.top[id as usize], 1.0]);
+        }
+    }
+}
+
+impl World {
+    /// Ray against the boxes of a shaped block (stairs, slabs, doors...) at `p`: distance and
+    /// the normal of the face hit. None for other blocks or when the ray passes beside them.
+    pub fn ray_shape(&self, o: Vec3, d: Vec3, p: IVec3) -> Option<(f32, IVec3)> {
+        let id = self.block(p)?;
+        let b = self.reg.get(id);
+        if !b.shape.is_boxes() {
+            return None;
+        }
+        let mut v = Vec::new();
+        voxel::shapes::boxes(b.shape, b.variant, self.connections(p, b.shape), false, &mut v);
+        let inv = Vec3::ONE / d;
+        let mut best: Option<(f32, IVec3)> = None;
+        for q in v {
+            let lo = p.as_vec3() + Vec3::new(q[0] as f32, q[1] as f32, q[2] as f32) / 16.0;
+            let hi = p.as_vec3() + Vec3::new(q[3] as f32, q[4] as f32, q[5] as f32) / 16.0;
+            let t1 = (lo - o) * inv;
+            let t2 = (hi - o) * inv;
+            let near = t1.min(t2);
+            let tmin = near.max_element();
+            let tmax = t1.max(t2).min_element();
+            if tmax < tmin.max(0.0) || best.is_some_and(|b| b.0 <= tmin) {
+                continue;
+            }
+            let axis = if near.x >= near.y && near.x >= near.z { 0 } else if near.y >= near.z { 1 } else { 2 };
+            let mut n = IVec3::ZERO;
+            n[axis] = if d[axis] > 0.0 { -1 } else { 1 };
+            best = Some((tmin.max(0.0), n));
+        }
+        best
+    }
+
+    /// Which sides a fence, wall or pane at `p` joins (see `voxel::shapes`).
+    pub fn connections(&self, p: IVec3, shape: Shape) -> u8 {
+        use voxel::shapes::{joins, CONN_NX, CONN_NZ, CONN_PX, CONN_PZ};
+        if !matches!(shape, Shape::Fence | Shape::Wall | Shape::Pane) {
+            return 0;
+        }
+        let mut c = 0;
+        for (bit, o) in [(CONN_PX, IVec3::X), (CONN_NX, -IVec3::X), (CONN_PZ, IVec3::Z), (CONN_NZ, -IVec3::Z)] {
+            let n = self.block_or_air(p + o);
+            if joins(shape, self.reg.get(n).shape, self.reg.is_opaque(n)) {
+                c |= bit;
+            }
+        }
+        c
     }
 }

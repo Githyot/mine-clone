@@ -14,6 +14,7 @@ pub mod raycast;
 pub mod recipe;
 pub mod rng;
 pub mod save;
+pub mod shapes;
 pub mod worldgen;
 
 pub use block::{BlockId, BlockRegistry, AIR};

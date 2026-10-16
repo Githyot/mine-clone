@@ -22,6 +22,23 @@ pub enum Shape {
     Liquid,
     /// Nothing to draw.
     Invisible,
+    /// Half block: bottom, top or both (see `shapes`).
+    Slab,
+    Stairs,
+    Fence,
+    Wall,
+    /// Thin glass or bars.
+    Pane,
+    /// Two blocks tall; right click opens it.
+    Door,
+    Trapdoor,
+}
+
+impl Shape {
+    /// Drawn and collided as boxes from `shapes::boxes`.
+    pub fn is_boxes(self) -> bool {
+        matches!(self, Shape::Slab | Shape::Stairs | Shape::Fence | Shape::Wall | Shape::Pane | Shape::Door | Shape::Trapdoor)
+    }
 }
 
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -153,6 +170,10 @@ pub struct Block {
     pub tier: u8,
     pub drops: Option<Vec<DropDef>>,
     pub xp: (u8, u8),
+    /// Orientation (stairs, doors...); 0 for the base block.
+    pub variant: u8,
+    /// The base block of a variant (itself for the base): what it drops and shows as.
+    pub base: BlockId,
 }
 
 pub struct BlockRegistry {
@@ -256,7 +277,34 @@ impl BlockRegistry {
                 tier: d.tier,
                 drops: d.drops,
                 xp: d.xp,
+                variant: 0,
+                base: id,
             });
+        }
+        // Orientations get hidden ids after every base block, so base ids don't move.
+        for base in 0..reg.blocks.len() {
+            let b = reg.blocks[base].clone();
+            let n = crate::shapes::variant_count(b.shape);
+            for v in 1..n {
+                let id = reg.blocks.len() as BlockId;
+                let name = format!("{}:{}", b.name, v);
+                let mut vb = b.clone();
+                vb.name = name.clone();
+                vb.variant = v;
+                vb.in_inventory = false;
+                // A double slab is a full cube; the upper half of a door uses the top texture.
+                vb.opaque = b.shape == Shape::Slab && v == 2 && b.transparency == Transparency::Opaque;
+                if b.shape == Shape::Door {
+                    vb.faces = [if v & 8 != 0 { b.faces[2] } else { b.faces[0] }; 6];
+                }
+                reg.by_name.insert(name, id);
+                reg.opaque.push(vb.opaque);
+                reg.light.push(vb.light);
+                reg.blocks.push(vb);
+            }
+            if b.shape == Shape::Door {
+                reg.blocks[base].faces = [b.faces[0]; 6];
+            }
         }
         if reg.blocks.len() > u16::MAX as usize {
             return Err("too many blocks".into());
