@@ -110,6 +110,9 @@ impl Game {
         if name.ends_with("_spawn_egg") {
             return Some(Tab::Eggs);
         }
+        if name == "fishing_bobber" {
+            return None;
+        }
         if let Some(t) = &it.tool {
             return Some(if t.kind == ToolKind::Sword { Tab::Combat } else { Tab::Tools });
         }

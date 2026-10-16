@@ -483,7 +483,7 @@ impl Game {
     }
 
     /// Wear the held tool; it breaks when worn out.
-    fn wear_held(&mut self, amount: u16) {
+    pub(crate) fn wear_held(&mut self, amount: u16) {
         let sel = self.selected;
         let Some(s) = self.surv.inv.slots[sel] else { return };
         let Some(t) = self.items.get(s.item).tool.clone() else { return };
@@ -511,7 +511,7 @@ impl Game {
         self.spawn_drop(center, stack, v);
     }
 
-    fn spawn_orbs(&mut self, at: Vec3, mut total: u32) {
+    pub(crate) fn spawn_orbs(&mut self, at: Vec3, mut total: u32) {
         while total > 0 {
             let v = total.min(if total > 16 { 7 } else { 3 });
             total -= v;
@@ -833,6 +833,9 @@ impl Game {
         if item.food.is_some() {
             // Eating is handled while the button is held (update).
             return false;
+        }
+        if item.name == "fishing_rod" {
+            return self.use_rod();
         }
         if matches!(item.name.as_str(), "bucket" | "water_bucket" | "lava_bucket") {
             return self.use_bucket(&item.name);
@@ -2023,6 +2026,7 @@ impl Game {
                 out.push(GpuItem { pos: [fist.x, fist.y, fist.z, 0.62], info: [yaw, 1.0, b.light[0], b.light[1]], layers: [bow; 4], rot: [pitch, roll, 0.0, 0.0] });
             }
         }
+        out.extend(self.bobber_instance(cam_block));
         if let Some(arrow) = sprite("arrow") {
             let c = cam_block.as_vec3();
             for a in &self.mobs.arrows {
@@ -2199,7 +2203,7 @@ impl Game {
         if self.surv.side != Side::Closed && cols >= 2 {
             let rows = ((ph - 14.0 * s) / cell).floor() as usize;
             let build = self.surv.side == Side::Build;
-            let (list, station) = if build { self.buildable() } else { ((1..self.items.items.len() as ItemId).map(|i| (Vec::new(), ItemStack::new(i, 1))).collect(), "") };
+            let (list, station) = if build { self.buildable() } else { ((1..self.items.items.len() as ItemId).filter(|&i| self.items.get(i).name != "fishing_bobber").map(|i| (Vec::new(), ItemStack::new(i, 1))).collect(), "") };
             let total_rows = list.len().div_ceil(cols).max(1);
             let max_scroll = total_rows.saturating_sub(rows);
             self.surv.book_scroll = self.surv.book_scroll.min(max_scroll);

@@ -114,6 +114,8 @@ pub struct Renderer {
     line_buf: wgpu::Buffer,
     rain_buf: wgpu::Buffer,
     rain_count: u32,
+    /// More lines to draw this frame (the fishing line), relative to the camera's block.
+    pub extra_lines: Vec<LineVertex>,
     ui_buf: wgpu::Buffer,
     ui_cap: usize,
     chunks: HashMap<ChunkPos, Vec<GpuSection>>,
@@ -130,6 +132,8 @@ const NEAR: f32 = 0.05;
 
 /// Most rain columns drawn (a circle of radius 10 has about 320).
 const RAIN_MAX: usize = 512;
+/// Line vertices per frame (the selection box takes 24).
+const LINE_MAX: usize = 128;
 
 fn shader(device: &wgpu::Device, name: &str, src: &str) -> wgpu::ShaderModule {
     let full = format!("{}\n{}", include_str!("shaders/common.wgsl"), src);
@@ -461,7 +465,7 @@ impl Renderer {
         });
         let line_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("lines"),
-            size: 64 * std::mem::size_of::<LineVertex>() as u64,
+            size: LINE_MAX as u64 * std::mem::size_of::<LineVertex>() as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -502,6 +506,7 @@ impl Renderer {
             line_buf,
             rain_buf,
             rain_count: 0,
+            extra_lines: Vec::new(),
             ui_buf,
             ui_cap,
             chunks: HashMap::new(),
@@ -903,18 +908,21 @@ impl Renderer {
         }
 
         // Selection box.
-        let mut line_count = 0;
+        let mut line_verts: Vec<LineVertex> = Vec::new();
         if let Some(b) = selection {
             let o = (b - cam.block).as_vec3() - Vec3::splat(0.002);
             let s = 1.004;
             let c = [0.0, 0.0, 0.0, 0.55];
             let corners: Vec<Vec3> = (0..8).map(|i| o + Vec3::new((i & 1) as f32 * s, ((i >> 1) & 1) as f32 * s, ((i >> 2) & 1) as f32 * s)).collect();
             let edges = [(0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5, 7), (0, 4), (1, 5), (2, 6), (3, 7)];
-            let verts: Vec<LineVertex> =
-                edges.iter().flat_map(|&(a, b)| [LineVertex { pos: corners[a].to_array(), color: c }, LineVertex { pos: corners[b].to_array(), color: c }]).collect();
-            self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&verts));
-            line_count = verts.len() as u32;
+            line_verts.extend(edges.iter().flat_map(|&(a, b)| [LineVertex { pos: corners[a].to_array(), color: c }, LineVertex { pos: corners[b].to_array(), color: c }]));
         }
+        line_verts.extend(self.extra_lines.iter().copied());
+        line_verts.truncate(LINE_MAX);
+        if !line_verts.is_empty() {
+            self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&line_verts));
+        }
+        let line_count = line_verts.len() as u32;
 
         // UI vertices.
         if ui.verts.len() > self.ui_cap {

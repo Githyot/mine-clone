@@ -6,6 +6,7 @@
 mod audio;
 mod controller;
 mod creative;
+mod fishing;
 mod fluids;
 mod weather;
 mod entity;
@@ -443,6 +444,7 @@ struct Game {
     mining: Option<(IVec3, f32)>,
     particles: particles::Particles,
     fluids: fluids::Fluids,
+    bobber: Option<fishing::Bobber>,
     weather: weather::Weather,
     anim: player_model::Animator,
     /// 0 = first person, 1 = behind, 2 = in front (F5).
@@ -723,6 +725,7 @@ impl Game {
             painting_check: 0.0,
             mining: None,
             particles: particles::Particles::new(),
+            bobber: None,
             fluids: fluids::Fluids::new(&reg_for_fluids),
             weather: weather::Weather::new(weather_save, seed),
             anim: player_model::Animator::default(),
@@ -1126,6 +1129,7 @@ impl Game {
                 self.settle_snow(dt);
             }
             self.update_leaf_decay(dt);
+            self.update_fishing(dt);
             let fe = self.fluids.update(&mut self.world, dt);
             if let Some(p) = fe.hardened.first() {
                 if p.as_vec3().distance(self.body.pos) < 24.0 {
@@ -3398,6 +3402,7 @@ impl Game {
         }
         self.entities.items.prepare(&self.renderer, &drops);
         let grab_backdrop = self.want_backdrop && self.screen == Screen::Loading;
+        self.renderer.extra_lines = self.fishing_line(block, third);
         let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds, Some(&self.entities), Some(&self.lod), &self.ui, capture || grab_backdrop);
         let shot = if grab_backdrop {
             self.want_backdrop = false;
