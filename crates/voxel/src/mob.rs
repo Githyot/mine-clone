@@ -43,6 +43,8 @@ pub struct LayerDef {
 pub enum Kind {
     Passive,
     Hostile,
+    /// Leaves the player alone until hurt, then fights back (bears).
+    Neutral,
 }
 
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -51,12 +53,22 @@ pub enum SpawnRule {
     Grass,
     /// Anywhere dark (night or caves).
     Dark,
+    /// On the surface of water, in daylight (ducks).
+    Water,
     /// Never spawns by itself (the player's own model).
     Never,
 }
 
 fn d_false() -> bool {
     false
+}
+
+fn d_group() -> (u8, u8) {
+    (2, 4)
+}
+
+fn d_weight() -> u32 {
+    10
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -87,6 +99,40 @@ pub struct MobDef {
     pub drops: Vec<crate::block::DropDef>,
     #[serde(default)]
     pub xp: u8,
+    /// Runs away from the player when they come this close (0 = never; hurt animals still panic).
+    #[serde(default)]
+    pub flee_range: f32,
+    /// Floats on the water surface and paddles about instead of bobbing.
+    #[serde(default = "d_false")]
+    pub swims: bool,
+    /// Moves in hops (rabbits).
+    #[serde(default = "d_false")]
+    pub hops: bool,
+    /// Naps on the ground in the daytime.
+    #[serde(default = "d_false")]
+    pub sleeps: bool,
+    /// Mobs (by name) it hunts now and then.
+    #[serde(default)]
+    pub prey: Vec<String>,
+    /// Biomes (as `Biome::name()` says them) where it spawns; empty means anywhere.
+    #[serde(default)]
+    pub biomes: Vec<String>,
+    /// Blocks it spawns on (names) for the `Grass` rule; empty means grass blocks.
+    #[serde(default)]
+    pub ground: Vec<String>,
+    /// How many come together (animals): min, max.
+    #[serde(default = "d_group")]
+    pub group: (u8, u8),
+    /// How often it is picked among the mobs that may spawn at a spot.
+    #[serde(default = "d_weight")]
+    pub weight: u32,
+}
+
+impl MobDef {
+    /// Spawns in this biome?
+    pub fn in_biome(&self, biome: &str) -> bool {
+        self.biomes.is_empty() || self.biomes.iter().any(|b| b == biome)
+    }
 }
 
 #[derive(Deserialize)]
@@ -128,6 +174,8 @@ pub enum MobEvent {
     /// An arrow leaves `from` aimed at `at` (the player's feet); `hit` says whether the aim is true.
     Shoot { damage: f32, from: Vec3, at: Vec3, hit: bool },
     Explode { pos: Vec3, power: f32 },
+    /// Bit its prey (the mob the game set as `Mob::prey`).
+    Bite { damage: f32 },
     /// Took damage from the sun; the game shows fire.
     Burning,
     Died { pos: Vec3 },
@@ -156,6 +204,16 @@ pub struct Mob {
     pub aggro: bool,
     burn_tick: f32,
     pub stuck: f32,
+    /// Seconds left of running away after being hurt, and from where.
+    panic: f32,
+    panic_from: Vec3,
+    /// Napping (drawn lying down).
+    pub sleeping: bool,
+    sleep_t: f32,
+    /// Where the prey it is hunting is now (set by the game each tick), and how long until it
+    /// is hungry again after a catch.
+    pub prey: Option<Vec3>,
+    pub fed: f32,
     rng: Rng,
 }
 
@@ -186,6 +244,12 @@ impl Mob {
             aggro: false,
             burn_tick: 0.0,
             stuck: 0.0,
+            panic: 0.0,
+            panic_from: pos,
+            sleeping: false,
+            sleep_t: 0.0,
+            prey: None,
+            fed: 20.0 + rng.f32() * 40.0,
             rng,
         }
     }
@@ -205,12 +269,27 @@ impl Mob {
         self.body.knockback(dir, 6.0);
         self.aggro = true;
         self.wander = None;
+        self.panic = 5.0;
+        self.panic_from = from;
+        self.sleeping = false;
         self.health <= 0.0
     }
 
     /// Fuse progress 0..1 for exploding mobs (drives the swelling animation).
     pub fn fuse(&self) -> f32 {
         (self.fuse / 1.5).clamp(0.0, 1.0)
+    }
+
+    /// Lie down for a nap of `secs` seconds.
+    pub fn fall_asleep(&mut self, secs: f32) {
+        self.sleeping = true;
+        self.sleep_t = secs;
+        self.wander = None;
+    }
+
+    /// Looking for something to hunt?
+    pub fn hungry(&self, def: &MobDef) -> bool {
+        !def.prey.is_empty() && self.fed <= 0.0 && !self.sleeping && self.alive()
     }
 
     /// One simulation step.
@@ -229,6 +308,8 @@ impl Mob {
         self.age += dt;
         self.hurt_age += dt;
         self.attack_cd -= dt;
+        self.fed -= dt;
+        self.panic -= dt;
         if !self.alive() {
             self.dead_age += dt;
             // Keep falling while the death animation plays.
@@ -241,6 +322,7 @@ impl Mob {
 
         let mut wish = Vec3::ZERO;
         let mut jump = false;
+        let mut run = false;
         let hostile = def.kind == Kind::Hostile && !player_creative;
 
         if def.burns_in_daylight && daylight && sky_light_at_head >= 14 && !self.body.in_water {
@@ -263,8 +345,19 @@ impl Mob {
         if hostile && dist > 28.0 {
             self.aggro = false;
         }
+        // A neutral animal calms down once the player is gone (or can't be hurt).
+        if def.kind == Kind::Neutral && (dist > 20.0 || player_creative) {
+            self.aggro = false;
+        }
+        let fights = self.aggro && !player_creative && def.kind != Kind::Passive;
+        let flee_player = def.flee_range > 0.0 && dist < def.flee_range && !player_creative;
+        let panicking = self.panic > 0.0 && def.kind == Kind::Passive;
+        if fights || flee_player || panicking || !daylight {
+            self.sleeping = false;
+        }
 
-        if hostile && self.aggro {
+        if fights {
+            run = true;
             // Face the player and close in.
             let target_yaw = flat.x.atan2(flat.z);
             self.yaw = turn_towards(self.yaw, target_yaw, dt * 6.0);
@@ -302,6 +395,42 @@ impl Mob {
                 self.attack_cd = 1.0;
                 out.push(MobEvent::Hit { damage: def.attack, from: self.body.center() });
             }
+        } else if let Some(prey) = self.prey.filter(|_| self.hungry(def)) {
+            // Hunting: run the prey down and bite it.
+            self.fuse = 0.0;
+            run = true;
+            let d = Vec3::new(prey.x - self.body.pos.x, 0.0, prey.z - self.body.pos.z);
+            self.yaw = turn_towards(self.yaw, d.x.atan2(d.z), dt * 8.0);
+            self.head_yaw = turn_towards(self.head_yaw, 0.0, dt * 5.0);
+            if d.length() > def.width / 2.0 + 0.7 {
+                wish = d.normalize_or_zero();
+            } else if self.attack_cd <= 0.0 {
+                self.attack_cd = 1.0;
+                out.push(MobEvent::Bite { damage: def.attack.max(2.0) });
+            }
+        } else if flee_player || panicking {
+            // Run away from whatever scared it.
+            self.fuse = 0.0;
+            run = true;
+            self.wander = None;
+            let threat = if panicking { self.panic_from } else { player };
+            let mut away = self.body.pos - threat;
+            away.y = 0.0;
+            let away = if away.length_squared() < 1e-4 { Vec3::new(self.yaw.sin(), 0.0, self.yaw.cos()) } else { away.normalize() };
+            wish = away;
+            self.yaw = turn_towards(self.yaw, away.x.atan2(away.z), dt * 8.0);
+            self.head_yaw = turn_towards(self.head_yaw, 0.0, dt * 5.0);
+            self.head_pitch = turn_towards(self.head_pitch, 0.0, dt * 5.0);
+        } else if self.sleeping {
+            // Curled up with the head down; wakes after a while or when someone comes close.
+            self.fuse = 0.0;
+            self.sleep_t -= dt;
+            self.head_yaw = turn_towards(self.head_yaw, 0.0, dt * 2.0);
+            self.head_pitch = turn_towards(self.head_pitch, 0.45, dt * 2.0);
+            if self.sleep_t <= 0.0 || (dist < 3.0 && !player_creative) {
+                self.sleeping = false;
+                self.idle = 1.0 + self.rng.f32() * 2.0;
+            }
         } else {
             self.fuse = 0.0;
             // Wander: walk somewhere for a bit, then stand around.
@@ -318,7 +447,10 @@ impl Mob {
                     }
                 }
                 None => {
-                    if self.idle <= 0.0 {
+                    if self.idle <= 0.0 && def.sleeps && daylight && self.rng.chance(0.35) {
+                        self.sleeping = true;
+                        self.sleep_t = 15.0 + self.rng.f32() * 25.0;
+                    } else if self.idle <= 0.0 {
                         let a = self.rng.f32() * std::f32::consts::TAU;
                         let r = 3.0 + self.rng.f32() * 6.0;
                         self.wander = Some(self.body.pos + Vec3::new(a.cos() * r, 0.0, a.sin() * r));
@@ -338,19 +470,29 @@ impl Mob {
             }
         }
 
-        // Jump over single blocks when the way is blocked.
+        // Jump over single blocks when the way is blocked (also out of the water onto a bank).
         let before = self.body.pos;
-        if wish != Vec3::ZERO && self.body.on_ground {
+        if wish != Vec3::ZERO && (self.body.on_ground || self.body.in_water) {
             let ahead = self.body.pos + wish.normalize() * (def.width / 2.0 + 0.2);
             let foot = ahead.floor().as_ivec3();
             if world.solid(foot) && !world.solid(foot + glam::IVec3::Y) && !world.solid(foot + glam::IVec3::Y * 2) {
                 jump = true;
             }
         }
-        if self.body.in_water {
+        if def.hops && wish != Vec3::ZERO && self.body.on_ground {
             jump = true;
         }
-        let input = Input { wish, jump, sneak: false, sprint: hostile && self.aggro, crawl: false };
+        if self.body.in_water {
+            if def.swims {
+                // Float: paddle up only while the waterline is above the belly.
+                if world.liquid((self.body.pos + Vec3::Y * 0.35).floor().as_ivec3()) {
+                    jump = true;
+                }
+            } else {
+                jump = true;
+            }
+        }
+        let input = Input { wish, jump, sneak: false, sprint: run, crawl: false };
         self.body.step(world, &input, dt);
         let moved = (self.body.pos - before) * Vec3::new(1.0, 0.0, 1.0);
         let speed = moved.length() / dt.max(1e-4);
@@ -409,5 +551,118 @@ mod tests {
         }
         assert!(m.body.pos.x > 5.0, "{}", m.body.pos.x);
         assert!(ev.iter().any(|e| matches!(e, MobEvent::Hit { .. })));
+    }
+
+    fn vanilla() -> MobRegistry {
+        MobRegistry::from_ron(include_str!("../../../packs/vanilla/mobs.ron")).unwrap()
+    }
+
+    fn run(reg: &MobRegistry, name: &str, at: Vec3, player: Vec3, secs: f32, world: &impl Terrain) -> (Mob, Vec<MobEvent>) {
+        let i = reg.id(name).unwrap();
+        let def = &reg.defs[i];
+        let mut m = Mob::new(i, def, at, 7);
+        let mut ev = Vec::new();
+        for _ in 0..(secs / 0.02) as usize {
+            m.tick(def, world, player, false, 15, true, 0.02, &mut ev);
+        }
+        (m, ev)
+    }
+
+    #[test]
+    fn old_mob_data_still_loads_with_defaults() {
+        let text = r#"(mobs: [(name: "blob", display_name: "Blob", kind: Passive, health: 4, speed: 2.0,
+            width: 0.5, height: 0.5, spawn: Grass, parts: [(size: (4, 4, 4), origin: (-2, 0, -2), uv: (0, 0))])])"#;
+        let reg = MobRegistry::from_ron(text).unwrap();
+        let d = &reg.defs[0];
+        assert_eq!(d.flee_range, 0.0);
+        assert!(!d.swims && !d.hops && !d.sleeps && d.prey.is_empty());
+        assert!(d.in_biome("Desert") && d.in_biome("Some Future Biome"));
+        assert_eq!(d.group, (2, 4));
+        assert_eq!(d.weight, 10);
+    }
+
+    #[test]
+    fn new_animals_are_there_and_biome_bound() {
+        let reg = vanilla();
+        for n in ["deer", "fox", "rabbit", "bear", "duck"] {
+            assert!(reg.id(n).is_some(), "{n}");
+        }
+        let deer = &reg.defs[reg.id("deer").unwrap()];
+        assert!(deer.in_biome("Taiga") && !deer.in_biome("Desert"));
+        assert_eq!(reg.defs[reg.id("bear").unwrap()].kind, Kind::Neutral);
+        assert_eq!(reg.defs[reg.id("duck").unwrap()].spawn, SpawnRule::Water);
+    }
+
+    #[test]
+    fn deer_runs_from_the_player() {
+        let reg = vanilla();
+        let player = Vec3::new(0.5, 10.0, 0.5);
+        let (m, _) = run(&reg, "deer", Vec3::new(5.5, 10.0, 0.5), player, 3.0, &Flat);
+        assert!((m.body.pos - player).length() > 9.5, "{}", m.body.pos);
+    }
+
+    #[test]
+    fn bear_is_calm_until_hurt() {
+        let reg = vanilla();
+        let i = reg.id("bear").unwrap();
+        let def = &reg.defs[i];
+        let player = Vec3::new(2.0, 10.0, 0.5);
+        let mut m = Mob::new(i, def, Vec3::new(0.5, 10.0, 0.5), 3);
+        let mut ev = Vec::new();
+        for _ in 0..200 {
+            m.tick(def, &Flat, player, false, 15, true, 0.02, &mut ev);
+        }
+        assert!(!ev.iter().any(|e| matches!(e, MobEvent::Hit { .. })));
+        m.hurt(1.0, player);
+        for _ in 0..300 {
+            m.tick(def, &Flat, player, false, 15, true, 0.02, &mut ev);
+        }
+        assert!(ev.iter().any(|e| matches!(e, MobEvent::Hit { .. })));
+    }
+
+    /// Ground up to y=4, water from 5 to 9.
+    struct Pond;
+    impl Terrain for Pond {
+        fn solid(&self, p: IVec3) -> bool {
+            p.y < 5
+        }
+        fn liquid(&self, p: IVec3) -> bool {
+            (5..10).contains(&p.y)
+        }
+    }
+
+    #[test]
+    fn duck_floats_on_the_surface() {
+        let reg = vanilla();
+        let far = Vec3::new(100.0, 10.0, 100.0);
+        let (m, _) = run(&reg, "duck", Vec3::new(0.5, 7.0, 0.5), far, 6.0, &Pond);
+        assert!(m.body.pos.y > 9.3 && m.body.pos.y < 10.2, "{}", m.body.pos.y);
+        let (m, _) = run(&reg, "duck", Vec3::new(0.5, 9.6, 0.5), far, 6.0, &Pond);
+        assert!(m.body.pos.y > 9.3 && m.body.pos.y < 10.2, "{}", m.body.pos.y);
+    }
+
+    #[test]
+    fn hungry_fox_bites_its_prey_and_sleeps_by_day() {
+        let reg = vanilla();
+        let i = reg.id("fox").unwrap();
+        let def = &reg.defs[i];
+        let far = Vec3::new(100.0, 10.0, 100.0);
+        let mut m = Mob::new(i, def, Vec3::new(0.5, 10.0, 0.5), 5);
+        m.fed = 0.0;
+        let mut ev = Vec::new();
+        for _ in 0..200 {
+            m.prey = Some(Vec3::new(4.5, 10.0, 0.5));
+            m.tick(def, &Flat, far, false, 15, true, 0.02, &mut ev);
+        }
+        assert!(ev.iter().any(|e| matches!(e, MobEvent::Bite { .. })));
+        m.fed = 100.0;
+        m.prey = None;
+        m.fall_asleep(30.0);
+        let at = m.body.pos;
+        for _ in 0..200 {
+            m.tick(def, &Flat, far, false, 15, true, 0.02, &mut ev);
+        }
+        assert!(m.sleeping);
+        assert!((m.body.pos - at).length() < 0.3);
     }
 }

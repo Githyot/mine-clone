@@ -63,6 +63,12 @@ ROLES = {
     "spider": ["head", "neck", "abdomen", "leg", "leg", "leg", "leg",
                "leg", "leg", "leg", "leg"],
     "player": ["head", "body", "arm", "arm", "leg", "leg"],
+    "deer": ["body", "neck", "head", "ear", "ear", "antler", "antler", "tine", "tine",
+             "tail", "leg", "leg", "leg", "leg"],
+    "fox": ["body", "head", "snout", "ear", "ear", "tail", "leg", "leg", "leg", "leg"],
+    "rabbit": ["body", "head", "ear", "ear", "tail", "foreleg", "foreleg", "hindleg", "hindleg"],
+    "bear": ["body", "head", "snout", "ear", "ear", "hump", "leg", "leg", "leg", "leg"],
+    "duck": ["body", "head", "bill", "tail", "wing", "wing", "leg", "leg"],
 }
 
 # (size, origin, uv) per part, mirroring mobs.ron.
@@ -99,6 +105,32 @@ HARDCODED = {
     "player": [((8, 8, 8), (-4, 24, -4), (0, 0)), ((8, 12, 4), (-4, 12, -2), (16, 16)),
                ((4, 12, 4), (-8, 12, -2), (40, 16)), ((4, 12, 4), (4, 12, -2), (32, 48)),
                ((4, 12, 4), (-4, 0, -2), (0, 16)), ((4, 12, 4), (0, 0, -2), (16, 48))],
+    "deer": [((8, 8, 14), (-4, 12, -7), (0, 0)), ((4, 8, 4), (-2, 17, 4), (44, 0)),
+             ((6, 5, 7), (-3, 23, 4), (0, 22)), ((3, 2, 1), (-6, 26, 5), (26, 22)),
+             ((3, 2, 1), (3, 26, 5), (26, 22)), ((1, 6, 1), (-3, 28, 5), (34, 22)),
+             ((1, 6, 1), (2, 28, 5), (34, 22)), ((3, 1, 1), (-6, 31, 5), (38, 22)),
+             ((3, 1, 1), (3, 31, 5), (38, 22)), ((2, 4, 1), (-1, 15, -8), (46, 22)),
+             ((2, 12, 2), (-4, 0, -6), (0, 34)), ((2, 12, 2), (2, 0, -6), (0, 34)),
+             ((2, 12, 2), (-4, 0, 4), (0, 34)), ((2, 12, 2), (2, 0, 4), (0, 34))],
+    "fox": [((6, 6, 10), (-3, 5, -5), (0, 0)), ((6, 5, 5), (-3, 7, 4), (32, 0)),
+            ((2, 2, 3), (-1, 7, 9), (54, 0)), ((2, 2, 1), (-3, 12, 6), (54, 5)),
+            ((2, 2, 1), (1, 12, 6), (54, 5)), ((4, 4, 9), (-2, 4, -13), (0, 16)),
+            ((2, 5, 2), (-3, 0, -4), (26, 16)), ((2, 5, 2), (1, 0, -4), (26, 16)),
+            ((2, 5, 2), (-3, 0, 2), (26, 16)), ((2, 5, 2), (1, 0, 2), (26, 16))],
+    "rabbit": [((4, 4, 6), (-2, 2, -3), (0, 0)), ((4, 4, 4), (-2, 5, 2), (20, 0)),
+               ((1, 4, 1), (-2, 9, 3), (36, 0)), ((1, 4, 1), (1, 9, 3), (36, 0)),
+               ((2, 2, 1), (-1, 3, -4), (40, 0)), ((1, 2, 1), (-2, 0, 1), (46, 0)),
+               ((1, 2, 1), (1, 0, 1), (46, 0)), ((2, 2, 4), (-2, 0, -3), (0, 10)),
+               ((2, 2, 4), (0, 0, -3), (0, 10))],
+    "bear": [((12, 11, 20), (-6, 10, -10), (0, 0)), ((8, 8, 7), (-4, 14, 9), (0, 31)),
+             ((4, 3, 3), (-2, 14, 16), (30, 31)), ((2, 2, 1), (-4, 22, 12), (44, 31)),
+             ((2, 2, 1), (2, 22, 12), (44, 31)), ((10, 3, 7), (-5, 21, 2), (16, 46)),
+             ((4, 10, 4), (-6, 0, -9), (0, 46)), ((4, 10, 4), (2, 0, -9), (0, 46)),
+             ((4, 10, 4), (-6, 0, 5), (0, 46)), ((4, 10, 4), (2, 0, 5), (0, 46))],
+    "duck": [((6, 5, 9), (-3, 3, -5), (0, 0)), ((4, 5, 4), (-2, 7, 2), (30, 0)),
+             ((4, 1, 3), (-2, 8, 6), (46, 0)), ((4, 2, 2), (-2, 7, -7), (46, 4)),
+             ((1, 4, 7), (-4, 3, -4), (0, 14)), ((1, 4, 7), (3, 3, -4), (0, 14)),
+             ((1, 3, 1), (-2, 0, 0), (16, 14)), ((1, 3, 1), (1, 0, 0), (16, 14))],
 }
 
 
@@ -113,6 +145,11 @@ HARDCODED_LAYERS = {
     "stalker": [(0, 0.8), (1, 0.8)],
     "spider": [(1, 0.6), (2, 0.7)],
     "player": [(0, 0.5), (1, 0.3), (2, 0.3), (3, 0.3), (4, 0.3), (5, 0.3)],
+    "deer": [(0, 0.4), (1, 0.4)],
+    "fox": [(0, 0.4), (5, 0.6)],
+    "rabbit": [(0, 0.3), (4, 0.4)],
+    "bear": [(0, 0.7), (1, 0.5), (5, 0.7), (6, 0.4)],
+    "duck": [(0, 0.3), (4, 0.3), (5, 0.3)],
 }
 
 
@@ -989,11 +1026,361 @@ def paint_player(c):
     return col
 
 
+# ---- deer ------------------------------------------------------------------
+DEER = pal("#5e3e22", "#6e4a2a", "#7f5733", "#8f643b", "#9e7244", "#ad8150")
+DEER_PALE = pal("#b8a482", "#ccb994", "#ddcca8", "#ece0c2")
+DEER_DARK = pal("#2a1c14", "#3a2a1e")
+ANTLER = pal("#7a6a50", "#9a8a6a", "#b8aa88", "#d6caa6")
+NOSE = (20, 16, 16)
+EYE_HI = (200, 190, 170)
+
+
+def deer_coat(c, bias=0.0):
+    n = fbm(c.seed, c.gx, c.gy * 1.4, c.gz, 4.0)
+    return pick(DEER, 0.15 + 0.6 * n + 0.3 * (c.jit - 0.5) + bias)
+
+
+def paint_deer(c):
+    if c.role == "body":
+        if c.face == "bottom":
+            return pick(DEER_PALE, 0.2 + 0.6 * c.jit)
+        if c.face == "top":
+            # darker stripe down the spine
+            return deer_coat(c, -0.25 if 3 <= c.i <= 4 else 0.0)
+        if c.face in ("left", "right") and c.j >= c.fh - 2:
+            return pick(DEER_PALE, 0.1 + 0.5 * c.jit) if c.j == c.fh - 1 else deer_coat(c, 0.25)
+        if c.face == "back":
+            # pale rump patch around the tail
+            if 1 <= c.i <= 6 and 1 <= c.j <= 5 and not (c.i in (1, 6) and c.j in (1, 5)):
+                return pick(DEER_PALE, 0.4 + 0.6 * c.jit)
+        if c.face == "front" and c.j >= 4:
+            return pick(DEER_PALE, 0.1 + 0.5 * c.jit)  # chest
+        return deer_coat(c)
+    if c.role == "neck":
+        if c.face == "front" or (c.face in ("left", "right") and c.z > c.d - 1):
+            return pick(DEER_PALE, 0.1 + 0.6 * c.jit)  # throat
+        return deer_coat(c, 0.05)
+    if c.role == "head":
+        if c.face == "front":
+            # muzzle end: black nose, pale lips and chin
+            if c.j in (1, 2) and 2 <= c.i <= 3:
+                return NOSE
+            if c.j == 1 and c.i in (1, 4):
+                return DEER_DARK[1]
+            if c.j >= 3:
+                return pick(DEER_PALE, 0.4 + 0.5 * c.jit) if c.j == 4 else pick(DEER_PALE, 0.1 + 0.4 * c.jit)
+            return deer_coat(c, 0.1)
+        if c.face in ("left", "right"):
+            front = c.z > c.d - 3  # the narrow muzzle
+            if c.j == 1 and 3.0 < c.z < 4.0:
+                return (14, 10, 8)  # eye
+            if c.j == 1 and 2.0 < c.z < 3.0:
+                return DEER_DARK[1]  # eye line
+            if c.j == 0 and 3.0 < c.z < 4.0:
+                return EYE_HI if c.jit > 0.6 else deer_coat(c, 0.2)
+            if c.j >= 3 and front:
+                return pick(DEER_PALE, 0.2 + 0.5 * c.jit)
+            if c.j >= 4:
+                return pick(DEER_PALE, 0.1 + 0.4 * c.jit)
+            return deer_coat(c, 0.1 if front else 0.0)
+        if c.face == "bottom":
+            return pick(DEER_PALE, 0.2 + 0.5 * c.jit)
+        if c.face == "top" and c.z > c.d - 3:
+            return deer_coat(c, -0.15)
+        return deer_coat(c)
+    if c.role == "ear":
+        if c.face == "front":
+            return pick(DEER_PALE, 0.0 + 0.3 * c.jit)  # inner ear
+        return deer_coat(c, -0.1)
+    if c.role in ("antler", "tine"):
+        if c.face == "top" or (c.role == "antler" and c.j == 0):
+            return ANTLER[3]
+        if c.role == "antler" and c.j >= c.fh - 1:
+            return ANTLER[0]
+        return pick(ANTLER, 0.3 + 0.6 * c.jit)
+    if c.role == "tail":
+        if c.face in ("back", "bottom") or (c.face in SIDES and c.j >= 2):
+            return pick(DEER_PALE, 0.5 + 0.5 * c.jit)  # white flag underneath
+        return deer_coat(c, -0.1)
+    # legs: same look on all four, pale inside, dark hooves
+    lc = SimpleNamespace(**vars(c))
+    lc.gx, lc.gy, lc.gz = c.x + 30, c.y, c.z + 30
+    if c.face == "bottom" or (c.face in SIDES and c.j >= c.fh - 1):
+        return pick(DEER_DARK, c.jit)
+    if c.face in SIDES and c.j == c.fh - 2:
+        return pick(DEER_PALE, 0.0 + 0.3 * c.jit)
+    if c.face in SIDES and c.j >= 6:
+        return deer_coat(lc, 0.2)
+    return deer_coat(lc)
+
+
+# ---- fox -------------------------------------------------------------------
+FOX = pal("#963e16", "#ac4a1a", "#c0561e", "#d06424", "#e0742e", "#ea8638")
+FOX_WHITE = pal("#cfc6b6", "#e0d8ca", "#ece6dc", "#f6f2ea")
+FOX_BLACK = pal("#1e1612", "#2a1e18", "#38281e")
+FOX_EYE = (196, 132, 30)
+
+
+def fox_coat(c, bias=0.0):
+    n = fbm(c.seed, c.gx, c.gy, c.gz, 3.5)
+    return pick(FOX, 0.2 + 0.6 * n + 0.3 * (c.jit - 0.5) + bias)
+
+
+def paint_fox(c):
+    if c.role == "body":
+        if c.face == "bottom":
+            return pick(FOX_WHITE, 0.2 + 0.6 * c.jit)
+        if c.face == "front":
+            return pick(FOX_WHITE, 0.3 + 0.6 * c.jit) if c.j >= 2 else fox_coat(c)
+        if c.face in ("left", "right") and c.j == c.fh - 1 and c.z > 5:
+            return pick(FOX_WHITE, 0.1 + 0.4 * c.jit)
+        if c.face == "top":
+            return fox_coat(c, -0.15 if 2 <= c.i <= 3 else 0.0)
+        return fox_coat(c)
+    if c.role == "head":
+        if c.face == "front":
+            if c.j == 1 and c.i in (1, 4):
+                return (16, 12, 10)  # pupils
+            if c.j == 1 and c.i in (0, 5):
+                return FOX_EYE
+            if c.j == 0 and c.i in (1, 4):
+                return FOX[0]  # brow
+            if c.j >= 3 and (c.i <= 1 or c.i >= 4):
+                return pick(FOX_WHITE, 0.3 + 0.6 * c.jit)  # cheeks
+            if c.j >= 3:
+                return pick(FOX_WHITE, 0.1 + 0.4 * c.jit)
+            return fox_coat(c, 0.1)
+        if c.face in ("left", "right"):
+            if c.j >= 3 and c.z > 1:
+                return pick(FOX_WHITE, 0.2 + 0.6 * c.jit)
+            return fox_coat(c)
+        if c.face == "bottom":
+            return pick(FOX_WHITE, 0.2 + 0.5 * c.jit)
+        return fox_coat(c)
+    if c.role == "snout":
+        if c.face == "front":
+            if c.j == 0:
+                return FOX_BLACK[0]  # nose
+            return pick(FOX_WHITE, 0.3 + 0.5 * c.jit)
+        if c.face == "top":
+            return FOX_BLACK[1] if c.j == c.fh - 1 else fox_coat(c, 0.15)
+        if c.face == "bottom" or (c.face in SIDES and c.j == 1):
+            return pick(FOX_WHITE, 0.2 + 0.6 * c.jit)
+        return fox_coat(c, 0.15)
+    if c.role == "ear":
+        if c.j == 0 or c.face == "top":
+            return FOX_BLACK[1]  # black tips
+        if c.face == "front":
+            return FOX_BLACK[2] if c.jit < 0.5 else FOX_WHITE[0]
+        return fox_coat(c, -0.1)
+    if c.role == "tail":
+        if c.z < 2.5:
+            return pick(FOX_WHITE, 0.4 + 0.6 * c.jit)  # white tip
+        if c.z < 3.5 and c.jit > 0.5:
+            return pick(FOX_WHITE, 0.2)
+        if c.face == "bottom":
+            return fox_coat(c, -0.15)
+        return fox_coat(c)
+    # legs: black stockings
+    if c.face == "top":
+        return fox_coat(c)
+    if c.face == "bottom" or c.j >= 2:
+        return pick(FOX_BLACK, 0.2 + 0.7 * c.jit)
+    return fox_coat(c, -0.1)
+
+
+# ---- rabbit ----------------------------------------------------------------
+RABBIT = pal("#5a4836", "#6a5640", "#7c6650", "#8c765e", "#9c866c", "#ab967c")
+RABBIT_PALE = pal("#c4b8a4", "#d6ccba", "#e6ded0", "#f2ece2")
+RABBIT_PINK = pal("#b07a74", "#c88e86", "#dca49a")
+
+
+def rabbit_coat(c, bias=0.0):
+    n = fbm(c.seed, c.gx * 1.5, c.gy * 1.5, c.gz * 1.5, 3.0)
+    return pick(RABBIT, 0.2 + 0.6 * n + 0.3 * (c.jit - 0.5) + bias)
+
+
+def paint_rabbit(c):
+    if c.role == "body":
+        if c.face == "bottom":
+            return pick(RABBIT_PALE, 0.2 + 0.6 * c.jit)
+        if c.face == "front" and c.j >= 1:
+            return pick(RABBIT_PALE, 0.1 + 0.5 * c.jit)
+        if c.face in ("left", "right") and c.j == c.fh - 1:
+            return rabbit_coat(c, 0.3)
+        return rabbit_coat(c)
+    if c.role == "head":
+        if c.face == "front":
+            if c.j == 2 and c.i in (1, 2):
+                return RABBIT_PINK[1]  # nose
+            if c.j == 3 and c.i in (1, 2):
+                return RABBIT_PALE[2]
+            if c.j == 3:
+                return RABBIT_PALE[1]
+            return rabbit_coat(c, 0.15)
+        if c.face in ("left", "right"):
+            if c.j == 1 and 2.0 < c.z < 3.0:
+                return (12, 8, 8)  # eye
+            if c.j == 0 and 2.0 < c.z < 3.0:
+                return (180, 170, 160)
+            if c.j == 3:
+                return pick(RABBIT_PALE, 0.1 + 0.4 * c.jit)
+            return rabbit_coat(c, 0.05)
+        if c.face == "bottom":
+            return pick(RABBIT_PALE, 0.3 + 0.5 * c.jit)
+        return rabbit_coat(c)
+    if c.role == "ear":
+        if c.face == "front" and c.j >= 1:
+            return RABBIT_PINK[1] if c.j < 3 else RABBIT_PINK[0]  # inside of the ear
+        if c.j == 0 or c.face == "top":
+            return RABBIT[1]
+        return rabbit_coat(c, -0.05)
+    if c.role == "tail":
+        return pick(RABBIT_PALE, 0.5 + 0.5 * c.jit)
+    if c.role == "foreleg":
+        if c.face == "bottom" or c.j == c.fh - 1:
+            return pick(RABBIT_PALE, 0.2 + 0.5 * c.jit)
+        return rabbit_coat(c, 0.1)
+    # hind legs: big pale feet
+    if c.face in ("bottom", "front") or (c.face in SIDES and c.j == c.fh - 1):
+        return pick(RABBIT_PALE, 0.1 + 0.6 * c.jit)
+    return rabbit_coat(c)
+
+
+# ---- bear ------------------------------------------------------------------
+BEAR = pal("#2e1c12", "#3a2416", "#4a2e1c", "#5a3824", "#6a442c", "#7a5034")
+BEAR_MUZZLE = pal("#6e5238", "#8a6a48", "#a07e58", "#b48e66")
+BEAR_CLAW = (206, 196, 172)
+
+
+def bear_coat(c, bias=0.0):
+    n = fbm(c.seed, c.gx, c.gy, c.gz, 5.0)
+    streak = hash01(c.seed + 3, c.px, c.py // 2)
+    return pick(BEAR, 0.2 + 0.55 * n + 0.25 * (c.jit - 0.5) + 0.15 * (streak - 0.5) + bias)
+
+
+def paint_bear(c):
+    if c.role in ("body", "hump"):
+        if c.face == "bottom":
+            return bear_coat(c, -0.25)
+        if c.face == "top":
+            return bear_coat(c, 0.1)
+        return bear_coat(c)
+    if c.role == "head":
+        if c.face == "front":
+            if c.j == 2 and c.i in (1, 6):
+                return (10, 8, 8)  # small eyes
+            if c.j == 1 and c.i in (1, 6):
+                return BEAR[0]
+            if c.j >= 4 and 1 <= c.i <= 6:
+                return pick(BEAR_MUZZLE, 0.1 + 0.5 * c.jit)  # around the snout
+            return bear_coat(c, 0.1)
+        if c.face == "bottom":
+            return bear_coat(c, -0.2)
+        return bear_coat(c, 0.05)
+    if c.role == "snout":
+        if c.face == "front":
+            if c.j == 0 and 1 <= c.i <= 2:
+                return (16, 12, 12)  # nose
+            if c.j == 0:
+                return (40, 30, 26)
+            if c.j == 2 and 1 <= c.i <= 2:
+                return BEAR_MUZZLE[0]
+            return pick(BEAR_MUZZLE, 0.3 + 0.6 * c.jit)
+        if c.face == "top" and c.j == c.fh - 1 and 1 <= c.i <= 2:
+            return (24, 18, 16)
+        return pick(BEAR_MUZZLE, 0.2 + 0.6 * c.jit)
+    if c.role == "ear":
+        if c.face == "front":
+            return BEAR_MUZZLE[0]
+        return bear_coat(c, -0.1)
+    # legs: same on all four, darker paws with claws in front
+    lc = SimpleNamespace(**vars(c))
+    lc.gx, lc.gy, lc.gz = c.x + 40, c.y, c.z + 40
+    if c.face == "front" and c.j == c.fh - 1:
+        return BEAR_CLAW if c.i % 2 == 0 else BEAR[0]
+    if c.face == "bottom" or (c.face in SIDES and c.j >= c.fh - 2):
+        return pick(BEAR, 0.0 + 0.25 * c.jit)
+    return bear_coat(lc, -0.05)
+
+
+# ---- duck ------------------------------------------------------------------
+DUCK_GRAY = pal("#7a7872", "#8e8c86", "#a2a09a", "#b6b4ae", "#c8c6c0")
+DUCK_BACK = pal("#4a4034", "#5a4e40", "#6a5c4c")
+DUCK_CHEST = pal("#5a301e", "#6e3c26", "#80482e", "#905636")
+DUCK_GREEN = pal("#163a22", "#1e4a2c", "#24603a", "#2e7a48", "#3a9058")
+DUCK_BILL = pal("#b08a18", "#c8a020", "#e0b830", "#f0d050")
+DUCK_FOOT = pal("#b86418", "#d07a20", "#e8902a")
+SPECULUM = pal("#22388a", "#2c4aa8", "#3a62c8")
+WHITE = pal("#d8d6d0", "#eceae4", "#f8f6f2")
+
+
+def paint_duck(c):
+    t = 0.2 + 0.6 * c.jit
+    if c.role == "body":
+        if c.face == "front":
+            return pick(DUCK_CHEST, t)  # chestnut breast
+        if c.face == "top":
+            return pick(DUCK_BACK, t) if c.z < c.d - 2 else pick(DUCK_CHEST, t)
+        if c.face == "bottom":
+            return pick(DUCK_GRAY, 0.5 + 0.4 * c.jit)
+        if c.face in ("left", "right"):
+            if c.z > c.d - 2.5 and c.j <= 3:
+                return pick(DUCK_CHEST, t)
+            if c.j == 0:
+                return pick(DUCK_BACK, t)
+            # fine wavy barring on the flanks
+            return pick(DUCK_GRAY, t + (0.15 if (c.j + int(c.z)) % 3 == 0 else 0.0))
+        if c.face == "back":
+            return pick(DUCK_BACK, t) if c.j <= 1 else pick(WHITE, t)
+        return pick(DUCK_GRAY, t)
+    if c.role == "head":
+        # glossy green head, white collar on the bottom row
+        if c.j == c.fh - 1 and c.face in SIDES:
+            return pick(WHITE, t) if c.face != "front" else pick(DUCK_CHEST, t)
+        if c.face == "bottom":
+            return pick(DUCK_CHEST, t)
+        if c.face in ("left", "right") and c.j == 1 and 2.0 < c.z < 3.0:
+            return (10, 10, 8)  # eye
+        sheen = 0.25 if (c.face == "top" or c.j == 0) else 0.0
+        return pick(DUCK_GREEN, 0.15 + 0.6 * c.jit + sheen)
+    if c.role == "bill":
+        if c.face == "front" and c.i in (1, 2):
+            return DUCK_BILL[0]
+        if c.face == "top" and c.j == c.fh - 1 and c.i in (1, 2):
+            return (40, 34, 20)  # nail at the tip
+        if c.face == "bottom":
+            return DUCK_BILL[1]
+        return pick(DUCK_BILL, 0.4 + 0.6 * c.jit)
+    if c.role == "tail":
+        if c.face == "top" or (c.face == "back" and c.j == 0):
+            return (24, 22, 20)  # black curl
+        return pick(WHITE, t)
+    if c.role == "wing":
+        if c.face in ("left", "right"):
+            # brown-gray with the blue patch near the rear, edged in white
+            rear = c.z < 3.0
+            if rear and c.j == 1:
+                return WHITE[2]
+            if rear and c.j == 2:
+                return pick(SPECULUM, 0.3 + 0.7 * c.jit)
+            if rear and c.j == 3:
+                return WHITE[1]
+            return pick(DUCK_BACK, t + 0.2) if c.j == 0 else pick(DUCK_GRAY, t - 0.2)
+        return pick(DUCK_BACK, t)
+    # legs
+    if c.face == "bottom" or c.j == c.fh - 1:
+        return DUCK_FOOT[0]
+    return pick(DUCK_FOOT, 0.3 + 0.6 * c.jit)
+
+
 PAINTERS = {
     "pig": paint_pig, "cow": paint_cow, "sheep": paint_sheep,
     "chicken": paint_chicken, "zombie": paint_zombie,
     "skeleton": paint_skeleton, "stalker": paint_stalker, "spider": paint_spider,
     "player": paint_player,
+    "deer": paint_deer, "fox": paint_fox, "rabbit": paint_rabbit, "bear": paint_bear,
+    "duck": paint_duck,
 }
 
 
@@ -1237,11 +1624,103 @@ def overlay_player(c):
     return None
 
 
+def overlay_deer(c):
+    if c.face == "bottom":
+        return None
+    if c.role == "neck":
+        # a shaggy ruff under the throat
+        if c.face == "front" and c.j >= 3 and c.jit > 0.3:
+            return pick(DEER_PALE, 0.3 + 0.5 * c.jit)
+        if c.face in ("left", "right") and c.j >= 4 and c.z > 2 and c.jit > 0.5:
+            return deer_coat(c, 0.1)
+        return None
+    # body: sparse fur along the spine and over the shoulders
+    if c.face == "top" and 2 <= c.i <= 5 and c.jit > 0.45:
+        return deer_coat(c, -0.2)
+    if c.face in ("left", "right") and c.j <= 1 and c.jit > 0.7:
+        return deer_coat(c, -0.1)
+    if c.face == "front" and c.j >= 3 and c.jit > 0.4:
+        return pick(DEER_PALE, 0.4 + 0.5 * c.jit)
+    return None
+
+
+def overlay_fox(c):
+    if c.role == "tail":
+        if c.jit < 0.3:
+            return None
+        if c.z < 2.5:
+            return pick(FOX_WHITE, 0.5 + 0.5 * c.jit)
+        return fox_coat(c, 0.1)
+    if c.face == "bottom":
+        return None
+    # white bib on the chest, a few tufts on the back
+    if c.face == "front" and c.j >= 1 and c.jit > 0.25:
+        return pick(FOX_WHITE, 0.4 + 0.6 * c.jit)
+    if c.face == "top" and clustered(c, 101, 2.5, 0.6) and c.jit > 0.4:
+        return fox_coat(c, 0.15)
+    return None
+
+
+def overlay_rabbit(c):
+    if c.role == "tail":
+        if c.jit < 0.15:
+            return None
+        return pick(RABBIT_PALE, 0.6 + 0.4 * c.jit)
+    if c.face == "bottom":
+        return None
+    if clustered(c, 111, 2.0, 0.55) and c.jit > 0.45:
+        return rabbit_coat(c, 0.1)
+    return None
+
+
+def overlay_bear(c):
+    if c.face == "bottom":
+        return None
+    if c.role == "head":
+        # fur on the crown and cheeks, the face stays clear
+        if c.face == "front":
+            if c.i in (0, 7) and c.j >= 2 and c.jit > 0.3:
+                return bear_coat(c, -0.05)
+            return None
+        if c.face == "top" and c.jit > 0.35:
+            return bear_coat(c, 0.05)
+        if c.face in ("left", "right") and c.jit > 0.5:
+            return bear_coat(c)
+        return None
+    if c.role == "leg":
+        if c.face == "top" or c.j > 4:
+            return None
+        return bear_coat(c, -0.05) if c.jit > 0.35 else None
+    # body and hump: thick shaggy coat
+    if c.jit < 0.28:
+        return None
+    if c.role == "body" and c.face == "front" and 2 <= c.i <= 9 and c.j <= 7:
+        return None  # where the head sits
+    tip = hash01(c.seed + 121, c.px, c.py)
+    return bear_coat(c, 0.15 if tip > 0.85 else -0.05)
+
+
+def overlay_duck(c):
+    if c.role == "wing":
+        if c.face in ("left", "right") and (c.j == c.fh - 1 or c.z < 1.5) and c.jit > 0.3:
+            return pick(DUCK_BACK, 0.3 + 0.6 * c.jit)  # primary feather tips
+        return None
+    if c.face in ("bottom", "top", "front"):
+        return None
+    if c.face == "back" and c.j >= 2 and c.jit > 0.4:
+        return pick(WHITE, 0.3 + 0.6 * c.jit)
+    if c.face in ("left", "right") and c.j >= 2 and (c.i + c.j) % 2 == 0 and c.jit > 0.4:
+        return pick(DUCK_GRAY, 0.3 + 0.6 * c.jit)
+    return None
+
+
 OVERLAYS = {
     "pig": overlay_pig, "cow": overlay_cow, "sheep": overlay_sheep,
     "chicken": overlay_chicken, "zombie": overlay_zombie,
     "skeleton": overlay_skeleton, "stalker": overlay_stalker, "spider": overlay_spider,
     "player": overlay_player,
+    "deer": overlay_deer, "fox": overlay_fox, "rabbit": overlay_rabbit, "bear": overlay_bear,
+    "duck": overlay_duck,
 }
 
 
@@ -1324,7 +1803,7 @@ def main():
             assert 0 <= idx < len(parts), (name, idx)
     os.makedirs(OUT_DIR, exist_ok=True)
     order = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "stalker", "spider",
-             "player"]
+             "player", "deer", "fox", "rabbit", "bear", "duck"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols
