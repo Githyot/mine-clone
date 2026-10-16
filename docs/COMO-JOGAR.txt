@@ -94,6 +94,13 @@ SOBREVIVÊNCIA
   nos 4 espaços ao lado do boneco. Protegem de mobs e explosões e se gastam.
   Tocha (ou pedra luminosa) na mão ilumina em volta de você.
 
+FORMAS DE BLOCO
+  Escadas, lajes, cercas, muros, painéis de vidro, portas e alçapões. A escada vira para onde
+  você olha; clicando na metade de cima de uma parede ela fica de cabeça para baixo (lajes e
+  alçapões também ficam em cima). Laje sobre laje igual vira bloco inteiro. Cercas, muros e
+  painéis se ligam sozinhos aos vizinhos; cercas e muros não dá para pular. Botão direito
+  abre e fecha portas e alçapões (agachado, coloca bloco em vez de abrir).
+
 PINTURAS
   Mire numa parede e aperte P (no controle: seta para a esquerda). Passe o mouse sobre um nome
   para ver a pintura na parede antes de escolher; "Aleatória" escolhe uma que cabe ali.
