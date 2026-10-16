@@ -675,6 +675,10 @@ impl Game {
         if let Some(name) = &args.find {
             if let Some((o, size)) = gen.find_structure(name, body.pos.x as i32, body.pos.z as i32, 40) {
                 body.pos = Vec3::new(o.x as f32 + size.x as f32 / 2.0, o.y as f32 + size.y as f32 * 0.6 + 2.0, o.z as f32 + size.z as f32 + 9.0);
+                // MC_INSIDE: stand in the middle of its floor instead (buried crypts).
+                if std::env::var("MC_INSIDE").is_ok() {
+                    body.pos = Vec3::new(o.x as f32 + size.x as f32 / 2.0, o.y as f32 + 1.0, o.z as f32 + size.z as f32 - 2.5);
+                }
                 needs_spawn = false;
                 body.flying = true;
                 log::info!("found {name} at {o}");
