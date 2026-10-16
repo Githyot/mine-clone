@@ -1983,7 +1983,9 @@ impl Game {
         let eat = if self.surv.eat > 0.0 { (self.surv.eat * 14.0).sin().abs() * 0.04 } else { 0.0 };
         // In this frame -Z is the top of the forearm and +Y runs back to the shoulder.
         let face = (Vec3::Y * 0.85 - Vec3::X * 0.5).normalize();
-        self.item_in_hand(hand, Vec3::NEG_Z, face, 1.0, l, Vec3::Y * eat - cam_block.as_vec3())
+        // Tools lean away from the eye and to the left, like a sword held ready.
+        let tip = (Vec3::NEG_Z * 0.8 + Vec3::NEG_Y * 0.55 + Vec3::NEG_X * 0.35).normalize();
+        self.item_in_hand(hand, Vec3::NEG_Z, face, 1.0, l, Vec3::Y * eat - cam_block.as_vec3(), tip, 0.82)
     }
 
     /// Skeletons' bows and the arrows in flight or stuck in blocks.
@@ -2059,13 +2061,18 @@ impl Game {
         let (_, rot, _) = m.to_scale_rotation_translation();
         let hand = glam::Mat4::from_rotation_translation(rot, fist);
         let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
-        self.item_in_hand(hand, Vec3::Z, Vec3::NEG_X, 0.8, l, Vec3::ZERO)
+        // Tools point forward and a little up out of the fist, at full item size like other
+        // players see them; blocks are about a third of a block.
+        // (Found by eye against the classic look: out to the side of the body, up and forward.)
+        let tip = Vec3::new(-1.0, 0.4, -0.4).normalize();
+        self.item_in_hand(hand, Vec3::Z, Vec3::NEG_X, 2.0, l, Vec3::ZERO, tip, 1.0)
     }
 
     /// Place the held item in a fist. `hand` is the fist's frame (its arm runs along +Y back to
     /// the shoulder), `top` the side the item stands out from and `face` roughly where a tool's
     /// flat side should look.
-    fn item_in_hand(&self, hand: glam::Mat4, top: Vec3, face: Vec3, scale: f32, l: u8, shift: Vec3) -> Option<GpuItem> {
+    #[allow(clippy::too_many_arguments)]
+    fn item_in_hand(&self, hand: glam::Mat4, top: Vec3, face: Vec3, scale: f32, l: u8, shift: Vec3, tip: Vec3, tool_scale: f32) -> Option<GpuItem> {
         use glam::{EulerRot, Mat3, Quat};
         let st = self.held_stack()?;
         let it = self.items.get(st.item);
@@ -2090,16 +2097,15 @@ impl Game {
                 if tool {
                     // The picture's diagonal (handle bottom-left, tip top-right) points out of
                     // the fist and a little forward along the arm.
-                    let tip = (top * 0.9 + along * 0.45).normalize();
                     let face = (face - tip * face.dot(tip)).normalize();
                     let side = face.cross(tip);
                     let x = (tip - side) * std::f32::consts::FRAC_1_SQRT_2;
                     let y = (tip + side) * std::f32::consts::FRAC_1_SQRT_2;
                     let rot = Quat::from_mat3(&Mat3::from_cols(x, y, face));
-                    let size = 0.42;
+                    let size = 0.42 * tool_scale;
                     // Move the picture so its handle (a quarter in from the corner) sits in the fist.
                     let grip = rot * Vec3::new(-0.3 * size, -0.3 * size, 0.0);
-                    (1.0, [layer; 3], size, rot, -grip + top * 0.05)
+                    (1.0, [layer; 3], size, rot, -grip + top * 0.05 + tip * 0.05)
                 } else {
                     // Food and other items: held up, facing the eye.
                     (1.0, [layer; 3], 0.3, upright * Quat::from_rotation_z(0.3), top * 0.16)
