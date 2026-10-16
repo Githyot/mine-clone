@@ -4,6 +4,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod audio;
+mod controller;
 mod renderer;
 mod settings;
 mod textures;
@@ -27,6 +28,7 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{CursorGrabMode, Fullscreen, Window, WindowId};
 
 use audio::{Audio, Material, Sfx, Situation};
+use controller::{Action, Btn, Controllers, TouchpadMode};
 use renderer::{Camera, Globals, Renderer};
 use settings::Settings;
 use ui::{FontAtlas, UiBatch, GRAY, WHITE, YELLOW};
@@ -156,6 +158,8 @@ enum Screen {
     Playing,
     Paused,
     Inventory,
+    /// Controller settings and button mapping.
+    Controls,
 }
 
 struct Toast {
@@ -197,6 +201,14 @@ struct Game {
     place_cd: f32,
     target: Option<RayHit>,
     step_dist: f32,
+
+    pads: Controllers,
+    /// Action waiting for a button press in the controller menu.
+    rebinding: Option<Action>,
+    /// Actions held this frame through the controller.
+    pad_held: HashSet<Action>,
+    pad_back: bool,
+    pad_scroll_cd: f32,
 
     ui: UiBatch,
     show_debug: bool,
@@ -329,6 +341,11 @@ impl Game {
             place_cd: 0.0,
             target: None,
             step_dist: 0.0,
+            pads: Controllers::new(),
+            rebinding: None,
+            pad_held: HashSet::new(),
+            pad_back: false,
+            pad_scroll_cd: 0.0,
             ui,
             show_debug,
             hide_hud: false,
@@ -438,6 +455,7 @@ impl Game {
             KeyCode::Escape => match self.screen {
                 Screen::Playing => self.set_screen(Screen::Paused),
                 Screen::Paused | Screen::Inventory => self.set_screen(Screen::Playing),
+                Screen::Controls => self.set_screen(Screen::Paused),
                 Screen::Loading => {}
             },
             KeyCode::KeyE => match self.screen {
@@ -612,6 +630,8 @@ impl Game {
             }
         }
 
+        self.update_controller(dt);
+
         self.autosave += dt;
         if self.autosave > 60.0 && self.screen != Screen::Loading {
             self.autosave = 0.0;
@@ -637,11 +657,15 @@ impl Game {
         if k(KeyCode::KeyA) {
             wish -= right;
         }
+        if playing && self.pads.pad.connected {
+            wish += fwd * self.pads.pad.ly + right * self.pads.pad.lx;
+        }
+        let held = |a: Action| playing && self.pad_held.contains(&a);
         let input = Input {
             wish,
-            jump: k(KeyCode::Space),
-            sneak: k(KeyCode::ShiftLeft) || k(KeyCode::ShiftRight),
-            sprint: k(KeyCode::ControlLeft) || k(KeyCode::ControlRight),
+            jump: k(KeyCode::Space) || held(Action::Jump),
+            sneak: k(KeyCode::ShiftLeft) || k(KeyCode::ShiftRight) || held(Action::Sneak),
+            sprint: k(KeyCode::ControlLeft) || k(KeyCode::ControlRight) || held(Action::Sprint),
         };
         let before = self.body.pos;
         let was_ground = self.body.on_ground;
@@ -677,7 +701,9 @@ impl Game {
         if !playing {
             return;
         }
-        if self.mouse_held[0] && self.break_cd <= 0.0 {
+        let attack = self.mouse_held[0] || self.pad_held.contains(&Action::Attack);
+        let use_ = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
+        if attack && self.break_cd <= 0.0 {
             if let Some(hit) = self.target {
                 let id = self.world.block_or_air(hit.block);
                 if id != AIR && self.reg.get(id).hardness >= 0.0 && self.world.break_block(hit.block) {
@@ -687,10 +713,11 @@ impl Game {
                     if let Some(a) = self.audio.as_mut() {
                         a.play(Sfx::Break(m), vol);
                     }
+                    self.pads.rumble(0.5, 0.2, 0.08);
                 }
             }
         }
-        if self.mouse_held[1] && self.place_cd <= 0.0 {
+        if use_ && self.place_cd <= 0.0 {
             self.try_place();
         }
         if self.mouse_held[2] {
@@ -735,6 +762,7 @@ impl Game {
         }
         if self.world.place_block(pos, id) {
             self.place_cd = 0.22;
+            self.pads.rumble(0.0, 0.35, 0.05);
             let m = Material::of(&b.name);
             let vol = self.settings.sound_volume;
             if let Some(a) = self.audio.as_mut() {
@@ -869,7 +897,7 @@ impl Game {
                 let bw = 200.0 * s;
                 let bh = 20.0 * s;
                 let x = (w - bw) / 2.0;
-                let mut y = (h / 2.0 - 120.0 * s).max(26.0 * s);
+                let mut y = (h / 2.0 - 132.0 * s).max(26.0 * s);
                 self.ui.text_centered(w / 2.0, y - 18.0 * s, "Menu do jogo", WHITE);
                 let pack = self.textures_name.clone();
                 let custom = self.audio.as_ref().map(|a| a.custom_track_count()).unwrap_or(0);
@@ -881,6 +909,7 @@ impl Game {
                     format!("Pacote de texturas: {pack}"),
                     format!("Nuvens: {}", if self.settings.show_clouds { "Sim" } else { "Não" }),
                     format!("VSync: {}", if self.settings.vsync { "Sim" } else { "Não" }),
+                    format!("Controle: {}", if self.pads.pad.connected { self.pads.pad.name.as_str() } else { "nenhum conectado" }),
                     "Salvar e sair".to_string(),
                 ];
                 for (i, l) in labels.iter().enumerate() {
@@ -893,6 +922,7 @@ impl Game {
                     "WASD andar  Espaço pular (2x = voar)  Shift descer  Ctrl correr",
                     "Esq. quebrar  Dir. colocar  Meio copiar bloco  E blocos  1-9/roda escolher",
                     "F1 esconder HUD  F2 foto  F3 info  F3+T recarregar texturas  F11 tela cheia",
+                    "Controle: analógicos andar e olhar, botões no menu Controle",
                 ];
                 y += 4.0 * s;
                 let hs = (s / 2.0).floor().max(1.0);
@@ -947,14 +977,285 @@ impl Game {
                 }
                 self.ui.text_centered(w / 2.0, y + ph + 4.0 * s, "Clique para pôr na barra, ou aponte e aperte 1-9", WHITE);
             }
+            Screen::Controls => {
+                self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 170]);
+                clicked_button = self.draw_controls_menu(w, h, mouse);
+            }
             _ => {}
+        }
+        // Virtual cursor when a controller drives the menus.
+        if self.pads.pad.connected && self.screen != Screen::Playing && self.screen != Screen::Loading {
+            let (mx, my) = mouse;
+            let c = [255, 255, 255, 255];
+            self.ui.rect(mx, my, s, 7.0 * s, c);
+            self.ui.rect(mx, my, 7.0 * s, s, c);
+            self.ui.rect(mx + s, my + s, s, s, c);
+            self.ui.rect(mx + 2.0 * s, my + 2.0 * s, s, s, c);
+            self.ui.rect(mx + 3.0 * s, my + 3.0 * s, s, s, c);
         }
         self.clicked = false;
 
         if let Some(i) = clicked_button {
-            self.pause_button(i);
+            if self.screen == Screen::Controls {
+                self.controls_button(i);
+            } else {
+                self.pause_button(i);
+            }
         }
         let _ = YELLOW;
+    }
+
+    /// Rows of the controller menu: settings first, then one row per action.
+    fn controls_labels(&self) -> Vec<String> {
+        let c = &self.settings.controller;
+        let sony = self.pads.pad.sony;
+        let onoff = |b: bool| if b { "Sim" } else { "Não" };
+        let mut v = vec![
+            "Voltar".to_string(),
+            format!("Controle: {}", onoff(c.enabled)),
+            format!("Sensibilidade da câmera: {}", c.look_sensitivity),
+            format!("Inverter eixo Y: {}", onoff(c.invert_y)),
+            format!("Zona morta: {:.0}%", c.deadzone * 100.0),
+            format!("Mira com giroscópio: {} ({})", onoff(c.gyro_aim), c.gyro_sensitivity),
+            format!(
+                "Touchpad: {}",
+                match c.touchpad_mode {
+                    TouchpadMode::Hotbar => "trocar item (deslizar)",
+                    TouchpadMode::Camera => "mover a câmera",
+                }
+            ),
+            format!("Vibração: {}", onoff(c.rumble)),
+            format!("Barra de luz: {}", onoff(c.lightbar)),
+            "Restaurar padrão".to_string(),
+        ];
+        for a in Action::ALL {
+            let b = c.button_for(a).map(|b| b.label(sony)).unwrap_or("--");
+            if self.rebinding == Some(a) {
+                v.push(format!("{}: aperte um botão...", a.label()));
+            } else {
+                v.push(format!("{}: {}", a.label(), b));
+            }
+        }
+        v
+    }
+
+    fn draw_controls_menu(&mut self, w: f32, h: f32, mouse: (f32, f32)) -> Option<usize> {
+        let s = self.ui.scale;
+        let labels = self.controls_labels();
+        let bw = 170.0 * s;
+        let bh = 14.0 * s;
+        let gap = 2.0 * s;
+        let cols = 2;
+        let rows = labels.len().div_ceil(cols);
+        let total_w = bw * cols as f32 + gap;
+        let x0 = (w - total_w) / 2.0;
+        let y0 = ((h - rows as f32 * (bh + gap)) / 2.0).max(28.0 * s);
+        let title = match (&self.pads.pad.connected, self.pads.pad.hid) {
+            (true, true) => format!("Controle: {} (touchpad, giroscópio e luz ativos)", self.pads.pad.name),
+            (true, false) => format!("Controle: {}", self.pads.pad.name),
+            (false, _) => "Nenhum controle conectado (conecte por USB ou Bluetooth)".to_string(),
+        };
+        self.ui.text_centered(w / 2.0, y0 - 16.0 * s, &title, WHITE);
+        let mut hit = None;
+        for (i, l) in labels.iter().enumerate() {
+            let col = if i < 10 { 0 } else { 1 };
+            let row = if i < 10 { i } else { i - 10 };
+            let x = x0 + col as f32 * (bw + gap);
+            let y = y0 + row as f32 * (bh + gap);
+            let hover = self.ui.button(x, y, bw, bh, l, mouse);
+            if hover && self.clicked {
+                hit = Some(i);
+            }
+        }
+        if let Some(b) = self.pads.pad.battery {
+            if self.pads.pad.hid {
+                self.ui.text_centered(w / 2.0, y0 + rows as f32 * (bh + gap) + 4.0 * s, &format!("Bateria: {b}%"), GRAY);
+            }
+        }
+        hit
+    }
+
+    fn controls_button(&mut self, i: usize) {
+        if let Some(a) = self.audio.as_mut() {
+            a.play(Sfx::Click, self.settings.sound_volume);
+        }
+        let c = &mut self.settings.controller;
+        match i {
+            0 => {
+                self.rebinding = None;
+                self.set_screen(Screen::Paused);
+            }
+            1 => c.enabled = !c.enabled,
+            2 => c.look_sensitivity = c.look_sensitivity % 10 + 1,
+            3 => c.invert_y = !c.invert_y,
+            4 => c.deadzone = if c.deadzone >= 0.3 { 0.05 } else { c.deadzone + 0.05 },
+            5 => {
+                if !c.gyro_aim {
+                    c.gyro_aim = true;
+                } else if c.gyro_sensitivity >= 10 {
+                    c.gyro_aim = false;
+                    c.gyro_sensitivity = 5;
+                } else {
+                    c.gyro_sensitivity += 1;
+                }
+            }
+            6 => c.touchpad_mode = if c.touchpad_mode == TouchpadMode::Hotbar { TouchpadMode::Camera } else { TouchpadMode::Hotbar },
+            7 => c.rumble = !c.rumble,
+            8 => c.lightbar = !c.lightbar,
+            9 => *c = controller::ControllerSettings::default(),
+            n => {
+                let a = Action::ALL[n - 10];
+                self.rebinding = if self.rebinding == Some(a) { None } else { Some(a) };
+            }
+        }
+        self.settings.save(&self.base.join("settings.ron"));
+    }
+
+    fn pad_action_pressed(&mut self, a: Action) {
+        match a {
+            Action::Jump => {
+                if self.now - self.last_space < 0.3 {
+                    self.body.flying = !self.body.flying;
+                    self.body.vel.y = 0.0;
+                    self.last_space = -10.0;
+                } else {
+                    self.last_space = self.now;
+                }
+            }
+            Action::PickBlock => self.mouse_held[2] = true,
+            Action::Inventory => self.set_screen(Screen::Inventory),
+            Action::Pause => self.set_screen(Screen::Paused),
+            Action::HotbarPrev => self.scroll(1.0),
+            Action::HotbarNext => self.scroll(-1.0),
+            Action::Screenshot => self.screenshot_request = true,
+            Action::Debug => self.show_debug = !self.show_debug,
+            Action::HideHud => self.hide_hud = !self.hide_hud,
+            Action::NextSong => {
+                let sit = self.situation();
+                if let Some(au) = self.audio.as_mut() {
+                    au.skip(sit, &self.settings);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn update_controller(&mut self, dt: f32) {
+        self.pads.update(dt, &self.settings.controller);
+        self.pad_held.clear();
+        let pad = self.pads.pad.clone();
+        if !pad.connected {
+            return;
+        }
+        let c = self.settings.controller.clone();
+
+        // Light bar: sky blue by day, deep blue at night, teal under water.
+        let day = self.sky().2;
+        self.pads.light = if self.body.head_in_water {
+            [0, 90, 110]
+        } else {
+            [(40.0 * day) as u8, (90.0 * day + 10.0) as u8, (200.0 * day + 40.0) as u8]
+        };
+
+        // Remapping: the next button pressed becomes the binding.
+        if let Some(a) = self.rebinding {
+            if let Some(b) = pad.any_pressed() {
+                self.settings.controller.bind(a, b);
+                self.rebinding = None;
+                self.settings.save(&self.base.join("settings.ron"));
+            }
+            return;
+        }
+
+        match self.screen {
+            Screen::Playing => {
+                for a in Action::ALL {
+                    if let Some(b) = c.button_for(a) {
+                        if pad.down(b) {
+                            self.pad_held.insert(a);
+                        }
+                        if pad.pressed(b) {
+                            self.pad_action_pressed(a);
+                        }
+                    }
+                }
+                // Camera: right stick with a gentle response curve.
+                let sens = c.look_sensitivity as f32 * 0.32;
+                let curve = |v: f32| v.abs().powf(1.6) * v.signum();
+                let inv = if c.invert_y { -1.0 } else { 1.0 };
+                self.yaw -= curve(pad.rx) * sens * dt;
+                self.pitch -= curve(pad.ry) * sens * dt * inv * -1.0;
+                if c.gyro_aim && pad.hid {
+                    let g = c.gyro_sensitivity as f32 * 0.09;
+                    self.yaw += pad.gyro[1].to_radians() * g * dt;
+                    self.pitch += pad.gyro[0].to_radians() * g * dt * inv;
+                }
+                if pad.hid {
+                    match c.touchpad_mode {
+                        TouchpadMode::Camera => {
+                            if let Some(d) = pad.touch_delta() {
+                                let m = self.settings.mouse_sensitivity.to_radians() * 1100.0;
+                                self.yaw -= d[0] * m;
+                                self.pitch = (self.pitch - d[1] * m * inv).clamp(-1.55, 1.55);
+                            }
+                        }
+                        TouchpadMode::Hotbar => {
+                            // A swipe of a quarter of the pad changes the item once.
+                            if let (Some(a), Some(b)) = (pad.touch[0], pad.prev_touch[0]) {
+                                self.pad_scroll_cd += a[0] - b[0];
+                                if self.pad_scroll_cd > 0.22 {
+                                    self.pad_scroll_cd = 0.0;
+                                    self.scroll(-1.0);
+                                } else if self.pad_scroll_cd < -0.22 {
+                                    self.pad_scroll_cd = 0.0;
+                                    self.scroll(1.0);
+                                }
+                            } else {
+                                self.pad_scroll_cd = 0.0;
+                            }
+                        }
+                    }
+                }
+                self.pitch = self.pitch.clamp(-1.55, 1.55);
+            }
+            Screen::Loading => {}
+            _ => {
+                // Menus: left stick or touchpad moves the cursor, South clicks, East goes back.
+                let speed = 900.0 * dt;
+                let (w, h) = (self.renderer.config.width as f32, self.renderer.config.height as f32);
+                let mut m = self.mouse_pos;
+                m.0 += pad.lx * speed;
+                m.1 -= pad.ly * speed;
+                if let Some(d) = pad.touch_delta() {
+                    m.0 += d[0] * w;
+                    m.1 += d[1] * h;
+                }
+                self.mouse_pos = (m.0.clamp(0.0, w - 1.0), m.1.clamp(0.0, h - 1.0));
+                if pad.pressed(Btn::South) || pad.pressed(Btn::Touchpad) {
+                    self.clicked = true;
+                }
+                let back = c.button_for(Action::Pause).unwrap_or(Btn::Start);
+                if pad.pressed(Btn::East) || pad.pressed(back) {
+                    self.pad_back = true;
+                }
+                if pad.pressed(Btn::Down) || pad.pressed(Btn::R1) {
+                    self.scroll(-1.0);
+                }
+                if pad.pressed(Btn::Up) || pad.pressed(Btn::L1) {
+                    self.scroll(1.0);
+                }
+                if self.pad_back {
+                    self.pad_back = false;
+                    match self.screen {
+                        Screen::Controls => {
+                            self.rebinding = None;
+                            self.set_screen(Screen::Paused);
+                        }
+                        _ => self.set_screen(Screen::Playing),
+                    }
+                }
+            }
+        }
     }
 
     fn pause_button(&mut self, i: usize) {
@@ -985,6 +1286,7 @@ impl Game {
                 self.settings.vsync = !self.settings.vsync;
                 self.renderer.set_vsync(self.settings.vsync);
             }
+            7 => self.set_screen(Screen::Controls),
             _ => {
                 self.save_all();
                 std::process::exit(0);
@@ -1054,6 +1356,19 @@ impl Game {
             if let Some(t) = self.target {
                 let id = self.world.block_or_air(t.block);
                 lines.push(format!("Mirando: {} em {} {} {}", self.reg.get(id).name, t.block.x, t.block.y, t.block.z));
+            }
+            if self.pads.pad.connected {
+                let p = &self.pads.pad;
+                lines.push(format!(
+                    "Controle: {} ({}) L {:.2},{:.2} R {:.2},{:.2} toque {:?}",
+                    p.name,
+                    if p.hid { "HID" } else { "genérico" },
+                    p.lx,
+                    p.ly,
+                    p.rx,
+                    p.ry,
+                    p.touch[0].map(|t| ((t[0] * 100.0) as i32, (t[1] * 100.0) as i32))
+                ));
             }
             if let Some(a) = &self.audio {
                 match &a.now_playing {

@@ -1,5 +1,6 @@
 //! Player settings, stored in `settings.ron` next to the game.
 
+use crate::controller::ControllerSettings;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -54,6 +55,7 @@ pub struct Settings {
     pub resource_packs: Vec<String>,
     pub show_clouds: bool,
     pub gui_scale: u32,
+    pub controller: ControllerSettings,
 }
 
 impl Default for Settings {
@@ -73,6 +75,7 @@ impl Default for Settings {
             resource_packs: Vec::new(),
             show_clouds: true,
             gui_scale: 0,
+            controller: ControllerSettings::default(),
         }
     }
 }

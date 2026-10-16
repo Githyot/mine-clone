@@ -1,0 +1,20 @@
+// Paintings of the base game. Textures live in textures/painting/<name>.png
+// at 16 pixels per block; width/height are in blocks.
+(paintings: [
+    (name: "bowl_of_fruit", title: "Fruteira", width: 1, height: 1),
+    (name: "sleeping_cat", title: "Gato dormindo", width: 1, height: 1),
+    (name: "abstract_tiles", title: "Composição abstrata", width: 1, height: 1),
+    (name: "red_mushroom", title: "Cogumelo na floresta", width: 1, height: 1),
+    (name: "blocky_portrait", title: "Retrato de um amigo quadrado", width: 1, height: 2),
+    (name: "lighthouse", title: "O farol ao anoitecer", width: 1, height: 2),
+    (name: "sunset_mountains", title: "Montanhas ao pôr do sol", width: 2, height: 1),
+    (name: "desert_cactus", title: "Cacto no deserto", width: 2, height: 1),
+    (name: "sailing_ship", title: "Veleiro em alto-mar", width: 2, height: 1),
+    (name: "starry_night", title: "Noite estrelada", width: 2, height: 2),
+    (name: "castle_on_hill", title: "Castelo na colina", width: 2, height: 2),
+    (name: "underwater", title: "Fundo do mar", width: 2, height: 2),
+    (name: "mountain_lake", title: "Lago entre montanhas", width: 4, height: 2),
+    (name: "sunflower_field", title: "Campo de girassóis", width: 4, height: 2),
+    (name: "snowy_pine_forest", title: "Pinheiral nevado", width: 4, height: 3),
+    (name: "volcano", title: "O vulcão", width: 4, height: 4),
+])
