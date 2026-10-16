@@ -53,6 +53,9 @@ pub struct Animator {
     pub swing: f32,
     was_ground: bool,
     fall_speed: f32,
+    /// 0..1 head under water, and the breaststroke phase for the first-person arms.
+    underwater: f32,
+    stroke: f32,
 }
 
 fn wrap(a: f32) -> f32 {
@@ -110,6 +113,10 @@ impl Animator {
         }
         self.was_ground = p.on_ground || p.in_water || p.flying;
         self.land = (self.land - dt * 4.0).max(0.0);
+        let under = p.head_in_water && !p.flying;
+        self.underwater += ((under as u8 as f32) - self.underwater) * (dt * 6.0).min(1.0);
+        // Slow treading strokes when still, quicker ones when swimming along.
+        self.stroke += dt * (0.55 + (speed / 3.0).min(1.0) * 0.6);
         let swimming = p.head_in_water && speed > 1.0;
         self.swim += ((swimming as u8 as f32) - self.swim) * (dt * 5.0).min(1.0);
         let lean_target = if p.flying { (speed / 11.0).min(1.0) } else { 0.0 };
@@ -279,11 +286,31 @@ impl Animator {
             * Mat4::from_rotation_y(0.25 - s * 0.6)
             * Mat4::from_rotation_x(1.75 + s * 0.5)
             * Mat4::from_rotation_z(0.15);
-        let p = &def.parts[R_ARM];
-        let pivot = Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32, p.pivot.2 as f32);
-        // Model space has +Z forward; turn it so the arm points into the screen (-Z).
-        let model = cam * place * Mat4::from_rotation_y(PI) * Mat4::from_scale(Vec3::splat(1.0 / 16.0)) * Mat4::from_translation(-pivot);
-        b.m[R_ARM] = model.to_cols_array_2d();
+        let arm_model = |part: usize, place: Mat4| {
+            let p = &def.parts[part];
+            let pivot = Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32, p.pivot.2 as f32);
+            // Model space has +Z forward; turn it so the arm points into the screen (-Z).
+            (cam * place * Mat4::from_rotation_y(PI) * Mat4::from_scale(Vec3::splat(1.0 / 16.0)) * Mat4::from_translation(-pivot)).to_cols_array_2d()
+        };
+        let w = self.underwater;
+        if w > 0.05 && self.swing <= 0.0 {
+            // Under water: both arms do the breaststroke. Reach ahead together, sweep out and
+            // back, then fold in under the chin and reach again.
+            let ph = self.stroke.fract() * 2.0 * PI;
+            let sweep = (1.0 - ph.cos()) * 0.5; // 0 ahead, 1 fully out
+            let pull = ph.sin().max(0.0); // pulling back during the outward half
+            let fold = (-ph.sin()).max(0.0); // elbows in on the way back
+            for (part, side) in [(R_ARM, 1.0f32), (L_ARM, -1.0f32)] {
+                let shoulder = Vec3::new(side * (0.16 + sweep * 0.14), -0.31 - fold * 0.08 + (1.0 - w) * -0.5, -0.30 + pull * 0.12 + fold * 0.1);
+                let place = Mat4::from_translation(shoulder)
+                    * Mat4::from_rotation_y(-side * (sweep * 0.55 - 0.1))
+                    * Mat4::from_rotation_x(1.62 - fold * 0.35 - pull * 0.15)
+                    * Mat4::from_rotation_z(side * 0.1);
+                b.m[part] = arm_model(part, place);
+            }
+            return b;
+        }
+        b.m[R_ARM] = arm_model(R_ARM, place);
         b
     }
 }

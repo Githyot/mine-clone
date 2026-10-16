@@ -77,6 +77,10 @@ pub enum Sfx {
     Click,
     /// The player gets hurt.
     Hurt,
+    /// The player dies.
+    Death,
+    /// Back to life at the spawn point.
+    Respawn,
     /// A mob gets hit.
     MobHit,
     Explode,

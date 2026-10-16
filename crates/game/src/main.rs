@@ -976,7 +976,11 @@ impl Game {
             }
         }
 
-        self.time_of_day = (self.time_of_day + dt * 20.0) % 24000.0;
+        // Singleplayer: the pause menu (and the option screens opened from it) stop the world.
+        let paused = self.world_open && matches!(self.screen, Screen::Paused | Screen::Options | Screen::Controls | Screen::Packs | Screen::Shaders);
+        if !paused {
+            self.time_of_day = (self.time_of_day + dt * 20.0) % 24000.0;
+        }
         if self.args.time.is_some() && self.args.screenshot.is_some() {
             self.time_of_day = self.args.time.unwrap();
         }
@@ -984,10 +988,10 @@ impl Game {
         if self.is_title_screen() {
             self.update_title(dt);
         }
-        if self.args.screenshot.is_none() {
+        if self.args.screenshot.is_none() && !paused {
             self.particles.update(&self.world, dt);
         }
-        if self.screen == Screen::Playing || self.screen == Screen::Inventory || self.screen == Screen::Paused {
+        if self.screen == Screen::Playing || self.screen == Screen::Inventory {
             self.update_player(dt);
             self.update_survival(dt);
         }
@@ -1095,6 +1099,10 @@ impl Game {
         // The camera pass for screenshots holds still.
         if self.args.screenshot.is_none() {
             self.body.step(&self.world, &input, dt);
+        } else {
+            // Held still, but still know about water for the picture.
+            self.body.head_in_water = voxel::physics::Terrain::liquid(&self.world, self.body.eye().floor().as_ivec3());
+            self.body.in_water = self.body.head_in_water || voxel::physics::Terrain::liquid(&self.world, self.body.pos.floor().as_ivec3());
         }
         let moved = (self.body.pos - before) * Vec3::new(1.0, 0.0, 1.0);
         if self.body.on_ground && was_ground && !self.body.flying {
@@ -1552,6 +1560,8 @@ impl Game {
         self.pads.rumble(0.9, 0.6, 0.25);
         if self.health <= 0.0 {
             self.health = 0.0;
+            self.prone = false;
+            self.sfx(Sfx::Death);
             self.set_screen(Screen::Dead);
         }
     }
@@ -1655,6 +1665,7 @@ impl Game {
         self.air = 10.0;
         self.hurt_age = 100.0;
         self.fall_peak = self.body.pos.y;
+        self.sfx(Sfx::Respawn);
         self.set_screen(Screen::Playing);
     }
 

@@ -87,6 +87,8 @@ pub fn synth(sfx: Sfx, seed: u32) -> Vec<f32> {
         Sfx::Step(m) => block(m, &mut rng, 0.13, 0.35, 0.08, 0.3),
         Sfx::Click => click(&mut rng),
         Sfx::Hurt => hurt(&mut rng),
+        Sfx::Death => death(&mut rng),
+        Sfx::Respawn => respawn(),
         Sfx::MobHit => mob_hit(&mut rng),
         Sfx::Explode => explode(&mut rng),
         Sfx::Splash(s) => splash(&mut rng, s.clamp(0.2, 1.0)),
@@ -167,6 +169,53 @@ fn hurt(rng: &mut Rng) -> Vec<f32> {
             phase += base * (1.0 - 0.4 * k) / RATE;
             let saw = (phase.fract() * 2.0 - 1.0) * 0.6 + (phase * TAU).sin() * 0.5;
             lp.run(saw) * (1.0 - k).powf(1.5) * (k * 40.0).min(1.0) * 1.3
+        })
+        .collect()
+}
+
+/// Dying: a long falling groan, then the body hitting the ground.
+fn death(rng: &mut Rng) -> Vec<f32> {
+    let dur = 1.5;
+    let n = (dur * RATE) as usize;
+    let mut phase = 0.0f32;
+    let mut voice = LowPass::new(650.0);
+    let mut thud = LowPass::new(160.0);
+    (0..n)
+        .map(|i| {
+            let t = i as f32 / RATE;
+            // The groan: 140 Hz sliding down to 55 Hz over the first second.
+            let k = (t / 1.0).min(1.0);
+            phase += (140.0 - 85.0 * k.powf(0.7)) / RATE;
+            let saw = (phase.fract() * 2.0 - 1.0) * 0.5 + (phase * TAU).sin() * 0.6;
+            let groan = voice.run(saw) * (t * 20.0).min(1.0) * (1.0 - k).powf(1.2) * 1.2;
+            // The fall at 0.75 s: a deep thump with a little dirt noise.
+            let dt = t - 0.75;
+            let body = if dt >= 0.0 { thud.run(rng.noise()) * 5.0 * (-dt / 0.12).exp() + (dt * 55.0 * TAU).sin() * 0.7 * (-dt / 0.18).exp() } else { thud.run(0.0) };
+            groan + body
+        })
+        .collect()
+}
+
+/// Respawning: a soft, warm chord that swells in and fades.
+fn respawn() -> Vec<f32> {
+    let dur = 1.8;
+    let n = (dur * RATE) as usize;
+    let notes = [(98.0, 0.5), (147.0, 0.4), (196.0, 0.3), (247.0, 0.15)];
+    let mut lp = LowPass::new(800.0);
+    (0..n)
+        .map(|i| {
+            let t = i as f32 / RATE;
+            let vib = 1.0 + (t * 5.0 * TAU).sin() * 0.003;
+            let mut x = 0.0;
+            for (j, (f, a)) in notes.iter().enumerate() {
+                // The notes come in one after another, from the bottom.
+                let start = j as f32 * 0.12;
+                if t > start {
+                    let e = ((t - start) / 0.35).min(1.0) * (1.0 - (t - start) / (dur - start)).max(0.0).powf(1.4);
+                    x += (f * vib * t * TAU).sin() * a * e;
+                }
+            }
+            lp.run(x) * 0.9
         })
         .collect()
 }
@@ -291,7 +340,7 @@ mod tests {
         for m in mats {
             all.extend([Sfx::Break(m), Sfx::Place(m), Sfx::Hit(m), Sfx::Step(m)]);
         }
-        all.extend([Sfx::Click, Sfx::Hurt, Sfx::MobHit, Sfx::Explode, Sfx::Splash(1.0), Sfx::Swim, Sfx::WaterExit, Sfx::Bubbles]);
+        all.extend([Sfx::Click, Sfx::Hurt, Sfx::Death, Sfx::Respawn, Sfx::MobHit, Sfx::Explode, Sfx::Splash(1.0), Sfx::Swim, Sfx::WaterExit, Sfx::Bubbles]);
         for sfx in all {
             let v = synth(sfx, 7);
             assert!(!v.is_empty() && v.iter().all(|x| x.is_finite()), "{sfx:?}");
