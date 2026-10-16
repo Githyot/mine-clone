@@ -10,6 +10,9 @@ use glam::{IVec2, IVec3, Mat4, Vec3, Vec4};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
+use crate::post::{PostFx, PostUniform, HDR};
+use crate::settings::ShaderQuality;
+use crate::shaderpack::ShaderPack;
 use crate::textures::{mip_chain, TextureSet};
 use crate::ui::{UiBatch, UiVertex};
 use crate::world::MeshEvent;
@@ -28,6 +31,9 @@ pub struct Globals {
     pub sun_dir: [f32; 4],
     pub sky_top: [f32; 4],
     pub sky_horizon: [f32; 4],
+    /// x: plant waving strength (1 = classic), y: rippling water 0/1, z: light source glow
+    /// (HDR only), w: unused.
+    pub effects: [f32; 4],
 }
 
 #[repr(C)]
@@ -46,6 +52,9 @@ struct GpuSection {
 pub struct FrameInfo {
     pub sections_drawn: usize,
     pub quads_drawn: usize,
+    /// Distant terrain tiles and quads drawn.
+    pub lod_drawn: usize,
+    pub lod_quads: usize,
 }
 
 pub struct Camera {
@@ -56,6 +65,17 @@ pub struct Camera {
     pub forward: Vec3,
     pub fov_y: f32,
     pub far: f32,
+}
+
+/// Pipelines for the 3D scene. There are two sets: one draws straight to the screen (shaders
+/// off, the cheapest path) and one draws into the HDR texture that shader packs read.
+struct ScenePipes {
+    solid: wgpu::RenderPipeline,
+    translucent: wgpu::RenderPipeline,
+    sky: wgpu::RenderPipeline,
+    cloud: wgpu::RenderPipeline,
+    line: wgpu::RenderPipeline,
+    lod: wgpu::RenderPipeline,
 }
 
 pub struct Renderer {
@@ -72,11 +92,8 @@ pub struct Renderer {
     tex_bg: wgpu::BindGroup,
     block_view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
-    solid_pipe: wgpu::RenderPipeline,
-    translucent_pipe: wgpu::RenderPipeline,
-    sky_pipe: wgpu::RenderPipeline,
-    cloud_pipe: wgpu::RenderPipeline,
-    line_pipe: wgpu::RenderPipeline,
+    pipes: [ScenePipes; 2],
+    pub post: PostFx,
     ui_pipe: wgpu::RenderPipeline,
     ui_screen_buf: wgpu::Buffer,
     ui_screen_bg: wgpu::BindGroup,
@@ -97,6 +114,8 @@ pub struct Renderer {
 }
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+/// Near clipping plane (blocks).
+const NEAR: f32 = 0.05;
 
 fn shader(device: &wgpu::Device, name: &str, src: &str) -> wgpu::ShaderModule {
     let full = format!("{}\n{}", include_str!("shaders/common.wgsl"), src);
@@ -211,6 +230,7 @@ impl Renderer {
         let terrain = shader(&device, "terrain", include_str!("shaders/terrain.wgsl"));
         let sky = shader(&device, "sky", include_str!("shaders/sky.wgsl"));
         let lines = shader(&device, "lines", include_str!("shaders/lines.wgsl"));
+        let lod = shader(&device, "lod", include_str!("shaders/lod.wgsl"));
         let ui = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("ui"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/ui.wgsl").into()),
@@ -250,6 +270,7 @@ impl Renderer {
             })
         };
         let make = |label: &str,
+                    format: wgpu::TextureFormat,
                     layout: &wgpu::PipelineLayout,
                     module: &wgpu::ShaderModule,
                     vs: &str,
@@ -278,17 +299,45 @@ impl Renderer {
         };
         use wgpu::CompareFunction as C;
         use wgpu::PrimitiveTopology as T;
-        let solid_pipe = make("solid", &terrain_layout, &terrain, "vs_main", "fs_solid", &vbufs, None, Some(wgpu::Face::Back), depth_state(true, C::Less), T::TriangleList);
-        let translucent_pipe =
-            make("translucent", &terrain_layout, &terrain, "vs_main", "fs_translucent", &vbufs, blend_alpha, None, depth_state(false, C::Less), T::TriangleList);
-        let sky_pipe = make("sky", &globals_only, &sky, "vs_sky", "fs_sky", &[], None, None, depth_state(false, C::Always), T::TriangleList);
-        let cloud_pipe = make("clouds", &globals_only, &sky, "vs_sky", "fs_clouds", &[], blend_alpha, None, depth_state(false, C::Less), T::TriangleList);
         let line_layout = [wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<LineVertex>() as u64,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4],
         }];
-        let line_pipe = make("lines", &globals_only, &lines, "vs_lines", "fs_lines", &line_layout, blend_alpha, None, depth_state(false, C::LessEqual), T::LineList);
+        let lod_layout = [
+            wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<crate::lod::LodVertex>() as u64,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Unorm8x4],
+            },
+            wgpu::VertexBufferLayout {
+                array_stride: 12,
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: &wgpu::vertex_attr_array![2 => Float32x3],
+            },
+        ];
+        let scene_pipes = |f: wgpu::TextureFormat| ScenePipes {
+            solid: make("solid", f, &terrain_layout, &terrain, "vs_main", "fs_solid", &vbufs, None, Some(wgpu::Face::Back), depth_state(true, C::Less), T::TriangleList),
+            translucent: make(
+                "translucent",
+                f,
+                &terrain_layout,
+                &terrain,
+                "vs_main",
+                "fs_translucent",
+                &vbufs,
+                blend_alpha,
+                None,
+                depth_state(false, C::Less),
+                T::TriangleList,
+            ),
+            sky: make("sky", f, &globals_only, &sky, "vs_sky", "fs_sky", &[], None, None, depth_state(false, C::Always), T::TriangleList),
+            cloud: make("clouds", f, &globals_only, &sky, "vs_sky", "fs_clouds", &[], blend_alpha, None, depth_state(false, C::Less), T::TriangleList),
+            line: make("lines", f, &globals_only, &lines, "vs_lines", "fs_lines", &line_layout, blend_alpha, None, depth_state(false, C::LessEqual), T::LineList),
+            lod: make("lod", f, &globals_only, &lod, "vs_lod", "fs_lod", &lod_layout, None, None, depth_state(true, C::Less), T::TriangleList),
+        };
+        let pipes = [scene_pipes(format), scene_pipes(HDR)];
+        let post = PostFx::new(&device, format);
 
         // UI
         let ui_screen_buf = device.create_buffer(&wgpu::BufferDescriptor {
@@ -360,7 +409,8 @@ impl Renderer {
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Unorm8x4, 3 => Sint32],
         }];
-        let ui_pipe = make("ui", &ui_layout, &ui, "vs_ui", "fs_ui", &ui_vlayout, blend_alpha, None, depth_state(false, C::Always), T::TriangleList);
+        // The HUD gets its own pass after the scene (and after any shader pack), without depth.
+        let ui_pipe = make("ui", format, &ui_layout, &ui, "vs_ui", "fs_ui", &ui_vlayout, blend_alpha, None, None, T::TriangleList);
 
         let quad_cap = 1 << 16;
         let quad_ibuf = Self::make_quad_ibuf(&device, quad_cap);
@@ -399,11 +449,8 @@ impl Renderer {
             tex_bg,
             block_view,
             sampler,
-            solid_pipe,
-            translucent_pipe,
-            sky_pipe,
-            cloud_pipe,
-            line_pipe,
+            pipes,
+            post,
             ui_pipe,
             ui_screen_buf,
             ui_screen_bg,
@@ -433,10 +480,38 @@ impl Renderer {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: DEPTH,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                // Shader packs read depth (haze, sun rays).
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             })
             .create_view(&Default::default())
+    }
+
+    /// What the shader pack needs to know about this frame (see post_common.wgsl).
+    fn post_uniform(&self, view_proj: &Mat4, g: &Globals, cam: &Camera) -> PostUniform {
+        let (w, h) = (self.config.width as f32, self.config.height as f32);
+        let sun = Vec3::new(g.sun_dir[0], g.sun_dir[1], g.sun_dir[2]);
+        // A direction has w = 0, so the camera position drops out of the projection.
+        let clip = *view_proj * sun.extend(0.0);
+        let underwater = g.fog[2] > 0.5;
+        let (mut sx, mut sy, mut vis) = (0.5, -1.0, 0.0);
+        if clip.w > 1e-4 {
+            sx = clip.x / clip.w * 0.5 + 0.5;
+            sy = 0.5 - clip.y / clip.w * 0.5;
+            // Fade in as the sun clears the horizon, and out as it leaves the screen.
+            let above = ((sun.y + 0.02) / 0.08).clamp(0.0, 1.0);
+            let edge = |v: f32| (1.0 - ((v - 0.5).abs() - 0.5).max(0.0) / 0.25).clamp(0.0, 1.0);
+            vis = above * edge(sx) * edge(sy) * if underwater { 0.0 } else { 1.0 };
+        }
+        let sunset = (1.0 - sun.y.abs() * 3.5).clamp(0.0, 1.0) * if sun.y > -0.15 { 1.0 } else { 0.0 };
+        PostUniform {
+            resolution: [w, h, 1.0 / w, 1.0 / h],
+            sun: [sx, sy, vis, g.fog_color[3]],
+            sun_dir: [sun.x, sun.y, sun.z, sunset],
+            fog_color: [g.fog_color[0], g.fog_color[1], g.fog_color[2], g.fog[2]],
+            params: [g.cam_pos[3], NEAR, cam.far, 0.0],
+            options: [[0.0; 4]; 2],
+        }
     }
 
     fn make_quad_ibuf(device: &wgpu::Device, quads: u32) -> wgpu::Buffer {
@@ -526,6 +601,16 @@ impl Renderer {
         self.config.height = h;
         self.surface.configure(&self.device, &self.config);
         self.depth = Self::make_depth(&self.device, &self.config);
+        self.post.resize(&self.device, w, h, &self.depth);
+    }
+
+    /// Turn a shader pack on (or off with None). On a compile error the pack stays off and the
+    /// error message is returned.
+    pub fn set_shader(&mut self, pack: Option<&ShaderPack>, quality: ShaderQuality) -> Result<(), String> {
+        self.post.quality = quality;
+        let r = self.post.set_pack(&self.device, pack);
+        self.post.resize(&self.device, self.config.width, self.config.height, &self.depth);
+        r
     }
 
     pub fn set_vsync(&mut self, vsync: bool) {
@@ -592,11 +677,12 @@ impl Renderer {
         selection: Option<IVec3>,
         clouds: bool,
         entities: Option<&crate::entity::EntityRenderer>,
+        lod: Option<&crate::lod::Lod>,
         ui: &UiBatch,
         capture: bool,
     ) -> (FrameInfo, Option<(u32, u32, Vec<u8>)>) {
         let aspect = self.config.width as f32 / self.config.height as f32;
-        let proj = Mat4::perspective_rh(cam.fov_y, aspect, 0.05, cam.far);
+        let proj = Mat4::perspective_rh(cam.fov_y, aspect, NEAR, cam.far);
         let view = Mat4::look_to_rh(cam.frac, cam.forward, Vec3::Y);
         let view_proj = proj * view;
         let view_rot = Mat4::look_to_rh(Vec3::ZERO, cam.forward, Vec3::Y);
@@ -648,6 +734,24 @@ impl Renderer {
                 }
             }
         }
+        // Distant terrain tiles share the instance buffer (their corner relative to the camera).
+        let mut lod_draws: Vec<(usize, &wgpu::Buffer, u32)> = Vec::new();
+        for (t, tile) in lod.map(|l| &l.tiles).into_iter().flatten() {
+            let s = crate::lod::TILE;
+            let origin = Vec3::new((t.x * s - cam.block.x) as f32, -cam.block.y as f32, (t.y * s - cam.block.z) as f32);
+            let lo = origin + Vec3::new(0.0, tile.min_y - 8.0, 0.0);
+            let hi = origin + Vec3::new(s as f32, tile.max_y + 1.0, s as f32);
+            if !visible(lo, hi) {
+                continue;
+            }
+            if tile.quads > self.quad_cap {
+                self.quad_cap = tile.quads.next_power_of_two();
+                self.quad_ibuf = Self::make_quad_ibuf(&self.device, self.quad_cap);
+            }
+            lod_draws.push((instances.len(), &tile.buf, tile.quads));
+            instances.push(origin.to_array());
+        }
+        lod_draws.sort_by(|a, b| Vec3::from(instances[a.0]).length_squared().total_cmp(&Vec3::from(instances[b.0]).length_squared()));
         trans_draws.sort_by(|a, b| b.0.total_cmp(&a.0));
         // Near-to-far for opaque geometry so the depth test rejects hidden pixels early.
         solid_draws.sort_by(|a, b| {
@@ -701,22 +805,26 @@ impl Renderer {
             Ok(f) => f,
             Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
                 self.surface.configure(&self.device, &self.config);
-                return (FrameInfo { sections_drawn: 0, quads_drawn: 0 }, None);
+                return (FrameInfo { sections_drawn: 0, quads_drawn: 0, lod_drawn: 0, lod_quads: 0 }, None);
             }
             Err(e) => {
                 log::warn!("frame skipped: {e:?}");
-                return (FrameInfo { sections_drawn: 0, quads_drawn: 0 }, None);
+                return (FrameInfo { sections_drawn: 0, quads_drawn: 0, lod_drawn: 0, lod_quads: 0 }, None);
             }
         };
         let view = frame.texture.create_view(&Default::default());
         let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
         let fc = globals.fog_color;
         let mut quads = 0usize;
+        // With a shader pack the scene goes to the HDR texture, otherwise straight to the screen.
+        let hdr_view = self.post.scene_view();
+        let hdr = hdr_view.is_some();
+        let pipes = &self.pipes[hdr as usize];
         {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: hdr_view.unwrap_or(&view),
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color { r: fc[0] as f64, g: fc[1] as f64, b: fc[2] as f64, a: 1.0 }),
@@ -732,10 +840,10 @@ impl Renderer {
                 occlusion_query_set: None,
             });
             pass.set_bind_group(0, &self.globals_bg, &[]);
-            pass.set_pipeline(&self.sky_pipe);
+            pass.set_pipeline(&pipes.sky);
             pass.draw(0..3, 0..1);
 
-            pass.set_pipeline(&self.solid_pipe);
+            pass.set_pipeline(&pipes.solid);
             pass.set_bind_group(1, &self.tex_bg, &[]);
             pass.set_index_buffer(self.quad_ibuf.slice(..), wgpu::IndexFormat::Uint32);
             pass.set_vertex_buffer(1, self.inst_buf.slice(..));
@@ -744,14 +852,21 @@ impl Renderer {
                 pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
                 quads += *q as usize;
             }
+            if !lod_draws.is_empty() {
+                pass.set_pipeline(&pipes.lod);
+                for (i, b, q) in &lod_draws {
+                    pass.set_vertex_buffer(0, b.slice(..));
+                    pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
+                }
+            }
             if let Some(e) = entities {
-                e.draw(&mut pass);
+                e.draw(&mut pass, hdr);
             }
             if clouds {
-                pass.set_pipeline(&self.cloud_pipe);
+                pass.set_pipeline(&pipes.cloud);
                 pass.draw(0..3, 0..1);
             }
-            pass.set_pipeline(&self.translucent_pipe);
+            pass.set_pipeline(&pipes.translucent);
             pass.set_bind_group(1, &self.tex_bg, &[]);
             for (_, i, b, q) in &trans_draws {
                 pass.set_vertex_buffer(0, b.slice(..));
@@ -759,17 +874,31 @@ impl Renderer {
                 quads += *q as usize;
             }
             if line_count > 0 {
-                pass.set_pipeline(&self.line_pipe);
+                pass.set_pipeline(&pipes.line);
                 pass.set_vertex_buffer(0, self.line_buf.slice(..));
                 pass.draw(0..line_count, 0..1);
             }
-            if !ui.verts.is_empty() {
-                pass.set_pipeline(&self.ui_pipe);
-                pass.set_bind_group(0, &self.ui_screen_bg, &[]);
-                pass.set_bind_group(1, &self.ui_tex_bg, &[]);
-                pass.set_vertex_buffer(0, self.ui_buf.slice(..));
-                pass.draw(0..ui.verts.len() as u32, 0..1);
-            }
+        }
+        if hdr {
+            self.post.run(&self.queue, &mut enc, &view, self.post_uniform(&view_proj, globals, cam));
+        }
+        if !ui.verts.is_empty() {
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("hud"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_pipeline(&self.ui_pipe);
+            pass.set_bind_group(0, &self.ui_screen_bg, &[]);
+            pass.set_bind_group(1, &self.ui_tex_bg, &[]);
+            pass.set_vertex_buffer(0, self.ui_buf.slice(..));
+            pass.draw(0..ui.verts.len() as u32, 0..1);
         }
 
         let mut readback = None;
@@ -816,7 +945,8 @@ impl Renderer {
             Some((w, h, out))
         });
         frame.present();
-        (FrameInfo { sections_drawn: solid_draws.len() + trans_draws.len(), quads_drawn: quads }, shot)
+        let lod_quads = lod_draws.iter().map(|d| d.2 as usize).sum();
+        (FrameInfo { sections_drawn: solid_draws.len() + trans_draws.len(), quads_drawn: quads, lod_drawn: lod_draws.len(), lod_quads }, shot)
     }
 }
 

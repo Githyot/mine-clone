@@ -1,0 +1,10 @@
+// Pacote de exemplo: copie esta pasta para "shaderpacks/" com outro nome e mude à vontade.
+(
+    name: "Sépia",
+    description: "Exemplo: foto antiga, com vinheta e grão",
+    options: [
+        Float(name: "forca", label: "Força do sépia", default: 0.85, min: 0.0, max: 1.0, step: 0.05),
+        Bool(name: "vinheta", label: "Vinheta", default: true),
+        Float(name: "grao", label: "Grão de filme", default: 0.04, min: 0.0, max: 0.2, step: 0.02),
+    ],
+)

@@ -11,6 +11,7 @@ Tudo fica na mesma pasta do jogo:
   music/           coloque suas músicas aqui (mp3, ogg, wav, flac)
   resourcepacks/   coloque pacotes de textura aqui (pasta ou .zip, inclusive do Minecraft)
   paintings/       suas próprias pinturas (.png) para pendurar nas paredes
+  shaderpacks/     pacotes de shader (efeitos de luz e cor); veja shaderpacks/LEIA-ME.txt
   screenshots/     fotos tiradas com F2
   crash.txt        aparece só se o jogo fechar com erro (me mande esse arquivo)
 
@@ -69,6 +70,21 @@ TEXTURAS
   Coloque o pacote em resourcepacks/ e escolha em Esc > Pacote de texturas.
   Pacotes do Minecraft (assets/minecraft/textures/block/...) funcionam, inclusive 32x, 64x etc.
 
+SHADERS
+  Esc > Shaders escolhe o pacote de shader e mostra as opções dele:
+    Desligado   o visual clássico, o mais rápido
+    Realçado    brilho em tochas e no sol, raios de sol, cores vivas de dia, pôr do sol
+                quente, noite azulada, vinheta, névoa de distância, folhas balançando e
+                água ondulante
+    Suave       só um pouco de brilho e cores mais quentes (leve)
+  Qualidade: Rápido ou Bonito (Bonito tem brilho mais largo e raios de sol mais finos).
+  Distância LOD (Esc > Shaders): desenha o relevo além da distância de visão (256, 512 ou 1024
+  blocos a mais), em blocos grandes e simples, como o mod Distant Horizons. Montanhas,
+  florestas e o mar aparecem no horizonte sem carregar chunks. Funciona com ou sem shader.
+  Para criar o seu, copie shaderpacks/sepia com outro nome, edite post.wgsl e clique em
+  "Recarregar pacotes". Se o shader tiver erro, o jogo mostra a linha e desliga o shader.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)
+  --shader NOME (ou off)   --shaders-menu   --lod BLOCOS

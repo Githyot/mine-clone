@@ -36,6 +36,12 @@ cargo run --release -p game
 - Classic music system: rare, calm tracks with long silences, 7 original tracks, plus your own
   music folder (only yours, only the game's, or both). Procedural block sounds and footsteps.
 - Resource packs, including Minecraft texture packs of any resolution, switchable in-game.
+- Shader packs (Esc > Shaders): built-in "Realçado" (bloom, sun rays, colour grading,
+  vignette, distance haze, waving plants, rippling water) and "Suave", plus your own WGSL
+  post-processing packs in `shaderpacks/` (see the generated `LEIA-ME.txt` and
+  `shaderpacks-examples/sepia`).
+- Distant terrain (LOD): a low-detail heightmap from the world generator drawn 256–1024
+  blocks past the render distance, built on worker threads.
 - Debug screen (F3), screenshots (F2), crash log, settings file.
 - Mobs from `packs/vanilla/mobs.ron`: pig, cow, sheep, chicken, zombie, skeleton, stalker (our
   own exploding mob) and spider, with box models, walk animations and skin layers that stand off
