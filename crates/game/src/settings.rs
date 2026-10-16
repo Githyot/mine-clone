@@ -70,6 +70,8 @@ pub struct Settings {
     pub music_delay_max: f32,
     /// Enabled resource packs from the `resourcepacks` folder, highest priority first.
     pub resource_packs: Vec<String>,
+    /// The bundled pack was turned on once already (so turning it off sticks).
+    pub bundled_pack_offered: bool,
     pub show_clouds: bool,
     /// The view sways a little while walking.
     pub view_bobbing: bool,
@@ -103,6 +105,7 @@ impl Default for Settings {
             music_delay_min: 600.0,
             music_delay_max: 1200.0,
             resource_packs: Vec::new(),
+            bundled_pack_offered: false,
             show_clouds: true,
             view_bobbing: true,
             flat_drops: true,

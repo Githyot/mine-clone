@@ -499,6 +499,13 @@ impl Game {
             settings.shader_pack = if sh == "off" { String::new() } else { sh.clone() };
         }
         ensure_folders(&base, &settings);
+        // The pack that comes with the game is on the first time it is found.
+        const BUNDLED_PACK: &str = "Vanilla Experience ++.zip";
+        if !settings.bundled_pack_offered && base.join("resourcepacks").join(BUNDLED_PACK).exists() {
+            settings.bundled_pack_offered = true;
+            settings.resource_packs = vec![BUNDLED_PACK.to_string()];
+            settings.save(&settings_path);
+        }
 
         // Blocks, items and recipes: files on disk win (so they can be modded), otherwise the
         // built-in copies. They depend on each other, so if any file is missing or doesn't fit
