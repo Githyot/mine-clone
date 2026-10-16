@@ -272,25 +272,42 @@ impl Animator {
 
     /// First person: only the right arm, held in front of the camera. `eye` is relative to
     /// the camera's block; `bob` is the walking phase for the sway.
+    /// Camera space: x right, y up, -z forward.
+    fn camera(eye: Vec3, yaw: f32, pitch: f32) -> Mat4 {
+        Mat4::from_translation(eye) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(pitch)
+    }
+
+    /// Where the right arm sits in camera space, with walking sway and the swing. The shoulder
+    /// is the origin and the arm hangs along -Y from it.
+    fn arm_place(&self) -> Mat4 {
+        let s = if self.swing > 0.0 { (self.swing * PI).sin() } else { 0.0 };
+        let s2 = if self.swing > 0.0 { (self.swing.sqrt() * PI).sin() } else { 0.0 };
+        let bob = self.walk;
+        let a = self.amount.min(1.0);
+        let sway = Vec3::new((bob).sin() * 0.03 * a, -((bob).cos().abs()) * 0.035 * a, 0.0);
+        let swing_off = Vec3::new(-0.18 * s2, 0.12 * (s2 * 2.0 * PI / PI).sin().abs() * 0.5, -0.25 * s);
+        // Tipping the arm forward makes it reach into the screen.
+        Mat4::from_translation(Vec3::new(0.40, -0.46, -0.30) + sway + swing_off)
+            * Mat4::from_rotation_y(0.25 - s * 0.6)
+            * Mat4::from_rotation_x(1.75 + s * 0.5)
+            * Mat4::from_rotation_z(0.15)
+    }
+
+    /// The point in the world where the first-person right hand holds an item, so the item
+    /// follows the arm through walking and swings.
+    pub fn first_person_hand(&self, eye: Vec3, yaw: f32, pitch: f32) -> Vec3 {
+        // Near the end of the 12-pixel arm, just above the knuckles.
+        (Self::camera(eye, yaw, pitch) * self.arm_place()).transform_point3(Vec3::new(0.0, -0.52, -0.13))
+    }
+
     pub fn first_person_arm(&self, def: &MobDef, eye: Vec3, yaw: f32, pitch: f32, sky: f32, blk: f32) -> Bones {
         let mut b = Bones { light: [sky, blk, 0.0, 0.0], ..Default::default() };
         let zero = [[0.0f32; 4]; 4];
         for m in b.m.iter_mut() {
             *m = zero;
         }
-        let s = if self.swing > 0.0 { (self.swing * PI).sin() } else { 0.0 };
-        let s2 = if self.swing > 0.0 { (self.swing.sqrt() * PI).sin() } else { 0.0 };
-        let bob = self.walk;
-        let a = self.amount.min(1.0);
-        // Camera space: x right, y up, -z forward. Place the arm low on the right.
-        let cam = Mat4::from_translation(eye) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(pitch);
-        let sway = Vec3::new((bob).sin() * 0.03 * a, -((bob).cos().abs()) * 0.035 * a, 0.0);
-        let swing_off = Vec3::new(-0.18 * s2, 0.12 * (s2 * 2.0 * PI / PI).sin().abs() * 0.5, -0.25 * s);
-        // The arm hangs along -Y from the shoulder; tipping it forward makes it reach into the screen.
-        let place = Mat4::from_translation(Vec3::new(0.40, -0.46, -0.30) + sway + swing_off)
-            * Mat4::from_rotation_y(0.25 - s * 0.6)
-            * Mat4::from_rotation_x(1.75 + s * 0.5)
-            * Mat4::from_rotation_z(0.15);
+        let cam = Self::camera(eye, yaw, pitch);
+        let place = self.arm_place();
         let arm_model = |part: usize, place: Mat4| {
             let p = &def.parts[part];
             let pivot = Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32, p.pivot.2 as f32);

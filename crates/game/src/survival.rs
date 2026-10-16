@@ -1764,7 +1764,8 @@ impl Game {
             Look::Sprite(l) => (1.0, [(self.item_base + l) as f32; 3], 0.3, if it.tool.is_some() { 0.25 } else { 0.0 }, -0.25),
         };
         // Low on the right; a swing pulls it forward and down.
-        let p = eye + f * (0.7 + 0.15 * sw) + right * (0.34 - 0.12 * sw) + up * (-0.24 - 0.12 * sw + eat) - cam_block.as_vec3();
+        // In the right hand, moving with the arm; the item's own centre sits a little above the grip.
+        let p = self.anim.first_person_hand(eye, self.yaw, self.pitch) + up * (size * 0.45 + eat) - cam_block.as_vec3();
         let l = self.world.light(eye.floor().as_ivec3());
         let blk = ((l & 15) as f32 / 15.0).max(self.hand_light_level());
         Some(GpuItem {
