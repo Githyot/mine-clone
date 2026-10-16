@@ -1096,6 +1096,7 @@ impl Game {
             if self.weather.snowing_here && self.weather.rain > 0.9 {
                 self.settle_snow(dt);
             }
+            self.update_leaf_decay(dt);
             let fe = self.fluids.update(&mut self.world, dt);
             if let Some(p) = fe.hardened.first() {
                 if p.as_vec3().distance(self.body.pos) < 24.0 {
@@ -1535,6 +1536,10 @@ impl Game {
                     self.mining = None;
                     if self.survival {
                         self.surv_block_broken(hit.block, id);
+                    }
+                    let axe = self.held_tool().is_some_and(|t| t.kind == voxel::block::ToolKind::Axe);
+                    if axe && self.crouch <= 0.5 && self.reg.get(id).name.ends_with("_log") {
+                        self.fell_tree(hit.block, id);
                     }
                     let (layer, tint) = self.block_look(id);
                     self.particles.block_bits(hit.block, layer, tint, 18, 1.0);

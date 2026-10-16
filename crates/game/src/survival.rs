@@ -120,6 +120,8 @@ pub struct Survival {
     drag_last: Option<Slot>,
     /// Saplings planted by the player and seconds until they grow.
     pub saplings: Vec<(IVec3, f32)>,
+    /// Leaves of a felled tree, falling a few at a time.
+    pub leaf_decay: Vec<IVec3>,
     pub eat: f32,
     /// Seconds since the last swing; a hit only lands at full strength once the weapon is ready.
     pub attack_t: f32,
@@ -161,6 +163,7 @@ impl Survival {
             figure_box: None,
             drag_last: None,
             saplings: Vec::new(),
+            leaf_decay: Vec::new(),
             eat: 0.0,
             attack_t: 10.0,
             eat_sound: 0.0,
@@ -575,6 +578,116 @@ impl Game {
         if self.surv.spawn == Some(pos + IVec3::Y) && self.reg.get(id).name.ends_with("_bed") {
             self.surv.spawn = None;
             self.toast("Sua cama foi destruída", 2.5);
+        }
+    }
+
+    /// Falling Tree idea: chopping a log of a real tree (one with leaves) with an axe brings the
+    /// whole trunk down, and its leaves fall soon after. Sneaking chops just the one block.
+    pub(crate) fn fell_tree(&mut self, start: IVec3, id: BlockId) {
+        let base = self.reg.get(id).base;
+        let is_log = |g: &Game, p: IVec3| g.reg.get(g.world.block_or_air(p)).base == base;
+        let is_leaf = |g: &Game, p: IVec3| g.reg.get(g.world.block_or_air(p)).name.ends_with("_leaves");
+        let mut logs = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut stack = vec![start];
+        seen.insert(start);
+        let mut leafy = false;
+        while let Some(p) = stack.pop() {
+            for dy in 0..=1 {
+                for dz in -1..=1 {
+                    for dx in -1..=1 {
+                        let q = p + IVec3::new(dx, dy, dz);
+                        if q.y < start.y || !seen.insert(q) {
+                            continue;
+                        }
+                        if is_log(self, q) && logs.len() < 256 {
+                            logs.push(q);
+                            stack.push(q);
+                        } else if is_leaf(self, q) {
+                            leafy = true;
+                        }
+                    }
+                }
+            }
+        }
+        if !leafy || logs.is_empty() {
+            return;
+        }
+        let tool = self.held_tool();
+        logs.sort_by_key(|p| p.y);
+        let mut wear = 0;
+        for &p in &logs {
+            let lid = self.world.block_or_air(p);
+            self.world.set_block(p, AIR);
+            let (layer, tint) = self.block_look(lid);
+            self.particles.block_bits(p, layer, tint, 6, 0.8);
+            if self.survival {
+                let drops = self.items.drops(&self.reg, lid, tool.as_ref(), &mut self.surv.rng);
+                for d in drops {
+                    self.pop_drop(p.as_vec3() + Vec3::splat(0.5), d);
+                }
+                wear += 1;
+            }
+        }
+        if wear > 0 {
+            self.wear_held(wear);
+        }
+        self.sfx(Sfx::Break(Material::Wood));
+        // Leaves no other trunk holds up.
+        let mut lo = start;
+        let mut hi = start;
+        for p in &logs {
+            lo = lo.min(*p);
+            hi = hi.max(*p);
+        }
+        for y in lo.y..=hi.y + 4 {
+            for z in lo.z - 4..=hi.z + 4 {
+                for x in lo.x - 4..=hi.x + 4 {
+                    let p = IVec3::new(x, y, z);
+                    if is_leaf(self, p) && !self.log_near(p) {
+                        self.surv.leaf_decay.push(p);
+                    }
+                }
+            }
+        }
+        // Fall in a random order.
+        let n = self.surv.leaf_decay.len();
+        for i in (1..n).rev() {
+            let j = self.surv.rng.below(i as u32 + 1) as usize;
+            self.surv.leaf_decay.swap(i, j);
+        }
+    }
+
+    fn log_near(&self, p: IVec3) -> bool {
+        for z in -4..=4 {
+            for y in -4..=4 {
+                for x in -4..=4 {
+                    if self.reg.get(self.world.block_or_air(p + IVec3::new(x, y, z))).name.ends_with("_log") {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Drop a few of the felled tree's leaves each frame.
+    pub(crate) fn update_leaf_decay(&mut self, dt: f32) {
+        let n = ((dt * 60.0).ceil() as usize).min(self.surv.leaf_decay.len());
+        for p in self.surv.leaf_decay.drain(..n).collect::<Vec<_>>() {
+            let id = self.world.block_or_air(p);
+            if !self.reg.get(id).name.ends_with("_leaves") {
+                continue;
+            }
+            self.world.set_block(p, AIR);
+            let (layer, tint) = self.block_look(id);
+            self.particles.block_bits(p, layer, tint, 2, 0.5);
+            if self.survival {
+                let drops = self.items.drops(&self.reg, id, None, &mut self.surv.rng);
+                for d in drops {
+                    self.pop_drop(p.as_vec3() + Vec3::splat(0.5), d);
+                }
+            }
         }
     }
 
