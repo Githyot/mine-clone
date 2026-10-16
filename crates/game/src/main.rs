@@ -158,6 +158,17 @@ fn ensure_folders(base: &Path, settings: &Settings) {
              Put your own songs here. In the pause menu set Music to 'Minha pasta' (yours only) or 'Ambas' (both).\n",
         );
     }
+    let pf = base.join("paintings");
+    if !pf.exists() && std::fs::create_dir_all(&pf).is_ok() {
+        let _ = std::fs::write(
+            pf.join("LEIA-ME.txt"),
+            "Coloque aqui suas próprias pinturas (arquivos .png).\n\
+             O tamanho na parede (1 a 4 blocos de largura e altura) vem do formato da imagem;\n\
+             cada bloco usa 16x16 pixels, então 32x16 vira uma pintura de 2x1 blocos.\n\
+             No jogo, mire numa parede e aperte P para escolher a pintura.\n\n\
+             Put your own paintings here (.png). Aim at a wall and press P to hang one.\n",
+        );
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

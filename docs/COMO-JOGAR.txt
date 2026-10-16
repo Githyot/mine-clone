@@ -10,6 +10,7 @@ Tudo fica na mesma pasta do jogo:
   settings.ron     opções (pode editar com o Bloco de Notas)
   music/           coloque suas músicas aqui (mp3, ogg, wav, flac)
   resourcepacks/   coloque pacotes de textura aqui (pasta ou .zip, inclusive do Minecraft)
+  paintings/       suas próprias pinturas (.png) para pendurar nas paredes
   screenshots/     fotos tiradas com F2
   crash.txt        aparece só se o jogo fechar com erro (me mande esse arquivo)
 
@@ -19,11 +20,12 @@ CONTROLES
   Shift           agachar / descer voando
   Ctrl            correr
   Mouse           olhar
-  Botão esquerdo  quebrar bloco
+  Botão esquerdo  quebrar bloco / atacar mob
   Botão direito   colocar bloco
   Botão do meio   copiar o bloco que você está olhando
   1 a 9 / roda    escolher bloco da barra
   E               todos os blocos (clique num bloco para pôr na barra)
+  P               pendurar uma pintura na parede que você está olhando
   Esc             menu (distância de visão, música, texturas, salvar e sair)
   M               tocar a próxima música agora
   F1              esconder a interface
@@ -31,6 +33,30 @@ CONTROLES
   F3              informações (FPS, posição, bioma, GPU)
   F3 + T          recarregar texturas
   F11             tela cheia
+
+MODOS E MOBS
+  Esc > Modo: Criativo (voa, não leva dano) ou Sobrevivência (10 corações, sem voar).
+  Na sobrevivência você leva dano de quedas altas, lava, afogamento (bolhas azuis),
+  ataques de mobs e explosões. A vida volta devagar quando você fica longe do perigo.
+  Se morrer, aperte "Renascer".
+  Animais (porco, vaca, ovelha, galinha) aparecem na grama durante o dia.
+  Monstros (zumbi, esqueleto, rastejante, aranha) aparecem no escuro e nas cavernas.
+  Zumbis e esqueletos pegam fogo no sol. O rastejante chega perto e explode.
+  Esc > Mobs: Sim/Não liga ou desliga todos.
+
+PINTURAS
+  Mire numa parede e aperte P (no controle: seta para a esquerda). Passe o mouse sobre um nome
+  para ver a pintura na parede antes de escolher; "Aleatória" escolhe uma que cabe ali.
+  Para tirar, bata nela. Suas imagens .png em paintings/ entram na lista (16 pixels por bloco,
+  até 4x4 blocos; o tamanho vem do formato da imagem).
+
+CONTROLE (DualShock 4, DualSense, Xbox e outros)
+  Conecte por USB ou Bluetooth antes ou durante o jogo. Não precisa do DS4Windows.
+  Esc > Controle: sensibilidade, inverter Y, zona morta, mira com giroscópio, vibração,
+  barra de luz e troca de qualquer botão (clique na ação e aperte o novo botão).
+  Touchpad do DualShock/DualSense: deslize para trocar o item da barra, ou escolha
+  "mover a câmera" no menu. Nos menus, o touchpad e o analógico movem o cursor e
+  X (ou A) clica, O (ou B) volta.
 
 MÚSICA
   Como no Minecraft antigo: uma música calma de vez em quando, com 10 a 20 minutos de silêncio.
@@ -45,3 +71,4 @@ TEXTURAS
 
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
+  --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)
