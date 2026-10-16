@@ -3,42 +3,54 @@
   "id": "first_light",
   "title": "Primeira Luz",
   "situation": "overworld",
-  "seconds": 119
+  "seconds": 171
  },
  {
   "id": "moss",
   "title": "Musgo",
   "situation": "overworld",
-  "seconds": 140
+  "seconds": 200
  },
  {
   "id": "still_water",
   "title": "Água Parada",
   "situation": "underwater",
-  "seconds": 110
+  "seconds": 216
  },
  {
   "id": "block_by_block",
   "title": "Bloco a Bloco",
   "situation": "creative",
-  "seconds": 103
+  "seconds": 160
  },
  {
   "id": "embers",
   "title": "Brasa",
   "situation": "nether",
-  "seconds": 120
+  "seconds": 234
  },
  {
   "id": "void",
   "title": "Vazio",
   "situation": "end",
-  "seconds": 105
+  "seconds": 246
  },
  {
   "id": "beginning",
   "title": "Início",
   "situation": "title",
-  "seconds": 99
+  "seconds": 179
+ },
+ {
+  "id": "wandering",
+  "title": "Andarilho",
+  "situation": "overworld",
+  "seconds": 151
+ },
+ {
+  "id": "harvest",
+  "title": "Colheita",
+  "situation": "overworld",
+  "seconds": 152
  }
 ]
