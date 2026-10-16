@@ -90,6 +90,7 @@ struct Args {
     /// Take the --screenshot of the loading screen instead of the game.
     shot_loading: bool,
     rain: bool,
+    find: Option<String>,
     storm: bool,
     /// Screenshots: also wait this many seconds of game time (to let water flow).
     wait: f32,
@@ -160,6 +161,7 @@ fn parse_args() -> Args {
             "--shapes" => a.shapes = true,
             "--shot-loading" => a.shot_loading = true,
             "--rain" => a.rain = true,
+            "--find" => a.find = it.next(),
             "--storm" => a.storm = true,
             "--wait" => a.wait = it.next().and_then(|v| v.parse().ok()).unwrap_or(0.0),
             "--ctab" => a.ctab = it.next().and_then(|v| v.parse().ok()),
@@ -257,6 +259,19 @@ fn game_data(blocks: &str, items: &str, recipes: &str) -> Result<(BlockRegistry,
 fn load_game_data(base: &Path) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
     let read = |name: &str, built_in: &str| std::fs::read_to_string(base.join("packs/vanilla").join(name)).unwrap_or_else(|_| built_in.to_string());
     game_data(&read("blocks.ron", embedded::BLOCKS_RON), &read("items.ron", embedded::ITEMS_RON), &read("recipes.ron", embedded::RECIPES_RON))
+}
+
+/// Buildings the generator scatters (`packs/vanilla/structures.ron`, else the built-in copy).
+fn load_structures(base: &Path, reg: &BlockRegistry) -> Arc<voxel::structures::Structures> {
+    let text = std::fs::read_to_string(base.join("packs/vanilla/structures.ron")).unwrap_or_else(|_| embedded::STRUCTURES_RON.to_string());
+    let parsed = voxel::structures::Structures::from_ron(&text, reg).or_else(|e| {
+        log::error!("{e}; using the built-in structures");
+        voxel::structures::Structures::from_ron(embedded::STRUCTURES_RON, reg)
+    });
+    Arc::new(parsed.unwrap_or_else(|e| {
+        log::error!("{e}");
+        voxel::structures::Structures::empty()
+    }))
 }
 
 fn base_dir() -> PathBuf {
@@ -456,6 +471,7 @@ struct Game {
     swim_dist: f32,
     items: ItemRegistry,
     recipes: Recipes,
+    structures: Arc<voxel::structures::Structures>,
     /// First texture layer of the item sprites (they come after the block textures).
     item_base: u16,
     surv: survival::Survival,
@@ -552,7 +568,8 @@ impl Game {
         let seed = level.as_ref().map(|l| l.seed).or(args.seed).unwrap_or_else(|| {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1)
         });
-        let gen = Arc::new(Generator::new(seed, &reg));
+        let structures = load_structures(&base, &reg);
+        let gen = Arc::new(Generator::new(seed, &reg).with_structures(structures.clone()));
         let tints: Vec<[f32; 3]> = (0..Biome::COUNT).map(|b| Biome::from_u8(b as u8).tint()).collect();
         let tables = Arc::new(MeshTables::new(&reg, tints));
         let reg_for_fluids = reg.clone();
@@ -609,6 +626,17 @@ impl Game {
         if let Some(p) = args.pos {
             body.pos = p;
             needs_spawn = false;
+        }
+        // Test screenshots: stand south of the nearest building of that name, looking at it.
+        if let Some(name) = &args.find {
+            if let Some((o, size)) = gen.find_structure(name, body.pos.x as i32, body.pos.z as i32, 40) {
+                body.pos = Vec3::new(o.x as f32 + size.x as f32 / 2.0, o.y as f32 + size.y as f32 * 0.6 + 2.0, o.z as f32 + size.z as f32 + 9.0);
+                needs_spawn = false;
+                body.flying = true;
+                log::info!("found {name} at {o}");
+            } else {
+                log::warn!("no {name} nearby");
+            }
         }
         if let Some((y, p)) = args.look {
             yaw = y.to_radians();
@@ -717,6 +745,7 @@ impl Game {
             swim_dist: 0.0,
             items,
             recipes,
+            structures,
             item_base,
             surv,
             rclicked: false,

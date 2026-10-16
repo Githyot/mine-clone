@@ -15,6 +15,7 @@ pub mod recipe;
 pub mod rng;
 pub mod save;
 pub mod shapes;
+pub mod structures;
 pub mod worldgen;
 
 pub use block::{BlockId, BlockRegistry, AIR};

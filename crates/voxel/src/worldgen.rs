@@ -164,6 +164,7 @@ pub struct Generator {
     cave_b: Perlin,
     cheese: Perlin,
     pal: Palette,
+    structures: std::sync::Arc<crate::structures::Structures>,
 }
 
 /// What the top of one column looks like, without generating the chunk (distant terrain).
@@ -189,6 +190,7 @@ struct Column {
 impl Generator {
     pub fn new(seed: u64, reg: &BlockRegistry) -> Self {
         Generator {
+            structures: std::sync::Arc::new(crate::structures::Structures::empty()),
             seed,
             continent: Perlin::new(seed ^ 0x01),
             mountain: Perlin::new(seed ^ 0x02),
@@ -387,7 +389,18 @@ impl Generator {
 
         self.place_ores(&mut chunk, &mut rng, &cols);
         self.decorate(&mut chunk, &mut rng, &cols);
+        self.place_structures(&mut chunk);
         chunk
+    }
+
+    /// Buildings from data (see `structures`).
+    pub fn with_structures(mut self, s: std::sync::Arc<crate::structures::Structures>) -> Self {
+        self.structures = s;
+        self
+    }
+
+    pub(crate) fn structures(&self) -> &crate::structures::Structures {
+        &self.structures
     }
 
     fn place_ores(&self, chunk: &mut Chunk, rng: &mut Rng, cols: &[Column]) {

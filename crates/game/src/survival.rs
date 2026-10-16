@@ -581,6 +581,24 @@ impl Game {
         }
     }
 
+    /// A chest the world generator placed comes filled from its building's loot list.
+    fn structure_loot(&mut self, p: IVec3) -> Inventory {
+        let mut inv = Inventory::new(CHEST_SIZE);
+        let Some(loot) = self.world.gen.structure_chest(p).map(|l| l.to_vec()) else { return inv };
+        for l in loot {
+            if self.surv.rng.f32() >= l.chance {
+                continue;
+            }
+            let Some(id) = self.items.id(&l.item) else { continue };
+            let n = l.min + self.surv.rng.below((l.max.saturating_sub(l.min) + 1) as u32) as u8;
+            // Scattered over the slots, like a chest someone filled by hand.
+            let slot = self.surv.rng.below(CHEST_SIZE as u32) as usize;
+            let order = (0..CHEST_SIZE).map(move |i| (i + slot) % CHEST_SIZE);
+            let _ = inv.add_in(&self.items, ItemStack::new(id, n.max(1)), order);
+        }
+        inv
+    }
+
     /// Falling Tree idea: chopping a log of a real tree (one with leaves) with an axe brings the
     /// whole trunk down, and its leaves fall soon after. Sneaking chops just the one block.
     pub(crate) fn fell_tree(&mut self, start: IVec3, id: BlockId) {
@@ -791,7 +809,10 @@ impl Game {
                         return true;
                     }
                     "chest" => {
-                        self.surv.containers.entry(hit.block).or_insert_with(|| Container::Chest(Inventory::new(CHEST_SIZE)));
+                        if !self.surv.containers.contains_key(&hit.block) {
+                            let inv = self.structure_loot(hit.block);
+                            self.surv.containers.insert(hit.block, Container::Chest(inv));
+                        }
                         self.open_container(Open::Chest(hit.block));
                         self.sfx(Sfx::Place(Material::Wood));
                         return true;

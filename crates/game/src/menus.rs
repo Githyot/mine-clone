@@ -92,7 +92,7 @@ impl Game {
         let seed = level.as_ref().map(|l| l.seed).or(seed).unwrap_or_else(|| {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1)
         });
-        let gen = Arc::new(Generator::new(seed, &self.reg));
+        let gen = Arc::new(Generator::new(seed, &self.reg).with_structures(self.structures.clone()));
         let tints: Vec<[f32; 3]> = (0..Biome::COUNT).map(|b| Biome::from_u8(b as u8).tint()).collect();
         let tables = Arc::new(MeshTables::new(&self.reg, tints));
         // Dropping the old world stops its worker threads.
