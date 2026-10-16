@@ -386,6 +386,16 @@ impl Renderer {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let font_tex = device.create_texture_with_data(
@@ -404,7 +414,8 @@ impl Renderer {
             &font.pixels,
         );
         let font_view = font_tex.create_view(&Default::default());
-        let ui_tex_bg = Self::make_ui_bg(&device, &ui_tex_layout, &font_view, &block_view, &sampler);
+        let gui_view = Self::upload_gui(&device, &queue, &textures.gui);
+        let ui_tex_bg = Self::make_ui_bg(&device, &ui_tex_layout, &font_view, &block_view, &gui_view, &sampler);
         let ui_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("ui"),
             bind_group_layouts: &[&globals_layout, &ui_tex_layout],
@@ -545,6 +556,7 @@ impl Renderer {
         layout: &wgpu::BindGroupLayout,
         font: &wgpu::TextureView,
         blocks: &wgpu::TextureView,
+        gui: &wgpu::TextureView,
         sampler: &wgpu::Sampler,
     ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -554,8 +566,30 @@ impl Renderer {
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(font) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(blocks) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(sampler) },
+                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(gui) },
             ],
         })
+    }
+
+    /// The packs' interface art (a single transparent pixel when there is none).
+    fn upload_gui(device: &wgpu::Device, queue: &wgpu::Queue, g: &crate::textures::GuiAtlas) -> wgpu::TextureView {
+        let (w, h, px) = if g.pixels.is_empty() { (1, 1, vec![0u8; 4]) } else { (g.width, g.height, g.pixels.clone()) };
+        let tex = device.create_texture_with_data(
+            queue,
+            &wgpu::TextureDescriptor {
+                label: Some("gui"),
+                size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            },
+            wgpu::util::TextureDataOrder::LayerMajor,
+            &px,
+        );
+        tex.create_view(&Default::default())
     }
 
     fn upload_blocks(device: &wgpu::Device, queue: &wgpu::Queue, t: &TextureSet) -> (wgpu::TextureView, u32) {
@@ -595,7 +629,8 @@ impl Renderer {
     pub fn reload_textures(&mut self, t: &TextureSet) {
         let (view, size) = Self::upload_blocks(&self.device, &self.queue, t);
         self.tex_bg = Self::make_tex_bg(&self.device, &self.tex_layout, &view, &self.sampler);
-        self.ui_tex_bg = Self::make_ui_bg(&self.device, &self.ui_tex_layout, &self.font_view, &view, &self.sampler);
+        let gui = Self::upload_gui(&self.device, &self.queue, &t.gui);
+        self.ui_tex_bg = Self::make_ui_bg(&self.device, &self.ui_tex_layout, &self.font_view, &view, &gui, &self.sampler);
         self.block_view = view;
         self.texture_size = size;
     }

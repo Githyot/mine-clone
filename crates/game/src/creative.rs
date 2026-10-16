@@ -229,14 +229,24 @@ impl Game {
                 let (tx, bottom) = Tab::place(i);
                 let (x, y) = at(tx, if bottom { PANEL.1 - 4.0 } else { -28.0 });
                 let (tw, th) = (26.0 * s, 32.0 * s);
-                let bg = if on { [198, 198, 198, 255] } else { [160, 160, 160, 255] };
-                self.ui.rect(x, y, tw, th, bg);
-                self.ui.rect(x, y, s, th, [255, 255, 255, 255]);
-                self.ui.rect(x + tw - s, y, s, th, [85, 85, 85, 255]);
-                if bottom {
-                    self.ui.rect(x, y + th - s, tw, s, [85, 85, 85, 255]);
-                } else {
-                    self.ui.rect(x, y, tw, s, [255, 255, 255, 255]);
+                // A pack's tab picture when it has one: number 1 joins the left edge, 7 the right.
+                let col = if bottom { i - 7 } else { i };
+                let n = if tx >= 169.0 { 7 } else { col + 1 };
+                let name = format!(
+                    "sprites/container/creative_inventory/tab_{}_{}_{n}",
+                    if bottom { "bottom" } else { "top" },
+                    if on { "selected" } else { "unselected" }
+                );
+                if !self.ui.sprite(&name, x, y, tw, th) {
+                    let bg = if on { [198, 198, 198, 255] } else { [160, 160, 160, 255] };
+                    self.ui.rect(x, y, tw, th, bg);
+                    self.ui.rect(x, y, s, th, [255, 255, 255, 255]);
+                    self.ui.rect(x + tw - s, y, s, th, [85, 85, 85, 255]);
+                    if bottom {
+                        self.ui.rect(x, y + th - s, tw, s, [85, 85, 85, 255]);
+                    } else {
+                        self.ui.rect(x, y, tw, s, [255, 255, 255, 255]);
+                    }
                 }
                 let iy = if bottom { y + 10.0 * s } else { y + 7.0 * s };
                 self.draw_tab_icon(TABS[i], x + 5.0 * s, iy);
@@ -245,12 +255,23 @@ impl Game {
                 }
             }
             if pass == 0 {
-                // The panel, with the classic bevel, around the hole the 3D figure shows through.
-                rect_around(&mut self.ui, (x0, y0, pw, ph), hole, [198, 198, 198, 255]);
-                self.ui.rect(x0, y0, pw, s, [255, 255, 255, 255]);
-                self.ui.rect(x0, y0, s, ph, [255, 255, 255, 255]);
-                self.ui.rect(x0 + pw - s, y0, s, ph, [85, 85, 85, 255]);
-                self.ui.rect(x0, y0 + ph - s, pw, s, [85, 85, 85, 255]);
+                let bg = match tab {
+                    Tab::Inventory => "container/creative_inventory/tab_inventory",
+                    Tab::Search => "container/creative_inventory/tab_item_search",
+                    _ => "container/creative_inventory/tab_items",
+                };
+                self.surv.cart = self.ui.has_sprite(bg);
+                if self.surv.cart {
+                    // The pack's picture, cut around the hole the 3D figure shows through.
+                    sprite_around(&mut self.ui, bg, (x0, y0, pw, ph), hole, s);
+                } else {
+                    // The panel, with the classic bevel, around the hole the 3D figure shows through.
+                    rect_around(&mut self.ui, (x0, y0, pw, ph), hole, [198, 198, 198, 255]);
+                    self.ui.rect(x0, y0, pw, s, [255, 255, 255, 255]);
+                    self.ui.rect(x0, y0, s, ph, [255, 255, 255, 255]);
+                    self.ui.rect(x0 + pw - s, y0, s, ph, [85, 85, 85, 255]);
+                    self.ui.rect(x0, y0 + ph - s, pw, s, [85, 85, 85, 255]);
+                }
             }
         }
 
@@ -290,12 +311,14 @@ impl Game {
                 }
                 // Bin: drop the held stack here to delete it (shift-click empties the inventory).
                 let (bx, by) = at(173.0, 112.0);
-                self.ui.rect(bx, by, 18.0 * s, 18.0 * s, [85, 55, 55, 255]);
-                self.ui.rect(bx + s, by + s, 16.0 * s, 16.0 * s, [184, 131, 131, 255]);
-                for k in 0..12 {
-                    let d = (k as f32 + 2.0) * s;
-                    self.ui.rect(bx + d, by + d, 2.0 * s, s, [60, 40, 40, 255]);
-                    self.ui.rect(bx + 16.0 * s - d, by + d, 2.0 * s, s, [60, 40, 40, 255]);
+                if !self.surv.cart {
+                    self.ui.rect(bx, by, 18.0 * s, 18.0 * s, [85, 55, 55, 255]);
+                    self.ui.rect(bx + s, by + s, 16.0 * s, 16.0 * s, [184, 131, 131, 255]);
+                    for k in 0..12 {
+                        let d = (k as f32 + 2.0) * s;
+                        self.ui.rect(bx + d, by + d, 2.0 * s, s, [60, 40, 40, 255]);
+                        self.ui.rect(bx + 16.0 * s - d, by + d, 2.0 * s, s, [60, 40, 40, 255]);
+                    }
                 }
                 if inside((bx, by), 18.0, 18.0) && click {
                     if shift {
@@ -347,8 +370,10 @@ impl Game {
                 self.surv.cscroll = self.surv.cscroll.min(max_scroll);
                 if t == Tab::Search {
                     let (bx, by) = at(82.0, 5.0);
-                    self.ui.rect(bx, by, 89.0 * s, 12.0 * s, [0, 0, 0, 255]);
-                    self.ui.frame(bx, by, 89.0 * s, 12.0 * s, s, [160, 160, 160, 255]);
+                    if !self.surv.cart {
+                        self.ui.rect(bx, by, 89.0 * s, 12.0 * s, [0, 0, 0, 255]);
+                        self.ui.frame(bx, by, 89.0 * s, 12.0 * s, s, [160, 160, 160, 255]);
+                    }
                     let blink = if (self.now * 2.0) as i32 % 2 == 0 { "_" } else { "" };
                     let text = format!("{}{}", self.surv.csearch, blink);
                     self.ui.text(bx + 2.0 * s, by + 2.0 * s, &text, WHITE);
@@ -371,15 +396,20 @@ impl Game {
                 }
                 // Scroll bar.
                 let (sx, sy) = at(175.0, 18.0);
-                self.ui.rect(sx, sy, 14.0 * s, 90.0 * s, [139, 139, 139, 255]);
-                self.ui.rect(sx, sy, 14.0 * s, s, [55, 55, 55, 255]);
-                self.ui.rect(sx, sy, s, 90.0 * s, [55, 55, 55, 255]);
+                if !self.surv.cart {
+                    self.ui.rect(sx, sy, 14.0 * s, 90.0 * s, [139, 139, 139, 255]);
+                    self.ui.rect(sx, sy, 14.0 * s, s, [55, 55, 55, 255]);
+                    self.ui.rect(sx, sy, s, 90.0 * s, [55, 55, 55, 255]);
+                }
                 let k = if max_scroll > 0 { self.surv.cscroll as f32 / max_scroll as f32 } else { 0.0 };
                 let ty = sy + s + k * (90.0 - 17.0) * s;
-                let thumb = if max_scroll > 0 { [198, 198, 198, 255] } else { [150, 150, 150, 255] };
-                self.ui.rect(sx + s, ty, 12.0 * s, 15.0 * s, thumb);
-                self.ui.rect(sx + s, ty, 12.0 * s, s, [255, 255, 255, 255]);
-                self.ui.rect(sx + 12.0 * s, ty, s, 15.0 * s, [85, 85, 85, 255]);
+                let thumb_art = if max_scroll > 0 { "sprites/container/creative_inventory/scroller" } else { "sprites/container/creative_inventory/scroller_disabled" };
+                if !self.ui.sprite(thumb_art, sx + s, ty, 12.0 * s, 15.0 * s) {
+                    let thumb = if max_scroll > 0 { [198, 198, 198, 255] } else { [150, 150, 150, 255] };
+                    self.ui.rect(sx + s, ty, 12.0 * s, 15.0 * s, thumb);
+                    self.ui.rect(sx + s, ty, 12.0 * s, s, [255, 255, 255, 255]);
+                    self.ui.rect(sx + 12.0 * s, ty, s, 15.0 * s, [85, 85, 85, 255]);
+                }
                 if self.rdown || self.mouse_held[0] {
                     if mouse.0 >= sx && mouse.0 < sx + 14.0 * s && mouse.1 >= sy && mouse.1 < sy + 90.0 * s && max_scroll > 0 {
                         let f = ((mouse.1 - sy) / (90.0 * s)).clamp(0.0, 1.0);
@@ -488,6 +518,9 @@ impl Game {
 
 /// An empty slot with the classic sunken bevel.
 fn draw_slot(game: &mut Game, x: f32, y: f32) {
+    if game.surv.cart {
+        return;
+    }
     let s = game.ui.scale;
     game.ui.rect(x, y, 18.0 * s, 18.0 * s, [55, 55, 55, 255]);
     game.ui.rect(x + s, y + s, 17.0 * s, 17.0 * s, [255, 255, 255, 255]);
@@ -498,6 +531,10 @@ fn draw_slot(game: &mut Game, x: f32, y: f32) {
 /// then the shield of the second hand.
 fn slot_outline(game: &mut Game, kind: usize, x: f32, y: f32) {
     let s = game.ui.scale;
+    let art = ["helmet", "chestplate", "leggings", "boots", "shield"][kind.min(4)];
+    if game.ui.sprite(&format!("sprites/container/slot/{art}"), x + s, y + s, 16.0 * s, 16.0 * s) {
+        return;
+    }
     let c = [110, 110, 110, 255];
     let mut r = |px: f32, py: f32, w: f32, h: f32| game.ui.rect(x + px * s, y + py * s, w * s, h * s, c);
     match kind {
@@ -539,6 +576,29 @@ fn slot_outline(game: &mut Game, kind: usize, x: f32, y: f32) {
             r(5.0, 11.0, 2.0, 2.0);
             r(11.0, 11.0, 2.0, 2.0);
             r(7.0, 13.0, 4.0, 1.0);
+        }
+    }
+}
+
+/// A pack's 256×256 container picture over the panel, leaving out the `hole` rectangle.
+fn sprite_around(ui: &mut crate::ui::UiBatch, name: &str, panel: (f32, f32, f32, f32), hole: Option<(f32, f32, f32, f32)>, s: f32) {
+    let (x0, y0, pw, ph) = panel;
+    // Screen rectangle -> the same part of the picture (one panel pixel is 1/256 of it).
+    let mut part = |x: f32, y: f32, w: f32, h: f32| {
+        if w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        let f = |v: f32| v / s / 256.0;
+        let p = [f(x - x0), f(y - y0), f(x - x0 + w), f(y - y0 + h)];
+        ui.sprite_part(name, p, x, y, w, h, crate::ui::WHITE);
+    };
+    match hole {
+        None => part(x0, y0, pw, ph),
+        Some((hx, hy, hw, hh)) => {
+            part(x0, y0, pw, hy - y0);
+            part(x0, hy + hh, pw, y0 + ph - hy - hh);
+            part(x0, hy, hx - x0, hh);
+            part(hx + hw, hy, x0 + pw - hx - hw, hh);
         }
     }
 }

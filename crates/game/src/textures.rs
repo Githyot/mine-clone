@@ -18,6 +18,88 @@ pub struct TextureSet {
     pub layers: Vec<Vec<u8>>,
     /// Names of the packs that were used, for the debug screen.
     pub packs: Vec<String>,
+    /// Interface art from the packs (empty when no pack has any: our own drawing is used).
+    pub gui: GuiAtlas,
+}
+
+/// Interface pictures from packs, packed into one image. Each sprite is keyed by its path under
+/// `assets/minecraft/textures/gui/` without `.png`, and stores its place in the atlas (0..1).
+#[derive(Default)]
+pub struct GuiAtlas {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<u8>,
+    pub sprites: std::collections::HashMap<String, [f32; 4]>,
+}
+
+/// The interface pictures a pack may replace.
+fn gui_names() -> Vec<String> {
+    let mut v: Vec<String> = ["tab_items", "tab_inventory", "tab_item_search"]
+        .iter()
+        .map(|n| format!("container/creative_inventory/{n}"))
+        .collect();
+    for row in ["top", "bottom"] {
+        for state in ["selected", "unselected"] {
+            for i in 1..=7 {
+                v.push(format!("sprites/container/creative_inventory/tab_{row}_{state}_{i}"));
+            }
+        }
+    }
+    for n in ["scroller", "scroller_disabled"] {
+        v.push(format!("sprites/container/creative_inventory/{n}"));
+    }
+    for n in ["helmet", "chestplate", "leggings", "boots", "shield"] {
+        v.push(format!("sprites/container/slot/{n}"));
+    }
+    for n in [
+        "hotbar", "hotbar_selection", "crosshair", "food_empty", "food_half", "food_full", "armor_empty", "armor_half", "armor_full",
+        "experience_bar_background", "experience_bar_progress", "heart/container", "heart/full", "heart/half", "air", "air_bursting",
+    ] {
+        v.push(format!("sprites/hud/{n}"));
+    }
+    v
+}
+
+/// Gather the interface pictures of the enabled packs (first pack wins) into one atlas.
+fn load_gui(packs: &mut [Pack]) -> GuiAtlas {
+    let mut imgs: Vec<(String, image::RgbaImage)> = Vec::new();
+    for name in gui_names() {
+        let rel = format!("assets/minecraft/textures/gui/{name}.png");
+        if let Some(img) = packs.iter_mut().find_map(|p| p.read(&rel).and_then(|b| decode(&b))) {
+            imgs.push((name, first_frame(img)));
+        }
+    }
+    if imgs.is_empty() {
+        return GuiAtlas::default();
+    }
+    // Shelf packing, tallest first.
+    imgs.sort_by_key(|(_, i)| std::cmp::Reverse(i.height()));
+    let width = imgs.iter().map(|(_, i)| i.width()).max().unwrap_or(1).max(1024).next_power_of_two();
+    let mut places = Vec::with_capacity(imgs.len());
+    let (mut x, mut y, mut shelf) = (0u32, 0u32, 0u32);
+    for (_, img) in &imgs {
+        if x + img.width() > width {
+            x = 0;
+            y += shelf;
+            shelf = 0;
+        }
+        places.push((x, y));
+        x += img.width();
+        shelf = shelf.max(img.height());
+    }
+    let height = (y + shelf).max(1).next_power_of_two();
+    if height > 8192 {
+        log::warn!("interface art too big for one atlas; using our own");
+        return GuiAtlas::default();
+    }
+    let mut atlas = image::RgbaImage::new(width, height);
+    let mut sprites = std::collections::HashMap::new();
+    for ((name, img), (px, py)) in imgs.into_iter().zip(places) {
+        image::imageops::replace(&mut atlas, &img, px as i64, py as i64);
+        let (w, h) = (width as f32, height as f32);
+        sprites.insert(name, [px as f32 / w, py as f32 / h, (px + img.width()) as f32 / w, (py + img.height()) as f32 / h]);
+    }
+    GuiAtlas { width, height, pixels: atlas.into_raw(), sprites }
 }
 
 enum PackKind {
@@ -58,7 +140,11 @@ impl Pack {
                     return direct;
                 }
                 let names: Vec<String> = z.file_names().map(|s| s.to_string()).collect();
-                let hit = names.into_iter().find(|n| n.ends_with(&format!("/{rel}")))?;
+                // Only a wrapping folder: our own layout must not pick up a Minecraft-layout file
+                // ("assets/minecraft/textures/block/..."), which still needs its colour.
+                let hit = names
+                    .into_iter()
+                    .find(|n| n.ends_with(&format!("/{rel}")) && (rel.starts_with("assets/") || !n.contains("assets/minecraft/")))?;
                 let mut f = z.by_name(&hit).ok()?;
                 let mut v = Vec::new();
                 f.read_to_end(&mut v).ok()?;
@@ -261,7 +347,8 @@ pub fn load(names: &[String], base: &Path, enabled_packs: &[String]) -> TextureS
     // All layers of a texture array share one size: use the largest (packs can be 32x, 64x...).
     let size = images.iter().flatten().map(|i| i.width()).max().unwrap_or(16).clamp(16, 256).next_power_of_two();
     let layers = images.iter().map(|i| i.as_ref().map(|i| resize_nearest(i, size)).unwrap_or_else(|| missing(size))).collect();
-    TextureSet { size, layers, packs: used }
+    let gui = load_gui(&mut packs);
+    TextureSet { size, layers, packs: used, gui }
 }
 
 /// Mip chain for one layer, averaging only visible pixels so cut-out edges don't darken.

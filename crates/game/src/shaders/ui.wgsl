@@ -5,6 +5,7 @@ struct Screen {
 @group(1) @binding(0) var font: texture_2d<f32>;
 @group(1) @binding(1) var blocks: texture_2d_array<f32>;
 @group(1) @binding(2) var samp: sampler;
+@group(1) @binding(3) var gui: texture_2d<f32>;
 
 struct UOut {
     @builtin(position) clip: vec4<f32>,
@@ -34,6 +35,13 @@ fn fs_ui(in: UOut) -> @location(0) vec4<f32> {
             discard;
         }
         return in.color;
+    }
+    if (in.layer == -3) {
+        let g = textureSampleLevel(gui, samp, in.uv, 0.0) * in.color;
+        if (g.a < 0.05) {
+            discard;
+        }
+        return g;
     }
     let c = textureSampleLevel(blocks, samp, in.uv, in.layer, 0.0) * in.color;
     if (c.a < 0.1) {

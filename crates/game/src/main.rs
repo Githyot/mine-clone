@@ -542,7 +542,8 @@ impl Game {
         let font = FontAtlas::new();
         let mut renderer = pollster::block_on(Renderer::new(window.clone(), settings.vsync, &tex, &font));
         renderer.cave_cull = !args.no_cave_cull;
-        let ui = UiBatch::new(&font);
+        let mut ui = UiBatch::new(&font);
+        ui.gui = tex.gui.sprites.clone();
         let audio = Audio::new(&settings, &base);
 
         // Mobs: a mobs.ron on disk wins, like blocks.
@@ -609,6 +610,7 @@ impl Game {
         }
 
         log::info!("world '{world_name}' seed {seed}, {} blocks, {} textures ({}px)", reg.len(), reg.textures.len(), renderer.texture_size);
+        log::info!("{} interface pictures from packs", ui.gui.len());
         let now = Instant::now();
         let mut game = Game {
             window,
@@ -869,6 +871,7 @@ impl Game {
         let tex = textures::load(&names, &self.base, &self.settings.resource_packs);
         self.textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
         self.renderer.reload_textures(&tex);
+        self.ui.gui = tex.gui.sprites.clone();
         self.lod.set_colors(lod::LodColors::new(&self.reg, &tex));
         self.toast(format!("Texturas: {}", self.textures_name), 3.0);
     }
@@ -2329,9 +2332,11 @@ impl Game {
             // Crosshair.
             if self.screen == Screen::Playing {
                 let (cx, cy) = (w / 2.0, h / 2.0);
-                let c = [235, 235, 235, 220];
-                self.ui.rect(cx - 5.0 * s, cy - s / 2.0, 10.0 * s, s, c);
-                self.ui.rect(cx - s / 2.0, cy - 5.0 * s, s, 10.0 * s, c);
+                if !self.ui.sprite("sprites/hud/crosshair", (cx - 7.5 * s).round(), (cy - 7.5 * s).round(), 15.0 * s, 15.0 * s) {
+                    let c = [235, 235, 235, 220];
+                    self.ui.rect(cx - 5.0 * s, cy - s / 2.0, 10.0 * s, s, c);
+                    self.ui.rect(cx - s / 2.0, cy - 5.0 * s, s, 10.0 * s, c);
+                }
                 // How ready the weapon is, under the crosshair, while it recharges.
                 if self.survival {
                     let k = self.attack_charge();
@@ -2347,17 +2352,22 @@ impl Game {
             let cell = 20.0 * s;
             let hx = (w - cell * 9.0) / 2.0;
             let hy = h - cell - 2.0 * s;
-            self.ui.rect(hx - s, hy - s, cell * 9.0 + 2.0 * s, cell + 2.0 * s, [0, 0, 0, 150]);
-            for i in 0..9 {
-                let x = hx + i as f32 * cell;
-                self.ui.frame(x, hy, cell, cell, s, [110, 110, 110, 255]);
+            let hud_art = self.ui.sprite("sprites/hud/hotbar", hx - s, hy - s, 182.0 * s, 22.0 * s);
+            if !hud_art {
+                self.ui.rect(hx - s, hy - s, cell * 9.0 + 2.0 * s, cell + 2.0 * s, [0, 0, 0, 150]);
+                for i in 0..9 {
+                    let x = hx + i as f32 * cell;
+                    self.ui.frame(x, hy, cell, cell, s, [110, 110, 110, 255]);
+                }
             }
             self.draw_hotbar_items(hx, hy, cell);
             if self.survival {
                 self.draw_survival_hud(hx, hy, cell);
             }
             let sx = hx + self.selected as f32 * cell;
-            self.ui.frame(sx - s, hy - s, cell + 2.0 * s, cell + 2.0 * s, 2.0 * s, [255, 255, 255, 255]);
+            if !self.ui.sprite("sprites/hud/hotbar_selection", sx - 2.0 * s, hy - 2.0 * s, 24.0 * s, 23.0 * s) {
+                self.ui.frame(sx - s, hy - s, cell + 2.0 * s, cell + 2.0 * s, 2.0 * s, [255, 255, 255, 255]);
+            }
             if self.body.flying {
                 self.ui.text(4.0 * s, h - 12.0 * s, "Voando", GRAY);
             } else if self.crouch > 0.5 {
@@ -2381,6 +2391,13 @@ impl Game {
                     let x = hx + i as f32 * 8.0 * s;
                     let v = self.health - i as f32 * 2.0;
                     let blink = self.hurt_age < 0.6 && ((self.hurt_age * 10.0) as i32) % 2 == 0;
+                    if self.ui.sprite("sprites/hud/heart/container", x, y - s, 9.0 * s, 9.0 * s) {
+                        if v > 0.0 {
+                            let art = if v >= 2.0 { "sprites/hud/heart/full" } else { "sprites/hud/heart/half" };
+                            self.ui.sprite(art, x, y - s, 9.0 * s, 9.0 * s);
+                        }
+                        continue;
+                    }
                     draw_heart(&mut self.ui, x, y, s, [40, 0, 0, 255], 1.0, blink);
                     if v > 0.0 {
                         draw_heart(&mut self.ui, x, y, s, [220, 30, 30, 255], if v >= 2.0 { 1.0 } else { 0.5 }, false);
@@ -2391,6 +2408,9 @@ impl Game {
                     for i in 0..bubbles {
                         let x = hx + cell * 9.0 - (i + 1) as f32 * 8.0 * s;
                         let y = y - 10.0 * s;
+                        if self.ui.sprite("sprites/hud/air", x, y - s, 9.0 * s, 9.0 * s) {
+                            continue;
+                        }
                         self.ui.rect(x + s, y + s, 5.0 * s, 5.0 * s, [60, 120, 230, 255]);
                         self.ui.rect(x + 2.0 * s, y + 2.0 * s, 2.0 * s, 2.0 * s, [220, 240, 255, 255]);
                     }

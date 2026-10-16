@@ -103,6 +103,8 @@ pub struct Survival {
     pub ctab: usize,
     pub cscroll: usize,
     pub csearch: String,
+    /// The creative screen is drawn with a pack's art (its slots are part of the picture).
+    pub cart: bool,
     /// Recipe book: first row shown, and the item whose recipes are open (with which one).
     pub book_scroll: usize,
     pub book_view: Option<(ItemId, usize)>,
@@ -149,6 +151,7 @@ impl Survival {
             ctab: 0,
             cscroll: 0,
             csearch: String::new(),
+            cart: false,
             book_scroll: 0,
             book_view: None,
             side: Side::Closed,
@@ -1161,6 +1164,13 @@ impl Game {
             let x = hx + cell * 9.0 - (i + 1) as f32 * 8.0 * s;
             let v = self.surv.hunger - i as f32 * 2.0;
             let dy = if shake && ((self.now * 12.0) as i32 + i) % 3 == 0 { s } else { 0.0 };
+            if self.ui.sprite("sprites/hud/food_empty", x, y + dy - s, 9.0 * s, 9.0 * s) {
+                if v > 0.0 {
+                    let art = if v >= 2.0 { "sprites/hud/food_full" } else { "sprites/hud/food_half" };
+                    self.ui.sprite(art, x, y + dy - s, 9.0 * s, 9.0 * s);
+                }
+                continue;
+            }
             draw_drumstick(&mut self.ui, x, y + dy, s, 1.0, true);
             if v > 0.0 {
                 draw_drumstick(&mut self.ui, x, y + dy, s, if v >= 2.0 { 1.0 } else { 0.5 }, false);
@@ -1173,6 +1183,13 @@ impl Game {
             for i in 0..10u32 {
                 let x = hx + i as f32 * 8.0 * s;
                 let v = pts as i32 - i as i32 * 2;
+                if self.ui.sprite("sprites/hud/armor_empty", x, y - s, 9.0 * s, 9.0 * s) {
+                    if v > 0 {
+                        let art = if v >= 2 { "sprites/hud/armor_full" } else { "sprites/hud/armor_half" };
+                        self.ui.sprite(art, x, y - s, 9.0 * s, 9.0 * s);
+                    }
+                    continue;
+                }
                 draw_shield(&mut self.ui, x, y, s, 1.0, true);
                 if v > 0 {
                     draw_shield(&mut self.ui, x, y, s, if v >= 2 { 1.0 } else { 0.5 }, false);
@@ -1183,8 +1200,12 @@ impl Game {
         let (lvl, k) = self.surv.level();
         let bw = cell * 9.0;
         let by = hy - 3.5 * s;
-        self.ui.rect(hx, by, bw, 2.5 * s, [0, 0, 0, 200]);
-        self.ui.rect(hx, by, bw * k, 2.5 * s, [128, 255, 32, 255]);
+        if self.ui.sprite("sprites/hud/experience_bar_background", hx - s, by - 1.5 * s, 182.0 * s, 5.0 * s) {
+            self.ui.sprite_part("sprites/hud/experience_bar_progress", [0.0, 0.0, k, 1.0], hx - s, by - 1.5 * s, 182.0 * s * k, 5.0 * s, crate::ui::WHITE);
+        } else {
+            self.ui.rect(hx, by, bw, 2.5 * s, [0, 0, 0, 200]);
+            self.ui.rect(hx, by, bw * k, 2.5 * s, [128, 255, 32, 255]);
+        }
         if lvl > 0 {
             let t = lvl.to_string();
             let tw = self.ui.text_width(&t, s);

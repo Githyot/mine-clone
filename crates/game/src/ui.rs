@@ -60,11 +60,13 @@ pub struct UiBatch {
     pub width: f32,
     pub height: f32,
     advance: [u8; 256],
+    /// Interface art from the resource packs, by name (see `textures::GuiAtlas`).
+    pub gui: std::collections::HashMap<String, [f32; 4]>,
 }
 
 impl UiBatch {
     pub fn new(font: &FontAtlas) -> UiBatch {
-        UiBatch { verts: Vec::new(), scale: 2.0, width: 1.0, height: 1.0, advance: font.advance }
+        UiBatch { verts: Vec::new(), scale: 2.0, width: 1.0, height: 1.0, advance: font.advance, gui: Default::default() }
     }
 
     pub fn begin(&mut self, width: f32, height: f32, gui_scale: u32) {
@@ -142,7 +144,29 @@ impl UiBatch {
         self.text(cx - w / 2.0, y, s, color);
     }
 
-    /// A small 3D-looking cube (or a flat sprite for plants), like inventory icons.
+    /// Whether the resource packs supply the interface picture `name`.
+    pub fn has_sprite(&self, name: &str) -> bool {
+        self.gui.contains_key(name)
+    }
+
+    /// Draw part of a pack's interface picture: `part` is (x0, y0, x1, y1) as fractions of the
+    /// picture. Returns false (drawing nothing) when no pack has it.
+    pub fn sprite_part(&mut self, name: &str, part: [f32; 4], x: f32, y: f32, w: f32, h: f32, color: [u8; 4]) -> bool {
+        let Some(&[u0, v0, u1, v1]) = self.gui.get(name) else { return false };
+        let u = |f: f32| u0 + (u1 - u0) * f;
+        let v = |f: f32| v0 + (v1 - v0) * f;
+        let uv = [[u(part[0]), v(part[1])], [u(part[2]), v(part[1])], [u(part[2]), v(part[3])], [u(part[0]), v(part[3])]];
+        self.quad([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], uv, color, -3);
+        true
+    }
+
+    /// A whole interface picture from the packs.
+    pub fn sprite(&mut self, name: &str, x: f32, y: f32, w: f32, h: f32) -> bool {
+        self.sprite_part(name, [0.0, 0.0, 1.0, 1.0], x, y, w, h, WHITE)
+    }
+
+    /// A block as inventory icons show it: seen from above, front-left and front-right, built
+    /// from its boxes so stairs, slabs, fences and walls keep their shape. Plants are flat.
     pub fn block_icon(&mut self, reg: &BlockRegistry, id: BlockId, x: f32, y: f32, size: f32) {
         let b = reg.get(id);
         let full = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
@@ -151,20 +175,52 @@ impl UiBatch {
             self.quad([[x, y], [x + size, y], [x + size, y + size], [x, y + size]], full, WHITE, l);
             return;
         }
+        let mut boxes: Vec<voxel::shapes::PBox> = Vec::new();
+        if b.shape.is_boxes() {
+            // Stairs climb away from the viewer; fences, walls and panes show two arms.
+            let (variant, conn) = match b.shape {
+                Shape::Stairs => (3, 0),
+                Shape::Fence | Shape::Wall | Shape::Pane => (0, voxel::shapes::CONN_PX | voxel::shapes::CONN_NX),
+                _ => (0, 0),
+            };
+            voxel::shapes::boxes(b.shape, variant, conn, false, &mut boxes);
+        } else {
+            boxes.push([0, 0, 0, 16, 16, 16]);
+        }
+        // Far boxes first so near ones cover them.
+        boxes.sort_by_key(|q| (q[0] as u16 + q[2] as u16, q[1]));
         let cx = x + size / 2.0;
         let w = size * 0.5;
         let h = size * 0.25;
         let y0 = y + size * 0.02;
         let side = size * 0.58;
-        let t = [cx, y0];
-        let r = [cx + w, y0 + h];
-        let c = [cx, y0 + 2.0 * h];
-        let l = [cx - w, y0 + h];
-        let down = |p: [f32; 2]| [p[0], p[1] + side];
-        // Left face (front texture), right face (side texture), then the top.
-        self.quad([l, c, down(c), down(l)], full, [205, 205, 205, 255], b.faces[4] as i32);
-        self.quad([c, r, down(r), down(c)], full, [150, 150, 150, 255], b.faces[0] as i32);
-        self.quad([t, r, c, l], [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], WHITE, b.faces[2] as i32);
+        // A point of the block (in pixels, 0..16) on the screen.
+        let at = |px: f32, py: f32, pz: f32| [cx + w * (px - pz) / 16.0, y0 + h * (px + pz) / 16.0 + side * (16.0 - py) / 16.0];
+        for q in boxes {
+            let [x0, y0b, z0, x1, y1, z1] = q.map(|v| v as f32);
+            let t = |v: f32| v / 16.0;
+            // Front (+z), seen on the left.
+            self.quad(
+                [at(x0, y1, z1), at(x1, y1, z1), at(x1, y0b, z1), at(x0, y0b, z1)],
+                [[t(x0), t(16.0 - y1)], [t(x1), t(16.0 - y1)], [t(x1), t(16.0 - y0b)], [t(x0), t(16.0 - y0b)]],
+                [205, 205, 205, 255],
+                b.faces[4] as i32,
+            );
+            // Side (+x), seen on the right.
+            self.quad(
+                [at(x1, y1, z1), at(x1, y1, z0), at(x1, y0b, z0), at(x1, y0b, z1)],
+                [[t(16.0 - z1), t(16.0 - y1)], [t(16.0 - z0), t(16.0 - y1)], [t(16.0 - z0), t(16.0 - y0b)], [t(16.0 - z1), t(16.0 - y0b)]],
+                [150, 150, 150, 255],
+                b.faces[0] as i32,
+            );
+            // Top.
+            self.quad(
+                [at(x0, y1, z0), at(x1, y1, z0), at(x1, y1, z1), at(x0, y1, z1)],
+                [[t(x0), t(z0)], [t(x1), t(z0)], [t(x1), t(z1)], [t(x0), t(z1)]],
+                WHITE,
+                b.faces[2] as i32,
+            );
+        }
     }
 
     /// A clickable button; returns true when the mouse is over it.

@@ -404,7 +404,7 @@ mod tests {
     fn setup() -> (Generator, LodColors) {
         let reg = BlockRegistry::from_ron(include_str!("../../../packs/vanilla/blocks.ron")).unwrap();
         let gen = Generator::new(12345, &reg);
-        let tex = TextureSet { size: 2, layers: vec![vec![128; 16]; reg.textures.len()], packs: Vec::new() };
+        let tex = TextureSet { size: 2, layers: vec![vec![128; 16]; reg.textures.len()], packs: Vec::new(), gui: Default::default() };
         let colors = LodColors::new(&reg, &tex);
         (gen, colors)
     }
