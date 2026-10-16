@@ -537,6 +537,18 @@ impl Game {
         put(w, 1, 0, 15, "copper_door", 2);
         put(w, 1, 1, 15, "copper_door", 2 | 8);
         put(w, 3, 0, 15, "weathered_copper_trapdoor", 0);
+        // Furniture inside the loop: a long oak table with chairs round it, a small cherry set.
+        for x in -1..=1 {
+            put(w, x, 0, 8, "oak_table", 0);
+            put(w, x, 0, 9, "oak_chair", 2);
+            put(w, x, 0, 7, "spruce_chair", 0);
+        }
+        put(w, -2, 0, 8, "birch_chair", 1);
+        put(w, 2, 0, 8, "dark_oak_chair", 3);
+        put(w, 4, 0, 9, "cherry_table", 0);
+        put(w, 4, 0, 10, "cherry_chair", 2);
+        put(w, -4, 0, 9, "acacia_table", 0);
+        put(w, -4, 0, 10, "jungle_chair", 2);
         // A crafter facing you with planks in it, and a lever to work it.
         put(w, -1, 0, 18, "crafter", 2);
         put(w, -2, 0, 18, "lever", 3);
@@ -553,7 +565,9 @@ impl Game {
             c.body.vel = Vec3::new(vx, 0.0, 0.0);
             self.surv.carts.push(c);
         }
-        if self.args.screenshot.is_some() {
+        if std::env::var("MC_SIT").is_ok() {
+            self.seat = Some(at(-2, 0, 8));
+        } else if self.args.screenshot.is_some() {
             self.body.pos += Vec3::new(0.0, 6.0, 2.0);
             self.body.flying = true;
         }

@@ -180,6 +180,7 @@ impl UiBatch {
             // Stairs climb away from the viewer; fences, walls and panes show two arms.
             let (variant, conn) = match b.shape {
                 Shape::Stairs | Shape::Roof => (3, 0),
+                Shape::Chair => (1, 0),
                 Shape::Fence | Shape::Wall | Shape::Pane => (0, voxel::shapes::CONN_PX | voxel::shapes::CONN_NX),
                 _ => (0, 0),
             };

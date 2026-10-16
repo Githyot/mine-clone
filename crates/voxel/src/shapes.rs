@@ -27,6 +27,8 @@ pub fn variant_count(shape: Shape) -> u8 {
         Shape::Oriented => 16,
         // Spout: 0 down, 1..4 north, east, south, west.
         Shape::Hopper => 5,
+        // Chairs: the way you look when sitting.
+        Shape::Chair => 4,
         // Rails: shape 0..9 (see `RAIL_ENDS`); powered, detector and activator rails only
         // bend into 0..5 and add 10 when powered.
         Shape::Rail => 16,
@@ -220,6 +222,35 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
             out.push(if variant == 0 { [6, 0, 6, 10, 4, 10] } else { rotate([6, 4, 0, 10, 8, 4], (variant - 1) & 3) });
         }
         Shape::Rail => out.push(if rail_rises(variant).is_some() { [0, 0, 0, 16, 8, 16] } else { [0, 0, 0, 16, 2, 16] }),
+        Shape::Chair => {
+            if collision {
+                out.push([2, 0, 2, 14, 10, 14]);
+                out.push(rotate([2, 10, 12, 14, 16, 14], f));
+                return;
+            }
+            // Drawn facing north: four legs, the seat, and the back on the south side.
+            for b in [
+                [2, 0, 2, 4, 8, 4],
+                [12, 0, 2, 14, 8, 4],
+                [2, 0, 12, 4, 8, 14],
+                [12, 0, 12, 14, 8, 14],
+                [2, 8, 2, 14, 10, 14],
+                [2, 10, 12, 4, 16, 14],
+                [12, 10, 12, 14, 16, 14],
+                [4, 12, 12, 12, 15, 13],
+            ] {
+                out.push(rotate(b, f));
+            }
+        }
+        Shape::Table => {
+            out.push([0, 13, 0, 16, 16, 16]);
+            // A leg at each corner where neither side runs on into another table.
+            for (x, z, bx, bz) in [(1, 1, CONN_NX, CONN_NZ), (13, 1, CONN_PX, CONN_NZ), (1, 13, CONN_NX, CONN_PZ), (13, 13, CONN_PX, CONN_PZ)] {
+                if conn & (bx | bz) == 0 {
+                    out.push([x, 0, z, x + 2, 13, z + 2]);
+                }
+            }
+        }
         Shape::PistonHead => {
             let d = dir6_of(variant);
             out.push(orient6([0, 12, 0, 16, 16, 16], d));
@@ -269,7 +300,7 @@ pub fn has_parts(shape: Shape) -> bool {
 
 /// Fences, walls and panes join others of their kind and full solid blocks.
 pub fn joins(shape: Shape, other: Shape, other_opaque: bool) -> bool {
-    other_opaque || other == shape
+    (other_opaque && shape != Shape::Table) || other == shape
 }
 
 #[cfg(test)]

@@ -61,6 +61,11 @@ pub enum Shape {
     Hopper,
     /// A rail: flat on the ground, straight, curved or sloping up a block (see `shapes::RAIL_ENDS`).
     Rail,
+    /// A chair you can sit on (Handcrafted and Macaw's Furniture idea): faces one of four ways,
+    /// with its back on the far side.
+    Chair,
+    /// A table: a top on legs; tables side by side share one top and lose the legs between them.
+    Table,
 }
 
 impl Shape {
@@ -88,6 +93,8 @@ impl Shape {
                 | Shape::Oriented
                 | Shape::Hopper
                 | Shape::Rail
+                | Shape::Chair
+                | Shape::Table
         )
     }
 }

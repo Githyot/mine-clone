@@ -15,6 +15,7 @@ mod npcs;
 mod fluids;
 mod redstone;
 mod wanderers;
+mod furniture;
 mod weather;
 mod entity;
 mod item_render;
@@ -473,6 +474,8 @@ struct Game {
     hopper_t: f32,
     /// The cart the player sits in.
     riding: Option<usize>,
+    /// The chair the player sits on.
+    seat: Option<IVec3>,
     wander: wanderers::Wanderers,
     copper: copper::Copper,
     bobber: Option<fishing::Bobber>,
@@ -774,6 +777,7 @@ impl Game {
             tnt: Vec::new(),
             hopper_t: 0.0,
             riding: None,
+            seat: None,
             wander: Default::default(),
             copper: copper::Copper::new(&reg_for_fluids),
             weather: weather::Weather::new(weather_save, seed),
@@ -1473,7 +1477,7 @@ impl Game {
         let was_ground = self.body.on_ground;
         // The camera pass for screenshots holds still.
         if self.args.screenshot.is_none() {
-            if !self.ride_step(wish, input.sneak) {
+            if !self.seat_step(input.sneak) && !self.ride_step(wish, input.sneak) {
                 self.body.step(&self.world, &input, dt);
             }
         } else {
@@ -1711,7 +1715,7 @@ impl Game {
             }
         }
         if use_ && self.place_cd <= 0.0 {
-            if self.cart_use() {
+            if self.cart_use() || self.sit_use() {
                 self.place_cd = 0.3;
             } else if self.crouch <= 0.5 && self.toggle_shaped() {
                 self.place_cd = 0.25;
@@ -1985,6 +1989,7 @@ impl Game {
             sprinting: self.sprinting,
             burning,
             hurt: self.survival && self.hurt_age < 0.3,
+            sitting: self.riding.is_some() || self.seat.is_some(),
         }
     }
 
@@ -2279,6 +2284,8 @@ impl Game {
             Shape::Slab => upper as u8,
             Shape::Stairs | Shape::Roof => facing(f.x, f.z) | if upper { 4 } else { 0 },
             Shape::Door => facing(f.x, f.z),
+            // A chair turns to face the player who puts it down.
+            Shape::Chair => facing(-f.x, -f.z),
             Shape::Trapdoor => {
                 let side = if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) ^ 2 } else { facing(-f.x, -f.z) };
                 side | if upper { 8 } else { 0 }

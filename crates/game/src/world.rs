@@ -543,7 +543,7 @@ impl World {
     /// Which sides a fence, wall or pane at `p` joins (see `voxel::shapes`).
     pub fn connections(&self, p: IVec3, shape: Shape) -> u8 {
         use voxel::shapes::{joins, CONN_NX, CONN_NZ, CONN_PX, CONN_PZ};
-        if !matches!(shape, Shape::Fence | Shape::Wall | Shape::Pane) {
+        if !matches!(shape, Shape::Fence | Shape::Wall | Shape::Pane | Shape::Table) {
             return 0;
         }
         let mut c = 0;

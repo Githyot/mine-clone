@@ -36,6 +36,8 @@ pub struct Pose {
     pub sprinting: bool,
     pub burning: bool,
     pub hurt: bool,
+    /// In a cart or on a chair.
+    pub sitting: bool,
 }
 
 /// Smoothed animation state that lives between frames.
@@ -237,6 +239,13 @@ impl Animator {
                 rot[R_ARM] = rot[R_ARM].slerp(Quat::from_rotation_x(-PI + 0.9) * Quat::from_rotation_y(0.6), prone);
                 rot[L_ARM] = rot[L_ARM].slerp(Quat::from_rotation_x(-PI + 0.9) * Quat::from_rotation_y(-0.6), prone);
             }
+        }
+        if p.sitting {
+            // Seated: thighs forward, a little apart; hands resting on the knees.
+            rot[R_LEG] = Quat::from_rotation_x(-1.45) * Quat::from_rotation_z(0.1);
+            rot[L_LEG] = Quat::from_rotation_x(-1.45) * Quat::from_rotation_z(-0.1);
+            rot[R_ARM] = Quat::from_rotation_x(-0.55 + breathe * 0.02) * Quat::from_rotation_z(-0.05);
+            rot[L_ARM] = Quat::from_rotation_x(-0.55 - breathe * 0.02) * Quat::from_rotation_z(0.05);
         }
         if p.burning {
             let f = self.time * 18.0;

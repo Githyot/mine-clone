@@ -681,17 +681,36 @@ pub fn bones_for(mob: &Mob, def: &MobDef, cam_block: IVec3, sky: f32, blk: f32) 
     let amp = (mob.walk_speed / def.speed.max(0.1)).min(1.3);
     let t = mob.walk;
     let airborne = !mob.body.on_ground && !mob.body.in_water;
+    // Livelier movement (Fresh Animations idea): a bounce in the step, slow breathing, and an
+    // idle head that looks around and tilts now and then.
+    let idle = (1.0 - amp).clamp(0.0, 1.0) * if mob.alive() && !mob.sleeping { 1.0 } else { 0.0 };
+    let ph = mob.age + mob.phase * 3.0;
+    let breathe = (ph * 1.7).sin();
+    if mob.alive() && !airborne {
+        let bob = (t * 2.0).sin().abs() * 0.6 * amp.min(1.0) + breathe * 0.12 * idle;
+        model = model * Mat4::from_translation(Vec3::new(0.0, bob, 0.0));
+    }
+    let look = ((ph * 0.31).sin() * 0.45 + (ph * 0.13).sin() * 0.3) * idle;
+    let tilt = (ph * 0.23).sin().max(0.0).powi(3) * 0.25 * idle;
     for (i, p) in def.parts.iter().enumerate().take(MAX_PARTS) {
         let pivot = Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32, p.pivot.2 as f32);
         let rot = match p.anim {
             Anim::None => Quat::IDENTITY,
-            Anim::Head => Quat::from_rotation_y(mob.head_yaw) * Quat::from_rotation_x(mob.head_pitch),
+            Anim::Head => {
+                // Walking: a small nod with each step.
+                let nod = (t * 2.0).sin() * 0.06 * amp.min(1.0) + breathe * 0.02 * idle;
+                Quat::from_rotation_y(mob.head_yaw + look) * Quat::from_rotation_x(mob.head_pitch + nod) * Quat::from_rotation_z(tilt)
+            }
             Anim::Leg(_) if mob.sleeping && mob.alive() => {
                 // Front legs tuck forward, hind legs back.
                 Quat::from_rotation_x(if p.pivot.2 >= 0 { -std::f32::consts::FRAC_PI_2 } else { std::f32::consts::FRAC_PI_2 })
             }
             Anim::Leg(k) => Quat::from_rotation_x((t + k as f32 * std::f32::consts::PI).sin() * 0.8 * amp),
-            Anim::Arm(k) => Quat::from_rotation_x((t + k as f32 * std::f32::consts::PI + std::f32::consts::PI).sin() * 0.7 * amp),
+            Anim::Arm(k) => {
+                let side = if k == 0 { 1.0 } else { -1.0 };
+                Quat::from_rotation_x((t + k as f32 * std::f32::consts::PI + std::f32::consts::PI).sin() * 0.7 * amp + breathe * 0.04 * idle * side)
+                    * Quat::from_rotation_z(side * (0.04 + breathe * 0.03) * idle)
+            }
             Anim::ArmForward(k) => Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2 + (mob.age * 2.0 + k as f32).sin() * 0.08),
             Anim::Wing(k) => {
                 let side = if k == 0 { 1.0 } else { -1.0 };
