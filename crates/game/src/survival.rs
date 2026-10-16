@@ -119,12 +119,20 @@ pub struct Survival {
     /// Recipe book: first row shown, and the item whose recipes are open (with which one).
     pub book_scroll: usize,
     pub book_view: Option<(ItemId, usize)>,
+    /// The book shows what the item is used in (U) instead of how to make it (R).
+    pub book_uses: bool,
+    pub uses_pending: bool,
+    /// Search box of the item list (JEI): its text and whether it has the keyboard.
+    pub bsearch: String,
+    pub bsearch_on: bool,
     /// Which list the tabs beside the inventory show.
     pub side: Side,
     /// R was pressed over an item: show its recipes.
     pub want_recipe: bool,
     /// Screen box where the 3D player figure goes this frame (inventory open).
     pub figure_box: Option<(f32, f32, f32, f32)>,
+    /// The slot under the mouse last frame (for the wheel).
+    pub(crate) hover_slot: Option<Slot>,
     /// Slot the right-button drag last dropped into.
     drag_last: Option<Slot>,
     /// Saplings planted by the player and seconds until they grow.
@@ -170,10 +178,15 @@ impl Survival {
             csearch: String::new(),
             cart: false,
             book_scroll: 0,
+            book_uses: false,
+            uses_pending: false,
+            bsearch: String::new(),
+            bsearch_on: false,
             book_view: None,
             side: Side::Closed,
             want_recipe: false,
             figure_box: None,
+            hover_slot: None,
             drag_last: None,
             saplings: Vec::new(),
             leaf_decay: Vec::new(),
@@ -815,6 +828,9 @@ impl Game {
         }
         if let Some(st) = self.held_stack() {
             let name = self.items.get(st.item).name.clone();
+            if crate::backpacks::slots(&name).is_some() {
+                return self.open_backpack();
+            }
             if (name == "honeycomb" || self.held_tool().is_some_and(|t| t.kind == voxel::block::ToolKind::Axe)) && self.copper_use(&name) {
                 return true;
             }
@@ -979,6 +995,11 @@ impl Game {
 
     /// Closing a screen gives back what was left on the crafting grid and the cursor.
     pub(crate) fn surv_close(&mut self) {
+        if let Open::Chest(p) = self.surv.open {
+            if crate::backpacks::is_backpack(p) {
+                self.backpack_closed(p);
+            }
+        }
         let mut back: Vec<ItemStack> = self.surv.craft.iter_mut().filter_map(|s| s.take()).collect();
         if let Some(c) = self.surv.cursor.take() {
             back.push(c);
@@ -1516,10 +1537,16 @@ impl Game {
     pub(crate) fn draw_survival_inventory(&mut self, w: f32, h: f32, mouse: (f32, f32)) {
         let s = self.ui.scale;
         let cell = 18.0 * s;
-        let (pw, ph) = (176.0 * s, 166.0 * s);
+        let open = self.surv.open;
+        // Containers with more than three rows (big backpacks) push the inventory down.
+        let rows = match open {
+            Open::Chest(_) => self.open_container_inv().map(|i| i.slots.len().div_ceil(9)).unwrap_or(3),
+            _ => 3,
+        };
+        let extra = rows.saturating_sub(3) as f32 * 18.0;
+        let (pw, ph) = (176.0 * s, (166.0 + extra) * s);
         let x0 = ((w - pw) / 2.0).floor();
         let y0 = ((h - ph) / 2.0).floor();
-        let open = self.surv.open;
         // Furnace and chest close when the block is gone.
         if let Open::Furnace(p) | Open::Chest(p) = open {
             if !self.surv.containers.contains_key(&p) {
@@ -1539,12 +1566,12 @@ impl Game {
 
         let mut slots: Vec<(Slot, f32, f32)> = Vec::new();
         for i in 0..27 {
-            slots.push((Slot::Inv(9 + i), x0 + (8 + (i % 9) * 18) as f32 * s, y0 + (84 + (i / 9) * 18) as f32 * s));
+            slots.push((Slot::Inv(9 + i), x0 + (8 + (i % 9) * 18) as f32 * s, y0 + (84.0 + extra + ((i / 9) * 18) as f32) * s));
         }
         for i in 0..9 {
-            slots.push((Slot::Inv(i), x0 + (8 + i * 18) as f32 * s, y0 + 142.0 * s));
+            slots.push((Slot::Inv(i), x0 + (8 + i * 18) as f32 * s, y0 + (142.0 + extra) * s));
         }
-        self.ui.label(x0 + 8.0 * s, y0 + 73.0 * s, "Inventário", dark, s);
+        self.ui.label(x0 + 8.0 * s, y0 + (73.0 + extra) * s, "Inventário", dark, s);
         let n = self.surv.grid_size();
         match open {
             Open::Craft | Open::Table => {
@@ -1599,7 +1626,9 @@ impl Game {
             Open::Chest(p) => {
                 let n = self.open_container_inv().map(|i| i.slots.len()).unwrap_or(CHEST_SIZE);
                 let id = self.world.block_or_air(p);
-                let title = if n == CHEST_SIZE { "Baú".to_string() } else { self.reg.get(self.reg.get(id).base).display_name.clone() };
+                let title = if crate::backpacks::is_backpack(p) {
+                    "Mochila".to_string()
+                } else if n == CHEST_SIZE { "Baú".to_string() } else { self.reg.get(self.reg.get(id).base).display_name.clone() };
                 self.ui.label(x0 + 8.0 * s, y0 + 6.0 * s, &title, dark, s);
                 for i in 0..n {
                     // A row of five (hopper), a 3×3 square (dropper, dispenser) or rows of nine.
@@ -1631,6 +1660,7 @@ impl Game {
                 item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &st, sx, sy, 16.0 * s);
             }
         }
+        self.surv.hover_slot = hovered;
         // R over any item opens its recipes in the book.
         if self.surv.want_recipe && hovered.is_some() {
             self.surv.want_recipe = false;
@@ -1641,10 +1671,12 @@ impl Game {
             };
             if let Some(st) = st {
                 self.surv.book_view = Some((st.item, 0));
+                self.surv.book_uses = self.surv.uses_pending;
             }
         }
         let over_book = self.draw_recipe_book(x0, y0, pw, ph, w, h, mouse);
         self.surv.want_recipe = false;
+        self.surv.uses_pending = false;
         // Clicks.
         let shift = self.keys.contains(&winit::keyboard::KeyCode::ShiftLeft) || self.keys.contains(&winit::keyboard::KeyCode::ShiftRight);
         let inside = over_book || (mouse.0 >= x0 && mouse.0 < x0 + pw && mouse.1 >= y0 && mouse.1 < y0 + ph);
@@ -1719,7 +1751,7 @@ impl Game {
         if let Some(c) = self.surv.cursor {
             item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &c, mouse.0 - 8.0 * s, mouse.1 - 8.0 * s, 16.0 * s);
         }
-        self.ui.text_centered(w / 2.0, y0 + ph + 4.0 * s, "Esq.: pegar/pôr  Dir.: metade/um  Shift: mover  1-9: trocar  R: receita", WHITE);
+        self.ui.text_centered(w / 2.0, y0 + ph + 4.0 * s, "Esq.: pegar  Dir.: metade  Shift: mover  Roda: 1 a 1  R: receita  U: usos", WHITE);
     }
 
     pub(crate) fn close_survival_screen(&mut self) {
@@ -1917,10 +1949,65 @@ impl Game {
         }
     }
 
+    /// The mouse wheel over a stack (Mouse Tweaks): down sends one item to the other side
+    /// (container and inventory, or hotbar and the rest), up pulls one of the same back.
+    /// True when the wheel was used for it.
+    pub(crate) fn wheel_move(&mut self, up: bool) -> bool {
+        let Some(slot) = self.surv.hover_slot else { return false };
+        let Some(st) = self.slot_get(slot) else { return false };
+        if self.surv.cursor.is_some() || matches!(slot, Slot::CraftOut | Slot::Armor(_)) || self.surv.open == Open::Shop {
+            return false;
+        }
+        let container = matches!(self.surv.open, Open::Chest(_) | Open::Furnace(_));
+        // Slots on the other side, in the order they fill.
+        let other: Vec<Slot> = match slot {
+            Slot::Inv(_) if container => (0..self.open_container_inv().map(|c| c.slots.len()).unwrap_or(0)).map(Slot::Cont).collect(),
+            Slot::Inv(i) if i < 9 => (9..INV_SIZE).map(Slot::Inv).collect(),
+            Slot::Inv(_) => (0..9).map(Slot::Inv).collect(),
+            _ => (0..9).chain(9..INV_SIZE).map(Slot::Inv).collect(),
+        };
+        let one = ItemStack { count: 1, ..st };
+        let max = self.items.get(st.item).max_stack.max(1);
+        if up {
+            // Pull one of the same item into this stack.
+            if st.count >= max {
+                return true;
+            }
+            for o in other {
+                if let Some(x) = self.slot_get(o) {
+                    if x.stacks_with(&st) {
+                        self.slot_set(o, if x.count > 1 { Some(ItemStack { count: x.count - 1, ..x }) } else { None });
+                        self.slot_set(slot, Some(ItemStack { count: st.count + 1, ..st }));
+                        return true;
+                    }
+                }
+            }
+            return true;
+        }
+        // Push one out: onto a matching stack first, else the first empty slot.
+        let target = other
+            .iter()
+            .copied()
+            .find(|&o| self.slot_get(o).is_some_and(|x| x.stacks_with(&one) && x.count < max))
+            .or_else(|| other.iter().copied().find(|&o| self.slot_get(o).is_none()));
+        if let Some(o) = target {
+            let now = self.slot_get(o).map(|x| ItemStack { count: x.count + 1, ..x }).unwrap_or(one);
+            self.slot_set(o, Some(now));
+            self.slot_set(slot, if st.count > 1 { Some(ItemStack { count: st.count - 1, ..st }) } else { None });
+        }
+        true
+    }
+
     fn click_craft_output(&mut self, shift: bool) {
         let mut crafted = 0;
         loop {
-            let Some(r) = self.craft_result() else { break };
+            let Some(mut r) = self.craft_result() else { break };
+            // An upgraded backpack is the same backpack: it keeps its number (and contents).
+            if crate::backpacks::slots(&self.items.get(r.item).name).is_some() {
+                if let Some(old) = self.surv.craft.iter().flatten().find(|s| crate::backpacks::slots(&self.items.get(s.item).name).is_some()) {
+                    r.damage = old.damage;
+                }
+            }
             if shift {
                 // Craft as many as fit into the inventory.
                 let mut test = self.surv.inv.clone();
@@ -2046,7 +2133,28 @@ impl Game {
                 let items = self.surv.inv.slots.iter().flatten().copied().collect();
                 self.surv.corpses.push(Corpse { pos: Vec3::new(at.x, y as f32, at.z), yaw: self.yaw + 2.0, items });
             }
-            Some("items") => self.surv.side = Side::Items,
+            Some("items") => {
+                self.surv.side = Side::Items;
+                // Test hooks: a search, and the uses of an item.
+                if let Ok(q) = std::env::var("MC_SEARCH") {
+                    self.surv.bsearch = q;
+                }
+                if let Some(id) = std::env::var("MC_USES").ok().and_then(|n| self.items.id(&n)) {
+                    self.surv.book_view = Some((id, 0));
+                    self.surv.book_uses = true;
+                }
+            }
+            Some("backpack") => {
+                let sel = self.selected;
+                self.surv.inv.slots[sel] = self.items.id("diamond_backpack").map(|i| ItemStack::new(i, 1));
+                self.open_backpack();
+                let p = IVec3::new(crate::backpacks::BACKPACK_X, 0, 1);
+                if let Some(Container::Chest(inv)) = self.surv.containers.get_mut(&p) {
+                    for (i, n) in ["diamond", "iron_ingot", "bread", "oak_log", "torch", "copper_block"].iter().enumerate() {
+                        inv.slots[i * 8 + 2] = self.items.id(n).map(|id| ItemStack::new(id, 5 + i as u8 * 7));
+                    }
+                }
+            }
             Some("build") => {
                 self.surv.side = Side::Build;
                 // A table nearby so the 3×3 recipes show.
@@ -2239,6 +2347,28 @@ enum BookRecipe {
 }
 
 impl Game {
+    /// Recipes that use the item (JEI's U).
+    fn uses_for(&self, item: ItemId) -> Vec<BookRecipe> {
+        let mut out = Vec::new();
+        for r in &self.recipes.shaped {
+            if r.cells.iter().flatten().any(|c| c.contains(&item)) {
+                out.push(BookRecipe::Grid { w: r.w, cells: r.cells.clone(), result: r.result });
+            }
+        }
+        for r in &self.recipes.shapeless {
+            if r.ingredients.iter().any(|c| c.contains(&item)) {
+                let w = if r.ingredients.len() > 4 { 3 } else { 2 };
+                out.push(BookRecipe::Grid { w, cells: r.ingredients.iter().map(|i| Some(i.clone())).collect(), result: r.result });
+            }
+        }
+        for r in &self.recipes.smelting {
+            if r.input.contains(&item) {
+                out.push(BookRecipe::Smelt { input: r.input.clone(), result: r.result });
+            }
+        }
+        out
+    }
+
     fn recipes_for(&self, item: ItemId) -> Vec<BookRecipe> {
         let mut out = Vec::new();
         for r in &self.recipes.shaped {
@@ -2297,9 +2427,20 @@ impl Game {
         let bx = x0 + pw + 27.0 * s;
         let cols = (((w - bx - 4.0 * s) / cell).floor() as usize).min(9);
         if self.surv.side != Side::Closed && cols >= 2 {
-            let rows = ((ph - 14.0 * s) / cell).floor() as usize;
             let build = self.surv.side == Side::Build;
-            let (list, station) = if build { self.buildable() } else { ((1..self.items.items.len() as ItemId).filter(|&i| self.items.get(i).name != "fishing_bobber").map(|i| (Vec::new(), ItemStack::new(i, 1))).collect(), "") };
+            // The item list keeps a line at the bottom for the search box.
+            let rows = ((ph - if build { 14.0 } else { 27.0 } * s) / cell).floor() as usize;
+            let q = self.surv.bsearch.to_lowercase();
+            let (list, station) = if build {
+                self.buildable()
+            } else {
+                let found = (1..self.items.items.len() as ItemId)
+                    .filter(|&i| self.items.get(i).name != "fishing_bobber")
+                    .filter(|&i| q.is_empty() || self.items.get(i).display_name.to_lowercase().contains(&q) || self.items.get(i).name.contains(&q))
+                    .map(|i| (Vec::new(), ItemStack::new(i, 1)))
+                    .collect();
+                (found, "")
+            };
             let total_rows = list.len().div_ceil(cols).max(1);
             let max_scroll = total_rows.saturating_sub(rows);
             self.surv.book_scroll = self.surv.book_scroll.min(max_scroll);
@@ -2328,10 +2469,23 @@ impl Game {
                         tip = Some(i);
                         if std::mem::take(&mut self.surv.want_recipe) || (click && !build) {
                             self.surv.book_view = Some((result.item, 0));
+                            self.surv.book_uses = self.surv.uses_pending;
                         }
                     }
                     item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, result, sx + s, sy + s, 16.0 * s);
                 }
+            }
+            if !build {
+                let (sx, sy, sw, sh) = (bx + 2.0 * s, y0 + ph - 13.0 * s, bw - 4.0 * s, 11.0 * s);
+                let hov = mouse.0 >= sx && mouse.0 < sx + sw && mouse.1 >= sy && mouse.1 < sy + sh;
+                if click {
+                    self.surv.bsearch_on = hov;
+                }
+                self.ui.rect(sx, sy, sw, sh, if self.surv.bsearch_on { [255, 255, 255, 255] } else { [120, 120, 120, 255] });
+                self.ui.rect(sx + s, sy + s, sw - 2.0 * s, sh - 2.0 * s, [0, 0, 0, 255]);
+                let blink = if self.surv.bsearch_on && (self.now * 2.0) as i64 % 2 == 0 { "_" } else { "" };
+                let text = if self.surv.bsearch.is_empty() && !self.surv.bsearch_on { "Buscar...".to_string() } else { format!("{}{}", self.surv.bsearch, blink) };
+                self.ui.text(sx + 3.0 * s, sy + 2.0 * s, &text, if self.surv.bsearch.is_empty() { [150, 150, 150, 255] } else { WHITE });
             }
             if let Some(i) = tip {
                 let (needs, result) = list[i].clone();
@@ -2372,7 +2526,7 @@ impl Game {
         }
         // Recipes of the chosen item on the left.
         let Some((item, idx)) = self.surv.book_view else { return over };
-        let list = self.recipes_for(item);
+        let list = if self.surv.book_uses { self.uses_for(item) } else { self.recipes_for(item) };
         let pw2 = 124.0 * s;
         let px = x0 - pw2 - 4.0 * s;
         if px < 0.0 {
@@ -2383,6 +2537,9 @@ impl Game {
         let in_panel = mouse.0 >= px && mouse.0 < px + pw2 && mouse.1 >= y0 && mouse.1 < y0 + ph2;
         over |= in_panel;
         let mut name = self.items.get(item).display_name.clone();
+        if self.surv.book_uses {
+            name = format!("Usos: {name}");
+        }
         while name.chars().count() > 3 && self.ui.text_width(&name, s) > pw2 - 16.0 * s {
             name.pop();
         }

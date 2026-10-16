@@ -144,6 +144,11 @@
     // Wax for copper. Until there are bees, flowers drop it now and then.
     (name: "honeycomb", display_name: Some("Favo de Mel")),
     (name: "minecart", display_name: Some("Carrinho de Mina"), max_stack: Some(1)),
+    // Backpacks (ideas from Sophisticated Backpacks): right click opens them; upgrades keep the contents.
+    (name: "leather_backpack", display_name: Some("Mochila de Couro"), max_stack: Some(1)),
+    (name: "iron_backpack", display_name: Some("Mochila de Ferro"), max_stack: Some(1)),
+    (name: "gold_backpack", display_name: Some("Mochila de Ouro"), max_stack: Some(1)),
+    (name: "diamond_backpack", display_name: Some("Mochila de Diamante"), max_stack: Some(1)),
     (name: "flint", display_name: Some("Pederneira")),
     (name: "string", display_name: Some("Linha")),
     (name: "feather", display_name: Some("Pena")),

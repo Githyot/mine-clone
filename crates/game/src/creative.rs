@@ -113,7 +113,7 @@ impl Game {
         if name == "fishing_bobber" {
             return None;
         }
-        if name == "flint_and_steel" || name == "minecart" {
+        if name == "flint_and_steel" || name == "minecart" || name.ends_with("_backpack") {
             return Some(Tab::Tools);
         }
         if let Some(t) = &it.tool {
@@ -187,6 +187,18 @@ impl Game {
 
     /// Keys while the search tab has the text box: letters go into it. Returns true if used.
     pub(crate) fn creative_key(&mut self, code: KeyCode) -> bool {
+        // The search box of the survival item list has the keyboard.
+        if self.screen == Screen::Inventory && self.survival && self.surv.bsearch_on {
+            match code {
+                KeyCode::Escape | KeyCode::Enter => self.surv.bsearch_on = false,
+                KeyCode::Backspace => {
+                    self.surv.bsearch.pop();
+                }
+                _ => {}
+            }
+            self.surv.book_scroll = 0;
+            return true;
+        }
         if !self.creative_screen_open() || TABS[self.surv.ctab] != Tab::Search || code == KeyCode::Escape {
             return false;
         }
@@ -198,6 +210,15 @@ impl Game {
     }
 
     pub(crate) fn creative_type(&mut self, text: &str) {
+        if self.screen == Screen::Inventory && self.survival && self.surv.bsearch_on {
+            for c in text.chars() {
+                if !c.is_control() && self.surv.bsearch.chars().count() < 20 {
+                    self.surv.bsearch.push(c);
+                }
+            }
+            self.surv.book_scroll = 0;
+            return;
+        }
         if !self.creative_screen_open() || TABS[self.surv.ctab] != Tab::Search {
             return;
         }

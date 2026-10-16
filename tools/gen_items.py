@@ -754,6 +754,32 @@ def minecart_item():
     return outline(from_map(rows, pmap(pal("#1e1e22", "#2e2e34", "#4a4a52", "#6e6e78", "#9a9aa4", "#3a3a40"), "123456")))
 
 
+def backpack(trim):
+    """Leather pack with a flap, two straps and a metal trim for the tier."""
+    rows = [
+        "................",
+        "......1111......",
+        ".....1....1.....",
+        "....11111111....",
+        "...1222222221...",
+        "...1233333321...",
+        "...12TTTTTT21...",
+        "..112333333211..",
+        "..142333K33241..",
+        "..142333333241..",
+        "..142344443241..",
+        "..142344443241..",
+        "..142333333241..",
+        "...1222222221...",
+        "...1111111111...",
+        "................",
+    ]
+    m = pmap(pal("#2a1608", "#5e3a1a", "#7e522a", "#3a2412"), "1234")
+    t = pal(*trim)
+    m.update({"T": t[1], "K": t[0]})
+    return outline(from_map(rows, m))
+
+
 def string_item():
     img = canvas()
     c1, c2 = hexrgb("#f4f4f0"), hexrgb("#c8c8c2")
@@ -1593,6 +1619,10 @@ def item_registry():
         "redstone": redstone, "flint": flint, "string": string_item,
         "flint_and_steel": flint_and_steel,
         "honeycomb": honeycomb, "minecart": minecart_item,
+        "leather_backpack": lambda: backpack(("#5a3a1a", "#a0703a")),
+        "iron_backpack": lambda: backpack(("#7a7a80", "#d0d0d6")),
+        "gold_backpack": lambda: backpack(("#a07810", "#f4d050")),
+        "diamond_backpack": lambda: backpack(("#1a8a8a", "#6ae8e0")),
         "feather": feather, "leather": leather, "bone": bone,
         "gunpowder": gunpowder, "rotten_flesh": rotten_flesh,
         "clay_ball": clay_ball, "brick": brick,

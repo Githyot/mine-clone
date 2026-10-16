@@ -233,6 +233,11 @@
         (pattern: ["I I", "IPI", "IRI"], key: {'I': "iron_ingot", 'P': "stone_pressure_plate", 'R': "redstone"}, result: "detector_rail", count: 6),
         (pattern: ["ISI", "ITI", "ISI"], key: {'I': "iron_ingot", 'S': "stick", 'T': "redstone_torch"}, result: "activator_rail", count: 6),
         (pattern: ["I I", "III"], key: {'I': "iron_ingot"}, result: "minecart"),
+        // Backpacks.
+        (pattern: ["LSL", "LCL", "LLL"], key: {'L': "leather", 'S': "string", 'C': "chest"}, result: "leather_backpack"),
+        (pattern: ["III", "IBI", "III"], key: {'I': "iron_ingot", 'B': "leather_backpack"}, result: "iron_backpack"),
+        (pattern: ["III", "IBI", "III"], key: {'I': "gold_ingot", 'B': "iron_backpack"}, result: "gold_backpack"),
+        (pattern: ["III", "IBI", "III"], key: {'I': "diamond", 'B': "gold_backpack"}, result: "diamond_backpack"),
     ],
     shapeless: [
         (ingredients: ["oak_log"], result: "oak_planks", count: 4),

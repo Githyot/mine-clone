@@ -4,6 +4,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod audio;
+mod backpacks;
 mod controller;
 mod copper;
 mod creative;
@@ -344,7 +345,7 @@ fn ensure_folders(base: &Path, settings: &Settings) {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Screen {
+pub(crate) enum Screen {
     Loading,
     Playing,
     Paused,
@@ -1054,6 +1055,10 @@ impl Game {
             KeyCode::F5 => self.camera_mode = (self.camera_mode + 1) % 3,
             KeyCode::KeyZ if self.screen == Screen::Playing => self.prone = !self.prone,
             KeyCode::KeyR if self.screen == Screen::Inventory && self.survival => self.surv.want_recipe = true,
+            KeyCode::KeyU if self.screen == Screen::Inventory && self.survival => {
+                self.surv.want_recipe = true;
+                self.surv.uses_pending = true;
+            }
             KeyCode::KeyQ if self.screen == Screen::Playing => {
                 let all = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
                 self.surv_throw(all);
@@ -1139,7 +1144,8 @@ impl Game {
             }
             Screen::Inventory if self.creative_screen_open() => self.creative_scroll(lines > 0.0),
             Screen::Inventory => {
-                if lines > 0.0 {
+                if self.wheel_move(lines > 0.0) {
+                } else if lines > 0.0 {
                     self.surv.book_scroll = self.surv.book_scroll.saturating_sub(1);
                 } else {
                     self.surv.book_scroll += 1;
