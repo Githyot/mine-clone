@@ -66,6 +66,8 @@ pub enum Shape {
     Chair,
     /// A table: a top on legs; tables side by side share one top and lose the legs between them.
     Table,
+    /// A lantern standing on the ground (variant 0) or hanging from a chain (1).
+    Lantern,
 }
 
 impl Shape {
@@ -95,6 +97,7 @@ impl Shape {
                 | Shape::Rail
                 | Shape::Chair
                 | Shape::Table
+                | Shape::Lantern
         )
     }
 }

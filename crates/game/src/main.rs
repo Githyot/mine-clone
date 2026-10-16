@@ -2286,6 +2286,8 @@ impl Game {
             Shape::Door => facing(f.x, f.z),
             // A chair turns to face the player who puts it down.
             Shape::Chair => facing(-f.x, -f.z),
+            // Under a block it hangs on a chain.
+            Shape::Lantern => (hit.normal.y < 0) as u8,
             Shape::Trapdoor => {
                 let side = if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) ^ 2 } else { facing(-f.x, -f.z) };
                 side | if upper { 8 } else { 0 }

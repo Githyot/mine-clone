@@ -549,6 +549,17 @@ impl Game {
         put(w, 4, 0, 10, "cherry_chair", 2);
         put(w, -4, 0, 9, "acacia_table", 0);
         put(w, -4, 0, 10, "jungle_chair", 2);
+        put(w, 0, 1, 8, "lantern", 0);
+        put(w, 4, 1, 9, "copper_lantern", 0);
+        put(w, -4, 1, 9, "paper_lamp", 0);
+        // A wall of windows behind the table, a lantern hanging under a beam.
+        for (k, wood) in ["oak", "birch", "spruce", "jungle", "acacia", "dark_oak", "cherry"].iter().enumerate() {
+            put(w, k as i32 - 3, 0, 11, &format!("{wood}_window"), 0);
+            put(w, k as i32 - 3, 1, 11, &format!("{wood}_window"), 0);
+        }
+        put(w, 7, 3, 8, "oak_planks", 0);
+        put(w, 7, 2, 8, "lantern", 1);
+        put(w, 7, 0, 8, "red_paper_lamp", 0);
         // A crafter facing you with planks in it, and a lever to work it.
         put(w, -1, 0, 18, "crafter", 2);
         put(w, -2, 0, 18, "lever", 3);

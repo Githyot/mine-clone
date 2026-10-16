@@ -29,6 +29,7 @@ pub fn variant_count(shape: Shape) -> u8 {
         Shape::Hopper => 5,
         // Chairs: the way you look when sitting.
         Shape::Chair => 4,
+        Shape::Lantern => 2,
         // Rails: shape 0..9 (see `RAIL_ENDS`); powered, detector and activator rails only
         // bend into 0..5 and add 10 when powered.
         Shape::Rail => 16,
@@ -240,6 +241,14 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
                 [4, 12, 12, 12, 15, 13],
             ] {
                 out.push(rotate(b, f));
+            }
+        }
+        Shape::Lantern => {
+            let y = if variant & 1 != 0 { 2 } else { 0 };
+            out.push([5, y, 5, 11, y + 7, 11]);
+            out.push([6, y + 7, 6, 10, y + 9, 10]);
+            if variant & 1 != 0 {
+                out.push([7, 11, 7, 9, 16, 9]);
             }
         }
         Shape::Table => {

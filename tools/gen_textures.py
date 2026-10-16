@@ -1404,6 +1404,7 @@ def build_registry():
         reg[name] = lambda n=name: terracotta(n)
     reg.update(redstone_registry())
     reg.update(phase4_registry())
+    reg.update(decor_registry())
     return reg
 
 
@@ -1931,6 +1932,79 @@ def phase4_registry():
         reg[f"{sp}copper_trapdoor"] = lambda k=k: copper_trapdoor(k)
         reg[f"{sp}copper_bulb"] = lambda k=k: copper_bulb(k)
         reg[f"{sp}copper_bulb_lit"] = lambda k=k: copper_bulb(k, True)
+    return reg
+
+
+def lantern_side(metal):
+    """Lantern sides: a metal frame round a warm glow, drawn where the boxes take their faces."""
+    img = canvas()
+    m = metal
+    glow = pal("#d9822b", "#f0a548", "#ffc96b", "#ffe39a")
+    for y in range(5, 16):
+        for x in range(5, 11):
+            d = abs(x - 7.5) + abs(y - 11.5) * 0.6
+            put(img, x, y, glow[max(0, 3 - int(d))])
+    for y in range(5, 16):
+        put(img, 5, y, m[1])
+        put(img, 10, y, m[0])
+    for x in range(5, 11):
+        put(img, x, 5, m[2])
+        put(img, x, 6, m[1])
+        put(img, x, 15, m[0])
+    # the chain above
+    for y in range(0, 5):
+        put(img, 7, y, m[1 + (y % 2)])
+        put(img, 8, y, m[(y + 1) % 2])
+    return img
+
+
+def lantern_top(metal):
+    img = canvas()
+    for y in range(4, 12):
+        for x in range(4, 12):
+            put(img, x, y, metal[1])
+    for y in range(6, 10):
+        for x in range(6, 10):
+            put(img, x, y, metal[2] if (x + y) % 2 else metal[0])
+    put(img, 7, 7, metal[0])
+    put(img, 8, 8, metal[0])
+    return img
+
+
+def paper_lamp(paper, frame):
+    """A paper lamp block: a lit paper panel in a thin wooden frame with a cross brace."""
+    rng = rng_for("paper_lamp" + paper[0].tobytes().hex())
+    f = normalize(value_noise(rng, 8))
+    img = from_rgb(shade(f * 0.6 + 0.3, paper, 0.4))
+    for i in range(N):
+        for (x, y) in ((i, 0), (i, 15), (0, i), (15, i), (i, 7), (7, i)):
+            put(img, x, y, frame[1] if (x + y) % 3 else frame[0])
+    return img
+
+
+def wood_window(wood):
+    """Glass in a wooden frame with a cross of glazing bars (Macaw's Windows idea)."""
+    img = glass()
+    p = WOODS[wood]["plank"]
+    for i in range(N):
+        for (x, y) in ((i, 0), (i, 1), (i, 14), (i, 15), (0, i), (1, i), (14, i), (15, i), (i, 7), (i, 8), (7, i), (8, i)):
+            put(img, x, y, p[2] if x in (0, 7) or y in (0, 7) else p[1])
+    return img
+
+
+def decor_registry():
+    iron = pal("#2f2f33", "#4a4a50", "#6c6c74")
+    copper = pal("#6b3a24", "#a2593a", "#c87a52")
+    reg = {
+        "lantern": lambda: lantern_side(iron),
+        "lantern_top": lambda: lantern_top(iron),
+        "copper_lantern": lambda: lantern_side(copper),
+        "copper_lantern_top": lambda: lantern_top(copper),
+        "paper_lamp": lambda: paper_lamp(pal("#e8d8b0", "#f2e6c4", "#fbf3dc"), pal("#4a3520", "#6a5033")),
+        "red_paper_lamp": lambda: paper_lamp(pal("#b8402e", "#cf5a3c", "#e2784e"), pal("#2e1e0e", "#463018")),
+    }
+    for wood in WOODS:
+        reg[f"{wood}_window"] = lambda w=wood: wood_window(w)
     return reg
 
 
