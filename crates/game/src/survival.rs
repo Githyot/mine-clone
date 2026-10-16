@@ -2342,6 +2342,32 @@ impl Game {
     }
 
     /// 0..1 light given off by what the player holds (a torch, glowstone...).
+    /// The brightest moving lights near the eye: glowing items on the ground and burning
+    /// mobs (LambDynamicLights idea).
+    pub(crate) fn dynamic_lights(&self, eye: Vec3, block: IVec3) -> [[f32; 4]; 8] {
+        let mut found: Vec<(f32, Vec3, f32)> = Vec::new();
+        for d in &self.surv.drops {
+            let id = self.items.get(d.stack.item).places.unwrap_or(AIR);
+            let l = self.reg.light_of(id) as f32 / 15.0;
+            if l > 0.0 {
+                found.push((d.body.pos.distance(eye), d.body.pos + Vec3::Y * 0.2, l));
+            }
+        }
+        for m in &self.mobs.list {
+            if m.on_fire > 0.0 && m.alive() {
+                found.push((m.body.pos.distance(eye), m.body.pos + Vec3::Y * 0.8, 0.85));
+            }
+        }
+        found.retain(|f| f.0 < 48.0);
+        found.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut out = [[0.0; 4]; 8];
+        for (o, (_, p, l)) in out.iter_mut().zip(found) {
+            let r = p - block.as_vec3();
+            *o = [r.x, r.y, r.z, l];
+        }
+        out
+    }
+
     pub(crate) fn hand_light_level(&self) -> f32 {
         let id = self.held_stack().and_then(|s| self.items.get(s.item).places).unwrap_or(AIR);
         self.reg.light_of(id) as f32 / 15.0

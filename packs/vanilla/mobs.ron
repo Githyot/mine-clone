@@ -465,4 +465,18 @@
         ],
         layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.3), (part: 2, inflate: 0.3), (part: 3, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)],
     ),
+    (
+        name: "mutant_skeleton", display_name: "Esqueleto Mutante", kind: Hostile, health: 80, speed: 2.6,
+        drops: [(item: "bone", min: 4, max: 9), (item: "arrow", min: 6, max: 12), (item: "bow"), (item: "diamond", chance: 0.3), (item: "emerald", min: 1, max: 3)], xp: 40,
+        width: 1.1, height: 3.6, spawn: Never, attack: 5, ranged: true, scale: 1.8, burns_in_daylight: true,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (2, 12, 2), origin: (-6, 12, -1), uv: (40, 16), anim: ArmForward(0), pivot: (-5, 22, 0)),
+            (size: (2, 12, 2), origin: (4, 12, -1), uv: (40, 16), anim: Arm(1), pivot: (5, 22, 0)),
+            (size: (2, 12, 2), origin: (-3, 0, -1), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (2, 12, 2), origin: (1, 0, -1), uv: (0, 16), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 1, inflate: 0.5)],
+    ),
 ])

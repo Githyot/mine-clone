@@ -558,8 +558,18 @@ impl Game {
             put(w, k as i32 - 3, 1, 11, &format!("{wood}_window"), 0);
         }
         put(w, 7, 3, 8, "oak_planks", 0);
-        put(w, 7, 2, 8, "lantern", 1);
-        put(w, 7, 0, 8, "red_paper_lamp", 0);
+        put(w, 7, 2, 8, "chain", 0);
+        put(w, 7, 1, 8, "lantern", 1);
+        put(w, 7, 0, 6, "red_paper_lamp", 0);
+        // A rope bridge over a dip, and a row of iron bars.
+        for z in 3..=10 {
+            put(w, -8, 0, z, "rope_bridge", 0);
+            put(w, -8, -1, z, "air", 0);
+        }
+        for z in 13..=16 {
+            put(w, 7, 0, z, "iron_bars", 0);
+            put(w, 7, 1, z, "iron_bars", 0);
+        }
         // A crafter facing you with planks in it, and a lever to work it.
         put(w, -1, 0, 18, "crafter", 2);
         put(w, -2, 0, 18, "lever", 3);

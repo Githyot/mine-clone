@@ -1518,6 +1518,7 @@ RECOLORED = {
         ZSKIN=pal("#2e4430", "#3a5438", "#466444", "#52724e", "#5e7e58"),
         ZSHIRT=pal("#2a1a14", "#36221a", "#422a20", "#4e3226"),
         ZPANTS=pal("#141420", "#1c1c2c", "#242438", "#2c2c44"))),
+    "mutant_skeleton": ("skeleton", dict(BONE=pal("#5e5444", "#7a6e58", "#94876c", "#ab9e80", "#bdb192"))),
     "polar_bear": ("bear", dict(
         BEAR=pal("#b8b4a8", "#c8c4b8", "#d6d2c8", "#e2dfd6", "#ecead2", "#f6f4ec"),
         BEAR_MUZZLE=pal("#a8a498", "#bab6aa", "#ccc8bc", "#dcd8cc"))),
@@ -1988,7 +1989,7 @@ def main():
     order = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "stalker", "spider",
              "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian",
              "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
-             "goblin_trader", "mutant_zombie", "npc_guard", "polar_bear", "penguin", "boar", "squirrel"]
+             "goblin_trader", "mutant_zombie", "npc_guard", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols

@@ -14,6 +14,8 @@ pub struct Wanderers {
     goblin_left: f32,
     /// Seconds until the mutant can leap again.
     slam_cd: f32,
+    /// Seconds until the mutant skeleton's next volley.
+    volley_cd: f32,
     /// A leap in the air: lands with a slam.
     leaping: bool,
     seed: u64,
@@ -61,6 +63,7 @@ impl Game {
         }
         self.update_goblin(dt);
         self.update_mutant(dt);
+        self.update_mutant_skeleton(dt);
         self.wander.check_t -= dt;
         if self.wander.check_t > 0.0 {
             return;
@@ -77,10 +80,12 @@ impl Game {
                 }
             }
         }
-        // On a dark night in survival, rarely, a mutant zombie comes looking.
-        if self.survival && daylight < 0.2 && self.mob_index("mutant_zombie").is_none() && self.wander.rand() < 0.04 {
+        // On a dark night in survival, rarely, a mutant zombie or skeleton comes looking.
+        let none = self.mob_index("mutant_zombie").is_none() && self.mob_index("mutant_skeleton").is_none();
+        if self.survival && daylight < 0.2 && none && self.wander.rand() < 0.04 {
+            let which = if self.wander.rand() < 0.5 { "mutant_zombie" } else { "mutant_skeleton" };
             if let Some(at) = self.spot_near(me, 20.0, 30.0, false) {
-                if self.mobs.spawn("mutant_zombie", at) {
+                if self.mobs.spawn(which, at) {
                     self.toast("Algo muito grande ronda por aqui...", 4.0);
                 }
             }
@@ -136,5 +141,31 @@ impl Game {
             self.wander.leaping = true;
             self.wander.slam_cd = 6.0;
         }
+    }
+
+    /// The mutant skeleton: besides its normal shots, every few seconds it looses a fan of five
+    /// arrows at the player.
+    fn update_mutant_skeleton(&mut self, dt: f32) {
+        let Some(i) = self.mob_index("mutant_skeleton") else { return };
+        self.wander.volley_cd -= dt;
+        let m = &self.mobs.list[i];
+        let from = m.body.pos + Vec3::Y * 2.9;
+        let target = self.body.pos + Vec3::Y * 0.9;
+        let d = target - from;
+        let flat = Vec3::new(d.x, 0.0, d.z);
+        if self.wander.volley_cd > 0.0 || !m.aggro || flat.length() > 20.0 || flat.length() < 3.0 {
+            return;
+        }
+        self.wander.volley_cd = 7.0;
+        let speed = 18.0;
+        let t = (flat.length() / speed).max(0.05);
+        let side = Vec3::new(-flat.z, 0.0, flat.x).normalize_or_zero();
+        for k in -2..=2 {
+            let aim = target + side * k as f32 * 1.4;
+            let d = aim - from;
+            let vel = Vec3::new(d.x / t, d.y / t + 0.5 * crate::mobs::ARROW_GRAVITY * t, d.z / t);
+            self.mobs.arrows.push(crate::mobs::Arrow { pos: from, vel, age: 0.0, stuck: false, damage: 4.0 });
+        }
+        self.sfx(Sfx::Place(crate::audio::Material::Cloth));
     }
 }

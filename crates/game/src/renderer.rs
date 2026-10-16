@@ -38,6 +38,9 @@ pub struct Globals {
     pub hand_light: [f32; 4],
     /// x: rain 0..1, y: lightning flash 0..1.
     pub weather: [f32; 4],
+    /// Moving lights (LambDynamicLights idea): torches lying on the ground, burning mobs.
+    /// xyz relative to the camera's block, w: level 0..1 (0 = unused).
+    pub dyn_lights: [[f32; 4]; 8],
 }
 
 #[repr(C)]

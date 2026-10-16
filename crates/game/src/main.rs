@@ -1194,6 +1194,8 @@ impl Game {
             }
             if self.weather.snowing_here && self.weather.rain > 0.9 {
                 self.settle_snow(dt);
+            } else if self.weather.rain > 0.3 {
+                self.rain_splashes(dt);
             }
             self.update_leaf_decay(dt);
             self.update_fishing(dt);
@@ -2293,6 +2295,8 @@ impl Game {
             Shape::Chair => facing(-f.x, -f.z),
             // Under a block it hangs on a chain.
             Shape::Lantern => (hit.normal.y < 0) as u8,
+            // Runs the way you look.
+            Shape::Bridge => facing(f.x, f.z) & 1,
             Shape::Trapdoor => {
                 let side = if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) ^ 2 } else { facing(-f.x, -f.z) };
                 side | if upper { 8 } else { 0 }
@@ -2566,6 +2570,26 @@ impl Game {
             let q = base + side * (i as i32 - 3) - dir * 3;
             let y = self.world.surface_y(q.x, q.z).unwrap_or(q.y - 1) + 1;
             self.world.set_block(IVec3::new(q.x, y, q.z), g(n));
+        }
+    }
+
+    /// Raindrops splashing on the ground and on water around the player.
+    fn rain_splashes(&mut self, dt: f32) {
+        let water = self.reg.get(self.reg.id_or_air("water")).faces[2];
+        let n = (self.weather.rain * 90.0 * dt).ceil() as i32;
+        let c = self.body.pos.floor().as_ivec3();
+        for _ in 0..n {
+            let x = c.x + self.surv.rng.range(-12, 13);
+            let z = c.z + self.surv.rng.range(-12, 13);
+            if matches!(self.world.gen.biome_at(x, z).name(), "Desert" | "Badlands") {
+                continue;
+            }
+            let Some(y) = self.world.surface_y(x, z) else { continue };
+            if (y - c.y).abs() > 20 {
+                continue;
+            }
+            let at = Vec3::new(x as f32 + self.surv.rng.f32(), y as f32 + 1.0, z as f32 + self.surv.rng.f32());
+            self.particles.rain_drop(at, water);
         }
     }
 
@@ -3433,6 +3457,7 @@ impl Game {
             // The light a held torch gives comes from the player's hand, wherever the camera is.
             hand_light: [head.x - block.x as f32, head.y - 0.4 - block.y as f32, head.z - block.z as f32, self.hand_light_level()],
             weather: [self.weather.rain, self.weather.flash, 0.0, 0.0],
+            dyn_lights: self.dynamic_lights(eye, block),
             ..Default::default()
         };
         let cam = Camera {

@@ -167,6 +167,9 @@ MÓVEIS E LUZES
   Lanternas (ferro ou cobre) ficam no chão ou penduradas embaixo de um bloco. Luminárias de
   papel (branca e vermelha) iluminam como bloco inteiro. Janelas de madeira em 7 madeiras
   funcionam como painéis de vidro com moldura.
+  Correntes (penduram lanternas), grades de ferro e pontes de corda (ficam na direção que você
+  olha, com corrimão de corda que não deixa cair).
+  Tocha, lanterna ou pedra luminosa caída no chão ilumina em volta, e mob pegando fogo também.
 
 MOCHILAS
   Mochila de couro (27 espaços), depois ferro (36), ouro (45) e diamante (54): cerque a
@@ -177,6 +180,7 @@ VISITANTES E MONSTROS RAROS
   Mercador goblin: às vezes aparece perto de você em cavernas escuras, fica 5 minutos e
   vende diamante, redstone, cristal de vida, mochila e mais, por esmeraldas.
   Zumbi mutante (sobrevivência, à noite, raro): gigante, pula em você e esmaga o chão.
+  Esqueleto mutante (também raro à noite): atira leques de 5 flechas de vez em quando.
   Guarda: muda para uma casa quando a vila já tem 2 moradores e caça monstros por perto.
   Animais novos: urso polar e pinguim (neve), javali (florestas), esquilo (bosques).
   Peixes por bioma: piranha e pirarucu (selva, pântano), truta ártica (frio), perca
@@ -186,6 +190,8 @@ ESTRUTURAS
   Casas, torre de vigia, ruína e poço como antes, e agora: cripta enterrada (escada de pedra
   descendo de uma abertura com musgo, baús com ouro, diamante e cristal de vida), acampamento
   com barraca de lã e santuário de pedra nas montanhas e na neve.
+  Torre do mago (estantes e baú com varinhas e cristais de mana) e moinho de vento.
+  Na chuva, as gotas respingam no chão em volta de você.
 
 PINTURAS
   Mire numa parede e aperte P (no controle: seta para a esquerda). Passe o mouse sobre um nome

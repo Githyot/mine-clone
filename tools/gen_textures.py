@@ -1405,6 +1405,7 @@ def build_registry():
     reg.update(redstone_registry())
     reg.update(phase4_registry())
     reg.update(decor_registry())
+    reg.update(extras_registry())
     return reg
 
 
@@ -2006,6 +2007,68 @@ def decor_registry():
     for wood in WOODS:
         reg[f"{wood}_window"] = lambda w=wood: wood_window(w)
     return reg
+
+
+def chain_side():
+    """Chain links down columns 7 and 8, alternating faces so they read as links."""
+    img = canvas()
+    m = pal("#2a2e36", "#454b56", "#6a717e")
+    for y in range(N):
+        k = y % 4
+        if k in (0, 3):
+            put(img, 7, y, m[2] if k == 0 else m[1])
+            put(img, 8, y, m[1] if k == 0 else m[0])
+        else:
+            put(img, 7, y, m[1])
+            put(img, 8, y, m[0])
+    return img
+
+
+def iron_bars():
+    img = canvas()
+    m = pal("#3a3e46", "#5a606a", "#7c838e", "#9aa1ac")
+    for x in (1, 5, 10, 14):
+        for y in range(N):
+            put(img, x, y, m[2])
+            put(img, x + 1, y, m[1])
+    for y in (0, 15):
+        for x in range(N):
+            put(img, x, y, m[3] if y == 0 else m[0])
+    return img
+
+
+def rope_bridge(top):
+    """Plank deck with rope: the top shows boards across, ropes along both edges; the side
+    shows the deck edge low down and the rope rails and posts above it."""
+    p = WOODS["oak"]["plank"]
+    rope = pal("#6e5636", "#8c7048", "#a8895a")
+    img = canvas()
+    if top:
+        for y in range(N):
+            for x in range(N):
+                put(img, x, y, p[2] if y % 4 else p[0])
+        for y in range(N):
+            for x in (0, 15):
+                put(img, x, y, rope[1 + (y % 2)])
+    else:
+        for x in range(N):
+            put(img, x, 14, p[3])
+            put(img, x, 15, p[1])
+            put(img, x, 7, rope[1 + (x % 2)])
+            put(img, x, 11, rope[(x % 2)])
+        for y in range(6, 14):
+            put(img, 0, y, p[1])
+            put(img, 15, y, p[1])
+    return img
+
+
+def extras_registry():
+    return {
+        "chain": chain_side,
+        "iron_bars": iron_bars,
+        "rope_bridge_top": lambda: rope_bridge(True),
+        "rope_bridge_side": lambda: rope_bridge(False),
+    }
 
 
 def to_image(arr):

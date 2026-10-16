@@ -99,6 +99,25 @@ impl Particles {
         }
     }
 
+    /// A raindrop hitting the ground: a few tiny droplets bouncing up (Particle Rain idea).
+    pub fn rain_drop(&mut self, at: Vec3, layer: u16) {
+        for _ in 0..3 {
+            let a = self.rand() * std::f32::consts::TAU;
+            let r = 0.4 + self.rand() * 0.8;
+            let p = Particle {
+                pos: at + Vec3::new(0.0, 0.05, 0.0),
+                vel: Vec3::new(a.cos() * r, 1.5 + self.rand() * 1.5, a.sin() * r),
+                life: 0.35,
+                size: 0.03 + self.rand() * 0.03,
+                layer: layer as u32,
+                uv: [0.4, 0.4],
+                tint: [0.75, 0.85, 1.0],
+                kind: Kind::Drop,
+            };
+            self.push(p);
+        }
+    }
+
     /// A glowing mote (spell trails and bursts).
     pub fn glow(&mut self, at: Vec3, vel: Vec3, layer: u16, tint: [f32; 3], size: f32, life: f32) {
         let jitter = Vec3::new(self.rand() - 0.5, self.rand() - 0.5, self.rand() - 0.5);

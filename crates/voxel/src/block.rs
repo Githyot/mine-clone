@@ -68,6 +68,11 @@ pub enum Shape {
     Table,
     /// A lantern standing on the ground (variant 0) or hanging from a chain (1).
     Lantern,
+    /// A thin chain hanging straight down.
+    Chain,
+    /// A rope bridge (Macaw's Bridges idea): a plank deck with rope rails, running north-south
+    /// (variant 0) or east-west (1).
+    Bridge,
 }
 
 impl Shape {
@@ -98,6 +103,8 @@ impl Shape {
                 | Shape::Chair
                 | Shape::Table
                 | Shape::Lantern
+                | Shape::Chain
+                | Shape::Bridge
         )
     }
 }
