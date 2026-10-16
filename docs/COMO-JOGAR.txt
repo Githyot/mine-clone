@@ -104,6 +104,23 @@ INVENTÁRIO CRIATIVO
   carrega. Ovos de criatura: botão direito no chão faz nascer o bicho.
   Botão do meio num bloco do mundo põe esse bloco na mão.
 
+REDSTONE
+  Pó de redstone (do minério de redstone, bem fundo) vira fio no chão. A energia sai com
+  força 15 de alavancas, botões, placas de pressão, tochas de redstone e blocos de redstone,
+  e perde 1 por bloco de fio (o fio fica mais claro quanto mais forte).
+  O fio sobe e desce degraus, acende lâmpadas de redstone, abre portas e alçapões, aciona
+  pistões e acende TNT. Botão direito: liga a alavanca, aperta o botão (volta sozinho) e
+  muda o atraso do repetidor (1 a 4 tiques).
+  Repetidor: leva o sinal para a frente de novo com força 15, depois do atraso.
+  Tocha de redstone: apaga quando o bloco embaixo dela recebe energia (um inversor). Se
+  piscar rápido demais, queima por alguns segundos.
+  Pistão: empurra até 12 blocos; o grudento puxa o bloco de volta. Não move obsidiana,
+  rocha-mãe, baús nem fornalhas; flores, tochas e fios na frente quebram.
+  TNT: acenda com energia ou com o isqueiro (ferro + pederneira); explode em 4 segundos.
+  Receitas: tocha (redstone + graveto), alavanca (graveto + pedregulho), repetidor
+  (2 tochas de redstone, redstone e 3 pedras), pistão (3 tábuas, 4 pedregulhos, ferro e
+  redstone), pistão grudento (linha + pistão), lâmpada (4 redstone + pedra luminosa).
+
 FORMAS DE BLOCO
   Escadas, lajes, cercas, muros, painéis de vidro, portas e alçapões. A escada vira para onde
   você olha; clicando na metade de cima de uma parede ela fica de cabeça para baixo (lajes e

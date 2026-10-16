@@ -11,6 +11,7 @@ mod magic;
 mod bosses;
 mod npcs;
 mod fluids;
+mod redstone;
 mod weather;
 mod entity;
 mod item_render;
@@ -91,6 +92,8 @@ struct Args {
     /// Build a few things in front of the player (used for test screenshots).
     demo: bool,
     shapes: bool,
+    /// Build test redstone circuits in front of the player.
+    redstone: bool,
     /// Take the --screenshot of the loading screen instead of the game.
     shot_loading: bool,
     rain: bool,
@@ -165,6 +168,7 @@ fn parse_args() -> Args {
             "--fly" => a.fly = true,
             "--demo" => a.demo = true,
             "--shapes" => a.shapes = true,
+            "--redstone" => a.redstone = true,
             "--shot-loading" => a.shot_loading = true,
             "--rain" => a.rain = true,
             "--find" => a.find = it.next(),
@@ -455,6 +459,9 @@ struct Game {
     mining: Option<(IVec3, f32)>,
     particles: particles::Particles,
     fluids: fluids::Fluids,
+    redstone: redstone::Redstone,
+    /// Lit TNT, falling and flashing until it goes off.
+    tnt: Vec<redstone::PrimedTnt>,
     bobber: Option<fishing::Bobber>,
     weather: weather::Weather,
     anim: player_model::Animator,
@@ -750,6 +757,8 @@ impl Game {
             particles: particles::Particles::new(),
             bobber: None,
             fluids: fluids::Fluids::new(&reg_for_fluids),
+            redstone: redstone::Redstone::new(reg_for_fluids.clone()),
+            tnt: Vec::new(),
             weather: weather::Weather::new(weather_save, seed),
             anim: player_model::Animator::default(),
             camera_mode,
@@ -1157,6 +1166,7 @@ impl Game {
             }
             self.update_leaf_decay(dt);
             self.update_fishing(dt);
+            self.update_redstone(dt);
             let fe = self.fluids.update(&mut self.world, dt);
             if let Some(p) = fe.hardened.first() {
                 if p.as_vec3().distance(self.body.pos) < 24.0 {
@@ -1194,6 +1204,9 @@ impl Game {
                 }
                 if self.args.shapes {
                     self.build_shapes();
+                }
+                if self.args.redstone {
+                    self.build_redstone();
                 }
                 if self.args.mobs {
                     self.spawn_demo_mobs();
@@ -2106,6 +2119,12 @@ impl Game {
         let mut n = 0;
         for b in hit {
             let id = self.world.block_or_air(b);
+            if self.redstone.kind(id) == redstone::Kind::Tnt {
+                // TNT caught in a blast lights with a short, uneven fuse.
+                let fuse = 0.5 + rand();
+                self.prime_tnt(b, fuse);
+                continue;
+            }
             if id == AIR || !self.world.break_block(b) {
                 continue;
             }
@@ -2222,8 +2241,36 @@ impl Game {
                 let side = if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) ^ 2 } else { facing(-f.x, -f.z) };
                 side | if upper { 8 } else { 0 }
             }
+            // On a wall: facing the wall (the block it hangs on); on the floor: the way you look.
+            Shape::Lever | Shape::Button => {
+                if hit.normal.y < 0 {
+                    return None;
+                }
+                if hit.normal.y == 0 {
+                    facing(-hit.normal.x as f32, -hit.normal.z as f32) | 8
+                } else {
+                    facing(f.x, f.z)
+                }
+            }
+            // Signal goes out the way you look.
+            Shape::Repeater => facing(f.x, f.z),
+            // The face points back at you (up or down when looking steeply).
+            Shape::Piston => {
+                if f.y < -0.75 {
+                    4
+                } else if f.y > 0.75 {
+                    5
+                } else {
+                    facing(-f.x, -f.z)
+                }
+            }
             _ => 0,
         };
+        if matches!(shape, Shape::Lever | Shape::Button) && v & 8 != 0 {
+            if !self.reg.get(clicked).solid || !self.reg.is_opaque(clicked) && self.reg.get(clicked).shape != Shape::Cube {
+                return None;
+            }
+        }
         if shape == Shape::Door {
             let above = pos + IVec3::Y;
             if self.world.block_or_air(above) != AIR || self.body.intersects_block(above) {
@@ -2237,7 +2284,14 @@ impl Game {
             return None;
         }
         let id_v = self.variant_id(id, v);
-        // Plants and torches need something under them.
+        // Plants, torches and redstone parts need something under them.
+        let on_floor = matches!(b.shape, Shape::Wire | Shape::Plate | Shape::Repeater) || matches!(b.shape, Shape::Lever | Shape::Button) && v & 8 == 0;
+        if on_floor {
+            let under = self.world.block_or_air(pos - IVec3::Y);
+            if !self.reg.is_opaque(under) {
+                return None;
+            }
+        }
         if matches!(b.shape, Shape::Cross | Shape::Torch) {
             let under = self.world.block_or_air(pos - IVec3::Y);
             if under == AIR || !self.reg.get(under).solid {
@@ -2252,15 +2306,16 @@ impl Game {
 
     /// The id of an orientation of a shaped block (see `voxel::shapes`).
     fn variant_id(&self, id: BlockId, v: u8) -> BlockId {
-        if v == 0 {
-            return id;
-        }
-        self.reg.id(&format!("{}:{}", self.reg.get(id).name, v)).unwrap_or(id)
+        self.reg.variant(id, v)
     }
 
     /// Right click on a door or trapdoor opens or closes it. Returns true when it did.
     fn toggle_shaped(&mut self) -> bool {
         let Some(hit) = self.target else { return false };
+        if self.redstone.interact(&mut self.world, hit.block) {
+            self.anim.start_swing();
+            return true;
+        }
         let id = self.world.block_or_air(hit.block);
         let b = self.reg.get(id);
         if !matches!(b.shape, Shape::Door | Shape::Trapdoor) {
@@ -3457,6 +3512,7 @@ impl Game {
         self.entities.particles.prepare(&self.renderer, &self.particles, &self.world, block);
         let mut drops = self.drop_instances(block);
         drops.extend(figure_backdrop);
+        drops.extend(self.tnt_instances(block));
         if let Some(k) = self.args.swing {
             self.anim.swing = k;
         }

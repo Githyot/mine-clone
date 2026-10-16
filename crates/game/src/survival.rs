@@ -887,6 +887,15 @@ impl Game {
             }
             return false;
         }
+        if item.name == "flint_and_steel" {
+            let Some(hit) = self.target else { return false };
+            if self.redstone.kind(self.world.block_or_air(hit.block)) != crate::redstone::Kind::Tnt {
+                return false;
+            }
+            self.prime_tnt(hit.block, 4.0);
+            self.anim.start_swing();
+            return true;
+        }
         let Some(block) = item.places else { return false };
         if let Some(pos) = self.place_block_as(block) {
             if self.survival {

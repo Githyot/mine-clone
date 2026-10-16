@@ -113,6 +113,9 @@ impl Game {
         if name == "fishing_bobber" {
             return None;
         }
+        if name == "flint_and_steel" {
+            return Some(Tab::Tools);
+        }
         if let Some(t) = &it.tool {
             return Some(if t.kind == ToolKind::Sword { Tab::Combat } else { Tab::Tools });
         }
@@ -129,6 +132,12 @@ impl Game {
         }
         if COLORS.iter().any(|c| name.starts_with(&format!("{c}_"))) && !name.ends_with("_bed") && bl.shape != Shape::Cross && name != "red_sand" {
             return Some(Tab::Colored);
+        }
+        // Redstone parts sit with the functional blocks.
+        let redstone = matches!(bl.shape, Shape::Wire | Shape::Lever | Shape::Button | Shape::Plate | Shape::Repeater | Shape::Piston)
+            || ["redstone_torch", "redstone_block", "redstone_lamp", "tnt"].contains(&name);
+        if redstone {
+            return Some(Tab::Functional);
         }
         if matches!(bl.shape, Shape::Door | Shape::Trapdoor | Shape::Torch) || bl.light > 0 {
             return Some(Tab::Doors);

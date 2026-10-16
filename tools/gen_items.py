@@ -684,6 +684,31 @@ def flint():
     return outline(from_map(rows, pmap(p)))
 
 
+def flint_and_steel():
+    rows = [
+        "................",
+        "................",
+        "..........11....",
+        ".........1221...",
+        "........12331...",
+        "........1231....",
+        "......1.111.....",
+        ".....1A1........",
+        "....1AB1..45....",
+        "...1AB1..4553...",
+        "..1AB1...43332..",
+        "..1B1....33222..",
+        "...1......2211..",
+        "................",
+        "................",
+        "................",
+    ]
+    p = pal("#141414", "#2e2e30", "#48484c", "#6a6a70", "#9a9aa2")
+    m = pmap(p)
+    m.update({"A": hexrgb("#c8c8cc"), "B": hexrgb("#8a8a90")})
+    return outline(from_map(rows, m))
+
+
 def string_item():
     img = canvas()
     c1, c2 = hexrgb("#f4f4f0"), hexrgb("#c8c8c2")
@@ -1521,6 +1546,7 @@ def item_registry():
     reg.update({
         "diamond": diamond, "emerald": emerald, "lapis_lazuli": lapis,
         "redstone": redstone, "flint": flint, "string": string_item,
+        "flint_and_steel": flint_and_steel,
         "feather": feather, "leather": leather, "bone": bone,
         "gunpowder": gunpowder, "rotten_flesh": rotten_flesh,
         "clay_ball": clay_ball, "brick": brick,

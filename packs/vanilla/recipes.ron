@@ -157,6 +157,18 @@
         (pattern: ["##", "##", "##"], key: {'#': "oak_planks"}, result: "oak_door", count: 3),
         (pattern: ["###", "###"], key: {'#': "oak_planks"}, result: "oak_trapdoor", count: 2),
         (pattern: ["##", "##"], key: {'#': "string"}, result: "white_wool"),
+        // Redstone.
+        (pattern: ["R", "S"], key: {'R': "redstone", 'S': "stick"}, result: "redstone_torch"),
+        (pattern: ["S", "C"], key: {'S': "stick", 'C': "cobblestone"}, result: "lever"),
+        (pattern: ["##"], key: {'#': "stone"}, result: "stone_pressure_plate"),
+        (pattern: ["##"], key: {'#': "oak_planks"}, result: "oak_pressure_plate"),
+        (pattern: ["###", "###", "###"], key: {'#': "redstone"}, result: "redstone_block"),
+        (pattern: [" R ", "RGR", " R "], key: {'R': "redstone", 'G': "glowstone"}, result: "redstone_lamp"),
+        (pattern: ["TRT", "SSS"], key: {'T': "redstone_torch", 'R': "redstone", 'S': "stone"}, result: "repeater"),
+        (pattern: ["PPP", "CIC", "CRC"], key: {'P': "#planks", 'C': "cobblestone", 'I': "iron_ingot", 'R': "redstone"}, result: "piston"),
+        // Until there are slimes, string makes a piston sticky.
+        (pattern: ["S", "P"], key: {'S': "string", 'P': "piston"}, result: "sticky_piston"),
+        (pattern: ["GSG", "SGS", "GSG"], key: {'G': "gunpowder", 'S': "sand"}, result: "tnt"),
     ],
     shapeless: [
         (ingredients: ["oak_log"], result: "oak_planks", count: 4),
@@ -182,8 +194,13 @@
         (ingredients: ["sapphire_block"], result: "sapphire", count: 9),
         (ingredients: ["topaz_block"], result: "topaz", count: 9),
         (ingredients: ["amethyst_block"], result: "amethyst", count: 9),
+        (ingredients: ["stone"], result: "stone_button"),
+        (ingredients: ["oak_planks"], result: "oak_button"),
+        (ingredients: ["redstone_block"], result: "redstone", count: 9),
+        (ingredients: ["iron_ingot", "flint"], result: "flint_and_steel"),
     ],
     smelting: [
+        (input: "stone", result: "smooth_stone", xp: 0.1),
         (input: "raw_iron", result: "iron_ingot", xp: 0.7),
         (input: "raw_gold", result: "gold_ingot", xp: 1.0),
         (input: "raw_copper", result: "copper_ingot", xp: 0.7),

@@ -115,6 +115,7 @@ pub fn synth(sfx: Sfx, seed: u32) -> Vec<f32> {
         Sfx::Rain => rain(&mut rng),
         Sfx::Cast(k) => cast(&mut rng, k, false),
         Sfx::SpellHit(k) => cast(&mut rng, k, true),
+        Sfx::Piston(out) => piston(&mut rng, out),
     };
     out.into_iter().map(|s| s.clamp(-1.0, 1.0)).collect()
 }
@@ -380,6 +381,30 @@ fn fizz(rng: &mut Rng) -> Vec<f32> {
         .collect()
 }
 
+/// A piston: a short wooden scrape that ends in a dull knock (lower going back in).
+fn piston(rng: &mut Rng, out: bool) -> Vec<f32> {
+    let dur = 0.3;
+    let n = (dur * RATE) as usize;
+    let pitch = if out { 1.0 } else { 0.8 };
+    let mut lp = LowPass::new(500.0 * pitch);
+    let mut low = LowPass::new(90.0);
+    let hit = 0.14;
+    (0..n)
+        .map(|i| {
+            let t = i as f32 / RATE;
+            let x = rng.noise();
+            let scrape = (lp.run(x) - low.run(x)) * (t / hit).min(1.0) * if t < hit { 0.7 } else { 0.7 * (-(t - hit) / 0.03).exp() };
+            let knock = if t >= hit {
+                let k = t - hit;
+                (k * (95.0 - 30.0 * k / dur) * pitch * TAU).sin() * (-k / 0.05).exp() * 0.9
+            } else {
+                0.0
+            };
+            (scrape + knock) * 0.6
+        })
+        .collect()
+}
+
 /// A spell: a low breathy whoosh over a soft hum whose note depends on the school; the hit is
 /// a shorter thump. Kept deep like the rest of the game's sounds.
 fn cast(rng: &mut Rng, school: u8, hit: bool) -> Vec<f32> {
@@ -542,7 +567,7 @@ mod tests {
         for m in mats {
             all.extend([Sfx::Break(m), Sfx::Place(m), Sfx::Hit(m), Sfx::Step(m)]);
         }
-        all.extend([Sfx::Click, Sfx::Hurt, Sfx::Death, Sfx::Respawn, Sfx::MobHit, Sfx::Explode, Sfx::Splash(1.0), Sfx::Swim, Sfx::WaterExit, Sfx::Bubbles, Sfx::Pickup, Sfx::Xp, Sfx::Eat, Sfx::Fizz, Sfx::Thunder(1.0), Sfx::Thunder(0.2), Sfx::Rain]);
+        all.extend([Sfx::Click, Sfx::Hurt, Sfx::Death, Sfx::Respawn, Sfx::MobHit, Sfx::Explode, Sfx::Splash(1.0), Sfx::Swim, Sfx::WaterExit, Sfx::Bubbles, Sfx::Pickup, Sfx::Xp, Sfx::Eat, Sfx::Fizz, Sfx::Thunder(1.0), Sfx::Thunder(0.2), Sfx::Rain, Sfx::Piston(true), Sfx::Piston(false)]);
         all.extend((0..6).flat_map(|k| [Sfx::Cast(k), Sfx::SpellHit(k)]));
         for sfx in all {
             let v = synth(sfx, 7);
