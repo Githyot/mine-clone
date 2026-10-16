@@ -32,6 +32,9 @@ pub enum Shape {
     /// Two blocks tall; right click opens it.
     Door,
     Trapdoor,
+    /// A cube whose sides sit one pixel in, each showing its whole picture, so spikes drawn
+    /// at the edges of the texture stick out without leaving see-through gaps (the cactus).
+    Inset,
 }
 
 impl Shape {

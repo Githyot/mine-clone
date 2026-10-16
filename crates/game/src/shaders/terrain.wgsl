@@ -97,13 +97,35 @@ fn shade(c: vec3<f32>, in: VOut) -> vec3<f32> {
     return mix(lit(c, in), g.fog_color.rgb, fog_amount(in));
 }
 
+// Pixel relief: each texel is treated as a little bump as high as it is bright, lit from
+// the top-left, so stone, bark and bricks look carved instead of painted. Two extra texture
+// reads, only near the camera.
+fn relief(c: vec4<f32>, in: VOut) -> f32 {
+    let strength = g.sun_dir.w * (1.0 - smoothstep(16.0, 32.0, in.dist));
+    if (strength <= 0.0) {
+        return 1.0;
+    }
+    let size = f32(textureDimensions(tex).x);
+    let px = fract(in.uv) * size;
+    let cell = (floor(px) + 0.5) / size;
+    let up = textureSampleLevel(tex, samp, cell - vec2<f32>(0.0, 1.0 / size), in.layer, 0.0);
+    let left = textureSampleLevel(tex, samp, cell - vec2<f32>(1.0 / size, 0.0), in.layer, 0.0);
+    let lum = vec3<f32>(0.3, 0.59, 0.11);
+    let h = dot(c.rgb, lum);
+    // Texels at the picture's edge have no neighbour there: leave them flat.
+    let hu = select(dot(up.rgb, lum), h, floor(px.y) < 0.5 || up.a < 0.5);
+    let hl = select(dot(left.rgb, lum), h, floor(px.x) < 0.5 || left.a < 0.5);
+    let slope = (h - hu) + (h - hl);
+    return clamp(1.0 + slope * 1.1 * strength, 0.72, 1.22);
+}
+
 @fragment
 fn fs_solid(in: VOut) -> @location(0) vec4<f32> {
     let c = textureSample(tex, samp, in.uv, in.layer);
     if (c.a < 0.5) {
         discard;
     }
-    return vec4<f32>(shade(c.rgb, in), 1.0);
+    return vec4<f32>(shade(c.rgb * relief(c, in), in), 1.0);
 }
 
 // Slope of a few travelling waves at a world position (for rippling water).

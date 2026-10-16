@@ -353,6 +353,31 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     continue;
                 }
 
+                if shape == Shape::Inset {
+                    let tint = |f: usize| if t.tint[idu] & (1 << f) != 0 { biome_tint } else { white };
+                    for (f, fi) in FACES.iter().enumerate() {
+                        let n = fi.normal;
+                        let ni = (i as isize + n[0] as isize + n[2] as isize * P as isize + n[1] as isize * (P * P) as isize) as usize;
+                        // Top and bottom are full faces, hidden against the same block or solid ones.
+                        if (f == 2 || f == 3) && (blocks[ni] == id || t.opaque[blocks[ni] as usize]) {
+                            continue;
+                        }
+                        let l = if f == 2 || f == 3 { light[ni] } else { light[i].max(light[ni]) };
+                        let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
+                        let layer = t.faces[idu][f] as u32;
+                        for (k, c) in fi.corners.iter().enumerate() {
+                            let mut q = [c[0] * 16, c[1] * 16, c[2] * 16];
+                            // Pull the side faces one pixel in along their normal.
+                            if f != 2 && f != 3 {
+                                let a = if n[0] != 0 { 0 } else { 2 };
+                                q[a] = if c[a] == 1 { 15 } else { 1 };
+                            }
+                            out.solid.push(pack([base[0] + q[0], base[1] + q[1], base[2] + q[2]], 3, fi.uv[k], layer, f as u32, 0, sky, blk, tint(f)));
+                        }
+                    }
+                    continue;
+                }
+
                 if shape.is_boxes() {
                     let nb = |o: isize| blocks[(i as isize + o) as usize] as usize;
                     let mut conn = 0;

@@ -802,15 +802,14 @@ impl Game {
         }
     }
 
-    /// Middle click in creative: the block's item into the hand, a full stack if it isn't there.
+    /// Middle click in creative: the block's item into the hand (items are endless here).
     pub(crate) fn creative_pick(&mut self, id: BlockId) {
         let Some(item) = self.items.of_block(id) else { return };
         if let Some(i) = (0..9).find(|&i| self.surv.inv.slots[i].is_some_and(|s| s.item == item)) {
             self.selected = i;
             return;
         }
-        let n = self.items.get(item).max_stack.max(1);
-        self.surv.inv.slots[self.selected] = Some(ItemStack::new(item, n));
+        self.surv.inv.slots[self.selected] = Some(ItemStack::new(item, 1));
     }
 
     /// Middle click in survival: pick the block's item from the inventory into the hand.

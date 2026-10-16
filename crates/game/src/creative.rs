@@ -163,7 +163,7 @@ impl Game {
         }
         for i in 0..9 {
             if let Some(it) = self.items.of_block(self.hotbar[i]) {
-                self.surv.inv.slots[i] = Some(ItemStack::new(it, self.items.get(it).max_stack.max(1)));
+                self.surv.inv.slots[i] = Some(ItemStack::new(it, 1));
             }
         }
     }

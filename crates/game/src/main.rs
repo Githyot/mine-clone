@@ -2979,7 +2979,7 @@ impl Game {
             cam_world: [eye.x, eye.y, eye.z, CLOUD_HEIGHT],
             fog_color: [fog_color[0], fog_color[1], fog_color[2], daylight],
             fog: [fog_start, fog_end, if underwater { 1.0 } else { 0.0 }, 0.3],
-            sun_dir: [sun.x, sun.y, sun.z, 0.0],
+            sun_dir: [sun.x, sun.y, sun.z, if self.settings.relief { 1.0 } else { 0.0 }],
             sky_top: [top[0], top[1], top[2], 1.0],
             sky_horizon: [horizon[0], horizon[1], horizon[2], 1.0],
             effects,

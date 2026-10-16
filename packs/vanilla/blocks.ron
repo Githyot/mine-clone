@@ -25,7 +25,7 @@
     (name: "glass", display_name: Some("Vidro"), transparency: Cutout, hardness: 0.3, drops: Some([])),
     (name: "ice", display_name: Some("Gelo"), transparency: Translucent, hardness: 0.5, tool: Some(Pickaxe), drops: Some([])),
     (name: "snow", display_name: Some("Bloco de Neve"), hardness: 0.2, tool: Some(Shovel)),
-    (name: "cactus", display_name: Some("Cacto"), transparency: Cutout, hardness: 0.4, textures: (side: Some("cactus_side"), top: Some("cactus_top"), bottom: Some("cactus_top"))),
+    (name: "cactus", display_name: Some("Cacto"), shape: Inset, transparency: Cutout, hardness: 0.4, textures: (side: Some("cactus_side"), top: Some("cactus_top"), bottom: Some("cactus_top"))),
     (name: "short_grass", display_name: Some("Grama Baixa"), shape: Cross, transparency: Cutout, solid: false, tint: true, hardness: 0.0, drops: Some([])),
     (name: "poppy", display_name: Some("Papoula"), shape: Cross, transparency: Cutout, solid: false, hardness: 0.0),
     (name: "dandelion", display_name: Some("Dente-de-leão"), shape: Cross, transparency: Cutout, solid: false, hardness: 0.0),

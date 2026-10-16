@@ -81,6 +81,8 @@ pub struct Settings {
     pub flat_drops: bool,
     /// Animals and monsters spawn in the world.
     pub mobs: bool,
+    /// Textures get a little carved relief near the camera.
+    pub relief: bool,
     /// 0 peaceful (no monsters, health comes back), 1 easy, 2 normal, 3 hard.
     pub difficulty: u8,
     pub gui_scale: u32,
@@ -105,6 +107,7 @@ impl Default for Settings {
             music_mode: MusicMode::Classic,
             music_volume: 0.6,
             difficulty: 2,
+            relief: true,
             sound_volume: 0.8,
             music_folder: "music".into(),
             music_delay_min: 600.0,
