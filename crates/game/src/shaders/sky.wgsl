@@ -51,42 +51,31 @@ fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
         let a = abs(dot(dir, t1) / ds);
         let b = abs(dot(dir, t2) / ds);
         let m = max(a, b);
-        if (m < 0.085) {
+        if (m < 0.12) {
             col = vec3<f32>(1.0, 0.98, 0.82);
-        } else if (m < 0.2) {
-            col += vec3<f32>(1.0, 0.85, 0.5) * (0.2 - m) * 1.2 * (0.4 + low);
+        } else if (m < 0.3) {
+            col += vec3<f32>(1.0, 0.85, 0.5) * (0.3 - m) * 1.0 * (0.4 + low);
         }
     } else {
         let a = abs(dot(dir, t1) / ds);
         let b = abs(dot(dir, t2) / ds);
         let m = max(a, b);
-        if (m < 0.06) {
-            let spot = hash3(floor(vec3<f32>(dot(dir, t1) / ds, dot(dir, t2) / ds, 0.0) * 60.0));
+        if (m < 0.09) {
+            let spot = hash3(floor(vec3<f32>(dot(dir, t1) / ds, dot(dir, t2) / ds, 0.0) * 40.0));
             col = vec3<f32>(0.82, 0.84, 0.9) - vec3<f32>(spot * 0.12);
         }
     }
     return vec4<f32>(col, 1.0);
 }
 
-// ---- Clouds: a flat layer of blocky clouds that drifts slowly ----
+// ---- Clouds: 3D blocky clouds, ray-marched per pixel through a grid of cells ----
+// Each cell is CELL×THICK×CELL blocks. The ray walks the grid (DDA) until it enters a filled cell,
+// then the hit is shaded by which face it entered and written with its true depth, so terrain and
+// clouds hide each other correctly and clouds reach far past the render distance.
 
-struct CloudOut {
-    @builtin(position) clip: vec4<f32>,
-    @location(0) rel: vec3<f32>,
-};
-
-const CLOUD_R: f32 = 384.0;
-
-@vertex
-fn vs_clouds(@builtin(vertex_index) i: u32) -> CloudOut {
-    var pts = array<vec2<f32>, 6>(vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0));
-    let cam_block = g.cam_world.xyz - g.cam_pos.xyz;
-    let p = vec3<f32>(g.cam_pos.x + pts[i].x * CLOUD_R, g.cam_world.w - cam_block.y, g.cam_pos.z + pts[i].y * CLOUD_R);
-    var o: CloudOut;
-    o.clip = g.view_proj * vec4<f32>(p, 1.0);
-    o.rel = p;
-    return o;
-}
+const CELL: f32 = 12.0;
+const THICK: f32 = 4.0;
+const CLOUD_MAX: f32 = 1400.0;
 
 fn hash2(p: vec2<f32>) -> f32 {
     return fract(sin(dot(p, vec2<f32>(127.1, 311.7))) * 43758.5453);
@@ -99,18 +88,97 @@ fn vnoise(p: vec2<f32>) -> f32 {
     return mix(mix(hash2(i), hash2(i + vec2<f32>(1.0, 0.0)), u.x), mix(hash2(i + vec2<f32>(0.0, 1.0)), hash2(i + vec2<f32>(1.0, 1.0)), u.x), u.y);
 }
 
+fn cloud_at(c: vec2<f32>) -> bool {
+    let n = vnoise(c * 0.11) * 0.55 + vnoise(c * 0.31 + vec2<f32>(17.0, 3.0)) * 0.3 + hash2(c) * 0.15;
+    return n > 0.55;
+}
+
+struct CloudFrag {
+    @location(0) color: vec4<f32>,
+    @builtin(frag_depth) depth: f32,
+};
+
 @fragment
-fn fs_clouds(in: CloudOut) -> @location(0) vec4<f32> {
-    let cam_block = g.cam_world.xyz - g.cam_pos.xyz;
-    let world = in.rel.xz + cam_block.xz + vec2<f32>(g.cam_pos.w * 0.6, 0.0);
-    let cell = floor(world / 12.0);
-    let n = vnoise(cell * 0.18) * 0.7 + hash2(cell) * 0.3;
-    if (n < 0.56) {
+fn fs_clouds(in: SkyOut) -> CloudFrag {
+    let wp = g.inv_view_rot * vec4<f32>(in.ndc, 1.0, 1.0);
+    let dir = normalize(wp.xyz / wp.w);
+    let drift = vec3<f32>(g.cam_pos.w * 0.8, 0.0, 0.0);
+    let ro = g.cam_world.xyz + drift;
+    let y0 = g.cam_world.w;
+    let y1 = y0 + THICK;
+    var t0 = 0.0;
+    var t1 = CLOUD_MAX;
+    var normal = vec3<f32>(0.0, 0.0, 0.0);
+    if (abs(dir.y) < 1e-5) {
+        if (ro.y < y0 || ro.y > y1) {
+            discard;
+        }
+    } else {
+        let ta = (y0 - ro.y) / dir.y;
+        let tb = (y1 - ro.y) / dir.y;
+        t0 = max(min(ta, tb), 0.0);
+        t1 = min(max(ta, tb), CLOUD_MAX);
+        if (t0 > 0.0) {
+            normal = vec3<f32>(0.0, -sign(dir.y), 0.0);
+        }
+    }
+    if (t1 <= t0) {
         discard;
     }
-    let d = length(in.rel.xz - g.cam_pos.xz);
-    let fade = 1.0 - smoothstep(CLOUD_R * 0.55, CLOUD_R, d);
+    let p = ro + dir * t0;
+    var cell = floor(p.xz / CELL);
+    let stp = vec2<f32>(select(-1.0, 1.0, dir.x >= 0.0), select(-1.0, 1.0, dir.z >= 0.0));
+    let big = 1e9;
+    let delta = vec2<f32>(select(big, CELL / abs(dir.x), abs(dir.x) > 1e-6), select(big, CELL / abs(dir.z), abs(dir.z) > 1e-6));
+    let bx = (cell.x + select(0.0, 1.0, stp.x > 0.0)) * CELL;
+    let bz = (cell.y + select(0.0, 1.0, stp.y > 0.0)) * CELL;
+    var tmax = vec2<f32>(select(big, t0 + (bx - p.x) / dir.x, abs(dir.x) > 1e-6), select(big, t0 + (bz - p.z) / dir.z, abs(dir.z) > 1e-6));
+    var t = t0;
+    var hit = false;
+    for (var i = 0; i < 160; i = i + 1) {
+        if (cloud_at(cell)) {
+            hit = true;
+            break;
+        }
+        if (tmax.x < tmax.y) {
+            t = tmax.x;
+            tmax.x = tmax.x + delta.x;
+            cell.x = cell.x + stp.x;
+            normal = vec3<f32>(-stp.x, 0.0, 0.0);
+        } else {
+            t = tmax.y;
+            tmax.y = tmax.y + delta.y;
+            cell.y = cell.y + stp.y;
+            normal = vec3<f32>(0.0, 0.0, -stp.y);
+        }
+        if (t > t1) {
+            break;
+        }
+    }
+    if (!hit) {
+        discard;
+    }
+    // Face shading: bright tops, darker undersides, like lit blocks.
+    var shade = 0.82;
+    if (normal.y > 0.5) {
+        shade = 1.0;
+    } else if (normal.y < -0.5) {
+        shade = 0.68;
+    } else if (abs(normal.x) > 0.5) {
+        shade = 0.88;
+    }
     let day = g.fog_color.w;
-    let c = mix(vec3<f32>(0.12, 0.13, 0.18), vec3<f32>(1.0, 1.0, 1.0), day);
-    return vec4<f32>(c, 0.8 * fade);
+    let s = g.sun_dir.xyz;
+    let low = clamp(1.0 - abs(s.y) * 3.0, 0.0, 1.0) * step(-0.15, s.y);
+    var c = mix(vec3<f32>(0.10, 0.11, 0.16), vec3<f32>(1.0, 1.0, 1.0), day) * shade;
+    c = mix(c, c * vec3<f32>(1.15, 0.72, 0.55), low * 0.7);
+    // Fade into the sky with distance.
+    let fade = 1.0 - smoothstep(CLOUD_MAX * 0.45, CLOUD_MAX, t);
+    c = mix(g.sky_horizon.rgb, c, clamp(fade * 1.2, 0.0, 1.0));
+    let rel = g.cam_pos.xyz + dir * t;
+    let clip = g.view_proj * vec4<f32>(rel, 1.0);
+    var out: CloudFrag;
+    out.color = vec4<f32>(c, 0.88 * fade);
+    out.depth = clamp(clip.z / clip.w, 0.0, 0.999999);
+    return out;
 }

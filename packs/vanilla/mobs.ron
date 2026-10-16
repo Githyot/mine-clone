@@ -1,0 +1,115 @@
+// Mobs of the base game. Models are made of boxes measured in pixels (1/16 of a block).
+// Model space: origin at the feet, +Y up, +Z is the direction the mob faces.
+// `origin` is the box's minimum corner. `uv` is where the box's unwrap starts in the 64×64 skin:
+//   top at (u+d, v) w×d, bottom at (u+d+w, v) w×d,
+//   right side (-X) at (u, v+d) d×h, front (+Z) at (u+d, v+d) w×h,
+//   left side (+X) at (u+d+w, v+d) d×h, back (-Z) at (u+2d+w, v+d) w×h.
+// `pivot` is the point a part rotates around when it is animated.
+(mobs: [
+    (
+        name: "pig", display_name: "Porco", kind: Passive, health: 10, speed: 2.4,
+        width: 0.9, height: 0.9, spawn: Grass,
+        parts: [
+            (size: (10, 8, 16), origin: (-5, 6, -8), uv: (0, 0)),
+            (size: (8, 8, 8), origin: (-4, 8, 7), uv: (0, 24), anim: Head, pivot: (0, 12, 8)),
+            (size: (4, 3, 1), origin: (-2, 9, 15), uv: (32, 24), anim: Head, pivot: (0, 12, 8)),
+            (size: (4, 6, 4), origin: (-5, 0, -7), uv: (0, 40), anim: Leg(0), pivot: (-3, 6, -5)),
+            (size: (4, 6, 4), origin: (1, 0, -7), uv: (0, 40), anim: Leg(1), pivot: (3, 6, -5)),
+            (size: (4, 6, 4), origin: (-5, 0, 3), uv: (0, 40), anim: Leg(1), pivot: (-3, 6, 5)),
+            (size: (4, 6, 4), origin: (1, 0, 3), uv: (0, 40), anim: Leg(0), pivot: (3, 6, 5)),
+        ],
+    ),
+    (
+        name: "cow", display_name: "Vaca", kind: Passive, health: 10, speed: 2.2,
+        width: 0.9, height: 1.4, spawn: Grass,
+        parts: [
+            (size: (12, 10, 18), origin: (-6, 10, -9), uv: (0, 0)),
+            (size: (8, 8, 6), origin: (-4, 14, 8), uv: (0, 28), anim: Head, pivot: (0, 18, 9)),
+            (size: (1, 3, 1), origin: (-5, 20, 11), uv: (28, 28), anim: Head, pivot: (0, 18, 9)),
+            (size: (1, 3, 1), origin: (4, 20, 11), uv: (28, 28), anim: Head, pivot: (0, 18, 9)),
+            (size: (4, 10, 4), origin: (-6, 0, -8), uv: (0, 42), anim: Leg(0), pivot: (-4, 10, -6)),
+            (size: (4, 10, 4), origin: (2, 0, -8), uv: (0, 42), anim: Leg(1), pivot: (4, 10, -6)),
+            (size: (4, 10, 4), origin: (-6, 0, 4), uv: (0, 42), anim: Leg(1), pivot: (-4, 10, 6)),
+            (size: (4, 10, 4), origin: (2, 0, 4), uv: (0, 42), anim: Leg(0), pivot: (4, 10, 6)),
+        ],
+    ),
+    (
+        name: "sheep", display_name: "Ovelha", kind: Passive, health: 8, speed: 2.3,
+        width: 0.9, height: 1.3, spawn: Grass,
+        parts: [
+            (size: (10, 10, 16), origin: (-5, 9, -8), uv: (0, 0)),
+            (size: (6, 6, 8), origin: (-3, 14, 6), uv: (0, 26), anim: Head, pivot: (0, 17, 7)),
+            (size: (4, 10, 4), origin: (-5, 0, -7), uv: (0, 40), anim: Leg(0), pivot: (-3, 10, -5)),
+            (size: (4, 10, 4), origin: (1, 0, -7), uv: (0, 40), anim: Leg(1), pivot: (3, 10, -5)),
+            (size: (4, 10, 4), origin: (-5, 0, 3), uv: (0, 40), anim: Leg(1), pivot: (-3, 10, 5)),
+            (size: (4, 10, 4), origin: (1, 0, 3), uv: (0, 40), anim: Leg(0), pivot: (3, 10, 5)),
+        ],
+    ),
+    (
+        name: "chicken", display_name: "Galinha", kind: Passive, health: 4, speed: 2.0,
+        width: 0.4, height: 0.7, spawn: Grass,
+        parts: [
+            (size: (6, 6, 8), origin: (-3, 4, -4), uv: (0, 0)),
+            (size: (4, 6, 3), origin: (-2, 8, 2), uv: (0, 14), anim: Head, pivot: (0, 9, 3)),
+            (size: (4, 2, 2), origin: (-2, 10, 5), uv: (14, 14), anim: Head, pivot: (0, 9, 3)),
+            (size: (2, 2, 1), origin: (-1, 8, 5), uv: (26, 14), anim: Head, pivot: (0, 9, 3)),
+            (size: (1, 4, 6), origin: (-4, 6, -3), uv: (0, 23), anim: Wing(0), pivot: (-3, 10, 0)),
+            (size: (1, 4, 6), origin: (3, 6, -3), uv: (0, 23), anim: Wing(1), pivot: (3, 10, 0)),
+            (size: (2, 4, 2), origin: (-2, 0, -1), uv: (28, 0), anim: Leg(0), pivot: (-1, 4, 0)),
+            (size: (2, 4, 2), origin: (0, 0, -1), uv: (28, 0), anim: Leg(1), pivot: (1, 4, 0)),
+        ],
+    ),
+    (
+        name: "zombie", display_name: "Zumbi", kind: Hostile, health: 20, speed: 2.3,
+        width: 0.6, height: 1.95, spawn: Dark, attack: 3, burns_in_daylight: true,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (4, 12, 4), origin: (-8, 12, -2), uv: (40, 16), anim: ArmForward(0), pivot: (-6, 22, 0)),
+            (size: (4, 12, 4), origin: (4, 12, -2), uv: (40, 16), anim: ArmForward(1), pivot: (6, 22, 0)),
+            (size: (4, 12, 4), origin: (-4, 0, -2), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (4, 12, 4), origin: (0, 0, -2), uv: (0, 16), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+    ),
+    (
+        name: "skeleton", display_name: "Esqueleto", kind: Hostile, health: 20, speed: 2.4,
+        width: 0.6, height: 1.99, spawn: Dark, attack: 3, ranged: true, burns_in_daylight: true,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (2, 12, 2), origin: (-6, 12, -1), uv: (40, 16), anim: ArmForward(0), pivot: (-5, 22, 0)),
+            (size: (2, 12, 2), origin: (4, 12, -1), uv: (40, 16), anim: Arm(1), pivot: (5, 22, 0)),
+            (size: (2, 12, 2), origin: (-3, 0, -1), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (2, 12, 2), origin: (1, 0, -1), uv: (0, 16), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+    ),
+    (
+        name: "stalker", display_name: "Rastejante", kind: Hostile, health: 20, speed: 2.5,
+        width: 0.6, height: 1.7, spawn: Dark, attack: 0, explodes: true,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 18, -4), uv: (0, 0), anim: Head, pivot: (0, 18, 0)),
+            (size: (8, 12, 4), origin: (-4, 6, -2), uv: (16, 16)),
+            (size: (4, 6, 4), origin: (-4, 0, -6), uv: (0, 16), anim: Leg(0), pivot: (-2, 6, -4)),
+            (size: (4, 6, 4), origin: (0, 0, -6), uv: (0, 16), anim: Leg(1), pivot: (2, 6, -4)),
+            (size: (4, 6, 4), origin: (-4, 0, 2), uv: (0, 16), anim: Leg(1), pivot: (-2, 6, 4)),
+            (size: (4, 6, 4), origin: (0, 0, 2), uv: (0, 16), anim: Leg(0), pivot: (2, 6, 4)),
+        ],
+    ),
+    (
+        name: "spider", display_name: "Aranha", kind: Hostile, health: 16, speed: 3.0,
+        width: 1.4, height: 0.9, spawn: Dark, attack: 2, climbs: true,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 4, 3), uv: (32, 4), anim: Head, pivot: (0, 8, 3)),
+            (size: (6, 6, 6), origin: (-3, 5, -3), uv: (0, 0)),
+            (size: (10, 8, 12), origin: (-5, 4, -15), uv: (0, 20)),
+            (size: (16, 2, 2), origin: (-19, 7, 2), uv: (0, 40), anim: SpiderLeg(0), pivot: (-3, 8, 3)),
+            (size: (16, 2, 2), origin: (-19, 7, 0), uv: (0, 40), anim: SpiderLeg(1), pivot: (-3, 8, 1)),
+            (size: (16, 2, 2), origin: (-19, 7, -2), uv: (0, 40), anim: SpiderLeg(2), pivot: (-3, 8, -1)),
+            (size: (16, 2, 2), origin: (-19, 7, -4), uv: (0, 40), anim: SpiderLeg(3), pivot: (-3, 8, -3)),
+            (size: (16, 2, 2), origin: (3, 7, 2), uv: (0, 40), anim: SpiderLeg(4), pivot: (3, 8, 3)),
+            (size: (16, 2, 2), origin: (3, 7, 0), uv: (0, 40), anim: SpiderLeg(5), pivot: (3, 8, 1)),
+            (size: (16, 2, 2), origin: (3, 7, -2), uv: (0, 40), anim: SpiderLeg(6), pivot: (3, 8, -1)),
+            (size: (16, 2, 2), origin: (3, 7, -4), uv: (0, 40), anim: SpiderLeg(7), pivot: (3, 8, -3)),
+        ],
+    ),
+])

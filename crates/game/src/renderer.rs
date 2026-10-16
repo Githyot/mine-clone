@@ -281,7 +281,7 @@ impl Renderer {
         let translucent_pipe =
             make("translucent", &terrain_layout, &terrain, "vs_main", "fs_translucent", &vbufs, blend_alpha, None, depth_state(false, C::Less), T::TriangleList);
         let sky_pipe = make("sky", &globals_only, &sky, "vs_sky", "fs_sky", &[], None, None, depth_state(false, C::Always), T::TriangleList);
-        let cloud_pipe = make("clouds", &globals_only, &sky, "vs_clouds", "fs_clouds", &[], blend_alpha, None, depth_state(false, C::Less), T::TriangleList);
+        let cloud_pipe = make("clouds", &globals_only, &sky, "vs_sky", "fs_clouds", &[], blend_alpha, None, depth_state(false, C::Less), T::TriangleList);
         let line_layout = [wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<LineVertex>() as u64,
             step_mode: wgpu::VertexStepMode::Vertex,
@@ -737,7 +737,7 @@ impl Renderer {
             }
             if clouds {
                 pass.set_pipeline(&self.cloud_pipe);
-                pass.draw(0..6, 0..1);
+                pass.draw(0..3, 0..1);
             }
             pass.set_pipeline(&self.translucent_pipe);
             pass.set_bind_group(1, &self.tex_bg, &[]);
