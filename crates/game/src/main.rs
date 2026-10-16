@@ -566,6 +566,7 @@ impl Game {
         let entities = entity::EntityRenderer::new(&renderer, &mob_reg, &painting_defs, &base);
         let mut mobs = mobs::Mobs::new(mob_reg, reg.id_or_air("grass_block"), seed);
         mobs.enabled = settings.mobs;
+        mobs.peaceful = settings.difficulty == 0;
 
         let (sx, sy, sz) = gen.find_spawn();
         let mut body = Body::new(Vec3::new(sx as f32 + 0.5, sy as f32, sz as f32 + 0.5));
@@ -1045,6 +1046,10 @@ impl Game {
 
     fn update(&mut self, dt: f32) {
         self.now += dt;
+        // Peaceful: health comes back on its own.
+        if self.survival && self.settings.difficulty == 0 && self.screen != Screen::Dead && self.health > 0.0 {
+            self.health = (self.health + dt).min(20.0);
+        }
         let rd = self.settings.render_distance;
         let eye = self.body.eye();
         let center = ChunkPos::new((eye.x.floor() as i32) >> 4, (eye.z.floor() as i32) >> 4);
@@ -1765,6 +1770,11 @@ impl Game {
         if !self.survival || self.screen == Screen::Dead || self.hurt_age < 0.5 || amount <= 0.0 {
             return;
         }
+        // Monsters and blasts hit harder on harder difficulties.
+        let amount = if from.is_some() { amount * [0.0, 0.5, 1.0, 1.5][self.settings.difficulty.min(3) as usize] } else { amount };
+        if amount <= 0.0 {
+            return;
+        }
         // Armor softens hits from something (mobs, blasts), not falls, drowning or hunger.
         let amount = if from.is_some() { self.armor_absorb(amount) } else { amount };
         self.health -= amount;
@@ -2464,13 +2474,15 @@ impl Game {
                     format!("Distância de visão: {} chunks", self.settings.render_distance),
                     format!("Música: {} ({} suas)", self.settings.music_mode.label(), custom),
                     "Tocar próxima música (M)".to_string(),
-                    format!("Pacote de texturas: {pack}"),
+                    format!("Texturas: {}", pack.trim_end_matches(".zip")),
                     format!("Nuvens: {}", if self.settings.show_clouds { "Sim" } else { "Não" }),
                     format!("VSync: {}", if self.settings.vsync { "Sim" } else { "Não" }),
                     format!("Controle: {}", if self.pads.pad.connected { self.pads.pad.name.as_str() } else { "nenhum conectado" }),
                     format!("Modo: {}", if self.survival { "Sobrevivência" } else { "Criativo" }),
                     format!("Mobs: {}", if self.settings.mobs { "Sim" } else { "Não" }),
                     format!("Shaders: {}", self.shader_name()),
+                    format!("Volume da música: {}%", (self.settings.music_volume * 100.0).round() as i32),
+                    format!("Dificuldade: {}", settings::DIFFICULTIES[self.settings.difficulty.min(3) as usize]),
                     "Salvar e sair".to_string(),
                 ];
                 // First and last buttons are wide; the options between them sit in two columns.
@@ -2887,6 +2899,15 @@ impl Game {
             10 => {
                 self.shader_scroll = 0;
                 self.set_screen(Screen::Shaders);
+            }
+            11 => {
+                // 0% .. 100% in steps of 10.
+                let v = ((self.settings.music_volume * 10.0).round() as i32 + 1) % 11;
+                self.settings.music_volume = v as f32 / 10.0;
+            }
+            12 => {
+                self.settings.difficulty = (self.settings.difficulty + 1) % 4;
+                self.mobs.peaceful = self.settings.difficulty == 0;
             }
             _ => {
                 self.quit_to_title();

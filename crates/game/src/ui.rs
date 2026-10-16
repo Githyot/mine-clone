@@ -231,7 +231,22 @@ impl UiBatch {
         self.rect(x + s, y + s, w - 2.0 * s, h - 2.0 * s, if hover { [126, 136, 191, 255] } else { [111, 111, 111, 255] });
         self.rect(x + s, y + s, w - 2.0 * s, s, if hover { [168, 178, 230, 255] } else { [160, 160, 160, 255] });
         self.rect(x + s, y + h - 2.0 * s, w - 2.0 * s, s, if hover { [90, 100, 150, 255] } else { [70, 70, 70, 255] });
-        self.text_centered(x + w / 2.0, y + (h - 8.0 * s) / 2.0, label, if hover { YELLOW } else { [224, 224, 224, 255] });
+        // Long labels shrink, then lose their end, so they never spill out of the button.
+        let color = if hover { YELLOW } else { [224, 224, 224, 255] };
+        let room = w - 6.0 * s;
+        let mut sc = s;
+        while sc > 1.0 && self.text_width(label, sc) > room {
+            sc -= 1.0;
+        }
+        let mut text = label.to_string();
+        if self.text_width(&text, sc) > room {
+            while !text.is_empty() && self.text_width(&format!("{text}..."), sc) > room {
+                text.pop();
+            }
+            text.push_str("...");
+        }
+        let tw = self.text_width(&text, sc);
+        self.text_scaled(x + (w - tw) / 2.0, y + (h - 8.0 * sc) / 2.0, &text, color, sc);
         hover
     }
 }

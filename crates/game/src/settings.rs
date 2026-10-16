@@ -81,6 +81,8 @@ pub struct Settings {
     pub flat_drops: bool,
     /// Animals and monsters spawn in the world.
     pub mobs: bool,
+    /// 0 peaceful (no monsters, health comes back), 1 easy, 2 normal, 3 hard.
+    pub difficulty: u8,
     pub gui_scale: u32,
     pub controller: ControllerSettings,
     /// Shader pack in use: a built-in name or a folder in `shaderpacks/` ("" = off).
@@ -102,6 +104,7 @@ impl Default for Settings {
             vsync: true,
             music_mode: MusicMode::Classic,
             music_volume: 0.6,
+            difficulty: 2,
             sound_volume: 0.8,
             music_folder: "music".into(),
             music_delay_min: 600.0,
@@ -167,3 +170,6 @@ mod tests {
         assert_eq!(s.shader_quality, ShaderQuality::Fancy);
     }
 }
+
+/// Names of the difficulty levels, as shown in the menu.
+pub const DIFFICULTIES: [&str; 4] = ["Pacífico", "Fácil", "Normal", "Difícil"];

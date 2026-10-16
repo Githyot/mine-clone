@@ -18,6 +18,8 @@ pub struct Mobs {
     seed: u64,
     grass: BlockId,
     pub enabled: bool,
+    /// Peaceful difficulty: no monsters at all.
+    pub peaceful: bool,
 }
 
 /// What happened to the player this tick.
@@ -31,7 +33,7 @@ pub struct MobOutcome {
 
 impl Mobs {
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false }
     }
 
     fn next_rand(&mut self) -> u64 {
@@ -86,7 +88,7 @@ impl Mobs {
                 .enumerate()
                 .filter(|(_, d)| match d.spawn {
                     SpawnRule::Grass => !cave && below == self.grass && !dark && passive < MAX_PASSIVE,
-                    SpawnRule::Dark => dark && hostile < MAX_HOSTILE,
+                    SpawnRule::Dark => dark && hostile < MAX_HOSTILE && !self.peaceful,
                     SpawnRule::Never => false,
                 })
                 .map(|(i, _)| i)
@@ -126,6 +128,10 @@ impl Mobs {
         if !self.enabled {
             self.list.clear();
             return out;
+        }
+        if self.peaceful {
+            let reg = &self.reg;
+            self.list.retain(|m| reg.defs[m.def].kind != Kind::Hostile);
         }
         self.spawn_cd -= dt;
         if self.spawn_cd <= 0.0 {
