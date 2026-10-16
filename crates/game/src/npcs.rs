@@ -45,6 +45,7 @@ impl Town {
 const SHOPS: &[(&str, &[(&str, u8, u8)])] = &[
     ("npc_merchant", &[("torch", 8, 1), ("apple", 3, 1), ("cooked_beef", 2, 1), ("oak_sapling", 4, 1), ("bucket", 1, 2), ("fishing_rod", 1, 2), ("iron_ingot", 2, 2), ("red_bed", 1, 3), ("ancient_seed", 1, 4)]),
     ("npc_wizard", &[("lapis_lazuli", 6, 2), ("topaz_wand", 1, 5), ("ruby_wand", 1, 6), ("sapphire_wand", 1, 6), ("amethyst_wand", 1, 7), ("mana_crystal", 1, 8), ("flame_tome", 1, 12), ("thunder_tome", 1, 14)]),
+    ("goblin_trader", &[("diamond", 1, 5), ("redstone", 12, 1), ("gold_ingot", 3, 2), ("copper_ingot", 10, 1), ("honeycomb", 4, 1), ("ruby", 1, 3), ("topaz", 1, 3), ("life_crystal", 1, 9), ("minecart", 1, 3), ("leather_backpack", 1, 6), ("tnt", 2, 2)]),
     ("npc_smith", &[("bronze_ingot", 4, 2), ("silver_ingot", 2, 3), ("tungsten_ingot", 2, 4), ("platinum_ingot", 2, 5), ("iron_pickaxe", 1, 4), ("platinum_sword", 1, 8), ("diamond", 1, 6)]),
 ];
 

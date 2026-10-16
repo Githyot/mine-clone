@@ -14,6 +14,7 @@ mod bosses;
 mod npcs;
 mod fluids;
 mod redstone;
+mod wanderers;
 mod weather;
 mod entity;
 mod item_render;
@@ -472,6 +473,7 @@ struct Game {
     hopper_t: f32,
     /// The cart the player sits in.
     riding: Option<usize>,
+    wander: wanderers::Wanderers,
     copper: copper::Copper,
     bobber: Option<fishing::Bobber>,
     weather: weather::Weather,
@@ -772,6 +774,7 @@ impl Game {
             tnt: Vec::new(),
             hopper_t: 0.0,
             riding: None,
+            wander: Default::default(),
             copper: copper::Copper::new(&reg_for_fluids),
             weather: weather::Weather::new(weather_save, seed),
             anim: player_model::Animator::default(),
@@ -1348,6 +1351,9 @@ impl Game {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
             let creative = !self.survival || self.screen == Screen::Dead;
+            if self.screen == Screen::Playing {
+                self.update_wanderers(if self.args.screenshot.is_some() { 0.0 } else { dt }, daylight);
+            }
             // Screenshots hold the world still so the picture is stable.
             let mdt = if self.args.screenshot.is_some() { 0.0 } else { dt };
             let out = self.mobs.update(&self.world, self.body.pos, creative, daylight, mdt);
@@ -2205,7 +2211,11 @@ impl Game {
         let f = self.forward();
         let fwd = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
         let side = Vec3::new(-fwd.z, 0.0, fwd.x);
-        let names: Vec<String> = self.mobs.reg.defs.iter().filter(|d| d.spawn != voxel::mob::SpawnRule::Never).map(|d| d.name.clone()).collect();
+        // MC_MOBS=a,b picks which ones (any mob, even those that never spawn on their own).
+        let names: Vec<String> = match std::env::var("MC_MOBS") {
+            Ok(list) => list.split(',').map(|s| s.trim().to_string()).collect(),
+            Err(_) => self.mobs.reg.defs.iter().filter(|d| d.spawn != voxel::mob::SpawnRule::Never).map(|d| d.name.clone()).collect(),
+        };
         // Rows of up to seven, the first ones (the tall monsters) further back.
         let rows = names.len().div_ceil(7);
         for (i, name) in names.iter().enumerate() {

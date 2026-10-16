@@ -1486,8 +1486,8 @@ TOWNSFOLK = {
 }
 
 
-def townsfolk(name, base):
-    colours = TOWNSFOLK[name]
+def townsfolk(name, base, colours=None):
+    colours = colours or TOWNSFOLK[name]
 
     def paint(c):
         g = globals()
@@ -1500,6 +1500,28 @@ def townsfolk(name, base):
     return paint
 
 
+# Recoloured copies of another mob's model and painter: name -> (base, palette overrides).
+RECOLORED = {
+    "goblin_trader": ("player", dict(
+        PSKIN=pal("#4e6e2a", "#5c7e32", "#6a8e3a", "#789e44", "#86ac4e"),
+        PHAIR=pal("#1a1410", "#241c16", "#2e241c", "#382c22", "#423428"),
+        PTUNIC=pal("#5a2a14", "#6c341a", "#7e3e20", "#904826", "#a2522c"),
+        PTROUSER=pal("#2e2a22", "#38342a", "#423e32", "#4c483a"),
+        PLEATHER=pal("#8a6a10", "#a07c16", "#b88e1c", "#cca024"),
+        PIRIS=(200, 150, 30))),
+    "mutant_zombie": ("zombie", dict(
+        ZSKIN=pal("#2e4430", "#3a5438", "#466444", "#52724e", "#5e7e58"),
+        ZSHIRT=pal("#2a1a14", "#36221a", "#422a20", "#4e3226"),
+        ZPANTS=pal("#141420", "#1c1c2c", "#242438", "#2c2c44"))),
+}
+for _n, (_b, _) in RECOLORED.items():
+    ROLES[_n] = ROLES[_b]
+    HARDCODED[_n] = HARDCODED[_b]
+
+for _n, (_b, _) in RECOLORED.items():
+    HARDCODED_LAYERS[_n] = HARDCODED_LAYERS[_b]
+
+
 PAINTERS = {
     "pig": paint_pig, "cow": paint_cow, "sheep": paint_sheep,
     "chicken": paint_chicken, "zombie": paint_zombie,
@@ -1510,6 +1532,8 @@ PAINTERS = {
 }
 for _n in TOWNSFOLK:
     PAINTERS[_n] = townsfolk(_n, paint_player)
+for _n, (_b, _c) in RECOLORED.items():
+    PAINTERS[_n] = townsfolk(_n, PAINTERS[_b], _c)
 
 
 # --------------------------------------------------------------------------
@@ -1852,6 +1876,8 @@ OVERLAYS = {
 }
 for _n in TOWNSFOLK:
     OVERLAYS[_n] = townsfolk(_n, overlay_player)
+for _n, (_b, _c) in RECOLORED.items():
+    OVERLAYS[_n] = townsfolk(_n, OVERLAYS[_b], _c)
 
 
 # --------------------------------------------------------------------------
@@ -1938,7 +1964,8 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     order = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "stalker", "spider",
              "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian",
-             "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith"]
+             "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
+             "goblin_trader", "mutant_zombie"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols
