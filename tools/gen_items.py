@@ -1091,6 +1091,164 @@ def xp_orb():
 
 
 # --------------------------------------------------------------------------
+# Armor
+# --------------------------------------------------------------------------
+
+ARMOR_MATERIALS = {
+    "leather": pal("#3a200c", "#5e3618", "#7e4c24", "#9c6432", "#bc8248"),
+    "iron": MATERIALS["iron"],
+    "golden": MATERIALS["golden"],
+    "diamond": MATERIALS["diamond"],
+}
+
+ARMOR_KINDS = ("helmet", "chestplate", "leggings", "boots")
+
+ARMOR_SHAPES = {
+    # cap with a face opening at the bottom
+    "helmet": [
+        "................",
+        "................",
+        "................",
+        ".....######.....",
+        "...##########...",
+        "..############..",
+        "..############..",
+        "..############..",
+        "..############..",
+        "..####....####..",
+        "..###......###..",
+        "..###......###..",
+        "................",
+        "................",
+        "................",
+        "................",
+    ],
+    # torso with shoulders, short sleeves and a neck cut-out
+    "chestplate": [
+        "................",
+        "..####....####..",
+        ".#####....#####.",
+        ".######..######.",
+        ".##############.",
+        ".##############.",
+        ".##.########.##.",
+        ".##.########.##.",
+        "....########....",
+        "....########....",
+        "....########....",
+        "....########....",
+        "....########....",
+        "....########....",
+        "................",
+        "................",
+    ],
+    # waist band and two legs
+    "leggings": [
+        "................",
+        "................",
+        "...##########...",
+        "...##########...",
+        "...##########...",
+        "...####..####...",
+        "...####..####...",
+        "...####..####...",
+        "...####..####...",
+        "...####..####...",
+        "...####..####...",
+        "...####..####...",
+        "...####..####...",
+        "...####..####...",
+        "................",
+        "................",
+    ],
+    # two boots side by side, toes pointing outwards
+    "boots": [
+        "................",
+        "................",
+        "................",
+        "................",
+        "..####....####..",
+        "..####....####..",
+        "..####....####..",
+        "..####....####..",
+        "..####....####..",
+        "..####....####..",
+        ".#####....#####.",
+        ".#####....#####.",
+        "................",
+        "................",
+        "................",
+        "................",
+    ],
+}
+
+
+def armor(material, kind):
+    rng = rng_for(f"{material}_{kind}")
+    p = ARMOR_MATERIALS[material]
+    img = canvas()
+    m = mask_from_rows(ARMOR_SHAPES[kind])
+    shade_mask(img, m, p[1:], rng, speck=0.08 if material == "leather" else 0.0)
+    leather = material == "leather"
+    if kind == "helmet":
+        # rim band just above the face opening and the cheek guards
+        for x in range(3, 13):
+            put(img, x, 8, p[1])
+        img[9, 2:6, :3] = p[2]
+        img[9, 10:14, :3] = p[2]
+        put(img, 2, 9, p[4])
+        put(img, 10, 9, p[3])
+        if not leather:
+            # raised centre ridge on the crown
+            for y in range(4, 8):
+                put(img, 7, y, p[4])
+                put(img, 8, y, p[2])
+            put(img, 4, 6, p[4])
+            put(img, 11, 6, p[2])
+    elif kind == "chestplate":
+        # collar trim around the neck cut-out
+        put(img, 6, 3, p[1])
+        put(img, 9, 3, p[1])
+        img[4, 7:9, :3] = p[1]
+        # centre seam and a bottom hem
+        for y in range(5, 13):
+            put(img, 8, y, p[2])
+        img[13, 5:11, :3] = p[1]
+        if leather:
+            # stitched lacing down the front
+            for y in (6, 8, 10):
+                put(img, 7, y, p[4])
+                put(img, 8, y, p[1])
+        else:
+            # plate edge line under the shoulders
+            img[5, 2:14, :3] = p[2]
+            put(img, 1, 5, p[3])
+            img[5, 7:9, :3] = p[1]
+    elif kind == "leggings":
+        # waist band
+        img[4, 4:12, :3] = p[1]
+        img[2, 3:13, :3] = p[4]
+        if leather:
+            put(img, 7, 3, p[4])   # little belt buckle / lace
+            put(img, 8, 3, p[1])
+        else:
+            img[3, 7:9, :3] = p[1]
+        # knee plates
+        for x0 in (4, 10):
+            put(img, x0, 9, p[4])
+            put(img, x0 + 1, 9, p[3])
+    elif kind == "boots":
+        # light cuff at the top, darker sole at the bottom
+        img[4, 2:6, :3] = p[4]
+        img[4, 10:14, :3] = p[4]
+        img[5, 3:5, :3] = p[1]
+        img[5, 11:13, :3] = p[1]
+        img[11, 1:6, :3] = p[0] if leather else p[1]
+        img[11, 10:15, :3] = p[0] if leather else p[1]
+    return outline(img)
+
+
+# --------------------------------------------------------------------------
 # Registry & output
 # --------------------------------------------------------------------------
 
@@ -1122,6 +1280,9 @@ def item_registry():
     })
     for wood in ("oak", "birch", "spruce"):
         reg[f"{wood}_sapling"] = lambda w=wood: sapling(w)
+    for mat in ARMOR_MATERIALS:
+        for kind in ARMOR_KINDS:
+            reg[f"{mat}_{kind}"] = lambda m=mat, k=kind: armor(m, k)
     return reg
 
 

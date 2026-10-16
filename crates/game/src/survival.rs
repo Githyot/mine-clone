@@ -64,6 +64,8 @@ pub enum Open {
 
 pub struct Survival {
     pub inv: Inventory,
+    /// Worn armor: head, chest, legs, feet.
+    pub armor: [Option<ItemStack>; 4],
     pub cursor: Option<ItemStack>,
     pub craft: [Option<ItemStack>; 9],
     pub open: Open,
@@ -79,6 +81,8 @@ pub struct Survival {
     /// Saplings planted by the player and seconds until they grow.
     pub saplings: Vec<(IVec3, f32)>,
     pub eat: f32,
+    /// Seconds since the last swing; a hit only lands at full strength once the weapon is ready.
+    pub attack_t: f32,
     eat_sound: f32,
     heal_t: f32,
     starve_t: f32,
@@ -92,6 +96,7 @@ impl Survival {
     pub fn new() -> Survival {
         Survival {
             inv: Inventory::new(INV_SIZE),
+            armor: [None; 4],
             cursor: None,
             craft: [None; 9],
             open: Open::Craft,
@@ -105,6 +110,7 @@ impl Survival {
             orbs: Vec::new(),
             saplings: Vec::new(),
             eat: 0.0,
+            attack_t: 10.0,
             eat_sound: 0.0,
             heal_t: 0.0,
             starve_t: 0.0,
@@ -176,6 +182,8 @@ struct Saved {
     containers: Vec<SavedContainer>,
     #[serde(default)]
     saplings: Vec<([i32; 3], f32)>,
+    #[serde(default)]
+    armor: Vec<SavedStack>,
 }
 
 fn save_stacks(items: &ItemRegistry, inv: &Inventory) -> Vec<SavedStack> {
@@ -211,6 +219,7 @@ impl Survival {
             spawn: self.spawn.map(|p| p.to_array()),
             containers,
             saplings: self.saplings.iter().map(|(p, t)| (p.to_array(), *t)).collect(),
+            armor: self.armor.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
@@ -239,6 +248,10 @@ impl Survival {
             };
             sv.containers.insert(pos, cont);
         }
+        let worn = load_stacks(items, &s.armor, 4);
+        for (i, a) in worn.slots.into_iter().enumerate() {
+            sv.armor[i] = a;
+        }
         sv.saplings = s.saplings.into_iter().map(|(p, t)| (IVec3::from(p), t)).collect();
         sv
     }
@@ -258,9 +271,10 @@ pub fn item_icon(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRegistry,
         }
     }
     let s = ui.scale;
-    if let Some(t) = &it.tool {
+    let durability = it.tool.as_ref().map(|t| t.durability).or(it.armor.map(|a| a.durability));
+    if let Some(dur) = durability {
         if stack.damage > 0 {
-            let k = 1.0 - stack.damage as f32 / t.durability as f32;
+            let k = 1.0 - stack.damage as f32 / dur as f32;
             let bw = size - 2.0 * s;
             let by = y + size - 2.0 * s;
             ui.rect(x + s, by, bw, 2.0 * s, [0, 0, 0, 255]);
@@ -297,6 +311,20 @@ fn draw_drumstick(ui: &mut UiBatch, x: f32, y: f32, s: f32, fill: f32, empty: bo
     }
 }
 
+fn draw_shield(ui: &mut UiBatch, x: f32, y: f32, s: f32, fill: f32, empty: bool) {
+    // A little chestplate, seven pixels square.
+    const ROWS: [&str; 7] = ["AA...AA", "AAAAAAA", ".AAAAA.", ".AAAAA.", ".AAAAA.", ".AAAAA.", "..AAA.."];
+    for (r, row) in ROWS.iter().enumerate() {
+        for (c, ch) in row.chars().enumerate() {
+            if ch != 'A' || (fill < 1.0 && c > 3) {
+                continue;
+            }
+            let col = if empty { [45, 45, 45, 255] } else if r == 1 || c == 1 { [235, 235, 235, 255] } else { [190, 190, 190, 255] };
+            ui.rect(x + c as f32 * s, y + r as f32 * s, s, s, col);
+        }
+    }
+}
+
 /// One clickable slot in a container screen.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Slot {
@@ -304,6 +332,7 @@ enum Slot {
     Craft(usize),
     CraftOut,
     Cont(usize),
+    Armor(usize),
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -315,6 +344,58 @@ impl Game {
 
     pub(crate) fn held_tool(&self) -> Option<ToolDef> {
         self.held_stack().and_then(|s| self.items.get(s.item).tool.clone())
+    }
+
+    pub(crate) fn armor_points(&self) -> u32 {
+        self.surv.armor.iter().flatten().filter_map(|s| self.items.get(s.item).armor).map(|a| a.points as u32).sum()
+    }
+
+    /// Armor takes a share of a hit (4% per point, up to 80%) and wears a little.
+    pub(crate) fn armor_absorb(&mut self, amount: f32) -> f32 {
+        let points = self.armor_points().min(20);
+        if points == 0 {
+            return amount;
+        }
+        for i in 0..4 {
+            let Some(st) = self.surv.armor[i] else { continue };
+            let Some(a) = self.items.get(st.item).armor else { continue };
+            let d = st.damage + (amount / 4.0).max(1.0) as u16;
+            self.surv.armor[i] = if d >= a.durability { None } else { Some(ItemStack { damage: d, ..st }) };
+            if d >= a.durability {
+                self.sfx(Sfx::Break(Material::Stone));
+                self.toast("Uma peça da armadura quebrou", 2.0);
+            }
+        }
+        amount * (1.0 - points as f32 * 0.04)
+    }
+
+    /// Seconds a weapon needs between full-strength swings (the hand is quick, an axe slow).
+    pub(crate) fn attack_cooldown(&self) -> f32 {
+        match self.held_tool().map(|t| t.kind) {
+            None => 0.25,
+            Some(ToolKind::Sword) => 0.625,
+            Some(ToolKind::Axe) => 1.0,
+            Some(ToolKind::Pickaxe) => 0.83,
+            Some(ToolKind::Shovel) => 1.0,
+            Some(ToolKind::Hoe) => 0.5,
+        }
+    }
+
+    /// 0..1, how ready the next swing is.
+    pub(crate) fn attack_charge(&self) -> f32 {
+        (self.surv.attack_t / self.attack_cooldown()).min(1.0)
+    }
+
+    /// Put on the armor in hand, swapping with what was worn.
+    fn equip_held(&mut self) -> bool {
+        let sel = self.selected;
+        let Some(st) = self.surv.inv.slots[sel] else { return false };
+        let Some(a) = self.items.get(st.item).armor else { return false };
+        let slot = (a.slot as usize).min(3);
+        self.surv.inv.slots[sel] = self.surv.armor[slot].take();
+        self.surv.armor[slot] = Some(st);
+        self.sfx(Sfx::Place(Material::Cloth));
+        true
     }
 
     /// Wear the held tool; it breaks when worn out.
@@ -416,13 +497,16 @@ impl Game {
     /// Melee damage of what is in hand, and wear on it.
     pub(crate) fn surv_attack_damage(&mut self) -> f32 {
         self.surv.exhaustion += 0.1;
-        match self.held_tool() {
+        let k = self.attack_charge();
+        self.surv.attack_t = 0.0;
+        let base = match self.held_tool() {
             Some(t) => {
                 self.wear_held(if t.kind == ToolKind::Sword { 1 } else { 2 });
                 t.damage
             }
-            None => 2.0,
-        }
+            None => 1.0,
+        };
+        base * (0.2 + 0.8 * k * k)
     }
 
     pub(crate) fn surv_died(&mut self) {
@@ -433,6 +517,11 @@ impl Game {
         }
         if let Some(c) = self.surv.cursor.take() {
             self.pop_drop(at, c);
+        }
+        for i in 0..4 {
+            if let Some(a) = self.surv.armor[i].take() {
+                self.pop_drop(at, a);
+            }
         }
         let grid: Vec<ItemStack> = self.surv.craft.iter_mut().filter_map(|s| s.take()).collect();
         for s in grid {
@@ -494,6 +583,9 @@ impl Game {
         }
         let Some(stack) = self.held_stack() else { return false };
         let item = self.items.get(stack.item).clone();
+        if item.armor.is_some() {
+            return self.equip_held();
+        }
         if item.food.is_some() {
             // Eating is handled while the button is held (update).
             return false;
@@ -574,6 +666,7 @@ impl Game {
     // Simulation.
 
     pub(crate) fn surv_update(&mut self, dt: f32, use_held: bool) {
+        self.surv.attack_t += dt;
         self.update_drops(dt);
         self.update_furnaces(dt);
         self.update_saplings(dt);
@@ -854,12 +947,15 @@ impl Game {
         let mut out = Vec::with_capacity(self.surv.drops.len() + self.surv.orbs.len());
         // The orb sprite is loaded right after the item sprites.
         let orb_layer = (self.item_base as usize + self.items.textures.len()) as f32;
+        let hand = self.hand_light_level();
+        let eye = self.body.eye();
         for d in &self.surv.drops {
             let it = self.items.get(d.stack.item);
             let bob = (d.age * 2.5).sin() * 0.06 + 0.18;
             let p = d.body.pos + Vec3::Y * bob - c;
             let l = self.world.light((d.body.pos + Vec3::Y * 0.2).floor().as_ivec3());
             let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
+            let blk = blk.max(hand - (d.body.pos - eye).length() / 15.0);
             let (flat, layers, size) = match it.look {
                 Look::Block(b) => {
                     let bl = self.reg.get(b);
@@ -875,13 +971,13 @@ impl Game {
             let copies = if d.stack.count > 16 { 3 } else if d.stack.count > 1 { 2 } else { 1 };
             for k in 0..copies {
                 let off = Vec3::new(k as f32 * 0.05, k as f32 * 0.04, -(k as f32) * 0.05);
-                out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0] });
+                out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0; 4] });
             }
         }
         for o in &self.surv.orbs {
             let p = o.pos - c + Vec3::Y * ((o.age * 4.0).sin() * 0.05);
             let size = 0.12 + (o.value as f32).sqrt() * 0.04;
-            out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [self.yaw, 1.0, 1.0, 1.0], layers: [orb_layer, orb_layer, orb_layer, 0.5] });
+            out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [self.yaw, 1.0, 1.0, 1.0], layers: [orb_layer, orb_layer, orb_layer, 0.5], rot: [0.0; 4] });
         }
         out
     }
@@ -907,6 +1003,19 @@ impl Game {
             draw_drumstick(&mut self.ui, x, y + dy, s, 1.0, true);
             if v > 0.0 {
                 draw_drumstick(&mut self.ui, x, y + dy, s, if v >= 2.0 { 1.0 } else { 0.5 }, false);
+            }
+        }
+        // Armor above the hearts.
+        let pts = self.armor_points();
+        if pts > 0 {
+            let y = hy - 21.0 * s;
+            for i in 0..10u32 {
+                let x = hx + i as f32 * 8.0 * s;
+                let v = pts as i32 - i as i32 * 2;
+                draw_shield(&mut self.ui, x, y, s, 1.0, true);
+                if v > 0 {
+                    draw_shield(&mut self.ui, x, y, s, if v >= 2 { 1.0 } else { 0.5 }, false);
+                }
             }
         }
         // Experience bar and level.
@@ -976,6 +1085,9 @@ impl Game {
                     self.ui.rect(ax + (14.0 + k as f32) * s, ay - (3.0 - k as f32) * s, s, (9.0 - 2.0 * k as f32) * s, [139, 139, 139, 255]);
                 }
                 if n == 2 {
+                    for i in 0..4 {
+                        slots.push((Slot::Armor(i), x0 + 8.0 * s, y0 + (8 + i * 18) as f32 * s));
+                    }
                     // A little figure of the player in the corner, like the classic screen.
                     self.ui.rect(x0 + 26.0 * s, y0 + 8.0 * s, 52.0 * s, 62.0 * s, [0, 0, 0, 255]);
                     self.ui.rect(x0 + 27.0 * s, y0 + 9.0 * s, 50.0 * s, 60.0 * s, [110, 110, 110, 255]);
@@ -1109,6 +1221,7 @@ impl Game {
             Slot::Inv(i) => self.surv.inv.slots[i],
             Slot::Craft(i) => self.surv.craft[i],
             Slot::CraftOut => None,
+            Slot::Armor(i) => self.surv.armor[i],
             Slot::Cont(i) => match self.open_container_inv() {
                 Some(inv) => inv.slots.get(i).copied().flatten(),
                 None => None,
@@ -1121,6 +1234,7 @@ impl Game {
             Slot::Inv(i) => self.surv.inv.slots[i] = v,
             Slot::Craft(i) => self.surv.craft[i] = v,
             Slot::CraftOut => {}
+            Slot::Armor(i) => self.surv.armor[i] = v,
             Slot::Cont(i) => {
                 if let Some(inv) = self.open_container_inv_mut() {
                     if i < inv.slots.len() {
@@ -1167,6 +1281,11 @@ impl Game {
         if slot == Slot::CraftOut {
             self.click_craft_output(shift);
             return;
+        }
+        if let (Slot::Armor(i), Some(c)) = (slot, self.surv.cursor) {
+            if self.items.get(c.item).armor.is_none_or(|a| a.slot as usize != i) {
+                return;
+            }
         }
         let cur = self.slot_get(slot);
         if shift {
@@ -1235,6 +1354,11 @@ impl Game {
     fn quick_move(&mut self, from: Slot, st: ItemStack) -> Option<ItemStack> {
         let items = &self.items;
         match from {
+            Slot::Inv(_) if self.surv.open == Open::Craft && self.items.get(st.item).armor.is_some_and(|a| self.surv.armor[(a.slot as usize).min(3)].is_none()) => {
+                let a = self.items.get(st.item).armor.unwrap();
+                self.surv.armor[(a.slot as usize).min(3)] = Some(st);
+                None
+            }
             Slot::Inv(i) => {
                 // Into an open chest; into the furnace input (or fuel); else hotbar <-> main rows.
                 match self.surv.open {
@@ -1393,5 +1517,49 @@ impl Game {
                 self.surv.craft[3] = planks.map(|i| ItemStack::new(i, 2));
             }
         }
+    }
+}
+
+impl Game {
+    /// The item in hand, drawn in front of the camera in first person.
+    pub(crate) fn held_item_instance(&self, eye: Vec3, cam_block: IVec3) -> Option<GpuItem> {
+        let st = self.held_stack()?;
+        let it = self.items.get(st.item);
+        let f = self.forward();
+        let right = Vec3::new(self.yaw.cos(), 0.0, -self.yaw.sin());
+        let up = right.cross(f);
+        let sw = if self.anim.swing > 0.0 { (self.anim.swing * std::f32::consts::PI).sin() } else { 0.0 };
+        let eat = if self.surv.eat > 0.0 { (self.surv.eat * 14.0).sin().abs() * 0.04 } else { 0.0 };
+        let (flat, layers, size, roll, yaw_off) = match it.look {
+            Look::Block(b) => {
+                let bl = self.reg.get(b);
+                if matches!(bl.shape, Shape::Cross | Shape::Torch) {
+                    (1.0, [bl.faces[0] as f32; 3], if bl.shape == Shape::Torch { 0.45 } else { 0.3 }, 0.0, -0.35)
+                } else {
+                    (0.0, [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32], 0.16, 0.0, 0.6)
+                }
+            }
+            Look::Sprite(l) => (1.0, [(self.item_base + l) as f32; 3], 0.3, if it.tool.is_some() { 0.25 } else { 0.0 }, -0.25),
+        };
+        // Low on the right; a swing pulls it forward and down.
+        let p = eye + f * (0.7 + 0.15 * sw) + right * (0.34 - 0.12 * sw) + up * (-0.24 - 0.12 * sw + eat) - cam_block.as_vec3();
+        let l = self.world.light(eye.floor().as_ivec3());
+        let blk = ((l & 15) as f32 / 15.0).max(self.hand_light_level());
+        Some(GpuItem {
+            pos: [p.x, p.y, p.z, size],
+            info: [self.yaw + yaw_off, flat, (l >> 4) as f32 / 15.0, blk],
+            layers: [layers[0], layers[1], layers[2], 0.0],
+            rot: [self.pitch - 0.9 * sw, roll + 0.8 * sw, 0.0, 0.0],
+        })
+    }
+
+    /// 0..1 light given off by what the player holds (a torch, glowstone...).
+    pub(crate) fn hand_light_level(&self) -> f32 {
+        let id = if self.survival {
+            self.held_stack().and_then(|s| self.items.get(s.item).places).unwrap_or(AIR)
+        } else {
+            self.hotbar[self.selected]
+        };
+        self.reg.light_of(id) as f32 / 15.0
     }
 }

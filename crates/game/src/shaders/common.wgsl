@@ -16,6 +16,8 @@ struct Globals {
     // x: plant waving strength (1 = classic), y: rippling water 0/1, z: light source glow
     // (shader packs only; 0 = off).
     effects: vec4<f32>,
+    // A torch in the hand: xyz relative to the camera's block, w: light level 0..1.
+    hand_light: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;

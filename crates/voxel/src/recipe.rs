@@ -181,6 +181,20 @@ mod tests {
     use super::*;
     use crate::block::BlockRegistry;
 
+    /// The real game files load together, and armor can be made.
+    #[test]
+    fn vanilla_pack_loads() {
+        let blocks = BlockRegistry::from_ron(include_str!("../../../packs/vanilla/blocks.ron")).unwrap();
+        let items = ItemRegistry::from_ron(include_str!("../../../packs/vanilla/items.ron"), &blocks).unwrap();
+        let r = Recipes::from_ron(include_str!("../../../packs/vanilla/recipes.ron"), &items).unwrap();
+        let ingot = Some(ItemStack::new(items.id("iron_ingot").unwrap(), 1));
+        let grid = [ingot, ingot, ingot, ingot, None, ingot, None, None, None];
+        let out = r.craft(&grid, 3).unwrap();
+        assert_eq!(items.get(out.item).name, "iron_helmet");
+        assert_eq!(items.get(out.item).armor.unwrap().slot, 0);
+        assert!(r.smelt(items.id("raw_iron").unwrap()).is_some());
+    }
+
     #[test]
     fn planks_sticks_and_a_mirrored_axe() {
         let blocks = BlockRegistry::from_ron(r#"(blocks: [(name: "oak_log"), (name: "oak_planks"), (name: "birch_planks")])"#).unwrap();

@@ -59,7 +59,9 @@ fn vs_main(@location(0) w: vec3<u32>, @location(1) origin: vec3<f32>) -> VOut {
 fn lit(c: vec3<f32>, in: VOut) -> vec3<f32> {
     let daylight = g.fog_color.w;
     let sky = light_curve(in.light.x) * daylight;
-    let blk = light_curve(in.light.y);
+    // A light in the player's hand fades one level per block, like a placed torch.
+    let hand = g.hand_light.w - length(in.rel - g.hand_light.xyz) / 15.0;
+    let blk = light_curve(max(in.light.y, hand));
     // Torches are a little warm, sky light is neutral.
     var l = max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82));
     let b = g.fog.w;

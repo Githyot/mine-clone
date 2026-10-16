@@ -13,6 +13,8 @@ pub struct GpuItem {
     pub info: [f32; 4],
     /// Texture layers side, top, bottom; glow.
     pub layers: [f32; 4],
+    /// Pitch and roll (held items); zero for items on the ground.
+    pub rot: [f32; 4],
 }
 
 pub struct ItemGpu {

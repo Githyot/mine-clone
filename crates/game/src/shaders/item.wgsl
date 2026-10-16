@@ -8,6 +8,8 @@ struct Item {
     info: vec4<f32>,
     // Texture layers: side, top, bottom; w: brightness boost (orbs glow).
     layers: vec4<f32>,
+    // x: pitch, y: roll (a held item tilts with the camera), zw unused.
+    rot: vec4<f32>,
 };
 
 @group(1) @binding(0) var itex: texture_2d_array<f32>;
@@ -46,6 +48,13 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
     if (flat) {
         local.z = local.z / 16.0;
     }
+    // Roll around the item's facing, then pitch, then yaw.
+    let cr = cos(it.rot.y);
+    let sr = sin(it.rot.y);
+    local = vec3<f32>(local.x * cr - local.y * sr, local.x * sr + local.y * cr, local.z);
+    let cp = cos(it.rot.x);
+    let sp = sin(it.rot.x);
+    local = vec3<f32>(local.x, local.y * cp - local.z * sp, local.y * sp + local.z * cp);
     let cy = cos(it.info.x);
     let sy = sin(it.info.x);
     let rotated = vec3<f32>(local.x * cy + local.z * sy, local.y, -local.x * sy + local.z * cy);

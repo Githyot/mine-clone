@@ -34,6 +34,8 @@ pub struct Globals {
     /// x: plant waving strength (1 = classic), y: rippling water 0/1, z: light source glow
     /// (HDR only), w: unused.
     pub effects: [f32; 4],
+    /// Light carried in the hand: xyz relative to the camera's block, w: level 0..1.
+    pub hand_light: [f32; 4],
 }
 
 #[repr(C)]

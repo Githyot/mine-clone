@@ -28,6 +28,15 @@ pub struct FoodDef {
     pub saturation: f32,
 }
 
+#[derive(Deserialize, Clone, Copy, Debug)]
+pub struct ArmorDef {
+    /// 0 head, 1 chest, 2 legs, 3 feet.
+    pub slot: u8,
+    /// Armor points (a full bar is 20; each point blocks 4% of hits).
+    pub points: u8,
+    pub durability: u16,
+}
+
 /// An item as written in `items.ron`. An entry named like a block adds to that block's item.
 #[derive(Deserialize, Clone, Debug)]
 pub struct ItemDef {
@@ -43,6 +52,8 @@ pub struct ItemDef {
     pub tool: Option<ToolDef>,
     #[serde(default)]
     pub food: Option<FoodDef>,
+    #[serde(default)]
+    pub armor: Option<ArmorDef>,
     /// Block placed when used on a block.
     #[serde(default)]
     pub places: Option<String>,
@@ -72,6 +83,7 @@ pub struct Item {
     pub max_stack: u8,
     pub tool: Option<ToolDef>,
     pub food: Option<FoodDef>,
+    pub armor: Option<ArmorDef>,
     pub places: Option<BlockId>,
     pub fuel: f32,
 }
@@ -94,7 +106,7 @@ impl ItemRegistry {
     pub fn from_defs(defs: Vec<ItemDef>, blocks: &BlockRegistry) -> Result<Self, String> {
         let mut reg = ItemRegistry { items: Vec::new(), by_name: HashMap::new(), block_item: vec![None; blocks.len()], textures: Vec::new() };
         // Item 0 is unused so a zero id never looks like a real item.
-        reg.items.push(Item { name: "air".into(), display_name: String::new(), look: Look::Block(AIR), max_stack: 0, tool: None, food: None, places: None, fuel: 0.0 });
+        reg.items.push(Item { name: "air".into(), display_name: String::new(), look: Look::Block(AIR), max_stack: 0, tool: None, food: None, armor: None, places: None, fuel: 0.0 });
         for (i, b) in blocks.blocks.iter().enumerate() {
             if i as BlockId == AIR || matches!(b.shape, Shape::Liquid | Shape::Invisible) {
                 continue;
@@ -107,6 +119,7 @@ impl ItemRegistry {
                 max_stack: 64,
                 tool: None,
                 food: None,
+                armor: None,
                 places: Some(i as BlockId),
                 fuel: 0.0,
             });
@@ -145,7 +158,7 @@ impl ItemRegistry {
                 reg.textures.push(format!("item/{tex}"));
                 (reg.textures.len() - 1) as u16
             });
-            let max_stack = d.max_stack.unwrap_or(if d.tool.is_some() { 1 } else if d.food.is_some() { 64 } else { 64 });
+            let max_stack = d.max_stack.unwrap_or(if d.tool.is_some() || d.armor.is_some() { 1 } else { 64 });
             let id = reg.items.len() as ItemId;
             reg.by_name.insert(d.name.clone(), id);
             reg.items.push(Item {
@@ -155,6 +168,7 @@ impl ItemRegistry {
                 max_stack: max_stack.max(1),
                 tool: d.tool,
                 food: d.food,
+                armor: d.armor,
                 places,
                 fuel: d.fuel,
             });

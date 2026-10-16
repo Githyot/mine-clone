@@ -85,6 +85,8 @@ struct Args {
     survival: bool,
     /// Test: fill the survival inventory and drop items in front of the player.
     kit: bool,
+    /// Test: hotbar slot in hand (1-9).
+    slot: Option<usize>,
     /// Test: open a survival screen (table, furnace or chest).
     open: Option<String>,
     particles: bool,
@@ -140,6 +142,7 @@ fn parse_args() -> Args {
             "--title" => a.title = true,
             "--survival" => a.survival = true,
             "--kit" => a.kit = true,
+            "--slot" => a.slot = it.next().and_then(|v| v.parse::<usize>().ok()).map(|v| v.clamp(1, 9) - 1),
             "--open" => a.open = it.next(),
             "--shader" => a.shader = it.next(),
             "--lod" => a.lod = it.next().and_then(|s| s.parse().ok()),
@@ -284,6 +287,8 @@ struct Game {
     mouse_held: [bool; 3],
     mouse_pos: (f32, f32),
     clicked: bool,
+    /// The attack button went down this frame (survival swings use it).
+    attack_pressed: bool,
     last_space: f32,
     break_cd: f32,
     place_cd: f32,
@@ -357,6 +362,8 @@ struct Game {
     item_base: u16,
     surv: survival::Survival,
     rclicked: bool,
+    /// Last frame's camera (view-projection and camera block) for drawing labels over mobs.
+    ui_view_proj: Option<(glam::Mat4, IVec3)>,
     inv_number_key: Option<usize>,
     bubble_cd: f32,
 
@@ -545,6 +552,8 @@ impl Game {
             mouse_held: [false; 3],
             mouse_pos: (0.0, 0.0),
             clicked: false,
+            attack_pressed: false,
+            ui_view_proj: None,
             last_space: -10.0,
             break_cd: 0.0,
             place_cd: 0.0,
@@ -1007,6 +1016,9 @@ impl Game {
                 if self.args.kit {
                     self.test_kit();
                 }
+                if let Some(i) = self.args.slot {
+                    self.selected = i;
+                }
                 if self.args.particles {
                     // Frozen in mid-air for a test picture: a broken block and a splash.
                     let f = self.forward();
@@ -1263,25 +1275,61 @@ impl Game {
                 }
             }
         }
-        if attack && self.attack_cd <= 0.0 {
-            let block_dist = self.target.map(|t| t.distance).unwrap_or(f32::MAX);
+        // Survival swings land when the weapon is ready again, or on a fresh click (weaker).
+        let ready = !self.survival || self.attack_pressed || self.attack_charge() >= 1.0;
+        if attack && self.attack_cd <= 0.0 && ready {
+            // Plants don't block a swing: the hit goes through grass and flowers to the mob.
+            let world = &self.world;
+            let reg = &self.reg;
+            let block_dist = raycast(self.body.eye(), self.forward(), REACH, |p| match world.block(p) {
+                Some(id) => id != AIR && !world.is_liquid(id) && !matches!(reg.get(id).shape, Shape::Cross),
+                None => false,
+            })
+            .map(|t| t.distance)
+            .unwrap_or(f32::MAX);
             if let Some((i, t)) = self.mobs.pick(self.body.eye(), self.forward(), 3.5) {
                 if t < block_dist {
-                    self.attack_cd = 0.45;
+                    self.attack_cd = if self.survival { 0.1 } else { 0.45 };
                     self.break_cd = 0.3;
                     let eye = self.body.eye();
+                    let charge = if self.survival { self.attack_charge() } else { 1.0 };
                     let base = if self.survival { self.surv_attack_damage() } else { 4.0 };
-                    let dmg = if self.body.vel.y < -0.5 && !self.body.on_ground { base * 1.5 } else { base };
+                    // Falling onto a mob with a ready weapon is a critical hit.
+                    let crit = self.body.vel.y < -0.5 && !self.body.on_ground && !self.body.in_water && charge > 0.9;
+                    let dmg = if crit { base * 1.5 } else { base };
+                    let sprint_hit = self.sprinting && charge > 0.9;
+                    if crit || sprint_hit {
+                        let at = self.mobs.list[i].body.pos + Vec3::Y * 0.9;
+                        let wool = self.reg.id_or_air("white_wool");
+                        if wool != AIR && crit {
+                            let (layer, _) = self.block_look(wool);
+                            self.particles.block_bits(at.floor().as_ivec3(), layer, [1.0, 0.95, 0.7], 10, 0.6);
+                        }
+                    }
                     let m = &mut self.mobs.list[i];
                     m.hurt(dmg, eye);
+                    if sprint_hit {
+                        // A running hit knocks the mob further and ends the sprint.
+                        let dir = m.body.pos - eye;
+                        m.body.knockback(dir, 4.0);
+                    }
                     let def = &self.mobs.reg.defs[m.def];
                     self.last_hit = Some((def.display_name.clone(), m.health.max(0.0), m.max_health, self.now + 3.0));
                     self.sfx(Sfx::MobHit);
                     self.anim.start_swing();
                     self.pads.rumble(0.3, 0.6, 0.1);
+                    if sprint_hit {
+                        self.sprinting = false;
+                    }
                 }
             }
         }
+        if attack && self.survival && self.attack_pressed && self.target.is_none() {
+            // A swing at the air still uses up the weapon's readiness.
+            self.surv.attack_t = 0.0;
+            self.anim.start_swing();
+        }
+        self.attack_pressed = false;
         // Survival: hold to dig, with a knock every few moments, like the classic game.
         if self.survival {
             let target = self.target.map(|t| t.block);
@@ -1635,6 +1683,8 @@ impl Game {
         if !self.survival || self.screen == Screen::Dead || self.hurt_age < 0.5 || amount <= 0.0 {
             return;
         }
+        // Armor softens hits from something (mobs, blasts), not falls, drowning or hunger.
+        let amount = if from.is_some() { self.armor_absorb(amount) } else { amount };
         self.health -= amount;
         self.hurt_age = 0.0;
         self.regen = 0.0;
@@ -1686,6 +1736,46 @@ impl Game {
             self.damage(4.0, None);
         }
         // Healing comes from a full stomach (survival.rs).
+    }
+
+    /// A health bar floating over each mob that was hurt lately, with its name.
+    fn draw_mob_health_bars(&mut self, w: f32, h: f32) {
+        let Some((vp, cam_block)) = self.ui_view_proj else { return };
+        let s = self.ui.scale;
+        let eye = self.body.eye();
+        for m in &self.mobs.list {
+            if !m.alive() || m.hurt_age > 5.0 {
+                continue;
+            }
+            let def = &self.mobs.reg.defs[m.def];
+            let top = m.body.pos + Vec3::Y * (def.height + 0.45);
+            let dist = (top - eye).length();
+            if dist > 24.0 {
+                continue;
+            }
+            let c = vp * (top - cam_block.as_vec3()).extend(1.0);
+            if c.w < 0.1 {
+                continue;
+            }
+            let (nx, ny) = (c.x / c.w, c.y / c.w);
+            if nx.abs() > 1.1 || ny.abs() > 1.1 {
+                continue;
+            }
+            let (x, y) = ((nx * 0.5 + 0.5) * w, (0.5 - ny * 0.5) * h);
+            let k = (6.0 / dist.max(1.0)).clamp(0.35, 1.0);
+            let bw = (30.0 * s * k).round();
+            let bh = (3.0 * s * k).max(s).round();
+            let frac = (m.health / m.max_health).clamp(0.0, 1.0);
+            self.ui.rect(x - bw / 2.0 - s, y - s, bw + 2.0 * s, bh + 2.0 * s, [0, 0, 0, 170]);
+            self.ui.rect(x - bw / 2.0, y, bw, bh, [70, 15, 15, 230]);
+            let col = if frac > 0.5 { [60, 200, 60, 255] } else if frac > 0.25 { [230, 190, 40, 255] } else { [220, 40, 40, 255] };
+            self.ui.rect(x - bw / 2.0, y, bw * frac, bh, col);
+            if k > 0.6 {
+                let label = format!("{} {:.0}/{:.0}", def.display_name, m.health.max(0.0).ceil(), m.max_health);
+                let tw = self.ui.text_width(&label, s);
+                self.ui.text(x - tw / 2.0, y - 9.0 * s, &label, WHITE);
+            }
+        }
     }
 
     /// A blast: breaks blocks around it and hurts everything nearby.
@@ -1991,7 +2081,17 @@ impl Game {
                 let c = [235, 235, 235, 220];
                 self.ui.rect(cx - 5.0 * s, cy - s / 2.0, 10.0 * s, s, c);
                 self.ui.rect(cx - s / 2.0, cy - 5.0 * s, s, 10.0 * s, c);
+                // How ready the weapon is, under the crosshair, while it recharges.
+                if self.survival {
+                    let k = self.attack_charge();
+                    if k < 1.0 {
+                        let bw = 16.0 * s;
+                        self.ui.rect(cx - bw / 2.0, cy + 9.0 * s, bw, 2.0 * s, [40, 40, 40, 200]);
+                        self.ui.rect(cx - bw / 2.0, cy + 9.0 * s, bw * k, 2.0 * s, [235, 235, 235, 230]);
+                    }
+                }
             }
+            self.draw_mob_health_bars(w, h);
             // Hotbar.
             let cell = 20.0 * s;
             let hx = (w - cell * 9.0) / 2.0;
@@ -2046,17 +2146,6 @@ impl Game {
                         self.ui.rect(x + s, y + s, 5.0 * s, 5.0 * s, [60, 120, 230, 255]);
                         self.ui.rect(x + 2.0 * s, y + 2.0 * s, 2.0 * s, 2.0 * s, [220, 240, 255, 255]);
                     }
-                }
-            }
-            if let Some((name, hp, max, until)) = &self.last_hit {
-                if *until > self.now {
-                    let bw = 120.0 * s;
-                    let bx = w / 2.0 - bw / 2.0;
-                    let by = 14.0 * s;
-                    let label = format!("{name}  {:.0}/{:.0}", hp.ceil(), max);
-                    self.ui.text_centered(w / 2.0, by - 10.0 * s, &label, WHITE);
-                    self.ui.rect(bx, by, bw, 3.0 * s, [40, 10, 10, 220]);
-                    self.ui.rect(bx, by, bw * (hp / max).clamp(0.0, 1.0), 3.0 * s, [210, 40, 40, 255]);
                 }
             }
             if let Some(t) = &self.toast {
@@ -2373,6 +2462,7 @@ impl Game {
             Action::Screenshot => self.screenshot_request = true,
             Action::Debug => self.show_debug = !self.show_debug,
             Action::HideHud => self.hide_hud = !self.hide_hud,
+            Action::Attack => self.attack_pressed = true,
             Action::NextSong => {
                 let sit = self.situation();
                 if let Some(au) = self.audio.as_mut() {
@@ -2629,6 +2719,7 @@ impl Game {
             sky_top: [top[0], top[1], top[2], 1.0],
             sky_horizon: [horizon[0], horizon[1], horizon[2], 1.0],
             effects,
+            hand_light: [eye.x - block.x as f32, eye.y - 0.4 - block.y as f32, eye.z - block.z as f32, self.hand_light_level()],
             ..Default::default()
         };
         let cam = Camera {
@@ -2639,6 +2730,12 @@ impl Game {
             far: view_end + 32.0,
         };
 
+        {
+            let (w, h) = (self.renderer.config.width as f32, self.renderer.config.height as f32);
+            let proj = glam::Mat4::perspective_rh(cam.fov_y, w / h.max(1.0), 0.05, cam.far);
+            let view = glam::Mat4::look_to_rh(cam.frac, cam.forward, Vec3::Y);
+            self.ui_view_proj = Some((proj * view, block));
+        }
         let mut lines = Vec::new();
         if self.show_debug {
             let p = self.body.pos;
@@ -2722,7 +2819,7 @@ impl Game {
                 items.push((pd, self.anim.bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0)));
             } else if self.screen == Screen::Playing && !self.hide_hud {
                 let l = self.world.light(head.floor().as_ivec3());
-                items.push((pd, self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0)));
+                items.push((pd, self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, (l >> 4) as f32 / 15.0, ((l & 15) as f32 / 15.0).max(self.hand_light_level()))));
             }
         }
         for p in &self.paintings {
@@ -2734,7 +2831,10 @@ impl Game {
         }
         self.entities.prepare(&self.renderer, items);
         self.entities.particles.prepare(&self.renderer, &self.particles, &self.world, block);
-        let drops = self.drop_instances(block);
+        let mut drops = self.drop_instances(block);
+        if self.survival && !third && self.screen == Screen::Playing && !self.hide_hud && self.camera_mode == 0 {
+            drops.extend(self.held_item_instance(eye, block));
+        }
         self.entities.items.prepare(&self.renderer, &drops);
         let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds, Some(&self.entities), Some(&self.lod), &self.ui, capture);
         self.last_frame_info = (info.sections_drawn, info.quads_drawn, info.lod_drawn);
@@ -2827,6 +2927,9 @@ impl ApplicationHandler for App {
                         game.set_grab(true);
                     }
                     game.mouse_held[idx] = pressed;
+                    if pressed && idx == 0 {
+                        game.attack_pressed = true;
+                    }
                     if !pressed {
                         if idx == 0 {
                             game.break_cd = 0.0;
