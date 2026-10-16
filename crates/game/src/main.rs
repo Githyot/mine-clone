@@ -423,6 +423,8 @@ struct Game {
     /// Survival mode: health, damage, no flying.
     survival: bool,
     health: f32,
+    /// 20 at the start, up to 40 with life crystals.
+    max_health: f32,
     /// Seconds since the player was last hurt (red flash, invulnerability).
     hurt_age: f32,
     regen: f32,
@@ -614,9 +616,11 @@ impl Game {
         let mut needs_spawn = true;
         let mut survival = args.survival;
         let mut health = 20.0;
+        let mut max_health = 20.0f32;
         if let Some(l) = &level {
             survival = l.survival || args.survival;
-            health = if l.health > 0.0 { l.health } else { 20.0 };
+            max_health = l.max_health.clamp(20.0, 40.0);
+            health = if l.health > 0.0 { l.health.min(max_health) } else { max_health };
             body.pos = Vec3::from(l.player_pos);
             body.flying = l.flying;
             yaw = l.player_yaw;
@@ -714,6 +718,7 @@ impl Game {
             entities,
             survival,
             health,
+            max_health,
             hurt_age: 100.0,
             regen: 0.0,
             fall_peak: f32::MIN,
@@ -912,6 +917,7 @@ impl Game {
             hotbar: self.hotbar.iter().map(|&id| self.reg.get(id).name.clone()).collect(),
             survival: self.survival,
             health: self.health,
+            max_health: self.max_health,
             raining: self.weather.state.raining,
             thunder: self.weather.state.thunder,
             weather_timer: self.weather.state.timer,
@@ -1108,7 +1114,7 @@ impl Game {
         self.now += dt;
         // Peaceful: health comes back on its own.
         if self.survival && self.settings.difficulty == 0 && self.screen != Screen::Dead && self.health > 0.0 {
-            self.health = (self.health + dt).min(20.0);
+            self.health = (self.health + dt).min(self.max_health);
         }
         let rd = self.settings.render_distance;
         let eye = self.body.eye();
@@ -2072,7 +2078,7 @@ impl Game {
         let y = self.world.surface_y(sx, sz).unwrap_or(100) + 1;
         self.body.pos = Vec3::new(sx as f32 + 0.5, y as f32, sz as f32 + 0.5);
         self.body.vel = Vec3::ZERO;
-        self.health = 20.0;
+        self.health = self.max_health;
         self.air = 10.0;
         self.hurt_age = 100.0;
         self.surv_respawned();
@@ -2626,10 +2632,16 @@ impl Game {
                 }
             }
             if self.survival {
-                // Ten hearts above the left of the hotbar, bubbles on the right under water.
-                let y = hy - 11.0 * s;
-                for i in 0..10 {
-                    let x = hx + i as f32 * 8.0 * s;
+                // Ten hearts a row above the left of the hotbar (life crystals add rows going up),
+                // bubbles on the right under water.
+                let y0 = hy - 11.0 * s;
+                let hearts = (self.max_health / 2.0).ceil() as i32;
+                let rows = (hearts + 9) / 10;
+                let row_step = if rows > 1 { 10.0 * s - (rows - 2) as f32 * 2.0 * s } else { 10.0 * s };
+                let y = y0 - (rows - 1) as f32 * row_step;
+                for i in 0..hearts {
+                    let x = hx + (i % 10) as f32 * 8.0 * s;
+                    let y = y0 - (i / 10) as f32 * row_step;
                     let v = self.health - i as f32 * 2.0;
                     let blink = self.hurt_age < 0.6 && ((self.hurt_age * 10.0) as i32) % 2 == 0;
                     if self.ui.sprite("sprites/hud/heart/container", x, y - s, 9.0 * s, 9.0 * s) {
@@ -3101,7 +3113,7 @@ impl Game {
                 self.survival = !self.survival;
                 if self.survival {
                     self.body.flying = false;
-                    self.health = 20.0;
+                    self.health = self.max_health;
                     self.fall_peak = self.body.pos.y;
                     self.toast("Modo sobrevivência: cuidado com quedas e monstros", 4.0);
                 } else {

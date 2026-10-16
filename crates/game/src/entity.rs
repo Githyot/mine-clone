@@ -255,13 +255,19 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
 }
 
 /// Armour materials, by the item-name prefix, with their colour.
-pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 6] = [
+pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 12] = [
     ("leather", [134, 82, 46]),
     ("chainmail", [150, 150, 156]),
     ("iron", [206, 206, 206]),
     ("golden", [236, 196, 60]),
     ("diamond", [72, 214, 204]),
     ("netherite", [74, 66, 70]),
+    ("copper", [206, 116, 66]),
+    ("bronze", [184, 132, 62]),
+    ("lead", [104, 112, 131]),
+    ("silver", [214, 217, 222]),
+    ("tungsten", [113, 144, 116]),
+    ("platinum", [196, 222, 230]),
 ];
 
 /// The boxes of one armour piece (helmet, chestplate, leggings, boots) on the player model:

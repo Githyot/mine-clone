@@ -139,24 +139,44 @@ struct Palette {
     /// (block, min y, max y, veins per chunk, vein size)
     ores: Vec<(BlockId, i32, i32, u32, u32)>,
     emerald: BlockId,
+    life_crystal: BlockId,
+}
+
+/// The metal pairs of the ore ladder (Terraria's idea): each world makes one of each pair
+/// common and the other rare, so worlds differ but every metal can still be found.
+const ORE_PAIRS: [(&str, &str, i32, i32, u32, u32); 4] = [
+    ("copper_ore", "tin_ore", 0, 96, 10, 9),
+    ("iron_ore", "lead_ore", 0, 64, 14, 8),
+    ("silver_ore", "tungsten_ore", 0, 40, 5, 7),
+    ("gold_ore", "platinum_ore", 0, 32, 3, 7),
+];
+
+/// Which metal of pair `i` is the common one in this world.
+pub fn common_metal(seed: u64, i: usize) -> bool {
+    (seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> (20 + i * 7)) & 1 == 0
 }
 
 impl Palette {
-    fn new(r: &BlockRegistry) -> Self {
+    fn new(r: &BlockRegistry, seed: u64) -> Self {
         let g = |n: &str| r.id_or_air(n);
-        let ores = vec![
-            (g("coal_ore"), 5, 128, 20, 12),
-            (g("copper_ore"), 0, 96, 10, 9),
-            (g("tin_ore"), 0, 80, 10, 8),
-            (g("iron_ore"), 0, 64, 14, 8),
-            (g("silver_ore"), 0, 40, 5, 7),
-            (g("gold_ore"), 0, 32, 3, 7),
+        let mut ores = vec![(g("coal_ore"), 5, 128, 20, 12)];
+        for (i, &(a, b, lo, hi, veins, size)) in ORE_PAIRS.iter().enumerate() {
+            let (common, rare) = if common_metal(seed, i) { (a, b) } else { (b, a) };
+            ores.push((g(common), lo, hi, veins, size));
+            ores.push((g(rare), lo, hi, (veins / 4).max(1), size.saturating_sub(2).max(3)));
+        }
+        ores.extend([
             (g("redstone_ore"), 0, 16, 7, 7),
             (g("lapis_ore"), 0, 30, 2, 6),
             (g("diamond_ore"), 0, 16, 2, 6),
+            // Gems: small and deep.
+            (g("ruby_ore"), 0, 24, 1, 4),
+            (g("sapphire_ore"), 0, 24, 1, 4),
+            (g("topaz_ore"), 0, 32, 1, 4),
+            (g("amethyst_ore"), 0, 32, 1, 4),
             (g("gravel"), 0, 128, 6, 24),
             (g("dirt"), 0, 128, 6, 24),
-        ];
+        ]);
         Palette {
             stone: g("stone"),
             dirt: g("dirt"),
@@ -191,6 +211,7 @@ impl Palette {
             mossy_cobblestone: g("mossy_cobblestone"),
             ores,
             emerald: g("emerald_ore"),
+            life_crystal: g("life_crystal"),
         }
     }
 }
@@ -296,7 +317,7 @@ impl Generator {
             cave_b: Perlin::new(seed ^ 0x07),
             cheese: Perlin::new(seed ^ 0x08),
             variant: Perlin::new(seed ^ 0x09),
-            pal: Palette::new(reg),
+            pal: Palette::new(reg, seed),
             trees: TreeBlocks::new(reg),
             bands,
         }
@@ -596,6 +617,16 @@ impl Generator {
                     if chunk.get(x, y, z) == p.stone {
                         chunk.set(x, y, z, p.emerald);
                     }
+                }
+            }
+        }
+        // Life crystals: now and then on a cave floor deep down.
+        if p.life_crystal != AIR && rng.below(5) == 0 {
+            let (x, z) = (rng.range(0, 15) as usize, rng.range(0, 15) as usize);
+            for y in 6..40 {
+                if chunk.get(x, y, z) == AIR && chunk.get(x, y - 1, z) == p.stone && chunk.get(x, y + 1, z) == AIR {
+                    chunk.set(x, y, z, p.life_crystal);
+                    break;
                 }
             }
         }

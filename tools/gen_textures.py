@@ -265,6 +265,14 @@ ORES = {
     "redstone": pal("#8f0000", "#d01010", "#ff4a3a"),
     "lapis": pal("#1a2f8a", "#2c4fc0", "#5b80e8"),
     "emerald": pal("#0d7a2f", "#17b54a", "#6cf08e"),
+    # Etapa 5 ore ladder: the second metal of each pair and the gems.
+    "lead": pal("#3a3f4c", "#565d6e", "#7b8396"),
+    "tungsten": pal("#3c4a3e", "#5f7a63", "#93b098"),
+    "platinum": pal("#7f9aa6", "#b8d2dc", "#eefaff"),
+    "ruby": pal("#7a0a1e", "#d0203c", "#ff7a8c"),
+    "sapphire": pal("#0c2a7a", "#2456d0", "#7aa4ff"),
+    "topaz": pal("#8a5a06", "#e0a218", "#ffe07a"),
+    "amethyst": pal("#4a1a7a", "#8a42c8", "#d4a2ff"),
 }
 
 WOOL = {
@@ -1028,6 +1036,43 @@ def copper_block():
                        patina=hexrgb("#4a9e8a"))
 
 
+# Blocks of the Etapa 5 metals and gems: (palette dark..light, faceted like a gem).
+METAL_BLOCKS = {
+    "tin_block": (pal("#5e6875", "#9aa4b1", "#a9b3bf", "#b8c1cc", "#c8d0d9", "#e0e6ec"), False),
+    "silver_block": (pal("#7e838c", "#c6cad0", "#d2d5da", "#dde0e4", "#e8eaed", "#ffffff"), False),
+    "bronze_block": (pal("#5e3a12", "#a8763a", "#b58444", "#c29250", "#cfa05c", "#e8c47e"), False),
+    "lead_block": (pal("#2e323c", "#4f5666", "#5a6172", "#656d7e", "#717a8b", "#8c95a6"), False),
+    "tungsten_block": (pal("#2f3a31", "#56705a", "#617c65", "#6c8870", "#78947c", "#9cb8a0"), False),
+    "platinum_block": (pal("#6f8a96", "#b4ced8", "#c2dae3", "#cfe5ec", "#dcf0f6", "#f6ffff"), False),
+    "ruby_block": (pal("#5a0614", "#b01a32", "#c2223c", "#d22e48", "#e24a62", "#ff9aaa"), True),
+    "sapphire_block": (pal("#081e5a", "#1c46b0", "#2452c0", "#2e60d0", "#4878e0", "#9cc0ff"), True),
+    "topaz_block": (pal("#6a4404", "#c48a12", "#d29a18", "#e0aa22", "#ecbc3a", "#fff0a0"), True),
+    "amethyst_block": (pal("#36125a", "#7234ae", "#7e3cbc", "#8a46c8", "#a062dc", "#e0b8ff"), True),
+}
+
+
+def life_crystal():
+    """A heart-red crystal growing up out of the floor: three tall shards, lit at the tips."""
+    img = canvas()
+    p = pal("#4a0610", "#8a1020", "#c42034", "#ee4a5a", "#ffb0b8")
+    shards = [(7, 2, 3), (3, 6, 2), (11, 5, 2)]  # (x, top y, half width at base)
+    for (cx, top, hw) in shards:
+        for y in range(top, 16):
+            t = (y - top) / max(1, 15 - top)
+            w = max(0, int(round(hw * min(1.0, t * 1.6))))
+            for x in range(cx - w, cx + w + 1):
+                if x < 0 or x >= N:
+                    continue
+                side = (x - cx) / (w + 0.5) if w else 0
+                k = 3 if side < -0.3 else (2 if side < 0.4 else 1)
+                if y == top or (y < top + 3 and x == cx):
+                    k = 4
+                put(img, x, y, p[k])
+    for (x, y) in ((7, 4), (3, 8), (11, 7), (6, 9)):
+        put(img, x, y, p[4])
+    return img
+
+
 def glowstone():
     rng = rng_for("glowstone")
     ids, d1, d2, n = voronoi(rng, 12, 3.6)
@@ -1329,7 +1374,10 @@ def build_registry():
     })
     for kind in ORES:
         reg[f"{kind}_ore"] = lambda k=kind: ore(k)
+    for name, (pp, facets) in METAL_BLOCKS.items():
+        reg[name] = lambda n=name, q=pp, f=facets: metal_block(n, q, f)
     reg.update({
+        "life_crystal": life_crystal,
         "iron_block": iron_block, "gold_block": gold_block,
         "diamond_block": diamond_block, "copper_block": copper_block,
         "bricks": bricks, "stone_bricks": stone_bricks, "obsidian": obsidian,

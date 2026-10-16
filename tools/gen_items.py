@@ -45,6 +45,13 @@ MATERIALS = {
     "iron": pal("#5c5c5c", "#9a9a9a", "#c4c4c4", "#dedede", "#ffffff"),
     "golden": pal("#7a5508", "#c08a12", "#eab92a", "#fbdb52", "#fff6a8"),
     "diamond": pal("#0f5f60", "#1fa8a4", "#3fd8cf", "#7ef2e8", "#d4fffa"),
+    # Etapa 5 metals.
+    "copper": pal("#6a2e14", "#a8542a", "#cf7442", "#e8945e", "#fbc49a"),
+    "bronze": pal("#5a3812", "#94622a", "#b8843e", "#d4a456", "#ecc87e"),
+    "lead": pal("#2a2e38", "#4a5162", "#687083", "#8890a2", "#aab2c2"),
+    "silver": pal("#6c7078", "#a4a8b0", "#cfd2d7", "#e6e8eb", "#ffffff"),
+    "tungsten": pal("#28322a", "#4f6853", "#719074", "#97b49a", "#c4dcc6"),
+    "platinum": pal("#5c7884", "#98b8c4", "#c4dee6", "#e2f2f6", "#ffffff"),
 }
 
 # handle axis: from pixel centre (2.5, 13.5) towards the top-right corner
@@ -314,6 +321,12 @@ RAW = {
             pal("#3e444c", "#e8eef4")),
     "silver": (pal("#6c7078", "#9a9fa8", "#c3c7cd", "#dfe2e6", "#ffffff"),
                pal("#55585e", "#ffffff")),
+    "lead": (pal("#2c303a", "#454b5a", "#5f6676", "#7a8292", "#979fae"),
+             pal("#1e2128", "#b0b8c6")),
+    "tungsten": (pal("#2a2f2a", "#46524a", "#62746a", "#82988a", "#a6bcae"),
+                 pal("#1c221e", "#c8e0cc")),
+    "platinum": (pal("#5a6e78", "#86a0ac", "#b0cad4", "#d4e8ee", "#f4ffff"),
+                 pal("#4a5a62", "#ffffff")),
 }
 
 
@@ -348,6 +361,9 @@ INGOT_COL = {
     "tin": pal("#606a76", "#828c99", "#a4aebb", "#c4ccd6", "#e6ecf2"),
     "silver": pal("#8a8e96", "#b4b8c0", "#d6d9de", "#eceef1", "#ffffff"),
     "bronze": pal("#6a4416", "#94622a", "#b8843e", "#d4a456", "#ecc87e"),
+    "lead": pal("#3a3f4c", "#565d6e", "#737b8d", "#9098a9", "#b4bbc8"),
+    "tungsten": pal("#34423a", "#55705c", "#76927c", "#9ab49e", "#c6dcc8"),
+    "platinum": pal("#7894a0", "#a4c0ca", "#c8e0e8", "#e2f2f6", "#ffffff"),
 }
 
 
@@ -357,7 +373,7 @@ def ingot(metal):
     return outline(img)
 
 
-def diamond():
+def diamond(p=None):
     rows = [
         "................",
         "................",
@@ -376,9 +392,46 @@ def diamond():
         "................",
         "................",
     ]
-    p = pal("#0f6a68", "#1fa8a4", "#3fd8cf", "#8ff4ea", "#e4fffb")
+    if p is None:
+        p = pal("#0f6a68", "#1fa8a4", "#3fd8cf", "#8ff4ea", "#e4fffb")
     img = from_map(rows, {"1": p[0], "2": p[1], "3": p[2], "4": p[3], "5": p[4]})
     return outline(img)
+
+
+GEMS = {
+    "ruby": pal("#4a0612", "#9a1428", "#d0203c", "#f66a7e", "#ffd0d8"),
+    "sapphire": pal("#081c52", "#1a3c9c", "#2c5cd8", "#6e9cff", "#d4e4ff"),
+    "topaz": pal("#5a3a04", "#a8700c", "#e0a218", "#ffd45a", "#fff6c8"),
+    "amethyst": pal("#2e0c4e", "#5e2496", "#8a42c8", "#c08af0", "#f0dcff"),
+}
+
+
+def gem(name):
+    """A cut gem: the diamond's outline, in the gem's colour."""
+    return diamond(GEMS[name])
+
+
+def life_crystal_item():
+    rows = [
+        "................",
+        "................",
+        "...444....444...",
+        "..45554..45544..",
+        ".4555444454443..",
+        ".4554444444433..",
+        ".4444444444332..",
+        ".3444444443332..",
+        "..34444443332...",
+        "...333333322....",
+        "....3333322.....",
+        ".....33322......",
+        "......322.......",
+        ".......2........",
+        "................",
+        "................",
+    ]
+    p = pal("#4a0610", "#8a1020", "#c42034", "#ee4a5a", "#ffc0c8")
+    return outline(from_map(rows, pmap(p)))
 
 
 def emerald():
@@ -1120,6 +1173,12 @@ ARMOR_MATERIALS = {
     "iron": MATERIALS["iron"],
     "golden": MATERIALS["golden"],
     "diamond": MATERIALS["diamond"],
+    "copper": MATERIALS["copper"],
+    "bronze": MATERIALS["bronze"],
+    "lead": MATERIALS["lead"],
+    "silver": MATERIALS["silver"],
+    "tungsten": MATERIALS["tungsten"],
+    "platinum": MATERIALS["platinum"],
 }
 
 ARMOR_KINDS = ("helmet", "chestplate", "leggings", "boots")
@@ -1282,10 +1341,13 @@ def item_registry():
     reg.update({
         "stick": stick, "coal": coal, "charcoal": charcoal,
     })
-    for metal in ("iron", "gold", "copper", "tin", "silver"):
+    for metal in RAW:
         reg[f"raw_{metal}"] = lambda m=metal: raw(m)
-    for metal in ("iron", "gold", "copper", "tin", "silver", "bronze"):
+    for metal in INGOT_COL:
         reg[f"{metal}_ingot"] = lambda m=metal: ingot(m)
+    for g in GEMS:
+        reg[g] = lambda n=g: gem(n)
+    reg["life_crystal"] = life_crystal_item
     reg.update({
         "diamond": diamond, "emerald": emerald, "lapis_lazuli": lapis,
         "redstone": redstone, "flint": flint, "string": string_item,

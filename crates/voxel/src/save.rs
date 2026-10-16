@@ -31,6 +31,9 @@ pub struct LevelData {
     pub survival: bool,
     #[serde(default = "full_health")]
     pub health: f32,
+    /// Most health the player can have; life crystals raise it two hearts at a time.
+    #[serde(default = "full_health")]
+    pub max_health: f32,
     /// Weather: raining, storm, and seconds until it changes (0 = pick a fresh spell).
     #[serde(default)]
     pub raining: bool,

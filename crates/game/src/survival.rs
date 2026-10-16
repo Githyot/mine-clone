@@ -838,6 +838,17 @@ impl Game {
         if item.name == "fishing_rod" {
             return self.use_rod();
         }
+        if item.name == "life_crystal" && self.survival && self.max_health < 40.0 {
+            // Crush it: two more hearts for good (Terraria's life crystal).
+            self.max_health = (self.max_health + 4.0).min(40.0);
+            self.health = (self.health + 4.0).min(self.max_health);
+            let sel = self.selected;
+            self.surv.inv.take(sel, 1);
+            self.sfx(Sfx::Break(Material::Glass));
+            self.anim.start_swing();
+            self.toast(&format!("Vida máxima: {} corações", (self.max_health / 2.0) as i32), 3.0);
+            return true;
+        }
         if matches!(item.name.as_str(), "bucket" | "water_bucket" | "lava_bucket") {
             return self.use_bucket(&item.name);
         }
@@ -1078,12 +1089,12 @@ impl Game {
             }
         }
         // Healing needs a full-ish stomach; an empty one hurts.
-        if self.surv.hunger >= 18.0 && self.health < 20.0 {
+        if self.surv.hunger >= 18.0 && self.health < self.max_health {
             self.surv.heal_t += dt;
             let every = if self.surv.hunger >= 20.0 && self.surv.saturation > 0.0 { 0.5 } else { 4.0 };
             if self.surv.heal_t >= every {
                 self.surv.heal_t = 0.0;
-                self.health = (self.health + 1.0).min(20.0);
+                self.health = (self.health + 1.0).min(self.max_health);
                 self.surv.exhaustion += 6.0;
             }
         } else {
@@ -1405,7 +1416,10 @@ impl Game {
         // Armor above the hearts.
         let pts = self.armor_points();
         if pts > 0 {
-            let y = hy - 21.0 * s;
+            // Above the top row of hearts (life crystals add rows).
+            let rows = ((self.max_health / 2.0).ceil() as i32 + 9) / 10;
+            let row_step = if rows > 1 { 10.0 * s - (rows - 2) as f32 * 2.0 * s } else { 10.0 * s };
+            let y = hy - 21.0 * s - (rows - 1) as f32 * row_step;
             for i in 0..10u32 {
                 let x = hx + i as f32 * 8.0 * s;
                 let v = pts as i32 - i as i32 * 2;
@@ -1894,6 +1908,10 @@ impl Game {
         give(self, 20, "wooden_axe", 1, 40);
         give(self, 22, "string", 6, 0);
         give(self, 27, "feather", 3, 0);
+        // MC_HEARTS=30 gives the kit extra hearts, as if from life crystals.
+        if let Some(h) = std::env::var("MC_HEARTS").ok().and_then(|v| v.parse::<f32>().ok()) {
+            self.max_health = (h * 2.0).clamp(20.0, 40.0);
+        }
         // MC_ARMOR=diamond dresses the kit in one full set (for screenshots).
         let set = std::env::var("MC_ARMOR").ok();
         for (i, n) in ["golden_helmet", "iron_chestplate", "diamond_leggings", "leather_boots"].iter().enumerate() {
