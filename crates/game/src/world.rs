@@ -70,8 +70,12 @@ pub struct World {
     /// Chunk offsets sorted by distance, for loading nearest-first.
     spiral: Vec<IVec2>,
     spiral_radius: i32,
-    water: BlockId,
-    lava: BlockId,
+    pub water: BlockId,
+    pub lava: BlockId,
+    /// 1 for every level of water, 2 for lava, 0 otherwise.
+    fluid: Vec<u8>,
+    /// Blocks changed since the fluids last looked (they wake the water and lava around them).
+    pub changed: Vec<IVec3>,
     solid: Vec<bool>,
     /// Collision height of each block (1.0 except slabs, beds).
     top: Vec<f32>,
@@ -131,6 +135,7 @@ impl World {
         }
         let water = reg.id_or_air("water");
         let lava = reg.id_or_air("lava");
+        let fluid = reg.blocks.iter().map(|b| if b.base == water && water != AIR { 1 } else if b.base == lava && lava != AIR { 2 } else { 0 }).collect();
         let solid = reg.blocks.iter().map(|b| b.solid && b.shape != Shape::Liquid && b.shape != Shape::Invisible).collect();
         let top = reg.blocks.iter().map(|b| b.height as f32 / 16.0).collect();
         World {
@@ -148,6 +153,8 @@ impl World {
             unsaved: HashSet::new(),
             spiral: Vec::new(),
             spiral_radius: -1,
+            fluid,
+            changed: Vec::new(),
             water,
             lava,
             solid,
@@ -379,6 +386,9 @@ impl World {
         let c = Arc::make_mut(c);
         c.set(x, p.y as usize, z, id);
         c.modified = true;
+        if self.changed.len() < 100_000 {
+            self.changed.push(p);
+        }
         self.unsaved.insert(cp);
         for i in 0..9 {
             let n = cp + IVec2::new(i % 3 - 1, i / 3 - 1);
@@ -437,7 +447,12 @@ impl World {
     }
 
     pub fn is_liquid(&self, id: BlockId) -> bool {
-        id != AIR && (id == self.water || id == self.lava)
+        self.fluid[id as usize] != 0
+    }
+
+    /// 1 water, 2 lava, 0 anything else (any level of flow counts).
+    pub fn fluid(&self, id: BlockId) -> u8 {
+        self.fluid[id as usize]
     }
 
     pub fn save_all(&mut self) {
@@ -473,7 +488,7 @@ impl Terrain for World {
         }
     }
     fn liquid(&self, p: IVec3) -> bool {
-        self.block(p) == Some(self.water)
+        self.block(p).is_some_and(|id| self.fluid[id as usize] == 1)
     }
     fn top(&self, p: IVec3) -> f32 {
         self.block(p).map(|id| self.top[id as usize]).unwrap_or(1.0)

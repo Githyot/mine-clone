@@ -100,6 +100,12 @@ pub enum Sfx {
     Xp,
     /// A bite of food.
     Eat,
+    /// Lava meeting water.
+    Fizz,
+    /// Far thunder; the value is how close (0..1).
+    Thunder(f32),
+    /// Two seconds of rain on the ground, played back to back while it rains.
+    Rain,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

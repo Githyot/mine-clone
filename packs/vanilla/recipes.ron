@@ -70,6 +70,7 @@
         (pattern: ["#  ", "## ", "###"], key: {'#': "cobblestone"}, result: "cobblestone_stairs", count: 4),
         (pattern: ["#  ", "## ", "###"], key: {'#': "stone_bricks"}, result: "stone_brick_stairs", count: 4),
         (pattern: [" # ", "# #"], key: {'#': "oak_planks"}, result: "oak_roof", count: 6),
+        (pattern: ["# #", " # "], key: {'#': "iron_ingot"}, result: "bucket", count: 1),
         (pattern: [" # ", "# #"], key: {'#': "spruce_planks"}, result: "spruce_roof", count: 6),
         (pattern: [" # ", "# #"], key: {'#': "bricks"}, result: "brick_roof", count: 6),
         (pattern: [" # ", "# #"], key: {'#': "stone_bricks"}, result: "stone_brick_roof", count: 6),

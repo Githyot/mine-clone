@@ -15,7 +15,19 @@ pub fn variant_count(shape: Shape) -> u8 {
         Shape::Slab => 3,
         Shape::Stairs | Shape::Layer | Shape::Roof => 8,
         Shape::Door | Shape::Trapdoor => 16,
+        // Liquids: level 0 is the source, 1..7 flow further away, +8 is falling.
+        Shape::Liquid => 16,
         _ => 1,
+    }
+}
+
+/// Surface height in pixels of a liquid variant.
+pub fn liquid_height(variant: u8) -> u32 {
+    if variant & 8 != 0 {
+        16
+    } else {
+        // Source 14, then a little lower for each block the water has flowed.
+        (8 - (variant & 7) as u32) * 16 / 9
     }
 }
 

@@ -139,6 +139,10 @@ pub struct MeshTables {
     height: Vec<u32>,
     variant: Vec<u8>,
     connected: Vec<bool>,
+    /// Same id for every level of a liquid (and for every shape variant).
+    base: Vec<BlockId>,
+    /// Liquid surface height in pixels (source 14, falling 16, lower for each step of flow).
+    liquid_h: Vec<u32>,
     biome_tints: Vec<[u8; 3]>,
 }
 
@@ -155,6 +159,8 @@ impl MeshTables {
             height: vec![],
             variant: vec![],
             connected: vec![],
+            base: vec![],
+            liquid_h: vec![],
             biome_tints: biome_tints
                 .iter()
                 .map(|c| [(c[0] * 200.0).min(255.0) as u8, (c[1] * 200.0).min(255.0) as u8, (c[2] * 200.0).min(255.0) as u8])
@@ -182,6 +188,8 @@ impl MeshTables {
             t.height.push(b.height as u32);
             t.variant.push(b.variant);
             // Glass joins up with its neighbours: no frame lines between panes of a window.
+            t.base.push(b.base);
+            t.liquid_h.push(if b.shape == Shape::Liquid { crate::shapes::liquid_height(b.variant) } else { 0 });
             t.connected.push(b.shape == Shape::Cube && (b.name == "glass" || b.name.ends_with("_glass")));
         }
         if t.biome_tints.is_empty() {
@@ -215,6 +223,27 @@ const FACES: [FaceInfo; 6] = [
     // -Z
     FaceInfo { normal: [0, 0, -1], corners: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]], uv: [[0, 16], [16, 16], [16, 0], [0, 0]] },
 ];
+
+/// Liquid height at a top corner: the average of the cells of the same liquid that share it,
+/// full height when any of them has more of it above.
+fn liquid_corner(t: &MeshTables, blocks: &[BlockId], i: usize, cx: u32, cz: u32) -> u32 {
+    let me = t.base[blocks[i] as usize];
+    let (mut sum, mut cnt) = (0, 0);
+    for dz in [cz as isize - 1, cz as isize] {
+        for dx in [cx as isize - 1, cx as isize] {
+            let j = (i as isize + dx + dz * P as isize) as usize;
+            let b = blocks[j] as usize;
+            if t.base[b] == me && t.liquid_h[b] > 0 {
+                if t.base[blocks[j + P * P] as usize] == me {
+                    return 16;
+                }
+                sum += t.liquid_h[b];
+                cnt += 1;
+            }
+        }
+    }
+    if cnt == 0 { 14 } else { (sum + cnt / 2) / cnt }
+}
 
 /// Connected-texture edge bits: which sides of face `f` of the block at `i` continue into
 /// the same block (u low, u high, v low, v high), so the shader can leave out the frame there.
@@ -457,7 +486,9 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
 
                 let liquid = shape == Shape::Liquid;
                 let transp = t.transp[idu];
-                let above_same = blocks[i + P * P] == id;
+                // Liquid surface height at each top corner (x, z), averaged with the liquid
+                // around it so flowing water slopes smoothly down to its edge.
+                let lh = if liquid { [0, 1, 2, 3].map(|k| liquid_corner(t, blocks, i, k & 1, k >> 1)) } else { [16; 4] };
                 // Low blocks (slabs, beds): the top sits lower and is always drawn.
                 let hgt = t.height[idu];
                 for (f, fi) in FACES.iter().enumerate() {
@@ -471,8 +502,9 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     if nid == id && t.cull_same[idu] && !(hgt < 16 && f != 3) {
                         continue;
                     }
-                    // Water next to any non-air block that isn't see-through to it: skip faces against solid cubes only.
-                    if liquid && f != 2 && t.shape[nid as usize] == Shape::Liquid {
+                    // Liquid against liquid: no face in between (any level of the same one, or the
+                    // sides against another), only the top shows over a different one.
+                    if liquid && t.shape[nid as usize] == Shape::Liquid && (f != 2 || t.base[nid as usize] == t.base[idu]) {
                         continue;
                     }
                     let layer = t.faces[idu][f] as u32;
@@ -521,10 +553,13 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                         let sky = (sky_sum + cnt / 2) / cnt;
                         let blk = (blk_sum + cnt / 2) / cnt;
                         let mut pos = [base[0] + c[0] * 16, base[1] + c[1] * 16, base[2] + c[2] * 16];
-                        if liquid && c[1] == 1 && !above_same {
-                            pos[1] -= 2;
+                        if liquid && c[1] == 1 {
+                            pos[1] = base[1] + lh[(c[0] + c[2] * 2) as usize];
                         }
                         let mut uv = fi.uv[k];
+                        if liquid && c[1] == 1 && f != 2 && f != 3 {
+                            uv[1] = 16 - lh[(c[0] + c[2] * 2) as usize];
+                        }
                         if hgt < 16 && c[1] == 1 {
                             pos[1] = base[1] + hgt;
                             // Sides show the bottom part of the texture.
@@ -538,7 +573,8 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     }
                     // Plain full faces with even light go to the merge masks instead.
                     let uniform = aos.iter().all(|&a| a == 3) && lights.iter().all(|&l| l == lights[0]);
-                    if uniform && hgt == 16 && (!liquid || f == 2) && !t.connected[idu] {
+                    let flat = !liquid || (f == 2 && (lh == [14; 4] || lh == [16; 4]));
+                    if uniform && hgt == 16 && flat && !t.connected[idu] {
                         let (na, aa, ba) = face_axes(f);
                         let lp = [lx, ly, lz];
                         masks[f * 16 + lp[na]][lp[aa] + lp[ba] * 16] = Some(FaceKey {
@@ -547,7 +583,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                             sky: lights[0].0,
                             blk: lights[0].1,
                             flags: wave | if liquid { FLAG_LIQUID } else { 0 },
-                            low: liquid && !above_same,
+                            low: liquid && lh[0] == 14,
                             translucent: transp == Transparency::Translucent,
                         });
                         continue;

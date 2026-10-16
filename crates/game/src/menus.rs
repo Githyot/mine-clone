@@ -97,6 +97,7 @@ impl Game {
         let tables = Arc::new(MeshTables::new(&self.reg, tints));
         // Dropping the old world stops its worker threads.
         self.world = World::new(self.reg.clone(), gen.clone(), save.clone(), tables);
+        self.fluids = crate::fluids::Fluids::new(&self.reg);
         self.renderer.clear_chunks();
         self.world_name = name.to_string();
         self.seed = seed;

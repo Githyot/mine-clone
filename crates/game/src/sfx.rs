@@ -110,6 +110,9 @@ pub fn synth(sfx: Sfx, seed: u32) -> Vec<f32> {
         Sfx::Pickup => pickup(&mut rng),
         Sfx::Xp => xp(&mut rng),
         Sfx::Eat => eat(&mut rng),
+        Sfx::Fizz => fizz(&mut rng),
+        Sfx::Thunder(c) => thunder(&mut rng, c.clamp(0.0, 1.0)),
+        Sfx::Rain => rain(&mut rng),
     };
     out.into_iter().map(|s| s.clamp(-1.0, 1.0)).collect()
 }
@@ -359,6 +362,72 @@ fn explode(rng: &mut Rng) -> Vec<f32> {
         .collect()
 }
 
+/// A short soft hiss, like a hot stone dropped in water.
+fn fizz(rng: &mut Rng) -> Vec<f32> {
+    let dur = 0.6;
+    let n = (dur * RATE) as usize;
+    let mut lp = LowPass::new(900.0);
+    let mut low = LowPass::new(200.0);
+    (0..n)
+        .map(|i| {
+            let t = i as f32 / RATE;
+            let x = rng.noise();
+            let hiss = lp.run(x) - low.run(x);
+            hiss * 0.9 * (t * 60.0).min(1.0) * (1.0 - t / dur).powf(1.5)
+        })
+        .collect()
+}
+
+/// Rolling thunder: a crack when close, then a long low rumble that swells and fades.
+fn thunder(rng: &mut Rng, close: f32) -> Vec<f32> {
+    let dur = 4.0;
+    let n = (dur * RATE) as usize;
+    let mut low = LowPass::new(90.0);
+    let mut mid = LowPass::new(500.0);
+    let mut swell = LowPass::new(3.0);
+    (0..n)
+        .map(|i| {
+            let t = i as f32 / RATE;
+            let x = rng.noise();
+            // Slow random loudness so it rolls instead of hissing.
+            let roll = (swell.run(rng.noise()) * 30.0).abs().min(1.0) * 0.6 + 0.4;
+            let crack = if t < 0.25 { mid.run(x) * close * (1.0 - t / 0.25) * 1.5 } else { 0.0 };
+            let env = (t * 3.0).min(1.0) * (1.0 - t / dur).powf(1.6);
+            (low.run(x) * 9.0 * roll * (0.5 + close * 0.5) + crack) * env
+        })
+        .collect()
+}
+
+/// Rain: a steady low wash with soft drops landing in it. Starts and ends quiet so the
+/// pieces join without a click.
+fn rain(rng: &mut Rng) -> Vec<f32> {
+    let dur = 2.0;
+    let n = (dur * RATE) as usize;
+    let mut wash = LowPass::new(700.0);
+    let mut floor = LowPass::new(120.0);
+    let mut out: Vec<f32> = (0..n).map(|_| {
+        let x = rng.noise();
+        let w = wash.run(x);
+        (w - floor.run(w) * 0.5) * 0.35
+    }).collect();
+    for _ in 0..120 {
+        let at = (rng.range(0.0, 1.0) * (n as f32 - 2000.0)) as usize;
+        let f0 = rng.range(140.0, 380.0);
+        let amp = rng.range(0.02, 0.07);
+        for k in 0..900 {
+            let t = k as f32 / RATE;
+            out[at + k] += (t * f0 * TAU).sin() * amp * (-t * 90.0).exp();
+        }
+    }
+    let fade = (0.03 * RATE) as usize;
+    for k in 0..fade {
+        let g = k as f32 / fade as f32;
+        out[k] *= g;
+        out[n - 1 - k] *= g;
+    }
+    out
+}
+
 /// One bubble: a damped tone whose pitch rises as it closes.
 fn bubble(out: &mut [f32], start: usize, f0: f32, amp: f32, len: f32) {
     let n = (len * RATE) as usize;
@@ -447,7 +516,7 @@ mod tests {
         for m in mats {
             all.extend([Sfx::Break(m), Sfx::Place(m), Sfx::Hit(m), Sfx::Step(m)]);
         }
-        all.extend([Sfx::Click, Sfx::Hurt, Sfx::Death, Sfx::Respawn, Sfx::MobHit, Sfx::Explode, Sfx::Splash(1.0), Sfx::Swim, Sfx::WaterExit, Sfx::Bubbles, Sfx::Pickup, Sfx::Xp, Sfx::Eat]);
+        all.extend([Sfx::Click, Sfx::Hurt, Sfx::Death, Sfx::Respawn, Sfx::MobHit, Sfx::Explode, Sfx::Splash(1.0), Sfx::Swim, Sfx::WaterExit, Sfx::Bubbles, Sfx::Pickup, Sfx::Xp, Sfx::Eat, Sfx::Fizz, Sfx::Thunder(1.0), Sfx::Thunder(0.2), Sfx::Rain]);
         for sfx in all {
             let v = synth(sfx, 7);
             assert!(!v.is_empty() && v.iter().all(|x| x.is_finite()), "{sfx:?}");

@@ -6,6 +6,7 @@
 mod audio;
 mod controller;
 mod creative;
+mod fluids;
 mod entity;
 mod item_render;
 mod menus;
@@ -87,6 +88,8 @@ struct Args {
     shapes: bool,
     /// Take the --screenshot of the loading screen instead of the game.
     shot_loading: bool,
+    /// Screenshots: also wait this many seconds of game time (to let water flow).
+    wait: f32,
     /// Creative inventory tab to open (0..13).
     ctab: Option<usize>,
     show_inventory: bool,
@@ -153,6 +156,7 @@ fn parse_args() -> Args {
             "--demo" => a.demo = true,
             "--shapes" => a.shapes = true,
             "--shot-loading" => a.shot_loading = true,
+            "--wait" => a.wait = it.next().and_then(|v| v.parse().ok()).unwrap_or(0.0),
             "--ctab" => a.ctab = it.next().and_then(|v| v.parse().ok()),
             "--inventory" => a.show_inventory = true,
             "--pause" => a.show_pause = true,
@@ -418,6 +422,7 @@ struct Game {
     /// Survival mining: block being broken and how far along (seconds).
     mining: Option<(IVec3, f32)>,
     particles: particles::Particles,
+    fluids: fluids::Fluids,
     anim: player_model::Animator,
     /// 0 = first person, 1 = behind, 2 = in front (F5).
     camera_mode: u8,
@@ -544,6 +549,7 @@ impl Game {
         let gen = Arc::new(Generator::new(seed, &reg));
         let tints: Vec<[f32; 3]> = (0..Biome::COUNT).map(|b| Biome::from_u8(b as u8).tint()).collect();
         let tables = Arc::new(MeshTables::new(&reg, tints));
+        let reg_for_fluids = reg.clone();
         let world = World::new(reg.clone(), gen.clone(), save.clone(), tables);
 
         let tex = textures::load(&texture_names, &base, &settings.resource_packs);
@@ -678,6 +684,7 @@ impl Game {
             painting_check: 0.0,
             mining: None,
             particles: particles::Particles::new(),
+            fluids: fluids::Fluids::new(&reg_for_fluids),
             anim: player_model::Animator::default(),
             camera_mode,
             world_open: !title_mode,
@@ -1059,6 +1066,16 @@ impl Game {
         self.world.update(center, rd);
         let events = std::mem::take(&mut self.world.events);
         self.renderer.apply_mesh_events(events);
+        if self.world_open && self.screen != Screen::Loading {
+            let fe = self.fluids.update(&mut self.world, dt);
+            if let Some(p) = fe.hardened.first() {
+                if p.as_vec3().distance(self.body.pos) < 24.0 {
+                    self.sfx(Sfx::Fizz);
+                }
+            }
+        } else {
+            self.world.changed.clear();
+        }
 
         if self.screen == Screen::Loading {
             let (sx, sz) = if self.needs_spawn { self.spawn_xz } else { (self.body.pos.x.floor() as i32, self.body.pos.z.floor() as i32) };
@@ -1313,9 +1330,8 @@ impl Game {
             }
         }
 
-        let lava = self.reg.id_or_air("lava");
         let feet = self.body.pos.floor().as_ivec3();
-        let pose = self.pose(lava != AIR && (self.world.block_or_air(feet) == lava || self.world.block_or_air(feet + IVec3::Y) == lava));
+        let pose = self.pose(self.world.fluid(self.world.block_or_air(feet)) == 2 || self.world.fluid(self.world.block_or_air(feet + IVec3::Y)) == 2);
         self.anim.update(&pose, dt);
 
         // Water: splash going in, strokes while swimming, drips coming out, bubbles below.
@@ -1849,9 +1865,8 @@ impl Game {
             self.air = (self.air + dt * 5.0).min(10.0);
         }
         // Lava burns.
-        let lava = self.reg.id_or_air("lava");
         let feet = self.body.pos.floor().as_ivec3();
-        if lava != AIR && (self.world.block_or_air(feet) == lava || self.world.block_or_air(feet + IVec3::Y) == lava) {
+        if self.world.fluid(self.world.block_or_air(feet)) == 2 || self.world.fluid(self.world.block_or_air(feet + IVec3::Y)) == 2 {
             self.damage(4.0, None);
         }
         // Healing comes from a full stomach (survival.rs).
@@ -2191,6 +2206,12 @@ impl Game {
             put(w, -2, 0, z, "brick_roof:3");
         }
         put(w, 0, 0, 11, "spruce_roof:6");
+        // A spring on a little ledge: it pours off and spreads over the floor.
+        for x in 4..=6 {
+            put(w, x, 0, 1, "cobblestone");
+            put(w, x, 0, 0, "cobblestone");
+        }
+        put(w, 6, 1, 0, "water");
         for x in 2..=5 {
             for y in 0..3 {
                 put(w, x, y, 11, "glass");
@@ -3156,7 +3177,7 @@ impl Game {
             if self.loaded_frames % 30 == 0 {
                 log::info!("screenshot wait: frame {}, {:.1} fps, {} jobs pending", self.loaded_frames, self.fps, self.world.pending_jobs());
             }
-            if (self.loaded_frames > 30 && self.world.pending_jobs() == 0 && self.lod.is_complete()) || self.loaded_frames > 1500 {
+            if (self.loaded_frames > 30 && self.world.pending_jobs() == 0 && self.lod.is_complete() && self.fluids.time >= self.args.wait as f64) || self.loaded_frames > 1500 {
                 capture = true;
                 exit_after = true;
             }

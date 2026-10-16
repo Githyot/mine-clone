@@ -625,9 +625,8 @@ impl Game {
             let mut pos = self.body.pos;
             pos.y = pos.y.max(1.0);
             let p = pos.floor().as_ivec3();
-            let lava = self.reg.id_or_air("lava");
             let mut q = p;
-            while q.y < p.y + 40 && (Terrain::solid(&self.world, q) || self.world.block_or_air(q) == lava) {
+            while q.y < p.y + 40 && (Terrain::solid(&self.world, q) || self.world.fluid(self.world.block_or_air(q)) == 2) {
                 q.y += 1;
             }
             pos.y = q.y as f32;
@@ -700,6 +699,9 @@ impl Game {
         if item.food.is_some() {
             // Eating is handled while the button is held (update).
             return false;
+        }
+        if matches!(item.name.as_str(), "bucket" | "water_bucket" | "lava_bucket") {
+            return self.use_bucket(&item.name);
         }
         if let Some(mob) = item.name.strip_suffix("_spawn_egg") {
             let Some(hit) = self.target else { return false };
@@ -812,6 +814,63 @@ impl Game {
     }
 
     /// Throw a stack out in front of the player, like dropping it out of the inventory window.
+    /// Scoop up a still liquid with an empty bucket, or pour one out where the player looks.
+    fn use_bucket(&mut self, name: &str) -> bool {
+        let eye = self.body.eye();
+        let fwd = self.forward();
+        if name == "bucket" {
+            let world = &self.world;
+            let hit = voxel::raycast::raycast(eye, fwd, 5.0, |p| {
+                let id = world.block_or_air(p);
+                (world.fluid(id) != 0 && world.reg.get(id).variant == 0) || Terrain::solid(world, p)
+            });
+            let Some(hit) = hit else { return false };
+            let id = self.world.block_or_air(hit.block);
+            let f = self.world.fluid(id);
+            if f == 0 || self.reg.get(id).variant != 0 {
+                return false;
+            }
+            self.world.set_block(hit.block, AIR);
+            self.sfx(if f == 1 { Sfx::Splash(0.3) } else { Sfx::Fizz });
+            self.swap_held(if f == 1 { "water_bucket" } else { "lava_bucket" });
+            self.anim.start_swing();
+            return true;
+        }
+        let Some(hit) = self.target else { return false };
+        let clicked = self.world.block_or_air(hit.block);
+        let pos = if self.reg.get(clicked).shape == Shape::Cross { hit.block } else { hit.block + hit.normal };
+        let cur = self.world.block_or_air(pos);
+        let fits = cur == AIR || self.reg.get(cur).shape == Shape::Cross || (self.world.fluid(cur) != 0 && self.reg.get(cur).variant != 0);
+        if !fits {
+            return false;
+        }
+        let f = if name == "water_bucket" { 1 } else { 2 };
+        self.world.set_block(pos, self.fluids.id(f, 0));
+        self.sfx(if f == 1 { Sfx::Splash(0.4) } else { Sfx::Fizz });
+        self.swap_held("bucket");
+        self.anim.start_swing();
+        true
+    }
+
+    /// Turn one of the held item into another (a bucket filled or emptied). Creative keeps it.
+    fn swap_held(&mut self, to: &str) {
+        if !self.survival {
+            return;
+        }
+        let Some(to) = self.items.id(to) else { return };
+        let sel = self.selected;
+        match self.surv.inv.slots[sel] {
+            Some(s) if s.count <= 1 => self.surv.inv.slots[sel] = Some(ItemStack::new(to, 1)),
+            Some(_) => {
+                self.surv.inv.take(sel, 1);
+                if let Some(left) = self.surv.inv.add(&self.items, ItemStack::new(to, 1)) {
+                    self.throw_stack(left);
+                }
+            }
+            None => {}
+        }
+    }
+
     pub(crate) fn throw_stack(&mut self, st: ItemStack) {
         let f = self.forward();
         self.spawn_drop(self.body.eye() - Vec3::Y * 0.3, st, f * 4.0 + Vec3::Y);
