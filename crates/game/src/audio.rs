@@ -94,6 +94,12 @@ pub enum Sfx {
     WaterExit,
     /// Air bubbles under water.
     Bubbles,
+    /// An item picked up from the ground.
+    Pickup,
+    /// Experience collected.
+    Xp,
+    /// A bite of food.
+    Eat,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

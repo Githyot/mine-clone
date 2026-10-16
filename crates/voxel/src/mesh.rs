@@ -96,6 +96,7 @@ pub struct MeshTables {
     tint: Vec<u8>, // bit per face: tinted
     cull_same: Vec<bool>,
     wave: Vec<bool>,
+    height: Vec<u32>,
     biome_tints: Vec<[u8; 3]>,
 }
 
@@ -109,6 +110,7 @@ impl MeshTables {
             tint: vec![],
             cull_same: vec![],
             wave: vec![],
+            height: vec![],
             biome_tints: biome_tints
                 .iter()
                 .map(|c| [(c[0] * 200.0).min(255.0) as u8, (c[1] * 200.0).min(255.0) as u8, (c[2] * 200.0).min(255.0) as u8])
@@ -133,6 +135,7 @@ impl MeshTables {
             t.tint.push(tint);
             t.cull_same.push(!leaves);
             t.wave.push(leaves || (b.shape == Shape::Cross && b.light == 0));
+            t.height.push(b.height as u32);
         }
         if t.biome_tints.is_empty() {
             t.biome_tints.push([200, 200, 200]);
@@ -260,14 +263,17 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                 let transp = t.transp[idu];
                 let target = if transp == Transparency::Translucent { &mut out.translucent } else { &mut out.solid };
                 let above_same = blocks[i + P * P] == id;
+                // Low blocks (slabs, beds): the top sits lower and is always drawn.
+                let hgt = t.height[idu];
                 for (f, fi) in FACES.iter().enumerate() {
                     let n = fi.normal;
                     let ni = (i as isize + n[0] as isize + n[2] as isize * P as isize + n[1] as isize * (P * P) as isize) as usize;
                     let nid = blocks[ni];
-                    if t.opaque[nid as usize] {
+                    let low_top = hgt < 16 && f == 2;
+                    if t.opaque[nid as usize] && !low_top {
                         continue;
                     }
-                    if nid == id && t.cull_same[idu] {
+                    if nid == id && t.cull_same[idu] && !(hgt < 16 && f != 3) {
                         continue;
                     }
                     // Water next to any non-air block that isn't see-through to it: skip faces against solid cubes only.
@@ -321,8 +327,16 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                         if liquid && c[1] == 1 && !above_same {
                             pos[1] -= 2;
                         }
+                        let mut uv = fi.uv[k];
+                        if hgt < 16 && c[1] == 1 {
+                            pos[1] = base[1] + hgt;
+                            // Sides show the bottom part of the texture.
+                            if f != 2 && f != 3 {
+                                uv[1] = 16 - hgt;
+                            }
+                        }
                         aos[k] = ao;
-                        verts[k] = pack(pos, ao, fi.uv[k], layer, f as u32, wave | if liquid { FLAG_LIQUID } else { 0 }, sky, blk, tint);
+                        verts[k] = pack(pos, ao, uv, layer, f as u32, wave | if liquid { FLAG_LIQUID } else { 0 }, sky, blk, tint);
                     }
                     // Flip the quad's diagonal when it makes the AO gradient look right.
                     if aos[0] + aos[2] < aos[1] + aos[3] {

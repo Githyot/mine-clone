@@ -56,6 +56,7 @@ pub struct EntityRenderer {
     inst_cap: usize,
     meshes: Vec<MobMesh>,
     pub particles: crate::particles::ParticleGpu,
+    pub items: crate::item_render::ItemGpu,
     /// Meshes after this index are paintings.
     mob_meshes: usize,
     /// (mesh, first instance, count) for this frame.
@@ -358,7 +359,8 @@ impl EntityRenderer {
             });
         }
         let particles = crate::particles::ParticleGpu::new(r);
-        EntityRenderer { particles, pipelines, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, draws: Vec::new(), instance_count: 0 }
+        let items = crate::item_render::ItemGpu::new(r);
+        EntityRenderer { particles, items, pipelines, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, draws: Vec::new(), instance_count: 0 }
     }
 
     /// Mesh index of a painting, for `prepare`.
@@ -414,6 +416,7 @@ impl EntityRenderer {
 
     pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, hdr: bool, block_tex: &'a wgpu::BindGroup) {
         self.particles.draw(pass, hdr, block_tex);
+        self.items.draw(pass, hdr, block_tex);
         if self.draws.is_empty() {
             return;
         }

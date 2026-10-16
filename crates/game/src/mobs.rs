@@ -25,7 +25,8 @@ pub struct Mobs {
 pub struct MobOutcome {
     pub damage: Vec<(f32, Option<Vec3>)>,
     pub explosions: Vec<(Vec3, f32)>,
-    pub deaths: usize,
+    /// Mobs that died this tick: (def index, where).
+    pub deaths: Vec<(usize, Vec3)>,
 }
 
 impl Mobs {
@@ -157,7 +158,7 @@ impl Mobs {
                 }
             }
             if was_alive && !m.alive() {
-                out.deaths += 1;
+                out.deaths.push((m.def, m.body.pos));
             }
         }
         self.list.retain(|m| {

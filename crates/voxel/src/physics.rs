@@ -20,7 +20,14 @@ pub trait Terrain {
     fn solid(&self, p: IVec3) -> bool;
     /// The block is water (or another swimmable liquid).
     fn liquid(&self, p: IVec3) -> bool;
+    /// Height of the solid part from the bottom of the cell (slabs and beds are lower).
+    fn top(&self, _p: IVec3) -> f32 {
+        1.0
+    }
 }
+
+/// How high a walking body climbs onto a low block (slab, bed) without jumping.
+const STEP_HEIGHT: f32 = 0.6;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Input {
@@ -169,7 +176,19 @@ impl Body {
         let sneak_guard = input.sneak && was_on_ground && !self.flying;
         for axis in [1usize, 0, 2] {
             let before = self.pos;
-            let moved = self.move_axis(world, axis, delta[axis]);
+            let mut moved = self.move_axis(world, axis, delta[axis]);
+            // Walk up onto low blocks: lift, move, settle back down.
+            if axis != 1 && was_on_ground && !self.flying && moved.abs() + 1e-6 < delta[axis].abs() {
+                let blocked = self.pos;
+                let up = self.move_axis(world, 1, STEP_HEIGHT);
+                let side = self.move_axis(world, axis, delta[axis] - moved);
+                let down = self.move_axis(world, 1, -up);
+                if side.abs() > 1e-4 && up + down > 1e-4 {
+                    moved += side;
+                } else {
+                    self.pos = blocked;
+                }
+            }
             if sneak_guard && axis != 1 && !self.has_ground_below(world) {
                 self.pos = before;
                 self.vel[axis] = 0.0;
@@ -195,7 +214,8 @@ impl Body {
         let y = (lo.y - 0.05).floor() as i32;
         for x in lo.x.floor() as i32..=(hi.x - 1e-4).floor() as i32 {
             for z in lo.z.floor() as i32..=(hi.z - 1e-4).floor() as i32 {
-                if world.solid(IVec3::new(x, y, z)) {
+                let p = IVec3::new(x, y, z);
+                if world.solid(p) && y as f32 + world.top(p) >= lo.y - 0.6 {
                     return true;
                 }
             }
@@ -220,6 +240,9 @@ impl Body {
         let (r1, r2) = (range(a1), range(a2));
         let (start, end) = if d > 0.0 {
             ((hi[axis] - eps).floor() as i32 + 1, (hi[axis] + d).floor() as i32)
+        } else if axis == 1 {
+            // Falling also checks the cell around the feet: a low block's top can be inside it.
+            ((lo[axis] + eps).floor() as i32, (lo[axis] + d).floor() as i32)
         } else {
             ((lo[axis] + eps).floor() as i32 - 1, (lo[axis] + d).floor() as i32)
         };
@@ -236,7 +259,20 @@ impl Body {
                     p[a1] = u;
                     p[a2] = v;
                     if world.solid(p) {
-                        allowed = if d > 0.0 { c as f32 - hi[axis] } else { (c + 1) as f32 - lo[axis] };
+                        let top = world.top(p);
+                        if axis == 1 && d < 0.0 {
+                            // Land on the block's top, if it is under the feet and within this step.
+                            let surface = c as f32 + top;
+                            if surface > lo.y + eps || surface < lo.y + d - eps {
+                                continue;
+                            }
+                            allowed = surface - lo.y;
+                        } else if axis != 1 && lo.y >= p.y as f32 + top - eps {
+                            // Above a low block: no wall.
+                            continue;
+                        } else {
+                            allowed = if d > 0.0 { c as f32 - hi[axis] } else { (c + 1) as f32 - lo[axis] };
+                        }
                         // Never move backwards because of float error.
                         if allowed * d < 0.0 {
                             allowed = 0.0;

@@ -1,0 +1,1163 @@
+#!/usr/bin/env python3
+"""Procedurally generate original 16x16 pixel-art item icons and a few extra
+block textures (chest, bed, saplings, xp orb).
+
+Reuses the helpers and palettes of tools/gen_textures.py.  Everything is drawn
+from scratch: geometric masks along the classic "diagonal handle" axis for
+tools, small hand-written pixel maps for the rest, then a bevel-style shading
+pass and an automatic dark 1px outline for items.
+
+Usage:
+    python3 tools/gen_items.py [sheet.png]
+
+Output:
+    packs/vanilla/textures/item/<name>.png   (transparent background)
+    packs/vanilla/textures/block/<name>.png  (only the new block textures;
+                                              existing ones are not touched)
+Optionally an 8x contact sheet of all item icons at the given path.
+"""
+
+import os
+import sys
+
+import numpy as np
+from PIL import Image
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from gen_textures import (  # noqa: E402
+    N, ROOT, WOODS, XX, YY, canvas, contact_sheet, from_rgb, hexrgb, line,
+    pal, planks, put, rng_for, scale_rgb, to_image, value_noise, normalize,
+    shade,
+)
+
+ITEM_DIR = os.path.join(ROOT, "packs", "vanilla", "textures", "item")
+BLOCK_DIR = os.path.join(ROOT, "packs", "vanilla", "textures", "block")
+
+# --------------------------------------------------------------------------
+# Item helpers
+# --------------------------------------------------------------------------
+
+HANDLE = pal("#3d2812", "#5a3d1e", "#7a5530", "#94693c")
+
+MATERIALS = {
+    "wooden": pal("#5a4220", "#86683a", "#a8874e", "#c4a466", "#dcc086"),
+    "stone": pal("#3f3f3f", "#5d5d5d", "#7a7a7a", "#949494", "#adadad"),
+    "iron": pal("#5c5c5c", "#9a9a9a", "#c4c4c4", "#dedede", "#ffffff"),
+    "golden": pal("#7a5508", "#c08a12", "#eab92a", "#fbdb52", "#fff6a8"),
+    "diamond": pal("#0f5f60", "#1fa8a4", "#3fd8cf", "#7ef2e8", "#d4fffa"),
+}
+
+# handle axis: from pixel centre (2.5, 13.5) towards the top-right corner
+B = np.array([2.5, 13.5])
+D = np.array([1.0, -1.0]) / np.sqrt(2)      # along the handle
+P = np.array([-1.0, -1.0]) / np.sqrt(2)     # perpendicular, towards top-left
+PX = XX + 0.5 - B[0]
+PY = YY + 0.5 - B[1]
+U = PX * D[0] + PY * D[1]
+V = PX * P[0] + PY * P[1]
+
+
+def shade_mask(img, mask, p, rng=None, speck=0.12, light_dir=(-1, -1)):
+    """Fill mask with palette p (dark->light) using a bevel look: edges that
+    face the light (top-left) get the highlight, opposite edges the shadow."""
+    n = len(p)
+    m = mask.astype(bool)
+    up = np.roll(m, 1, 0)
+    up[0] = False
+    left = np.roll(m, 1, 1)
+    left[:, 0] = False
+    down = np.roll(m, -1, 0)
+    down[-1] = False
+    right = np.roll(m, -1, 1)
+    right[:, -1] = False
+    lvl = np.full((N, N), n // 2 if n > 3 else 1, dtype=int)
+    lit = (~up) | (~left)
+    dark = (~down) | (~right)
+    lvl[lit] = n - 1
+    lvl[dark & ~lit] = 0 if n <= 3 else 1
+    lvl[dark & lit] = n // 2
+    if rng is not None and speck > 0:
+        r = rng.random((N, N))
+        inner = up & left & down & right
+        lvl[inner & (r < speck)] += 1
+        lvl[inner & (r > 1 - speck)] -= 1
+    lvl = np.clip(lvl, 0, n - 1)
+    img[m, :3] = p[lvl[m]]
+    img[m, 3] = 255
+    return img
+
+
+def outline(img, k=0.38, alpha_min=1):
+    """Add a 1px dark outline around opaque pixels (4-neighbourhood).  The
+    outline colour is the darkest neighbouring colour darkened by k."""
+    a = img[..., 3] >= alpha_min
+    rgb = img[..., :3]
+    lum = rgb @ np.array([0.3, 0.59, 0.11])
+    best = np.full((N, N), 1e9)
+    col = np.zeros((N, N, 3))
+    for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        sa = np.roll(np.roll(a, dy, 0), dx, 1)
+        sl = np.roll(np.roll(lum, dy, 0), dx, 1)
+        sc = np.roll(np.roll(rgb, dy, 0), dx, 1)
+        if dy == 1:
+            sa[0] = False
+        if dy == -1:
+            sa[-1] = False
+        if dx == 1:
+            sa[:, 0] = False
+        if dx == -1:
+            sa[:, -1] = False
+        take = sa & ~a & (sl < best)
+        best[take] = sl[take]
+        col[take] = sc[take]
+    edge = best < 1e9
+    out = img.copy()
+    out[edge, :3] = col[edge] * k
+    out[edge, 3] = 255
+    return out
+
+
+def from_map(rows, colors):
+    """Pixel map: list of 16 strings; '.' transparent, other chars -> colour."""
+    img = canvas()
+    for y, row in enumerate(rows):
+        assert len(row) == N, (y, row)
+        for x, ch in enumerate(row):
+            if ch != ".":
+                put(img, x, y, colors[ch])
+    return img
+
+
+def pmap(p, prefix="12345"):
+    """Map characters '1'..'5' (or a custom prefix) to palette entries."""
+    return {c: p[i] for i, c in enumerate(prefix[:len(p)])}
+
+
+def mask_from_rows(rows):
+    return np.array([[c != "." for c in r] for r in rows])
+
+
+def handle(img, u0, u1, p=HANDLE):
+    m = (np.abs(V) <= 0.75) & (U >= u0) & (U <= u1)
+    img[m & (V > 0), :3] = p[3]
+    img[m & (V <= 0), :3] = p[1]
+    # darker tip at the bottom end
+    img[m & (U < u0 + 0.8) & (V <= 0), :3] = p[0]
+    img[m, 3] = 255
+    return m
+
+
+# --------------------------------------------------------------------------
+# Tools
+# --------------------------------------------------------------------------
+
+TOOL_KINDS = ("pickaxe", "axe", "shovel", "sword", "hoe")
+
+
+def tool(material, kind):
+    rng = rng_for(f"{material}_{kind}")
+    p = MATERIALS[material]
+    img = canvas()
+    if kind == "pickaxe":
+        handle(img, 0, 13.2)
+        # curved head perpendicular to the handle, tips bending back
+        c = 12.2 - 0.07 * V ** 2
+        head = (U >= c - 0.9) & (U <= c + 0.9) & (np.abs(V) <= 6.6)
+        shade_mask(img, head, p[1:], rng)
+    elif kind == "axe":
+        handle(img, 0, 13.4)
+        # blade on the upper-left side of the handle top, flaring outwards
+        blade = (V > 0.6) & (V <= 6.0) & \
+                (U >= 9.4 - 0.55 * (V - 0.6)) & (U <= 12.6 + 0.45 * (V - 0.6))
+        back = (V < -0.6) & (V >= -2.0) & (U >= 10.6) & (U <= 12.2)
+        shade_mask(img, blade | back, p[1:], rng)
+        # cutting edge highlight
+        edge = blade & (V > 5.0)
+        img[edge, :3] = p[4]
+    elif kind == "shovel":
+        handle(img, 0, 10.5)
+        blade = ((U - 12.6) / 3.0) ** 2 + (V / 2.6) ** 2 <= 1.0
+        shade_mask(img, blade, p[1:], rng)
+        img[blade & (U > 14.6), :3] = p[1]
+    elif kind == "sword":
+        # short handle, pommel, crossguard, long blade
+        hm = (np.abs(V) <= 0.75) & (U >= 0.6) & (U <= 4.2)
+        img[hm & (V > 0), :3] = HANDLE[3]
+        img[hm & (V <= 0), :3] = HANDLE[1]
+        img[hm, 3] = 255
+        pommel = (np.abs(V) <= 0.75) & (U >= -0.6) & (U < 0.6)
+        img[pommel, :3] = p[2]
+        img[pommel, 3] = 255
+        guard = (np.abs(V) <= 3.3) & (U >= 4.2) & (U <= 5.6)
+        gp = HANDLE if material == "wooden" else p
+        shade_mask(img, guard, gp[[0, 1, 2]] if material == "wooden" else p[:3])
+        blade = (np.abs(V) <= 1.25 - np.maximum(0, U - 16.0) * 0.9) & \
+                (U > 5.6) & (U <= 17.3)
+        shade_mask(img, blade, p[1:], None)
+        # fuller: centre line slightly lighter than the blade
+        img[blade & (np.abs(V) < 0.4) & (U < 16.4), :3] = p[3]
+        _ = gp
+    elif kind == "hoe":
+        handle(img, 0, 12.4)
+        # L-shaped head: flat bar to the left of the handle top, blade
+        # turning down at its far end
+        rows = [
+            "................",
+            "................",
+            "....##########..",
+            "....##########..",
+            "...###..........",
+            "...###..........",
+            "...##...........",
+        ] + ["." * N] * 9
+        shade_mask(img, mask_from_rows(rows), p[1:], rng)
+    return outline(img)
+
+
+# --------------------------------------------------------------------------
+# Materials
+# --------------------------------------------------------------------------
+
+
+def stick():
+    img = canvas()
+    m = (np.abs(V) <= 0.75) & (U >= 1.0) & (U <= 15.0)
+    img[m & (V > 0), :3] = HANDLE[3]
+    img[m & (V <= 0), :3] = HANDLE[1]
+    img[m & (U < 2.2) & (V <= 0), :3] = HANDLE[0]
+    img[m, 3] = 255
+    return outline(img)
+
+
+LUMP = [
+    "................",
+    "................",
+    "................",
+    "......####......",
+    "....#######.....",
+    "...#########....",
+    "..###########...",
+    "..############..",
+    "..############..",
+    "...###########..",
+    "...##########...",
+    "....########....",
+    ".....#####......",
+    "................",
+    "................",
+    "................",
+]
+
+LUMP2 = [
+    "................",
+    "................",
+    "................",
+    "........###.....",
+    ".....#######....",
+    "....#########...",
+    "...##########...",
+    "..###########...",
+    "..############..",
+    "..############..",
+    "...###########..",
+    "....#########...",
+    "......####......",
+    "................",
+    "................",
+    "................",
+]
+
+
+def lump(name, p, rows=LUMP, spots=None, nspots=6):
+    rng = rng_for(name)
+    img = canvas()
+    m = mask_from_rows(rows)
+    shade_mask(img, m, p, rng, speck=0.25)
+    # chunky facets: a few darker cracks
+    ys, xs = np.nonzero(m)
+    for _ in range(3):
+        i = rng.integers(len(xs))
+        x, y = xs[i], ys[i]
+        for (dx, dy) in ((0, 0), (1, 1)):
+            if m[(y + dy) % N, (x + dx) % N]:
+                put(img, x + dx, y + dy, p[0])
+    if spots is not None:
+        inner = m & np.roll(m, 1, 0) & np.roll(m, -1, 0) & \
+            np.roll(m, 1, 1) & np.roll(m, -1, 1)
+        ys, xs = np.nonzero(inner)
+        for _ in range(nspots):
+            i = rng.integers(len(xs))
+            x, y = xs[i], ys[i]
+            put(img, x, y, spots[1])
+            if m[y, x + 1]:
+                put(img, x + 1, y, spots[0])
+    return outline(img)
+
+
+def coal():
+    return lump("coal", pal("#0e0e0e", "#1c1c1c", "#2c2c2c", "#404040", "#5a5a5a"))
+
+
+def charcoal():
+    return lump("charcoal", pal("#120c08", "#22180f", "#342518", "#4a3624",
+                                "#614a32"), LUMP2)
+
+
+RAW = {
+    "iron": (pal("#6e4e3a", "#8f6a52", "#b08a70", "#cfa88c", "#e6c6ad"),
+             pal("#5a5a5a", "#d0d0d0")),
+    "gold": (pal("#7a5a10", "#a8801c", "#d6a92a", "#f2cd45", "#fff08a"),
+             pal("#8a6a10", "#fff6b0")),
+    "copper": (pal("#6a2e14", "#97451f", "#c0662f", "#e08a4c", "#f3ae78"),
+               pal("#2f7a68", "#5fc0a8")),
+    "tin": (pal("#4f5762", "#6d7682", "#8d97a4", "#b0bac6", "#d2dae3"),
+            pal("#3e444c", "#e8eef4")),
+    "silver": (pal("#6c7078", "#9a9fa8", "#c3c7cd", "#dfe2e6", "#ffffff"),
+               pal("#55585e", "#ffffff")),
+}
+
+
+def raw(metal):
+    body, spots = RAW[metal]
+    return lump(f"raw_{metal}", body, LUMP2, spots, 5)
+
+
+INGOT = [
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    ".....55555555...",
+    "....5444444443..",
+    "...54444444442..",
+    "..544444444432..",
+    "..3333333333321.",
+    "..2222222222221.",
+    "..1111111111111.",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+
+INGOT_COL = {
+    "iron": pal("#7e7e7e", "#a8a8a8", "#c8c8c8", "#e0e0e0", "#ffffff"),
+    "gold": pal("#a0700c", "#d29a16", "#f2c22c", "#fde05a", "#fffbc0"),
+    "copper": pal("#7a3818", "#a8542a", "#cf7442", "#e8945e", "#fbc49a"),
+    "tin": pal("#606a76", "#828c99", "#a4aebb", "#c4ccd6", "#e6ecf2"),
+    "silver": pal("#8a8e96", "#b4b8c0", "#d6d9de", "#eceef1", "#ffffff"),
+    "bronze": pal("#6a4416", "#94622a", "#b8843e", "#d4a456", "#ecc87e"),
+}
+
+
+def ingot(metal):
+    p = INGOT_COL[metal]
+    img = from_map(INGOT, pmap(p))
+    return outline(img)
+
+
+def diamond():
+    rows = [
+        "................",
+        "................",
+        "................",
+        "....45555554....",
+        "...4455555443...",
+        "..344454445433..",
+        "..333333333332..",
+        "...3333333332...",
+        "....33333322....",
+        ".....333322.....",
+        "......3322......",
+        ".......32.......",
+        "................",
+        "................",
+        "................",
+        "................",
+    ]
+    p = pal("#0f6a68", "#1fa8a4", "#3fd8cf", "#8ff4ea", "#e4fffb")
+    img = from_map(rows, {"1": p[0], "2": p[1], "3": p[2], "4": p[3], "5": p[4]})
+    return outline(img)
+
+
+def emerald():
+    rows = [
+        "................",
+        "................",
+        ".......54.......",
+        "......5543......",
+        ".....554433.....",
+        ".....544333.....",
+        ".....543332.....",
+        ".....443322.....",
+        ".....433322.....",
+        ".....433222.....",
+        ".....333221.....",
+        "......3221......",
+        ".......21.......",
+        "................",
+        "................",
+        "................",
+    ]
+    p = pal("#06501c", "#0d7a2f", "#17b54a", "#5ae484", "#c8ffd8")
+    return outline(from_map(rows, pmap(p)))
+
+
+def lapis():
+    rows = [
+        "................",
+        "................",
+        "................",
+        "................",
+        "......4455......",
+        "....44445554....",
+        "...4433344443...",
+        "..443332333433..",
+        "..433322233332..",
+        "..33322222332...",
+        "...332222221....",
+        ".....2211.......",
+        "................",
+        "................",
+        "................",
+        "................",
+    ]
+    p = pal("#0e1d5a", "#1a2f8a", "#2c4fc0", "#4a74e0", "#8eaaf6")
+    img = from_map(rows, pmap(p))
+    for (x, y) in ((6, 7), (9, 9), (11, 6)):
+        put(img, x, y, hexrgb("#d8c050"))   # little golden flecks
+    return outline(img)
+
+
+def redstone():
+    rng = rng_for("redstone")
+    img = canvas()
+    p = pal("#4a0000", "#8f0000", "#c41010", "#ff3a2a", "#ff9a8a")
+    cx, cy = 7.5, 9.5
+    d = np.hypot((XX + 0.5 - 8) / 5.2, (YY + 0.5 - 10) / 3.6)
+    m = (d < 1.0) & (rng.random((N, N)) < 1.15 - d * 0.6)
+    m |= (d < 0.55)
+    lvl = np.clip((1.0 - d) * 3.2 + rng.random((N, N)) * 1.4, 0, 4).astype(int)
+    img[m, :3] = p[lvl[m]]
+    img[m, 3] = 255
+    # stray grains
+    for (x, y) in ((3, 6), (12, 6), (8, 4), (13, 12), (2, 11)):
+        put(img, x, y, p[3])
+    _ = (cx, cy)
+    return outline(img)
+
+
+def flint():
+    rows = [
+        "................",
+        "................",
+        "................",
+        ".......45.......",
+        "......4453......",
+        ".....443332.....",
+        "....4433322.....",
+        "....43332222....",
+        "...4433222221...",
+        "...43322222211..",
+        "...3332222111...",
+        "....33222111....",
+        ".....22211......",
+        "................",
+        "................",
+        "................",
+    ]
+    p = pal("#141414", "#2e2e30", "#48484c", "#6a6a70", "#9a9aa2")
+    return outline(from_map(rows, pmap(p)))
+
+
+def string_item():
+    img = canvas()
+    c1, c2 = hexrgb("#f4f4f0"), hexrgb("#c8c8c2")
+    pts = [(2, 13), (3, 12), (4, 12), (5, 11), (5, 10), (4, 9), (4, 8), (5, 7),
+           (6, 7), (7, 8), (8, 8), (9, 7), (9, 6), (8, 5), (8, 4), (9, 3),
+           (10, 3), (11, 4), (12, 4), (13, 3)]
+    for i, (x, y) in enumerate(pts):
+        put(img, x, y, c1 if i % 3 else c2)
+    return outline(img, k=0.32)
+
+
+def feather():
+    rows = [
+        "................",
+        "............45..",
+        "..........44554.",
+        ".........445543.",
+        "........4455433.",
+        ".......4455433..",
+        "......4455433...",
+        ".....4455433....",
+        "....445543 3....",
+        "...44543 33.....",
+        "...4543333......",
+        "...q433 3.......",
+        "..q.33..........",
+        ".q..............",
+        "q...............",
+        "................",
+    ]
+    rows = [r.replace(" ", "3") for r in rows]
+    p = pal("#808080", "#a8a8a8", "#cfcfcf", "#e8e8e8", "#ffffff")
+    cols = pmap(p)
+    cols["q"] = hexrgb("#9a9a9a")
+    img = from_map(rows, cols)
+    # quill / rachis runs down the middle
+    for (x, y) in ((13, 2), (12, 3), (11, 4), (10, 5), (9, 6), (8, 7), (7, 8),
+                   (6, 9), (5, 10), (4, 11)):
+        put(img, x, y, hexrgb("#bdbdb6"))
+    return outline(img, k=0.35)
+
+
+def leather():
+    rows = [
+        "................",
+        "................",
+        "...44......44...",
+        "...444444444....",
+        "....44444443....",
+        "...444434433....",
+        "..44443333333...",
+        "..44433333332...",
+        "...4333333322...",
+        "...3333332222...",
+        "..33333222222...",
+        "..33322222212...",
+        "...22......11...",
+        "................",
+        "................",
+        "................",
+    ]
+    p = pal("#4a2a14", "#6e3e1e", "#8e5428", "#ac6c36", "#c88a4e")
+    return outline(from_map(rows, pmap(p)))
+
+
+def bone():
+    rows = [
+        "................",
+        "............55..",
+        "...........5544.",
+        "..........55443.",
+        "........55443...",
+        ".......5543.....",
+        "......5543......",
+        ".....5543.......",
+        "....5543........",
+        "...5543.........",
+        ".5543...........",
+        "5543............",
+        "5443............",
+        ".33.............",
+        "................",
+        "................",
+    ]
+    # rebuild as a clean diagonal shaft with knobbly ends
+    img = canvas()
+    p = pal("#8c887a", "#b8b4a4", "#d8d4c4", "#ecead8", "#ffffff")
+    shaft = (np.abs(V) <= 0.8) & (U >= 2.0) & (U <= 13.0)
+    knob = np.zeros((N, N), bool)
+    for (uc, vc) in ((1.6, 1.1), (1.6, -1.1), (13.4, 1.1), (13.4, -1.1)):
+        knob |= np.hypot(U - uc, V - vc) <= 1.25
+    m = shaft | knob
+    shade_mask(img, m, p[1:], None)
+    _ = rows
+    return outline(img, k=0.35)
+
+
+def gunpowder():
+    rng = rng_for("gunpowder")
+    img = canvas()
+    p = pal("#2a2a2a", "#454545", "#5e5e5e", "#7a7a7a", "#9a9a9a")
+    d = np.hypot((XX + 0.5 - 8) / 5.6, (YY + 0.5 - 10.5) / 3.6)
+    m = (d < 1.0) & ((rng.random((N, N)) < 1.2 - d * 0.7) | (d < 0.6))
+    m &= YY >= 6
+    lvl = np.clip((1 - d) * 2.5 + rng.random((N, N)) * 2.0, 0, 4).astype(int)
+    img[m, :3] = p[lvl[m]]
+    img[m, 3] = 255
+    for (x, y) in ((4, 6), (11, 5), (13, 9), (2, 10)):
+        put(img, x, y, p[2])
+    return outline(img)
+
+
+def rotten_flesh():
+    rows = [
+        "................",
+        "................",
+        "................",
+        "......4444......",
+        "....44433444....",
+        "...4433333344...",
+        "..443332233344..",
+        "..433322223333..",
+        "..33322g22g333..",
+        "..33222gg22232..",
+        "...3222222222...",
+        "...g2221122g....",
+        "....g211112.....",
+        "......11........",
+        "................",
+        "................",
+    ]
+    p = pal("#4a2a1a", "#6e3e2a", "#8e5a3e", "#ad7a52", "#c89a70")
+    cols = pmap(p)
+    cols["g"] = hexrgb("#5a7a2a")
+    return outline(from_map(rows, cols))
+
+
+def clay_ball():
+    rows = [
+        "................",
+        "................",
+        "................",
+        "................",
+        "......4444......",
+        ".....454443.....",
+        "....44544433....",
+        "....44444333....",
+        "....44443333....",
+        "....33333332....",
+        ".....333322.....",
+        "......2222......",
+        "................",
+        "................",
+        "................",
+        "................",
+    ]
+    p = pal("#5e6470", "#7a808c", "#9aa0ac", "#b4bac6", "#d6dce6")
+    return outline(from_map(rows, pmap(p)))
+
+
+def brick():
+    rows = [
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "......55555554..",
+        ".....544444443..",
+        "....5444444443..",
+        "...54444444432..",
+        "..333333333322..",
+        "..33333333332...",
+        "..2222222222....",
+        "................",
+        "................",
+        "................",
+        "................",
+    ]
+    p = pal("#5a2010", "#7e3018", "#a24428", "#bc5838", "#d6785a")
+    return outline(from_map(rows, pmap(p)))
+
+
+# --------------------------------------------------------------------------
+# Food
+# --------------------------------------------------------------------------
+
+
+def apple():
+    rows = [
+        "................",
+        "........s.......",
+        "........sll.....",
+        "........slll....",
+        "....3333s333....",
+        "...334443333....",
+        "..33455443332...",
+        "..33454433332...",
+        "..33444333322...",
+        "..33343333222...",
+        "..33333333222...",
+        "...333332222....",
+        "...33322222.....",
+        "....332.221.....",
+        "................",
+        "................",
+    ]
+    p = pal("#5a0a08", "#9a1410", "#c8221a", "#e64434", "#ff9a88")
+    cols = pmap(p)
+    cols["s"] = hexrgb("#4a3018")
+    cols["l"] = hexrgb("#3e9a2a")
+    return outline(from_map(rows, cols))
+
+
+CHOP = [
+    "................",
+    "................",
+    "................",
+    "........ffff....",
+    "......ff4444f...",
+    ".....f44444443..",
+    "....f444554443..",
+    "...f4445544433..",
+    "...f444444433...",
+    "..f444444433b...",
+    "..f44444433bb...",
+    "..f3333333bb....",
+    "...33333....",
+    "................",
+    "................",
+    "................",
+]
+
+
+def chop(name, p, fat, bonec=None):
+    rows = [r.ljust(N, ".") for r in CHOP]
+    cols = pmap(p)
+    cols["f"] = fat
+    cols["b"] = bonec if bonec is not None else hexrgb("#ecead8")
+    return outline(from_map(rows, cols))
+
+
+def porkchop():
+    return chop("porkchop", pal("#7a3038", "#b0505a", "#d06c76", "#e88a92",
+                                "#f8b4b8"), hexrgb("#fde0e0"))
+
+
+def cooked_porkchop():
+    return chop("cooked_porkchop", pal("#4a2a14", "#6a3e1e", "#8a5428",
+                                       "#a86e36", "#c48a4c"), hexrgb("#e8c890"))
+
+
+STEAK = [
+    "................",
+    "................",
+    "................",
+    "................",
+    ".....ffffff.....",
+    "...ff44444fff...",
+    "..f4445444444f..",
+    "..f44544w44443..",
+    "..f444w4444543..",
+    "..f44444445433..",
+    "...f4444w44333..",
+    "...f33333333....",
+    "....33333.......",
+    "................",
+    "................",
+    "................",
+]
+
+
+def steak(name, p, fat, marb):
+    cols = pmap(p)
+    cols["f"] = fat
+    cols["w"] = marb
+    return outline(from_map(STEAK, cols))
+
+
+def beef():
+    return steak("beef", pal("#5a0c0c", "#8a1a18", "#b02a24", "#c83a32",
+                             "#e06a5e"), hexrgb("#f0d6c8"), hexrgb("#f4c8bc"))
+
+
+def cooked_beef():
+    return steak("cooked_beef", pal("#2e1a0c", "#4a2c14", "#66401e", "#7e5228",
+                                    "#9a6a38"), hexrgb("#b88a50"), hexrgb("#a8784a"))
+
+
+DRUMSTICK = [
+    "................",
+    "................",
+    "......5555......",
+    ".....544444.....",
+    "....54444443....",
+    "....44444443....",
+    "....44444433....",
+    "....44444333....",
+    ".....4443332....",
+    "......33322.....",
+    ".......bb.......",
+    "......bb........",
+    ".....bb.........",
+    "...bbb..........",
+    "...bb...........",
+    "................",
+]
+
+
+def drumstick(name, p, bonec):
+    cols = pmap(p)
+    cols["b"] = bonec
+    return outline(from_map(DRUMSTICK, cols))
+
+
+def chicken():
+    return drumstick("chicken", pal("#9a6a5a", "#c49484", "#e4b8a8", "#f4d0c2",
+                                    "#fff0e8"), hexrgb("#ecead8"))
+
+
+def cooked_chicken():
+    return drumstick("cooked_chicken", pal("#5a3410", "#8a5420", "#b87a34",
+                                           "#d89a48", "#f0c070"), hexrgb("#ecead8"))
+
+
+MUTTON = [
+    "................",
+    "................",
+    "................",
+    "...........bb...",
+    "..........bbb...",
+    ".......ff3bb....",
+    ".....ff44433....",
+    "....f4454443....",
+    "...f44544443....",
+    "...f44444433....",
+    "...f4444w433....",
+    "....f444433.....",
+    ".....33333......",
+    "................",
+    "................",
+    "................",
+]
+
+
+def mutton_item(name, p, fat):
+    cols = pmap(p)
+    cols["f"] = fat
+    cols["w"] = fat
+    cols["b"] = hexrgb("#ecead8")
+    return outline(from_map(MUTTON, cols))
+
+
+def mutton():
+    return mutton_item("mutton", pal("#6a1418", "#9a2a2e", "#c0423e", "#d65a52",
+                                     "#ec8a80"), hexrgb("#f4e0d8"))
+
+
+def cooked_mutton():
+    return mutton_item("cooked_mutton", pal("#3a200e", "#5a3418", "#7a4a24",
+                                            "#946030", "#b07c44"), hexrgb("#c89a5e"))
+
+
+# --------------------------------------------------------------------------
+# Placeables
+# --------------------------------------------------------------------------
+
+BED_RED = pal("#5a0c0c", "#8a1616", "#b22222", "#cc3a32", "#e0605a")
+PILLOW = pal("#b8b8b0", "#dcdcd4", "#f4f4ee")
+BED_WOOD = WOODS["oak"]["plank"]
+
+
+def red_bed_item():
+    rows = [
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "...pPPP.........",
+        "..pPPPP5555555..",
+        "..pppp44444443..",
+        "..4444444444433.",
+        "..33333333333322",
+        "..wwwwwwwwwwwwd.",
+        "..W..........W..",
+        "..W..........W..",
+        "................",
+        "................",
+        "................",
+    ]
+    rows[9] = "..33333333333322"[:N]
+    rows[8] = "..44444444444333"[:N]
+    rows = [r[:N].ljust(N, ".") for r in rows]
+    cols = pmap(BED_RED)
+    cols.update({"p": PILLOW[1], "P": PILLOW[2], "w": BED_WOOD[2],
+                 "W": BED_WOOD[1], "d": BED_WOOD[0]})
+    return outline(from_map(rows, cols))
+
+
+def sapling(wood):
+    rng = rng_for(wood + "_sapling")
+    leaves = WOODS[wood]["leaves"]
+    stem = WOODS[wood]["bark"] if wood != "birch" else pal(
+        "#2a2a26", "#9a988e", "#cfcdc5", "#e9e8e2", "#ffffff")
+    img = canvas()
+    if wood == "spruce":
+        rows = [
+            "................",
+            ".......4........",
+            "......443.......",
+            ".....44332......",
+            "......433.......",
+            ".....443322.....",
+            "....44433322....",
+            "......4332......",
+            ".....4433322....",
+            "...444333322....",
+            "..444433332221..",
+            ".....44s322.....",
+            ".......s........",
+            ".......s........",
+            ".......s........",
+            ".......s........",
+        ]
+        lp = leaves
+    else:
+        rows = [
+            "................",
+            "................",
+            "......455.......",
+            "....44554433....",
+            "...4455443332...",
+            "..445443433322..",
+            "..4444333.3322..",
+            "...44.33s3322...",
+            "....43..s.22....",
+            "..4433..s.......",
+            "..44322.s..43...",
+            "...322..s.4332..",
+            "........ss322...",
+            "........s.......",
+            "........s.......",
+            "........s.......",
+        ]
+        lp = leaves
+    cols = {"1": lp[0], "2": lp[1], "3": lp[2], "4": lp[3], "5": lp[4],
+            "s": stem[2]}
+    img = from_map(rows, cols)
+    # a little colour jitter so the three saplings don't look stamped
+    m = (img[..., 3] > 0) & (rng.random((N, N)) < 0.12)
+    img[m, :3] = scale_rgb(img[m, :3], 0.88)
+    if wood == "birch":
+        # birch stem: white with dark marks
+        for y in range(7, 16):
+            if img[y, 8, 3] > 0 and y % 3 == 0:
+                put(img, 8, y, stem[0])
+    return img
+
+
+# --------------------------------------------------------------------------
+# New block textures
+# --------------------------------------------------------------------------
+
+CHEST = pal("#3a2410", "#5a3a1a", "#7a5226", "#966a34", "#ae8044")
+LATCH = pal("#3a3a3a", "#8a8a8a", "#c8c8c8")
+
+
+def chest_base(name):
+    rng = rng_for(name)
+    grain = 0.6 * value_noise(rng, 8, 1) + 0.4 * value_noise(rng, 4, 1)
+    img = from_rgb(shade(normalize(grain) * 0.7 + 0.2, CHEST[2:], 0.5))
+    rgb = img[..., :3]
+    for y in (4, 9, 14):
+        rgb[y, :] = scale_rgb(rgb[y, :], 0.82)
+    # dark frame
+    rgb[0, :] = CHEST[0]
+    rgb[15, :] = CHEST[0]
+    rgb[:, 0] = CHEST[0]
+    rgb[:, 15] = CHEST[0]
+    rgb[1, 1:15] = scale_rgb(rgb[1, 1:15], 1.1)
+    rgb[1:15, 1] = scale_rgb(rgb[1:15, 1], 1.08)
+    rgb[14, 1:15] = scale_rgb(rgb[14, 1:15], 0.85)
+    rgb[1:15, 14] = scale_rgb(rgb[1:15, 14], 0.85)
+    return img
+
+
+def chest_top():
+    img = chest_base("chest_top")
+    rgb = img[..., :3]
+    # metal-free lid: a darker inner band around the lid boards
+    rgb[2, 2:14] = CHEST[1]
+    rgb[13, 2:14] = CHEST[1]
+    rgb[2:14, 2] = CHEST[1]
+    rgb[2:14, 13] = CHEST[1]
+    return img
+
+
+def chest_side(front=False):
+    img = chest_base("chest_front" if front else "chest_side")
+    rgb = img[..., :3]
+    # lid seam: dark band separating lid (top 5 rows) from the body
+    rgb[5, :] = CHEST[0]
+    rgb[6, 1:15] = CHEST[1]
+    rgb[4, 1:15] = scale_rgb(rgb[4, 1:15], 0.9)
+    if front:
+        # small grey latch hanging over the seam
+        for y in range(3, 9):
+            for x in range(7, 9):
+                put(img, x, y, LATCH[1])
+        for x in range(6, 10):
+            put(img, x, 3, LATCH[2] if x < 9 else LATCH[1])
+            put(img, x, 8, LATCH[0])
+        put(img, 6, 4, LATCH[2])
+        for y in range(4, 8):
+            put(img, 6, y, LATCH[2])
+            put(img, 9, y, LATCH[0])
+        put(img, 7, 6, LATCH[0])   # keyhole
+        put(img, 8, 6, LATCH[0])
+    return img
+
+
+def bed_blanket(rng, h=N):
+    f = value_noise(rng, 4, 2) * 0.6 + rng.random((N, N)) * 0.4
+    return shade(normalize(f) * 0.6 + 0.25, BED_RED[1:], 0.5)
+
+
+def red_bed_top():
+    rng = rng_for("red_bed_top")
+    img = from_rgb(bed_blanket(rng))
+    rgb = img[..., :3]
+    # pillow strip at the head end
+    rgb[1:5, 2:14] = PILLOW[2]
+    rgb[4, 2:14] = PILLOW[1]
+    rgb[1:5, 13] = PILLOW[1]
+    rgb[1:5, 2] = PILLOW[2]
+    rgb[1, 2:14] = PILLOW[2]
+    # blanket fold line under the pillow
+    rgb[5, 1:15] = BED_RED[4]
+    rgb[6, 1:15] = BED_RED[3]
+    # side hem of the blanket
+    rgb[7:15, 1] = BED_RED[3]
+    rgb[7:15, 14] = BED_RED[1]
+    # wooden frame edge
+    w = BED_WOOD
+    rgb[0, :] = w[1]
+    rgb[15, :] = w[0]
+    rgb[:, 0] = w[2]
+    rgb[:, 15] = w[0]
+    rgb[1:5, 1] = w[2]
+    return img
+
+
+def red_bed_side():
+    rng = rng_for("red_bed_side")
+    img = canvas()
+    blank = bed_blanket(rng)
+    img[0:6, :, :3] = blank[0:6]
+    img[0, :, :3] = BED_RED[4]
+    img[5, :, :3] = BED_RED[1]
+    # blanket hangs a little over the frame in a wavy hem
+    for x in range(N):
+        if x % 4 in (1, 2):
+            img[6, x, :3] = BED_RED[1]
+        else:
+            img[6, x, :3] = BED_WOOD[3]
+    img[7, :, :3] = BED_WOOD[2]
+    img[8, :, :3] = BED_WOOD[0]
+    img[6:9, 0, :3] = BED_WOOD[1]
+    img[6:9, 15, :3] = BED_WOOD[0]
+    img[0:9, :, 3] = 255
+    # the game shows the BOTTOM rows of a low block's side texture, so move
+    # the 9 px bed band to y = 7..15 and leave y = 0..6 transparent
+    return np.roll(img, N - 9, axis=0)
+
+
+def red_bed_end():
+    img = canvas()
+    w = BED_WOOD
+    rng = rng_for("red_bed_end")
+    grain = value_noise(rng, 8, 1)
+    img[0:9, :, :3] = shade(normalize(grain) * 0.6 + 0.2, w[1:4], 0.5)[0:9]
+    img[0, :, :3] = w[4]
+    img[8, :, :3] = w[0]
+    img[0:9, 0, :3] = w[3]
+    img[0:9, 15, :3] = w[0]
+    # headboard posts and a red strip of blanket peeking out
+    img[1:8, 1, :3] = w[3]
+    img[1:8, 14, :3] = w[1]
+    img[2:4, 2:14, :3] = BED_RED[2]
+    img[2, 2:14, :3] = BED_RED[3]
+    img[4, 2:14, :3] = w[0]
+    img[0:9, :, 3] = 255
+    # the game shows the BOTTOM rows of a low block's side texture, so move
+    # the 9 px bed band to y = 7..15 and leave y = 0..6 transparent
+    return np.roll(img, N - 9, axis=0)
+
+
+def xp_orb():
+    img = canvas()
+    cx, cy = 7.5, 7.5
+    d = np.hypot(XX - cx, YY - cy)
+    p = pal("#3a7a10", "#6ab81c", "#a4e030", "#e0f850", "#ffffb0")
+    glow = (d <= 6.4) & (d > 5.0)
+    img[glow, :3] = p[1]
+    img[glow, 3] = 120
+    core = d <= 5.0
+    lvl = np.clip((5.0 - np.hypot(XX - 6.0, YY - 6.0)) * 0.85, 0, 4).astype(int)
+    img[core, :3] = p[lvl[core]]
+    img[core, 3] = 255
+    rim = core & (d > 4.1)
+    img[rim, :3] = scale_rgb(img[rim, :3], 0.75)
+    img[rim & (XX + YY > 15), :3] = p[0]
+    put(img, 5, 5, p[4])
+    put(img, 6, 5, p[4])
+    put(img, 5, 6, p[4])
+    return img
+
+
+# --------------------------------------------------------------------------
+# Registry & output
+# --------------------------------------------------------------------------
+
+
+def item_registry():
+    reg = {}
+    for mat in MATERIALS:
+        for kind in TOOL_KINDS:
+            reg[f"{mat}_{kind}"] = lambda m=mat, k=kind: tool(m, k)
+    reg.update({
+        "stick": stick, "coal": coal, "charcoal": charcoal,
+    })
+    for metal in ("iron", "gold", "copper", "tin", "silver"):
+        reg[f"raw_{metal}"] = lambda m=metal: raw(m)
+    for metal in ("iron", "gold", "copper", "tin", "silver", "bronze"):
+        reg[f"{metal}_ingot"] = lambda m=metal: ingot(m)
+    reg.update({
+        "diamond": diamond, "emerald": emerald, "lapis_lazuli": lapis,
+        "redstone": redstone, "flint": flint, "string": string_item,
+        "feather": feather, "leather": leather, "bone": bone,
+        "gunpowder": gunpowder, "rotten_flesh": rotten_flesh,
+        "clay_ball": clay_ball, "brick": brick,
+        "apple": apple, "porkchop": porkchop,
+        "cooked_porkchop": cooked_porkchop, "beef": beef,
+        "cooked_beef": cooked_beef, "chicken": chicken,
+        "cooked_chicken": cooked_chicken, "mutton": mutton,
+        "cooked_mutton": cooked_mutton,
+        "red_bed": red_bed_item,
+    })
+    for wood in ("oak", "birch", "spruce"):
+        reg[f"{wood}_sapling"] = lambda w=wood: sapling(w)
+    return reg
+
+
+def block_registry():
+    reg = {
+        "chest_top": chest_top,
+        "chest_side": lambda: chest_side(False),
+        "chest_front": lambda: chest_side(True),
+        "red_bed_top": red_bed_top, "red_bed_side": red_bed_side,
+        "red_bed_end": red_bed_end, "xp_orb": xp_orb,
+    }
+    for wood in ("oak", "birch", "spruce"):
+        reg[f"{wood}_sapling"] = lambda w=wood: sapling(w)
+    return reg
+
+
+def main():
+    sheet_path = sys.argv[1] if len(sys.argv) > 1 else None
+    os.makedirs(ITEM_DIR, exist_ok=True)
+    items = []
+    for name, fn in item_registry().items():
+        img = to_image(fn())
+        assert img.size == (N, N)
+        img.save(os.path.join(ITEM_DIR, name + ".png"))
+        items.append(img)
+    blocks = []
+    for name, fn in block_registry().items():
+        img = to_image(fn())
+        assert img.size == (N, N)
+        img.save(os.path.join(BLOCK_DIR, name + ".png"))
+        blocks.append(img)
+    if sheet_path:
+        contact_sheet(items + blocks, scale=8, gap=4, cols=10).save(sheet_path)
+    print(f"wrote {len(items)} items to {ITEM_DIR}, "
+          f"{len(blocks)} blocks to {BLOCK_DIR}")
+
+
+if __name__ == "__main__":
+    main()

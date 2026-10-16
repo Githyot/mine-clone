@@ -79,6 +79,50 @@ pub struct BlockDef {
     /// Shown in the creative inventory.
     #[serde(default = "default_true")]
     pub in_inventory: bool,
+    /// Height in pixels for low cube blocks (slabs 8, beds 9); 16 is a full block.
+    #[serde(default)]
+    pub height: Option<u8>,
+    /// The tool that digs it fast.
+    #[serde(default)]
+    pub tool: Option<ToolKind>,
+    /// Lowest tool tier that gets drops (0 = hand is fine; 1 wood, 2 stone, 3 iron, 4 diamond).
+    #[serde(default)]
+    pub tier: u8,
+    /// What it drops; missing means "itself", an empty list means nothing.
+    #[serde(default)]
+    pub drops: Option<Vec<DropDef>>,
+    /// Experience dropped when mined (min, max).
+    #[serde(default)]
+    pub xp: (u8, u8),
+}
+
+/// Tool families. Blocks name the one that digs them fast; items say which one they are.
+#[derive(Deserialize, serde::Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToolKind {
+    Pickaxe,
+    Axe,
+    Shovel,
+    Sword,
+    Hoe,
+}
+
+/// One possible drop: `count` from min to max, with a chance.
+#[derive(Deserialize, Clone, Debug)]
+pub struct DropDef {
+    pub item: String,
+    #[serde(default = "one")]
+    pub min: u8,
+    #[serde(default = "one")]
+    pub max: u8,
+    #[serde(default = "one_f")]
+    pub chance: f32,
+}
+
+fn one() -> u8 {
+    1
+}
+fn one_f() -> f32 {
+    1.0
 }
 
 #[derive(Deserialize)]
@@ -103,6 +147,12 @@ pub struct Block {
     pub in_inventory: bool,
     /// Fully hides neighbor faces and stops light.
     pub opaque: bool,
+    /// Pixels from the bottom (16 = full block).
+    pub height: u8,
+    pub tool: Option<ToolKind>,
+    pub tier: u8,
+    pub drops: Option<Vec<DropDef>>,
+    pub xp: (u8, u8),
 }
 
 pub struct BlockRegistry {
@@ -152,6 +202,11 @@ impl BlockRegistry {
             hardness: 0.0,
             gravity: false,
             in_inventory: false,
+            height: None,
+            tool: None,
+            tier: 0,
+            drops: Some(Vec::new()),
+            xp: (0, 0),
         }];
         all.extend(defs.into_iter().filter(|d| d.name != "air"));
         for d in all {
@@ -176,7 +231,8 @@ impl BlockRegistry {
                     tex(&side, &mut reg.textures),
                 ]
             };
-            let opaque = d.shape == Shape::Cube && d.transparency == Transparency::Opaque;
+            let height = d.height.unwrap_or(16).clamp(1, 16);
+            let opaque = d.shape == Shape::Cube && d.transparency == Transparency::Opaque && height == 16;
             let id = reg.blocks.len() as BlockId;
             let display = d.display_name.clone().unwrap_or_else(|| title_case(&d.name));
             reg.by_name.insert(d.name.clone(), id);
@@ -195,6 +251,11 @@ impl BlockRegistry {
                 gravity: d.gravity,
                 in_inventory: d.in_inventory,
                 opaque,
+                height,
+                tool: d.tool,
+                tier: d.tier,
+                drops: d.drops,
+                xp: d.xp,
             });
         }
         if reg.blocks.len() > u16::MAX as usize {

@@ -6,6 +6,7 @@
 mod audio;
 mod controller;
 mod entity;
+mod item_render;
 mod menus;
 mod monitor;
 mod lod;
@@ -18,6 +19,7 @@ mod renderer;
 mod settings;
 mod sfx;
 mod shaderpack;
+mod survival;
 mod textures;
 mod ui;
 mod world;
@@ -45,6 +47,8 @@ use settings::{Settings, ShaderQuality};
 use shaderpack::{Builtin, ShaderPack};
 use ui::{FontAtlas, UiBatch, GRAY, WHITE, YELLOW};
 use voxel::block::Shape;
+use voxel::item::ItemRegistry;
+use voxel::recipe::Recipes;
 use voxel::chunk::ChunkPos;
 use voxel::mesh::MeshTables;
 use voxel::physics::{Body, Input};
@@ -79,6 +83,10 @@ struct Args {
     /// Spawn a few mobs in front of the player (test screenshots).
     mobs: bool,
     survival: bool,
+    /// Test: fill the survival inventory and drop items in front of the player.
+    kit: bool,
+    /// Test: open a survival screen (table, furnace or chest).
+    open: Option<String>,
     particles: bool,
     camera: u8,
     perf: bool,
@@ -131,12 +139,15 @@ fn parse_args() -> Args {
             "--camera" => a.camera = it.next().and_then(|v| v.parse().ok()).unwrap_or(1),
             "--title" => a.title = true,
             "--survival" => a.survival = true,
+            "--kit" => a.kit = true,
+            "--open" => a.open = it.next(),
             "--shader" => a.shader = it.next(),
             "--lod" => a.lod = it.next().and_then(|s| s.parse().ok()),
             "--help" | "-h" => {
                 println!(
                     "mine-clone [--world NAME] [--seed N] [--render-distance N] [--size WxH]\n\
                      Testing: [--screenshot out.png] [--pos x,y,z] [--look yaw,pitch] [--time ticks] [--fly] [--demo] [--inventory] [--pause] [--debug]\n\
+                     \x20        [--survival] [--kit] [--open table|furnace|chest] [--mobs] [--perf] [--prone] [--camera N]\n\
                      \x20        [--shader NAME|off] [--shaders-menu] [--lod BLOCKS]"
                 );
                 std::process::exit(0);
@@ -340,6 +351,13 @@ struct Game {
     fov_kick: f32,
     was_in_water: bool,
     swim_dist: f32,
+    items: ItemRegistry,
+    recipes: Recipes,
+    /// First texture layer of the item sprites (they come after the block textures).
+    item_base: u16,
+    surv: survival::Survival,
+    rclicked: bool,
+    inv_number_key: Option<usize>,
     bubble_cd: f32,
 
     ui: UiBatch,
@@ -397,6 +415,20 @@ impl Game {
             BlockRegistry::from_ron(embedded::BLOCKS_RON).unwrap()
         }));
 
+        // Items and recipes: files on disk win, like blocks.
+        let items_text = std::fs::read_to_string(base.join("packs/vanilla/items.ron")).unwrap_or_else(|_| embedded::ITEMS_RON.to_string());
+        let items = ItemRegistry::from_ron(&items_text, &reg).unwrap_or_else(|e| {
+            log::error!("{e}; using built-in items");
+            ItemRegistry::from_ron(embedded::ITEMS_RON, &reg).unwrap()
+        });
+        let recipes_text = std::fs::read_to_string(base.join("packs/vanilla/recipes.ron")).unwrap_or_else(|_| embedded::RECIPES_RON.to_string());
+        let recipes = Recipes::from_ron(&recipes_text, &items).unwrap_or_else(|e| {
+            log::error!("{e}; using built-in recipes");
+            Recipes::from_ron(embedded::RECIPES_RON, &items).unwrap()
+        });
+        let item_base = reg.textures.len() as u16;
+        let texture_names: Vec<String> = reg.textures.iter().chain(items.textures.iter()).cloned().chain(["item/xp_orb".to_string()]).collect();
+
         // Without --world the game opens on the title screen, with the last played world behind it.
         let camera_mode = args.camera.min(2);
         let show_perf = args.perf;
@@ -413,7 +445,7 @@ impl Game {
         let tables = Arc::new(MeshTables::new(&reg, tints));
         let world = World::new(reg.clone(), gen.clone(), save.clone(), tables);
 
-        let tex = textures::load(&reg.textures, &base, &settings.resource_packs);
+        let tex = textures::load(&texture_names, &base, &settings.resource_packs);
         let textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
         let lod = lod::Lod::new(gen.clone(), lod::LodColors::new(&reg, &tex));
         let font = FontAtlas::new();
@@ -429,6 +461,7 @@ impl Game {
         });
         let painting_defs = paintings::load_defs(&base);
         let paintings = paintings::load(&save.dir, &painting_defs);
+        let surv = survival::Survival::load(&save.dir, &items);
         let entities = entity::EntityRenderer::new(&renderer, &mob_reg, &painting_defs, &base);
         let mut mobs = mobs::Mobs::new(mob_reg, reg.id_or_air("grass_block"), seed);
         mobs.enabled = settings.mobs;
@@ -558,6 +591,12 @@ impl Game {
             fov_kick: 0.0,
             was_in_water: false,
             swim_dist: 0.0,
+            items,
+            recipes,
+            item_base,
+            surv,
+            rclicked: false,
+            inv_number_key: None,
             bubble_cd: 4.0,
             ui,
             show_debug,
@@ -678,6 +717,9 @@ impl Game {
             // Loading frames say nothing about how the game runs.
             self.perf.reset();
         }
+        if self.screen == Screen::Inventory && s != Screen::Inventory && self.survival {
+            self.surv_close();
+        }
         self.screen = s;
         self.set_grab(s == Screen::Playing);
         self.mouse_held = [false; 3];
@@ -711,6 +753,7 @@ impl Game {
         }
         self.world.save_all();
         paintings::save(&self.world.save.dir, &self.paintings);
+        self.surv.save(&self.world.save.dir, &self.items);
         self.settings.save(&self.base.join("settings.ron"));
     }
 
@@ -724,7 +767,8 @@ impl Game {
     }
 
     fn reload_textures(&mut self) {
-        let tex = textures::load(&self.reg.textures, &self.base, &self.settings.resource_packs);
+        let names: Vec<String> = self.reg.textures.iter().chain(self.items.textures.iter()).cloned().chain(["item/xp_orb".to_string()]).collect();
+        let tex = textures::load(&names, &self.base, &self.settings.resource_packs);
         self.textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
         self.renderer.reload_textures(&tex);
         self.lod.set_colors(lod::LodColors::new(&self.reg, &tex));
@@ -769,6 +813,7 @@ impl Game {
                 Screen::Loading | Screen::Dead | Screen::Title => {}
             },
             KeyCode::KeyE => match self.screen {
+                Screen::Playing if self.survival => self.surv_open_inventory(),
                 Screen::Playing => self.set_screen(Screen::Inventory),
                 Screen::Inventory => self.set_screen(Screen::Playing),
                 _ => {}
@@ -789,6 +834,10 @@ impl Game {
             KeyCode::F2 => self.screenshot_request = true,
             KeyCode::F5 => self.camera_mode = (self.camera_mode + 1) % 3,
             KeyCode::KeyZ if self.screen == Screen::Playing => self.prone = !self.prone,
+            KeyCode::KeyQ if self.screen == Screen::Playing && self.survival => {
+                let all = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
+                self.surv_throw(all);
+            }
             KeyCode::F11 => {
                 let fs = self.window.fullscreen().is_some();
                 self.window.set_fullscreen(if fs { None } else { Some(Fullscreen::Borderless(None)) });
@@ -828,7 +877,9 @@ impl Game {
             KeyCode::Digit9,
         ];
         if let Some(i) = digits.iter().position(|&d| d == code) {
-            if self.screen == Screen::Inventory {
+            if self.screen == Screen::Inventory && self.survival {
+                self.inv_number_key = Some(i);
+            } else if self.screen == Screen::Inventory {
                 if let Some(id) = self.hovered_inventory_block() {
                     self.hotbar[i] = id;
                 }
@@ -840,6 +891,13 @@ impl Game {
     }
 
     fn show_held_name(&mut self) {
+        if self.survival {
+            if let Some(st) = self.held_stack() {
+                let n = self.items.get(st.item).display_name.clone();
+                self.toast(n, 1.5);
+            }
+            return;
+        }
         let id = self.hotbar[self.selected];
         if id != AIR {
             let n = self.reg.get(id).display_name.clone();
@@ -946,6 +1004,9 @@ impl Game {
                 if self.args.mobs {
                     self.spawn_demo_mobs();
                 }
+                if self.args.kit {
+                    self.test_kit();
+                }
                 if self.args.particles {
                     // Frozen in mid-air for a test picture: a broken block and a splash.
                     let f = self.forward();
@@ -963,7 +1024,7 @@ impl Game {
                         self.particles.update(&self.world, 0.03);
                     }
                 }
-                if self.args.show_inventory {
+                if self.args.show_inventory || self.args.open.is_some() {
                     self.set_screen(Screen::Inventory);
                 } else if self.args.show_pause {
                     self.set_screen(Screen::Paused);
@@ -972,7 +1033,7 @@ impl Game {
                 } else {
                     self.set_screen(Screen::Playing);
                 }
-                self.toast("Bem-vindo! Esc = menu, E = blocos", 6.0);
+                self.toast(if self.survival { "Bem-vindo! Esc = menu, E = inventário" } else { "Bem-vindo! Esc = menu, E = blocos" }, 6.0);
             }
         }
 
@@ -995,6 +1056,10 @@ impl Game {
             self.update_player(dt);
             self.update_survival(dt);
         }
+        if self.world_open && !paused && self.screen != Screen::Loading {
+            let use_held = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
+            self.surv_update(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
+        }
         if self.world_open && !matches!(self.screen, Screen::Loading | Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Shaders) {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
@@ -1007,6 +1072,9 @@ impl Game {
             }
             for (pos, power) in out.explosions {
                 self.explode(pos, power);
+            }
+            if self.survival {
+                self.surv_mob_deaths(&out.deaths);
             }
             self.painting_check -= dt;
             if self.painting_check <= 0.0 {
@@ -1086,6 +1154,9 @@ impl Game {
         }
         let forward_amount = wish.dot(fwd);
         if forward_amount < 0.3 || sneaking || crawling || (!k(KeyCode::KeyW) && !(playing && self.pads.pad.connected && self.pads.pad.ly > 0.3)) {
+            self.sprinting = false;
+        }
+        if self.survival && self.surv.hunger <= 6.0 {
             self.sprinting = false;
         }
         let input = Input { sprint: self.sprinting, ..input };
@@ -1199,7 +1270,8 @@ impl Game {
                     self.attack_cd = 0.45;
                     self.break_cd = 0.3;
                     let eye = self.body.eye();
-                    let dmg = if self.body.vel.y < -0.5 && !self.body.on_ground { 6.0 } else { 4.0 };
+                    let base = if self.survival { self.surv_attack_damage() } else { 4.0 };
+                    let dmg = if self.body.vel.y < -0.5 && !self.body.on_ground { base * 1.5 } else { base };
                     let m = &mut self.mobs.list[i];
                     m.hurt(dmg, eye);
                     let def = &self.mobs.reg.defs[m.def];
@@ -1248,6 +1320,9 @@ impl Game {
                 let id = self.world.block_or_air(hit.block);
                 if id != AIR && self.reg.get(id).hardness >= 0.0 && self.world.break_block(hit.block) {
                     self.mining = None;
+                    if self.survival {
+                        self.surv_block_broken(hit.block, id);
+                    }
                     let (layer, tint) = self.block_look(id);
                     self.particles.block_bits(hit.block, layer, tint, 18, 1.0);
                     self.anim.start_swing();
@@ -1262,13 +1337,20 @@ impl Game {
             }
         }
         if use_ && self.place_cd <= 0.0 {
-            self.try_place();
+            if !self.survival {
+                self.try_place();
+            } else if self.surv_use() {
+                self.place_cd = self.place_cd.max(0.22);
+            }
         }
         if self.mouse_held[2] {
             self.mouse_held[2] = false;
             if let Some(hit) = self.target {
                 let id = self.world.block_or_air(hit.block);
-                if id != AIR {
+                if id != AIR && self.survival {
+                    self.surv_pick(id);
+                    self.show_held_name();
+                } else if id != AIR {
                     if let Some(i) = self.hotbar.iter().position(|&h| h == id) {
                         self.selected = i;
                     } else {
@@ -1364,6 +1446,9 @@ impl Game {
 
     /// Seconds to dig a block by hand in survival (no tools yet).
     fn dig_time(&self, id: BlockId) -> f32 {
+        if self.survival {
+            return self.items.dig_time(&self.reg, id, self.held_tool().as_ref());
+        }
         let h = self.reg.get(id).hardness.max(0.0);
         if h == 0.0 {
             0.05
@@ -1563,6 +1648,7 @@ impl Game {
             self.prone = false;
             self.sfx(Sfx::Death);
             self.set_screen(Screen::Dead);
+            self.surv_died();
         }
     }
 
@@ -1599,14 +1685,7 @@ impl Game {
         if lava != AIR && (self.world.block_or_air(feet) == lava || self.world.block_or_air(feet + IVec3::Y) == lava) {
             self.damage(4.0, None);
         }
-        // Slow natural healing when out of danger.
-        if self.health < 20.0 && self.hurt_age > 4.0 {
-            self.regen += dt;
-            if self.regen > 2.0 {
-                self.regen = 0.0;
-                self.health = (self.health + 1.0).min(20.0);
-            }
-        }
+        // Healing comes from a full stomach (survival.rs).
     }
 
     /// A blast: breaks blocks around it and hurts everything nearby.
@@ -1664,6 +1743,7 @@ impl Game {
         self.health = 20.0;
         self.air = 10.0;
         self.hurt_age = 100.0;
+        self.surv_respawned();
         self.fall_peak = self.body.pos.y;
         self.sfx(Sfx::Respawn);
         self.set_screen(Screen::Playing);
@@ -1692,27 +1772,31 @@ impl Game {
     }
 
     fn try_place(&mut self) {
-        let Some(hit) = self.target else { return };
         let id = self.hotbar[self.selected];
-        if id == AIR {
-            return;
+        if id != AIR {
+            self.place_block_as(id);
         }
+    }
+
+    /// Place a block where the player is aiming. Returns where it went.
+    fn place_block_as(&mut self, id: BlockId) -> Option<IVec3> {
+        let hit = self.target?;
         let clicked = self.world.block_or_air(hit.block);
         // Plants are replaced instead of placed against.
         let pos = if self.reg.get(clicked).shape == Shape::Cross && clicked != id { hit.block } else { hit.block + hit.normal };
         let cur = self.world.block_or_air(pos);
         if cur != AIR && !self.world.is_liquid(cur) && self.reg.get(cur).shape != Shape::Cross {
-            return;
+            return None;
         }
         let b = self.reg.get(id);
         if b.solid && b.shape == Shape::Cube && self.body.intersects_block(pos) {
-            return;
+            return None;
         }
         // Plants and torches need something under them.
         if matches!(b.shape, Shape::Cross | Shape::Torch) {
             let under = self.world.block_or_air(pos - IVec3::Y);
             if under == AIR || !self.reg.get(under).solid {
-                return;
+                return None;
             }
         }
         if self.world.place_block(pos, id) {
@@ -1724,7 +1808,9 @@ impl Game {
             if let Some(a) = self.audio.as_mut() {
                 a.play(Sfx::Place(m), vol);
             }
+            return Some(pos);
         }
+        None
     }
 
     /// A little scene for test screenshots: a house with glass, torches and a glowstone lamp.
@@ -1915,9 +2001,12 @@ impl Game {
                 let x = hx + i as f32 * cell;
                 self.ui.frame(x, hy, cell, cell, s, [110, 110, 110, 255]);
                 let id = self.hotbar[i];
-                if id != AIR {
+                if id != AIR && !self.survival {
                     self.ui.block_icon(&self.reg, id, x + 3.0 * s, hy + 2.5 * s, 14.0 * s);
                 }
+            }
+            if self.survival {
+                self.draw_survival_hud(hx, hy, cell);
             }
             let sx = hx + self.selected as f32 * cell;
             self.ui.frame(sx - s, hy - s, cell + 2.0 * s, cell + 2.0 * s, 2.0 * s, [255, 255, 255, 255]);
@@ -1953,6 +2042,7 @@ impl Game {
                     let bubbles = (self.air.max(0.0).ceil()) as i32;
                     for i in 0..bubbles {
                         let x = hx + cell * 9.0 - (i + 1) as f32 * 8.0 * s;
+                        let y = y - 10.0 * s;
                         self.ui.rect(x + s, y + s, 5.0 * s, 5.0 * s, [60, 120, 230, 255]);
                         self.ui.rect(x + 2.0 * s, y + 2.0 * s, 2.0 * s, 2.0 * s, [220, 240, 255, 255]);
                     }
@@ -1972,7 +2062,8 @@ impl Game {
             if let Some(t) = &self.toast {
                 if t.until > self.now {
                     let text = t.text.clone();
-                    self.ui.text_centered(w / 2.0, hy - 16.0 * s, &text, WHITE);
+                    let ty = if self.survival { hy - 34.0 * s } else { hy - 16.0 * s };
+                    self.ui.text_centered(w / 2.0, ty, &text, WHITE);
                 }
             }
             if self.show_debug {
@@ -2075,6 +2166,7 @@ impl Game {
                     clicked_button = Some(0);
                 }
             }
+            Screen::Inventory if self.survival => self.draw_survival_inventory(w, h, mouse),
             Screen::Inventory => {
                 self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 120]);
                 let (x, y, cell, vis_rows) = self.inventory_layout();
@@ -2137,6 +2229,7 @@ impl Game {
             self.draw_perf();
         }
         self.clicked = false;
+        self.rclicked = false;
 
         if let Some(i) = clicked_button {
             if self.screen == Screen::Controls {
@@ -2270,6 +2363,7 @@ impl Game {
                 }
             }
             Action::PickBlock => self.mouse_held[2] = true,
+            Action::Inventory if self.survival => self.surv_open_inventory(),
             Action::Inventory => self.set_screen(Screen::Inventory),
             Action::Paintings => self.open_paintings(),
             Action::Crawl => self.prone = !self.prone,
@@ -2640,6 +2734,8 @@ impl Game {
         }
         self.entities.prepare(&self.renderer, items);
         self.entities.particles.prepare(&self.renderer, &self.particles, &self.world, block);
+        let drops = self.drop_instances(block);
+        self.entities.items.prepare(&self.renderer, &drops);
         let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds, Some(&self.entities), Some(&self.lod), &self.ui, capture);
         self.last_frame_info = (info.sections_drawn, info.quads_drawn, info.lod_drawn);
         if let Some((w, h, px)) = shot {
@@ -2740,6 +2836,8 @@ impl ApplicationHandler for App {
                     }
                 } else if pressed && idx == 0 {
                     game.clicked = true;
+                } else if pressed && idx == 1 {
+                    game.rclicked = true;
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {

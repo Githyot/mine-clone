@@ -201,15 +201,21 @@ pub fn load(names: &[String], base: &Path, enabled_packs: &[String]) -> TextureS
     let vanilla_dir = vanilla_texture_dir(base);
 
     let mut images: Vec<Option<image::RgbaImage>> = Vec::with_capacity(names.len());
-    for name in names {
+    for full in names {
+        // Item sprites are named "item/<name>" and live in the item folders.
+        let (kind, name) = match full.strip_prefix("item/") {
+            Some(n) => ("item", n),
+            None => ("block", full.as_str()),
+        };
+        let mc_folders: [&str; 2] = if kind == "item" { ["item", "items"] } else { ["block", "blocks"] };
         let mut found: Option<image::RgbaImage> = None;
         'packs: for pack in packs.iter_mut() {
-            if let Some(img) = pack.read(&format!("textures/block/{name}.png")).and_then(|b| decode(&b)) {
+            if let Some(img) = pack.read(&format!("textures/{kind}/{name}.png")).and_then(|b| decode(&b)) {
                 found = Some(first_frame(img));
                 break;
             }
             for mc in minecraft_names(name) {
-                for folder in ["block", "blocks"] {
+                for folder in mc_folders {
                     let path = format!("assets/minecraft/textures/{folder}/{mc}.png");
                     if let Some(img) = pack.read(&path).and_then(|b| decode(&b)) {
                         let mut img = first_frame(img);
@@ -238,14 +244,16 @@ pub fn load(names: &[String], base: &Path, enabled_packs: &[String]) -> TextureS
         }
         if found.is_none() {
             if let Some(d) = &vanilla_dir {
-                found = std::fs::read(d.join(format!("{name}.png"))).ok().and_then(|b| decode(&b));
+                let dir = if kind == "item" { d.with_file_name("item") } else { d.clone() };
+                found = std::fs::read(dir.join(format!("{name}.png"))).ok().and_then(|b| decode(&b));
             }
         }
         if found.is_none() {
-            found = embedded::TEXTURES.iter().find(|(n, _)| n == name).and_then(|(_, b)| decode(b));
+            let list = if kind == "item" { embedded::ITEM_TEXTURES } else { embedded::TEXTURES };
+            found = list.iter().find(|(n, _)| *n == name).and_then(|(_, b)| decode(b));
         }
         if found.is_none() {
-            log::warn!("missing texture '{name}'");
+            log::warn!("missing texture '{full}'");
         }
         images.push(found.map(first_frame));
     }

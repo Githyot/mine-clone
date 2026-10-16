@@ -28,7 +28,7 @@ fn main() {
     println!("cargo:rerun-if-changed={}", blocks.display());
     code.push_str(&format!("pub static BLOCKS_RON: &str = include_str!({:?});\n", blocks.display().to_string()));
 
-    for (var, sub) in [("ENTITY_TEXTURES", "entity"), ("PAINTING_TEXTURES", "painting")] {
+    for (var, sub) in [("ENTITY_TEXTURES", "entity"), ("PAINTING_TEXTURES", "painting"), ("ITEM_TEXTURES", "item")] {
         let dir = root.join("packs/vanilla/textures").join(sub);
         println!("cargo:rerun-if-changed={}", dir.display());
         let mut files: Vec<_> = fs::read_dir(&dir)
@@ -45,7 +45,7 @@ fn main() {
         }
         code.push_str("];\n");
     }
-    for (var, file) in [("MOBS_RON", "packs/vanilla/mobs.ron"), ("PAINTINGS_RON", "packs/vanilla/paintings.ron")] {
+    for (var, file) in [("MOBS_RON", "packs/vanilla/mobs.ron"), ("PAINTINGS_RON", "packs/vanilla/paintings.ron"), ("ITEMS_RON", "packs/vanilla/items.ron"), ("RECIPES_RON", "packs/vanilla/recipes.ron")] {
         let p = root.join(file);
         println!("cargo:rerun-if-changed={}", p.display());
         if p.exists() {

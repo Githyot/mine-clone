@@ -95,6 +95,9 @@ pub fn synth(sfx: Sfx, seed: u32) -> Vec<f32> {
         Sfx::Swim => swim(&mut rng),
         Sfx::WaterExit => drips(&mut rng, 0.7, 5),
         Sfx::Bubbles => drips(&mut rng, 0.6, 4),
+        Sfx::Pickup => pickup(&mut rng),
+        Sfx::Xp => xp(&mut rng),
+        Sfx::Eat => eat(&mut rng),
     };
     out.into_iter().map(|s| s.clamp(-1.0, 1.0)).collect()
 }
@@ -220,6 +223,61 @@ fn respawn() -> Vec<f32> {
         .collect()
 }
 
+/// A soft, low pop for picking something up.
+fn pickup(rng: &mut Rng) -> Vec<f32> {
+    let dur = 0.12;
+    let n = (dur * RATE) as usize;
+    let f0 = rng.range(150.0, 190.0);
+    let mut phase = 0.0f32;
+    let mut lp = LowPass::new(600.0);
+    (0..n)
+        .map(|i| {
+            let t = i as f32 / RATE;
+            // A quick rise in pitch, like a cork.
+            phase += (f0 * (1.0 + t * 6.0)) / RATE;
+            let e = (t / 0.006).min(1.0) * (-t / 0.035).exp();
+            lp.run((phase * TAU).sin() * e) * 0.8
+        })
+        .collect()
+}
+
+/// Experience: a short, warm two-note chime, kept low.
+fn xp(rng: &mut Rng) -> Vec<f32> {
+    let dur = 0.45;
+    let n = (dur * RATE) as usize;
+    let k = rng.range(0.95, 1.08);
+    let notes = [(220.0 * k, 0.45, 0.0), (330.0 * k, 0.3, 0.06)];
+    let mut lp = LowPass::new(700.0);
+    (0..n)
+        .map(|i| {
+            let t = i as f32 / RATE;
+            let mut x = 0.0;
+            for (f, a, start) in notes {
+                if t > start {
+                    let u = t - start;
+                    x += (f * u * TAU).sin() * a * (u / 0.01).min(1.0) * (-u / 0.12).exp();
+                }
+            }
+            lp.run(x) * 0.8
+        })
+        .collect()
+}
+
+/// A bite: a short, dull crunch.
+fn eat(rng: &mut Rng) -> Vec<f32> {
+    let dur = 0.16;
+    let n = (dur * RATE) as usize;
+    let mut lp = LowPass::new(rng.range(650.0, 850.0));
+    (0..n)
+        .map(|i| {
+            let t = i as f32 / RATE;
+            // Two or three crunches in quick succession.
+            let e = (-t / 0.03).exp() + 0.6 * (-((t - 0.06).max(0.0)) / 0.025).exp() * if t > 0.06 { 1.0 } else { 0.0 };
+            lp.run(rng.noise() * e) * 1.4
+        })
+        .collect()
+}
+
 /// A punch landing on a mob.
 fn mob_hit(rng: &mut Rng) -> Vec<f32> {
     let dur = 0.16;
@@ -340,7 +398,7 @@ mod tests {
         for m in mats {
             all.extend([Sfx::Break(m), Sfx::Place(m), Sfx::Hit(m), Sfx::Step(m)]);
         }
-        all.extend([Sfx::Click, Sfx::Hurt, Sfx::Death, Sfx::Respawn, Sfx::MobHit, Sfx::Explode, Sfx::Splash(1.0), Sfx::Swim, Sfx::WaterExit, Sfx::Bubbles]);
+        all.extend([Sfx::Click, Sfx::Hurt, Sfx::Death, Sfx::Respawn, Sfx::MobHit, Sfx::Explode, Sfx::Splash(1.0), Sfx::Swim, Sfx::WaterExit, Sfx::Bubbles, Sfx::Pickup, Sfx::Xp, Sfx::Eat]);
         for sfx in all {
             let v = synth(sfx, 7);
             assert!(!v.is_empty() && v.iter().all(|x| x.is_finite()), "{sfx:?}");

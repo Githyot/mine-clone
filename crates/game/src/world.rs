@@ -73,6 +73,8 @@ pub struct World {
     water: BlockId,
     lava: BlockId,
     solid: Vec<bool>,
+    /// Collision height of each block (1.0 except slabs, beds).
+    top: Vec<f32>,
     pub meshed_count: usize,
 }
 
@@ -129,6 +131,7 @@ impl World {
         let water = reg.id_or_air("water");
         let lava = reg.id_or_air("lava");
         let solid = reg.blocks.iter().map(|b| b.solid && b.shape != Shape::Liquid && b.shape != Shape::Invisible).collect();
+        let top = reg.blocks.iter().map(|b| b.height as f32 / 16.0).collect();
         World {
             reg,
             gen,
@@ -147,6 +150,7 @@ impl World {
             water,
             lava,
             solid,
+            top,
             meshed_count: 0,
         }
     }
@@ -448,5 +452,8 @@ impl Terrain for World {
     }
     fn liquid(&self, p: IVec3) -> bool {
         self.block(p) == Some(self.water)
+    }
+    fn top(&self, p: IVec3) -> f32 {
+        self.block(p).map(|id| self.top[id as usize]).unwrap_or(1.0)
     }
 }

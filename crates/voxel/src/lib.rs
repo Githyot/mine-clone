@@ -4,12 +4,14 @@
 
 pub mod block;
 pub mod chunk;
+pub mod item;
 pub mod light;
 pub mod mesh;
 pub mod mob;
 pub mod noise;
 pub mod physics;
 pub mod raycast;
+pub mod recipe;
 pub mod rng;
 pub mod save;
 pub mod worldgen;

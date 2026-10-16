@@ -28,10 +28,11 @@ CONTROLES
   Z               deitar / levantar (deitado você rasteja e passa por buracos de 1 bloco)
   Mouse           olhar
   Botão esquerdo  quebrar bloco / atacar mob
-  Botão direito   colocar bloco
+  Botão direito   colocar bloco / abrir mesa, fornalha, baú, cama / segurar para comer
   Botão do meio   copiar o bloco que você está olhando
   1 a 9 / roda    escolher bloco da barra
-  E               todos os blocos (clique num bloco para pôr na barra)
+  E               criativo: todos os blocos; sobrevivência: inventário e fabricação 2x2
+  Q               jogar fora o item da mão (Ctrl+Q joga a pilha toda)
   P               pendurar uma pintura na parede que você está olhando
   Esc             menu (distância de visão, música, texturas, salvar e sair)
   M               tocar a próxima música agora
@@ -48,7 +49,7 @@ MODOS E MOBS
   Mundo novo: o modo padrão já é Sobrevivência (troque na tela de criar mundo).
   Esc > Modo: Criativo (voa, não leva dano) ou Sobrevivência (10 corações, sem voar).
   Na sobrevivência você leva dano de quedas altas, lava, afogamento (bolhas azuis),
-  ataques de mobs e explosões. A vida volta devagar quando você fica longe do perigo.
+  ataques de mobs e explosões. A vida volta quando a fome está quase cheia.
   Se morrer, aperte "Renascer".
   O personagem anda, corre, pula, nada, agacha e golpeia com animações próprias (veja com F5).
   O balanço da visão ao andar pode ser desligado em Opções > Balanço da visão.
@@ -56,6 +57,24 @@ MODOS E MOBS
   Monstros (zumbi, esqueleto, rastejante, aranha) aparecem no escuro e nas cavernas.
   Zumbis e esqueletos pegam fogo no sol. O rastejante chega perto e explode.
   Esc > Mobs: Sim/Não liga ou desliga todos.
+
+SOBREVIVÊNCIA
+  Blocos quebrados e mobs mortos deixam itens no chão; chegue perto para pegar.
+  Cada bloco pede a ferramenta certa: pedra e minérios só caem com picareta (ferro precisa
+  de picareta de pedra, diamante de picareta de ferro). Machado corta madeira mais rápido,
+  pá cava terra e areia. Ferramentas gastam e quebram (barrinha colorida no ícone).
+  Fabricação: E abre a grade 2x2 (4 tábuas = mesa de trabalho). Clique com o botão direito
+  na mesa para a grade 3x3. Receitas como no jogo clássico: gravetos, ferramentas, tochas,
+  fornalha (8 pedregulhos), baú (8 tábuas), cama (3 lãs + 3 tábuas) e outras.
+  Fornalha: minério ou comida em cima, carvão (ou madeira) embaixo; 10 s por item.
+  Fome: 10 coxinhas acima da barra. Correr, pular e quebrar blocos gastam; segure o botão
+  direito com comida na mão para comer. Com fome baixa não dá para correr; vazia, machuca.
+  Experiência: bolinhas verdes saem de minérios, mobs e da fornalha; o nível aparece na barra.
+  Cama: clique nela para marcar onde renascer; à noite, você dorme e já amanhece.
+  Mudas plantadas viram árvores depois de alguns minutos.
+  Ao morrer você deixa cair os itens e parte da experiência no lugar.
+  Inventário: clique esquerdo pega/põe, direito pega metade ou põe um, Shift+clique move
+  direto para o outro lado, 1-9 sobre um espaço troca com a barra, clique fora joga fora.
 
 PINTURAS
   Mire numa parede e aperte P (no controle: seta para a esquerda). Passe o mouse sobre um nome

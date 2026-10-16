@@ -82,6 +82,11 @@ pub struct MobDef {
     pub parts: Vec<PartDef>,
     #[serde(default)]
     pub layers: Vec<LayerDef>,
+    /// Items dropped when killed by the player.
+    #[serde(default)]
+    pub drops: Vec<crate::block::DropDef>,
+    #[serde(default)]
+    pub xp: u8,
 }
 
 #[derive(Deserialize)]
