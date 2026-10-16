@@ -63,6 +63,14 @@ pub enum Container {
     Furnace(Furnace),
 }
 
+/// The tab open beside the inventory: nothing, every item, or what can be built right now.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Side {
+    Closed,
+    Items,
+    Build,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Open {
     /// The player's own inventory with the 2×2 grid.
@@ -92,6 +100,8 @@ pub struct Survival {
     /// Recipe book: first row shown, and the item whose recipes are open (with which one).
     pub book_scroll: usize,
     pub book_view: Option<(ItemId, usize)>,
+    /// Which list the tabs beside the inventory show.
+    pub side: Side,
     /// R was pressed over an item: show its recipes.
     pub want_recipe: bool,
     /// Screen box where the 3D player figure goes this frame (inventory open).
@@ -131,6 +141,7 @@ impl Survival {
             corpses: Vec::new(),
             book_scroll: 0,
             book_view: None,
+            side: Side::Closed,
             want_recipe: false,
             figure_box: None,
             drag_last: None,
@@ -1636,6 +1647,14 @@ impl Game {
                 let items = self.surv.inv.slots.iter().flatten().copied().collect();
                 self.surv.corpses.push(Corpse { pos: Vec3::new(at.x, y as f32, at.z), yaw: self.yaw + 2.0, items });
             }
+            Some("items") => self.surv.side = Side::Items,
+            Some("build") => {
+                self.surv.side = Side::Build;
+                // A table nearby so the 3×3 recipes show.
+                let c = self.body.pos.floor().as_ivec3();
+                let table = self.reg.id_or_air("crafting_table");
+                self.world.set_block(c + IVec3::new(2, 0, 0), table);
+            }
             Some("chest") => {
                 let p = IVec3::new(0, -101, 0);
                 let mut inv = Inventory::new(CHEST_SIZE);
@@ -1735,45 +1754,107 @@ impl Game {
         let cell = 18.0 * s;
         let mut over = false;
         let click = self.clicked;
-        // Item list on the right.
-        let bx = x0 + pw + 4.0 * s;
+        // Two tabs stuck to the right edge of the inventory: every item, and building.
+        let tx = x0 + pw - s;
+        let tabs = [(Side::Items, "Todos os itens", "chest"), (Side::Build, "Construir", "crafting_table")];
+        let mut tab_tip: Option<&str> = None;
+        for (k, (side, label, icon)) in tabs.into_iter().enumerate() {
+            let ty = y0 + 4.0 * s + k as f32 * 24.0 * s;
+            let on = self.surv.side == side;
+            let tw = if on { 25.0 * s } else { 22.0 * s };
+            let hov = mouse.0 >= tx && mouse.0 < tx + tw && mouse.1 >= ty && mouse.1 < ty + 22.0 * s;
+            self.ui.rect(tx, ty, tw, 22.0 * s, if on { [198, 198, 198, 255] } else if hov { [170, 170, 170, 255] } else { [139, 139, 139, 255] });
+            self.ui.rect(tx, ty, tw, s, [255, 255, 255, 255]);
+            self.ui.rect(tx + tw - s, ty, s, 22.0 * s, [85, 85, 85, 255]);
+            self.ui.rect(tx, ty + 22.0 * s - s, tw, s, [85, 85, 85, 255]);
+            let id = self.items.id(icon).or_else(|| self.items.id("crafting_table"));
+            if let Some(id) = id {
+                item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &ItemStack::new(id, 1), tx + 3.0 * s, ty + 3.0 * s, 16.0 * s);
+            }
+            if hov {
+                over = true;
+                tab_tip = Some(label);
+                if click {
+                    self.surv.side = if on { Side::Closed } else { side };
+                    self.surv.book_scroll = 0;
+                }
+            }
+        }
+        let bx = x0 + pw + 27.0 * s;
         let cols = (((w - bx - 4.0 * s) / cell).floor() as usize).min(9);
-        if cols >= 2 {
+        if self.surv.side != Side::Closed && cols >= 2 {
             let rows = ((ph - 14.0 * s) / cell).floor() as usize;
-            let all: Vec<ItemId> = (1..self.items.items.len() as ItemId).collect();
-            let total_rows = all.len().div_ceil(cols);
+            let build = self.surv.side == Side::Build;
+            let (list, station) = if build { self.buildable() } else { ((1..self.items.items.len() as ItemId).map(|i| (Vec::new(), ItemStack::new(i, 1))).collect(), "") };
+            let total_rows = list.len().div_ceil(cols).max(1);
             let max_scroll = total_rows.saturating_sub(rows);
             self.surv.book_scroll = self.surv.book_scroll.min(max_scroll);
             let bw = cols as f32 * cell + 4.0 * s;
             self.ui.rect(bx, y0, bw, ph, [0, 0, 0, 150]);
-            let title = format!("Itens {}/{}", self.surv.book_scroll + 1, max_scroll + 1);
+            let page = if max_scroll > 0 { format!(" {}/{}", self.surv.book_scroll + 1, max_scroll + 1) } else { String::new() };
+            let title = if build { format!("Construir{}{}", station, page) } else { format!("Itens{}", page) };
             self.ui.text(bx + 3.0 * s, y0 + 3.0 * s, &title, [200, 200, 200, 255]);
             if mouse.0 >= bx && mouse.0 < bx + bw && mouse.1 >= y0 && mouse.1 < y0 + ph {
                 over = true;
             }
-            let mut tip: Option<ItemId> = None;
+            if build && list.is_empty() {
+                self.ui.text(bx + 3.0 * s, y0 + 16.0 * s, "Nada a fazer", [200, 200, 200, 255]);
+                self.ui.text(bx + 3.0 * s, y0 + 26.0 * s, "com o que tem.", [200, 200, 200, 255]);
+            }
+            let shift = self.keys.contains(&winit::keyboard::KeyCode::ShiftLeft) || self.keys.contains(&winit::keyboard::KeyCode::ShiftRight);
+            let mut tip: Option<usize> = None;
             for r in 0..rows {
                 for c in 0..cols {
-                    let Some(&id) = all.get((r + self.surv.book_scroll) * cols + c) else { continue };
+                    let i = (r + self.surv.book_scroll) * cols + c;
+                    let Some((_, result)) = list.get(i) else { continue };
                     let (sx, sy) = (bx + 2.0 * s + c as f32 * cell, y0 + 13.0 * s + r as f32 * cell);
                     let hov = mouse.0 >= sx && mouse.0 < sx + cell && mouse.1 >= sy && mouse.1 < sy + cell;
                     if hov {
                         self.ui.rect(sx, sy, cell, cell, [255, 255, 255, 60]);
-                        tip = Some(id);
-                        if click || std::mem::take(&mut self.surv.want_recipe) {
-                            self.surv.book_view = Some((id, 0));
+                        tip = Some(i);
+                        if std::mem::take(&mut self.surv.want_recipe) || (click && !build) {
+                            self.surv.book_view = Some((result.item, 0));
                         }
                     }
-                    item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &ItemStack::new(id, 1), sx + s, sy + s, 16.0 * s);
+                    item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, result, sx + s, sy + s, 16.0 * s);
                 }
             }
-            if let Some(id) = tip {
-                let name = self.items.get(id).display_name.clone();
-                let tw = self.ui.text_width(&name, s);
+            if let Some(i) = tip {
+                let (needs, result) = list[i].clone();
+                if build && click {
+                    self.build_craft(&needs, result, shift);
+                }
+                let mut lines = vec![self.items.get(result.item).display_name.clone()];
+                if build {
+                    // What it uses, summed by item.
+                    let mut sum: Vec<(ItemId, u32)> = Vec::new();
+                    for n in &needs {
+                        let id = n.iter().copied().find(|&id| self.surv.inv.count_of(id) > 0).unwrap_or(n[0]);
+                        match sum.iter_mut().find(|e| e.0 == id) {
+                            Some(e) => e.1 += 1,
+                            None => sum.push((id, 1)),
+                        }
+                    }
+                    for (id, k) in sum {
+                        lines.push(format!("{}x {}", k, self.items.get(id).display_name));
+                    }
+                }
+                let tw = lines.iter().map(|l| self.ui.text_width(l, s)).fold(0.0, f32::max);
+                let lh = 10.0 * s;
+                let th = lines.len() as f32 * lh + 2.0 * s;
                 let tx = (mouse.0 + 8.0 * s).min(w - tw - 8.0 * s);
-                self.ui.rect(tx, mouse.1 - 14.0 * s, tw + 6.0 * s, 12.0 * s, [16, 0, 16, 235]);
-                self.ui.text(tx + 3.0 * s, mouse.1 - 12.0 * s, &name, WHITE);
+                let ty = mouse.1 - 14.0 * s;
+                self.ui.rect(tx, ty, tw + 6.0 * s, th, [16, 0, 16, 235]);
+                for (k, l) in lines.iter().enumerate() {
+                    self.ui.text(tx + 3.0 * s, ty + 2.0 * s + k as f32 * lh, l, if k == 0 { WHITE } else { [190, 190, 190, 255] });
+                }
             }
+        }
+        if let Some(label) = tab_tip {
+            let tw = self.ui.text_width(label, s);
+            let tx = (mouse.0 + 8.0 * s).min(w - tw - 8.0 * s);
+            self.ui.rect(tx, mouse.1 - 14.0 * s, tw + 6.0 * s, 12.0 * s, [16, 0, 16, 235]);
+            self.ui.text(tx + 3.0 * s, mouse.1 - 12.0 * s, label, WHITE);
         }
         // Recipes of the chosen item on the left.
         let Some((item, idx)) = self.surv.book_view else { return over };
@@ -1868,6 +1949,106 @@ impl Game {
             }
         }
         over
+    }
+
+    /// Is there a block with this name within a few blocks of the player?
+    fn near_block(&self, name: &str) -> bool {
+        let Some(id) = self.reg.id(name) else { return false };
+        let c = self.body.pos.floor().as_ivec3();
+        for dy in -2..=3 {
+            for dz in -4..=4 {
+                for dx in -4..=4 {
+                    if self.world.block_or_air(c + IVec3::new(dx, dy, dz)) == id {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Inventory slots that would pay for these ingredients (one item each), if there are enough.
+    fn pay_for(&self, needs: &[Vec<ItemId>]) -> Option<Vec<usize>> {
+        let mut left: Vec<u8> = self.surv.inv.slots.iter().map(|s| s.map_or(0, |s| if s.damage == 0 { s.count } else { 0 })).collect();
+        let mut out = Vec::with_capacity(needs.len());
+        for n in needs {
+            let k = (0..left.len()).find(|&k| left[k] > 0 && self.surv.inv.slots[k].is_some_and(|st| n.contains(&st.item)))?;
+            left[k] -= 1;
+            out.push(k);
+        }
+        Some(out)
+    }
+
+    /// Every recipe the player can make right now from the inventory (like Terraria's crafting
+    /// list): 2×2 anywhere, 3×3 next to a crafting table, smelting next to a furnace.
+    fn buildable(&self) -> (Vec<(Vec<Vec<ItemId>>, ItemStack)>, &'static str) {
+        let table = self.near_block("crafting_table");
+        let furnace = self.near_block("furnace");
+        let mut out: Vec<(Vec<Vec<ItemId>>, ItemStack)> = Vec::new();
+        for r in &self.recipes.shaped {
+            if (r.w > 2 || r.h > 2) && !table {
+                continue;
+            }
+            out.push((r.cells.iter().flatten().filter(|c| !c.is_empty()).cloned().collect(), r.result));
+        }
+        for r in &self.recipes.shapeless {
+            if r.ingredients.len() > 4 && !table {
+                continue;
+            }
+            out.push((r.ingredients.clone(), r.result));
+        }
+        if furnace {
+            for r in &self.recipes.smelting {
+                out.push((vec![r.input.clone()], r.result));
+            }
+        }
+        out.retain(|(needs, _)| !needs.is_empty() && self.pay_for(needs).is_some());
+        // One entry per result item.
+        let mut seen = std::collections::HashSet::new();
+        out.retain(|(_, r)| seen.insert(r.item));
+        let station = match (table, furnace) {
+            (true, true) => " (mesa+forno)",
+            (true, false) => " (mesa)",
+            (false, true) => " (forno)",
+            _ => "",
+        };
+        (out, station)
+    }
+
+    /// Make one (or, with shift, a stack's worth) from the build list.
+    fn build_craft(&mut self, needs: &[Vec<ItemId>], result: ItemStack, all: bool) {
+        let max = self.items.get(result.item).max_stack.max(1) as u32;
+        let times = if all { (max / result.count.max(1) as u32).max(1) } else { 1 };
+        let mut made = 0;
+        for _ in 0..times {
+            let Some(pay) = self.pay_for(needs) else { break };
+            if !all {
+                // Into the hand, like taking from the crafting output.
+                match self.surv.cursor {
+                    None => {}
+                    Some(c) if c.stacks_with(&result) && c.count as u32 + result.count as u32 <= max => {}
+                    _ => break,
+                }
+            }
+            for k in pay {
+                self.surv.inv.take(k, 1);
+            }
+            if all {
+                if let Some(left) = self.surv.inv.add(&self.items, result) {
+                    let f = self.forward();
+                    self.spawn_drop(self.body.eye(), left, f * 2.0);
+                }
+            } else {
+                self.surv.cursor = Some(match self.surv.cursor {
+                    Some(c) => ItemStack { count: c.count + result.count, ..c },
+                    None => result,
+                });
+            }
+            made += 1;
+        }
+        if made > 0 {
+            self.sfx(Sfx::Pickup);
+        }
     }
 
     /// Move one of each ingredient from the inventory into the crafting grid.

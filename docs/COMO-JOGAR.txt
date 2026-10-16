@@ -77,9 +77,16 @@ SOBREVIVÊNCIA
   Inventário: clique esquerdo pega/põe, direito pega metade ou põe um, Shift+clique move
   direto para o outro lado, 1-9 sobre um espaço troca com a barra, clique fora joga fora.
   Segure o botão direito e passe sobre vários espaços para pôr um item em cada.
-  Livro de receitas: à direita do inventário estão todos os itens (role com a roda do mouse).
-  Clique num item, ou aperte R sobre qualquer item, para ver como fazer. "Preencher" põe os
-  ingredientes que você tem na grade.
+  Abas na borda direita do inventário:
+  - Baú (Todos os itens): lista todos os itens do jogo (role com a roda do mouse). Clique num
+    item, ou aperte R sobre qualquer item, para ver a receita. "Preencher" põe na grade os
+    ingredientes que você tem.
+  - Mesa (Construir): como no Terraria, mostra só o que dá para fazer agora com o que está na
+    mochila. Um clique faz e põe na mão; Shift+clique faz um monte direto para a mochila.
+    Receitas 3x3 aparecem perto de uma mesa de trabalho, e fundir na hora perto de uma fornalha.
+  O boneco ao lado das armaduras olha para o mouse.
+  Ao quebrar um bloco, ele vai rachando até partir. Itens no chão ficam deitados (dá para
+  voltar a flutuar em Opções > Itens no chão).
   Combate: cada arma precisa recarregar (barrinha embaixo da mira); golpe com a arma pronta
   bate forte. Caindo em cima do mob é crítico, correndo empurra mais longe. O golpe passa
   pelo mato. Mobs feridos mostram a vida numa barra em cima da cabeça.
