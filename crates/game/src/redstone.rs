@@ -51,6 +51,11 @@ pub enum Kind {
     Tnt,
     Door,
     Trapdoor,
+    /// Powered or not (its strength is in the variant).
+    Comparator(bool),
+    Observer,
+    /// Droppers (false) and dispensers (true): act once each time power arrives.
+    Dispenser(bool),
 }
 
 /// What a piston does with a block in its way.
@@ -81,6 +86,8 @@ pub enum Event {
     Moved { from: IVec3, dir: IVec3, count: i32 },
     /// A torch switched too fast and burnt out for a while.
     Burnout(IVec3),
+    /// A dropper or dispenser fires one item out of its front.
+    Dispense(IVec3),
 }
 
 const SIDES: [IVec3; 6] = [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z];
@@ -113,6 +120,9 @@ pub struct Redstone {
     join: Vec<u8>,
     wire: BlockId,
     torch: (BlockId, BlockId),
+    comparator: (BlockId, BlockId),
+    /// Container fullness last reported (for comparators).
+    levels: HashMap<IVec3, u8>,
     lamp: (BlockId, BlockId),
     repeater: (BlockId, BlockId),
     head: BlockId,
@@ -150,6 +160,10 @@ impl Redstone {
                     Shape::PistonHead => Kind::Head,
                     Shape::Door => Kind::Door,
                     Shape::Trapdoor => Kind::Trapdoor,
+                    Shape::Comparator => Kind::Comparator(base.ends_with("_on")),
+                    Shape::Oriented if base == "observer" => Kind::Observer,
+                    Shape::Oriented if base == "dropper" => Kind::Dispenser(false),
+                    Shape::Oriented if base == "dispenser" => Kind::Dispenser(true),
                     _ => match base {
                         "redstone_torch" => Kind::Torch(true),
                         "redstone_torch_off" => Kind::Torch(false),
@@ -172,9 +186,9 @@ impl Redstone {
                 let base = reg.get(b.base).name.as_str();
                 if i as BlockId == AIR || b.shape == Shape::Liquid {
                     Push::Free
-                } else if b.hardness < 0.0 || ["obsidian", "bedrock", "chest", "furnace"].contains(&base) || base.ends_with("_bed") || kind[i] == Kind::Head || (b.shape == Shape::Piston && b.variant & 8 != 0) {
+                } else if b.hardness < 0.0 || ["obsidian", "bedrock", "chest", "furnace", "hopper", "dropper", "dispenser"].contains(&base) || base.ends_with("_bed") || kind[i] == Kind::Head || (b.shape == Shape::Piston && b.variant & 8 != 0) {
                     Push::Stop
-                } else if !b.solid || matches!(b.shape, Shape::Cross | Shape::Torch | Shape::Layer | Shape::Door | Shape::Repeater) || kind[i] != Kind::None && !matches!(kind[i], Kind::Block | Kind::Lamp(_) | Kind::Tnt | Kind::Piston(_)) {
+                } else if !b.solid || matches!(b.shape, Shape::Cross | Shape::Torch | Shape::Layer | Shape::Door | Shape::Repeater) || kind[i] != Kind::None && !matches!(kind[i], Kind::Block | Kind::Lamp(_) | Kind::Tnt | Kind::Piston(_) | Kind::Observer) {
                     Push::Break
                 } else {
                     Push::Move
@@ -190,6 +204,8 @@ impl Redstone {
             join,
             wire: id("redstone_wire"),
             torch: (id("redstone_torch_off"), id("redstone_torch")),
+            comparator: (id("comparator"), id("comparator_on")),
+            levels: HashMap::new(),
             lamp: (id("redstone_lamp"), id("redstone_lamp_on")),
             repeater: (id("repeater"), id("repeater_on")),
             head: id("piston_head"),
@@ -245,7 +261,38 @@ impl Redstone {
     fn put<G: Grid>(&mut self, g: &mut G, p: IVec3, id: BlockId) {
         if g.set(p, id) {
             self.touch(p);
+            self.notice(g, p);
         }
+    }
+
+    /// Observers looking at `p` see it change: each sends a short pulse out of its back.
+    fn notice<G: Grid>(&mut self, g: &G, p: IVec3) {
+        for e in SIDES {
+            let q = p + e;
+            let id = self.at(g, q);
+            if self.kind(id) == Kind::Observer && dir6(self.v(id)) == -e && self.v(id) & 8 == 0 {
+                self.schedule(q, RT);
+            }
+        }
+    }
+
+    /// Report how full each container is; comparators reading one that changed wake up.
+    pub fn set_levels(&mut self, levels: HashMap<IVec3, u8>) {
+        let changed: Vec<IVec3> = levels.iter().filter(|(p, l)| self.levels.get(p) != Some(l)).map(|(p, _)| *p).chain(self.levels.keys().filter(|p| !levels.contains_key(p)).copied()).collect();
+        self.levels = levels;
+        for p in changed {
+            self.touch(p);
+        }
+    }
+
+    /// Whether the block at `p` is full enough to hold things up (items rest on it).
+    pub fn support_at<G: Grid>(&self, g: &G, p: IVec3) -> bool {
+        self.support[self.at(g, p) as usize]
+    }
+
+    /// Whether anything powers the block at `p` (hoppers lock, for one).
+    pub fn powered<G: Grid>(&self, g: &G, p: IVec3) -> bool {
+        self.input(g, p, IVec3::ZERO) > 0
     }
 
     fn pop<G: Grid>(&mut self, g: &mut G, p: IVec3) {
@@ -265,10 +312,12 @@ impl Redstone {
         let on = match self.kind(id) {
             Kind::Block => true,
             // Not into the block it stands on.
-            Kind::Torch(true) => d != IVec3::NEG_Y,
+            Kind::Torch(true) => d != torch_attach(v),
             Kind::Lever | Kind::Button(_) => v & 4 != 0,
             Kind::Plate(_) => v & 1 != 0,
             Kind::Repeater(true) => d == h4(v),
+            Kind::Comparator(true) => return if d == h4(v) { v >> 3 } else { 0 },
+            Kind::Observer => v & 8 != 0 && d == -dir6(v),
             _ => false,
         };
         if on {
@@ -278,16 +327,23 @@ impl Redstone {
         }
     }
 
-    /// Whether the source at `q` strongly powers the block at `q + d`.
-    fn strong_into<G: Grid>(&self, g: &G, q: IVec3, d: IVec3) -> bool {
+    /// How strongly the source at `q` powers the block at `q + d` (0 when it doesn't).
+    fn strong_into<G: Grid>(&self, g: &G, q: IVec3, d: IVec3) -> u8 {
         let id = self.at(g, q);
         let v = self.v(id);
-        match self.kind(id) {
+        let on = match self.kind(id) {
             Kind::Torch(true) => d == IVec3::Y,
             Kind::Lever | Kind::Button(_) => v & 4 != 0 && d == attach(v),
             Kind::Plate(_) => v & 1 != 0 && d == IVec3::NEG_Y,
             Kind::Repeater(true) => d == h4(v),
+            Kind::Comparator(true) => return if d == h4(v) { v >> 3 } else { 0 },
+            Kind::Observer => v & 8 != 0 && d == -dir6(v),
             _ => false,
+        };
+        if on {
+            15
+        } else {
+            0
         }
     }
 
@@ -337,8 +393,8 @@ impl Redstone {
         }
     }
 
-    fn strongly_powered<G: Grid>(&self, g: &G, p: IVec3) -> bool {
-        SIDES.iter().any(|&d| self.strong_into(g, p + d, -d))
+    fn strong_power<G: Grid>(&self, g: &G, p: IVec3) -> u8 {
+        SIDES.iter().map(|&d| self.strong_into(g, p + d, -d)).max().unwrap_or(0)
     }
 
     /// The power a full block holds: 15 when strongly powered, else what dust gives it.
@@ -346,10 +402,8 @@ impl Redstone {
         if !self.opaque[self.at(g, p) as usize] {
             return 0;
         }
-        if self.strongly_powered(g, p) {
-            return 15;
-        }
-        SIDES.iter().map(|&d| self.wire_into(g, p + d, -d)).max().unwrap_or(0)
+        let strong = self.strong_power(g, p);
+        SIDES.iter().map(|&d| self.wire_into(g, p + d, -d)).max().unwrap_or(0).max(strong)
     }
 
     /// What reaches `p` from its neighbour on side `d`.
@@ -369,8 +423,8 @@ impl Redstone {
         for d in SIDES {
             let q = p + d;
             best = best.max(self.source_power(g, q, -d));
-            if self.opaque[self.at(g, q) as usize] && self.strongly_powered(g, q) {
-                best = 15;
+            if self.opaque[self.at(g, q) as usize] {
+                best = best.max(self.strong_power(g, q));
             }
         }
         best
@@ -408,6 +462,7 @@ impl Redstone {
         self.time += dt as f64;
         for &p in changed {
             self.touch(p);
+            self.notice(g, p);
         }
         self.occupied.clear();
         for &p in occupied {
@@ -529,10 +584,11 @@ impl Redstone {
         let v = self.v(id);
         match self.kind(id) {
             Kind::Torch(lit) => {
-                if !self.supported(g, p, IVec3::NEG_Y) {
+                let a = torch_attach(v);
+                if !self.supported(g, p, a) {
                     return self.pop(g, p);
                 }
-                let want = self.block_power(g, p - IVec3::Y) == 0 && !self.burnt.get(&p).is_some_and(|&t| t > self.time);
+                let want = self.block_power(g, p + a) == 0 && !self.burnt.get(&p).is_some_and(|&t| t > self.time);
                 if want != lit {
                     self.schedule(p, RT);
                 }
@@ -615,7 +671,46 @@ impl Redstone {
                     self.pop(g, p);
                 }
             }
-            Kind::None | Kind::Wire | Kind::Block => {}
+            Kind::Comparator(_) => {
+                if !self.supported(g, p, IVec3::NEG_Y) {
+                    return self.pop(g, p);
+                }
+                if self.comparator_output(g, p, v) != v >> 3 {
+                    self.schedule(p, RT);
+                }
+            }
+            Kind::Dispenser(_) => {
+                let powered = self.input(g, p, IVec3::ZERO) > 0;
+                if powered && v & 8 == 0 {
+                    let new = self.reg.variant(id, v | 8);
+                    g.set(p, new);
+                    self.schedule(p, 2.0 * RT);
+                } else if !powered && v & 8 != 0 {
+                    let new = self.reg.variant(id, v & 7);
+                    g.set(p, new);
+                }
+            }
+            Kind::None | Kind::Wire | Kind::Block | Kind::Observer => {}
+        }
+    }
+
+    /// What a comparator at `p` puts out: the back signal (or how full a container behind it
+    /// is), compared with or reduced by the strongest side.
+    fn comparator_output<G: Grid>(&self, g: &G, p: IVec3, v: u8) -> u8 {
+        let out = h4(v);
+        let back = p - out;
+        let rear = match self.levels.get(&back) {
+            Some(&l) => l,
+            None => self.power_from(g, p, -out),
+        };
+        let left = IVec3::new(out.z, 0, -out.x);
+        let side = [left, -left].iter().map(|&d| self.wire_into(g, p + d, -d).max(self.source_power(g, p + d, -d))).max().unwrap_or(0);
+        if v & 4 != 0 {
+            rear.saturating_sub(side)
+        } else if rear >= side {
+            rear
+        } else {
+            0
         }
     }
 
@@ -625,7 +720,7 @@ impl Redstone {
         match self.kind(id) {
             Kind::Torch(lit) => {
                 let burnt = self.burnt.get(&p).is_some_and(|&t| t > self.time);
-                let want = self.block_power(g, p - IVec3::Y) == 0 && !burnt;
+                let want = self.block_power(g, p + torch_attach(v)) == 0 && !burnt;
                 if want == lit {
                     return;
                 }
@@ -644,7 +739,7 @@ impl Redstone {
                         return;
                     }
                 }
-                let new = if want { self.torch.1 } else { self.torch.0 };
+                let new = self.reg.variant(if want { self.torch.1 } else { self.torch.0 }, v);
                 self.put(g, p, new);
             }
             Kind::Repeater(on) => {
@@ -673,6 +768,25 @@ impl Redstone {
                 }
             }
             Kind::Piston(sticky) => self.piston(g, p, id, sticky),
+            Kind::Comparator(_) => {
+                let level = self.comparator_output(g, p, v);
+                let base = if level > 0 { self.comparator.1 } else { self.comparator.0 };
+                let new = self.reg.variant(base, (v & 7) | level << 3);
+                self.put(g, p, new);
+            }
+            Kind::Observer => {
+                let new = self.reg.variant(id, v ^ 8);
+                self.put(g, p, new);
+                if v & 8 == 0 {
+                    // The pulse lasts one tick.
+                    self.schedule(p, RT);
+                }
+            }
+            Kind::Dispenser(_) => {
+                if v & 8 != 0 {
+                    self.events.push(Event::Dispense(p));
+                }
+            }
             _ => {}
         }
     }
@@ -751,6 +865,11 @@ impl Redstone {
                     self.events.push(Event::Click(p));
                 }
             }
+            Kind::Comparator(_) => {
+                let new = self.reg.variant(id, v ^ 4);
+                self.put(g, p, new);
+                self.events.push(Event::Click(p));
+            }
             Kind::Repeater(_) => {
                 let delay = ((v >> 2) + 1) & 3;
                 let new = self.reg.variant(id, (v & 3) | delay << 2);
@@ -760,6 +879,15 @@ impl Redstone {
             _ => return false,
         }
         true
+    }
+}
+
+/// The block a torch stands on, or the wall it hangs on.
+fn torch_attach(v: u8) -> IVec3 {
+    if v == 0 {
+        IVec3::NEG_Y
+    } else {
+        h4(v - 1)
     }
 }
 
@@ -810,6 +938,8 @@ impl crate::Game {
                 occupied.push(p);
             }
         }
+        let levels = self.container_levels();
+        self.redstone.set_levels(levels);
         let changed = self.world.changed.clone();
         self.redstone.update(&mut self.world, dt, &changed, &occupied);
         for e in std::mem::take(&mut self.redstone.events) {
@@ -826,6 +956,7 @@ impl crate::Game {
                 Event::Click(p) if near(p) => self.sfx(Sfx::Click),
                 Event::Piston(p, out) if near(p) => self.sfx(Sfx::Piston(out)),
                 Event::Burnout(p) if near(p) => self.sfx(Sfx::Fizz),
+                Event::Dispense(p) => self.dispense(p),
                 Event::Moved { from, dir, count } => {
                     // Whoever stands where the blocks went rides along.
                     let step = dir.as_vec3();
@@ -848,6 +979,184 @@ impl crate::Game {
             }
         }
         self.update_tnt(dt);
+        self.update_hoppers(dt);
+    }
+
+    /// How full every container is, 0..15, the way comparators read it.
+    fn container_levels(&self) -> HashMap<IVec3, u8> {
+        use crate::survival::Container;
+        self.surv
+            .containers
+            .iter()
+            .map(|(p, c)| {
+                let inv = match c {
+                    Container::Chest(i) => i,
+                    Container::Furnace(f) => &f.inv,
+                };
+                let mut fill = 0.0;
+                let mut any = false;
+                for st in inv.slots.iter().flatten() {
+                    any = true;
+                    fill += st.count as f32 / self.items.get(st.item).max_stack.max(1) as f32;
+                }
+                let level = if any { (1.0 + fill / inv.slots.len() as f32 * 14.0) as u8 } else { 0 };
+                (*p, level.min(15))
+            })
+            .collect()
+    }
+
+    /// Hoppers move one item every 0.4 s: out of the spout into the container there, and in
+    /// from the container above or items lying on top. Power locks them.
+    fn update_hoppers(&mut self, dt: f32) {
+        use crate::survival::Container;
+        self.hopper_t -= dt;
+        if self.hopper_t > 0.0 {
+            return;
+        }
+        self.hopper_t = 0.4;
+        let hopper = self.reg.id_or_air("hopper");
+        let hoppers: Vec<IVec3> = self.surv.containers.keys().copied().filter(|&p| self.reg.get(self.world.block_or_air(p)).base == hopper && hopper != AIR).collect();
+        for p in hoppers {
+            if self.redstone.powered(&self.world, p) {
+                continue;
+            }
+            let v = self.reg.get(self.world.block_or_air(p)).variant;
+            let spout = if v == 0 { IVec3::NEG_Y } else { h4(v - 1) };
+            let Some(Container::Chest(mut inv)) = self.surv.containers.remove(&p) else { continue };
+            // Out of the spout.
+            if let Some(i) = inv.slots.iter().position(|s| s.is_some()) {
+                let one = voxel::item::ItemStack { count: 1, ..inv.slots[i].unwrap() };
+                let to = p + spout;
+                let taken = match self.surv.containers.get_mut(&to) {
+                    Some(Container::Chest(dest)) => dest.add(&self.items, one).is_none(),
+                    Some(Container::Furnace(f)) => {
+                        // From above into the input, from the side into the fuel.
+                        if spout == IVec3::NEG_Y {
+                            f.inv.add_in(&self.items, one, 0..1).is_none()
+                        } else {
+                            self.items.get(one.item).fuel > 0.0 && f.inv.add_in(&self.items, one, 1..2).is_none()
+                        }
+                    }
+                    None => false,
+                };
+                if taken {
+                    inv.take(i, 1);
+                }
+            }
+            // In from above: a container's first item (a furnace's result), or items on top.
+            let above = p + IVec3::Y;
+            let pulled = match self.surv.containers.get_mut(&above) {
+                Some(Container::Chest(src)) => src.slots.iter().position(|s| s.is_some()).map(|i| (i, src.slots[i].unwrap())).filter(|(_, st)| inv.clone().add(&self.items, voxel::item::ItemStack { count: 1, ..*st }).is_none()).map(|(i, _)| src.take(i, 1)).flatten(),
+                Some(Container::Furnace(f)) => match f.inv.slots[2] {
+                    Some(st) if inv.clone().add(&self.items, voxel::item::ItemStack { count: 1, ..st }).is_none() => f.inv.take(2, 1),
+                    _ => None,
+                },
+                None => None,
+            };
+            if let Some(st) = pulled {
+                inv.add(&self.items, st);
+            } else if !self.redstone.support_at(&self.world, above) {
+                let mut k = 0;
+                while k < self.surv.drops.len() {
+                    let d = &self.surv.drops[k];
+                    let at = d.body.pos.floor().as_ivec3();
+                    if at == above || at == p {
+                        let st = d.stack;
+                        match inv.add(&self.items, st) {
+                            None => {
+                                self.surv.drops.swap_remove(k);
+                                continue;
+                            }
+                            Some(left) => self.surv.drops[k].stack = left,
+                        }
+                    }
+                    k += 1;
+                }
+            }
+            self.surv.containers.insert(p, Container::Chest(inv));
+        }
+    }
+
+    /// A dropper or dispenser fires: one item from a random slot leaves through its front.
+    fn dispense(&mut self, p: IVec3) {
+        use crate::survival::Container;
+        use glam::Vec3;
+        let id = self.world.block_or_air(p);
+        let b = self.reg.get(id);
+        let dispenser = self.reg.get(b.base).name == "dispenser";
+        let d = dir6(b.variant);
+        let front = p + d;
+        let Some(Container::Chest(inv)) = self.surv.containers.get_mut(&p) else { return };
+        let full: Vec<usize> = (0..inv.slots.len()).filter(|&i| inv.slots[i].is_some()).collect();
+        if full.is_empty() {
+            self.sfx(crate::audio::Sfx::Click);
+            return;
+        }
+        let i = full[self.surv.rng.below(full.len() as u32) as usize];
+        let Some(one) = inv.take(i, 1) else { return };
+        let name = self.items.get(one.item).name.clone();
+        let out = p.as_vec3() + Vec3::splat(0.5) + d.as_vec3() * 0.7;
+        let dir = d.as_vec3();
+        let give_back = |g: &mut crate::Game, st: voxel::item::ItemStack| {
+            if let Some(Container::Chest(inv)) = g.surv.containers.get_mut(&p) {
+                if let Some(left) = inv.add(&g.items, st) {
+                    g.spawn_drop(out, left, dir * 2.0);
+                }
+            }
+        };
+        let front_id = self.world.block_or_air(front);
+        let open = front_id == AIR || self.reg.get(front_id).shape == Shape::Cross;
+        if dispenser {
+            match name.as_str() {
+                "arrow" => {
+                    self.mobs.arrows.push(crate::mobs::Arrow { pos: out, vel: dir * 30.0 + Vec3::Y * 1.0, age: 0.0, stuck: false, damage: 3.0 });
+                    self.sfx(crate::audio::Sfx::Click);
+                    return;
+                }
+                "tnt" if open => {
+                    self.prime_tnt(front, 4.0);
+                    return;
+                }
+                "water_bucket" | "lava_bucket" if open || self.world.is_liquid(front_id) => {
+                    let f = if name == "water_bucket" { 1 } else { 2 };
+                    let src = self.fluids.id(f, 0);
+                    self.world.set_block(front, src);
+                    if let Some(bucket) = self.items.id("bucket") {
+                        give_back(self, voxel::item::ItemStack::new(bucket, 1));
+                    }
+                    return;
+                }
+                "bucket" if self.world.fluid(front_id) != 0 && self.reg.get(front_id).variant == 0 => {
+                    let full = if self.world.fluid(front_id) == 1 { "water_bucket" } else { "lava_bucket" };
+                    self.world.set_block(front, AIR);
+                    if let Some(it) = self.items.id(full) {
+                        give_back(self, voxel::item::ItemStack::new(it, 1));
+                    }
+                    return;
+                }
+                n if n.ends_with("_spawn_egg") && open => {
+                    let mob = n.trim_end_matches("_spawn_egg").to_string();
+                    if self.mobs.spawn(&mob, front.as_vec3() + Vec3::new(0.5, 0.0, 0.5)) {
+                        return;
+                    }
+                }
+                _ => {}
+            }
+        }
+        // Into a container in front, or out onto the ground.
+        if let Some(Container::Chest(dest)) = self.surv.containers.get_mut(&front) {
+            if let Some(left) = dest.add(&self.items, one) {
+                give_back(self, left);
+            }
+            return;
+        }
+        if self.world.block(front).is_some_and(|f| self.reg.is_opaque(f)) {
+            give_back(self, one);
+            return;
+        }
+        let spread = Vec3::new(self.surv.rng.f32() - 0.5, 0.0, self.surv.rng.f32() - 0.5) * 0.6;
+        self.spawn_drop(out - Vec3::Y * 0.12, one, dir * 4.0 + spread + Vec3::Y * 1.0);
+        self.sfx(crate::audio::Sfx::Click);
     }
 
     /// Test scene (--redstone): a few classic circuits on a stone floor in front of the player.
@@ -855,7 +1164,7 @@ impl crate::Game {
         let p = self.body.pos.floor().as_ivec3();
         let floor = self.reg.id_or_air("stone");
         for x in -8..=8 {
-            for z in 2..=15 {
+            for z in 2..=19 {
                 self.world.set_block(IVec3::new(p.x + x, p.y - 1, p.z - z), floor);
                 for y in 0..5 {
                     self.world.set_block(IVec3::new(p.x + x, p.y + y, p.z - z), AIR);
@@ -918,6 +1227,33 @@ impl crate::Game {
         put(w, 6, 1, 13, "stone_button", 0);
         put(w, 6, 0, 12, "stone_pressure_plate", 0);
         put(w, 7, 0, 13, "tnt", 0);
+        // A torch on a wall, a comparator reading a chest, two observers watching each other
+        // (a clock) and a hopper passing items from one chest to another.
+        put(w, -7, 0, 17, "stone", 0);
+        put(w, -6, 0, 17, "redstone_torch", 4);
+        put(w, -4, 0, 17, "chest", 0);
+        put(w, -3, 0, 17, "comparator", 1);
+        put(w, -2, 0, 17, "redstone_wire", 0);
+        put(w, -1, 0, 17, "redstone_wire", 0);
+        put(w, 1, 0, 17, "redstone_wire", 0);
+        put(w, 2, 0, 17, "observer", 1);
+        put(w, 3, 0, 17, "observer", 3);
+        put(w, 5, 1, 17, "chest", 0);
+        put(w, 5, 0, 17, "hopper", 2);
+        put(w, 6, 0, 17, "chest", 0);
+        put(w, 6, 0, 19, "dispenser", 2);
+        let at = |x: i32, y: i32, z: i32| IVec3::new(p.x + x, p.y + y, p.z - z);
+        let stack = |g: &crate::Game, n: &str, c: u8| g.items.id(n).map(|i| voxel::item::ItemStack::new(i, c));
+        let mut a = voxel::item::Inventory::new(27);
+        for k in 0..10 {
+            a.slots[k] = stack(self, "cobblestone", 64);
+        }
+        self.surv.containers.insert(at(-4, 0, 17), crate::survival::Container::Chest(a));
+        let mut b = voxel::item::Inventory::new(27);
+        b.slots[0] = stack(self, "iron_ingot", 32);
+        self.surv.containers.insert(at(5, 1, 17), crate::survival::Container::Chest(b));
+        self.surv.containers.insert(at(5, 0, 17), crate::survival::Container::Chest(voxel::item::Inventory::new(5)));
+        self.surv.containers.insert(at(6, 0, 17), crate::survival::Container::Chest(voxel::item::Inventory::new(27)));
         if self.args.screenshot.is_some() {
             // Step back and up to see it all.
             self.body.pos += glam::Vec3::new(0.0, 6.0, 2.0);
@@ -1116,5 +1452,59 @@ mod tests {
         assert_eq!(m.get(IVec3::new(1, 1, 0)), Some(dirt));
         assert_eq!(m.get(IVec3::new(2, 1, 0)), Some(AIR));
         assert_eq!(m.get(IVec3::new(3, 1, 0)), Some(dirt));
+    }
+
+    #[test]
+    fn wall_torch_inverts_its_wall() {
+        let (mut rs, mut m, reg) = setup();
+        let stone = reg.id("stone").unwrap();
+        // A torch on the east face of a stone block (its wall is to the west: facing 3, + 1),
+        // and a block of redstone on the stone's other side.
+        let torch = reg.variant(reg.id("redstone_torch").unwrap(), 4);
+        run(&mut rs, &mut m, &[(IVec3::new(0, 1, 0), stone), (IVec3::new(1, 1, 0), torch)], 0.3);
+        assert_eq!(rs.kind(m.get(IVec3::new(1, 1, 0)).unwrap()), Kind::Torch(true));
+        let lever = reg.variant(reg.id("lever").unwrap(), 1 | 4 | 8);
+        run(&mut rs, &mut m, &[(IVec3::new(-1, 1, 0), lever)], 0.3);
+        let t = m.get(IVec3::new(1, 1, 0)).unwrap();
+        assert_eq!(rs.kind(t), Kind::Torch(false));
+        assert_eq!(reg.get(t).variant, 4, "keeps its wall");
+    }
+
+    #[test]
+    fn comparator_subtracts_its_side() {
+        let (mut rs, mut m, reg) = setup();
+        let wire = reg.id("redstone_wire").unwrap();
+        let block = reg.id("redstone_block").unwrap();
+        // Facing east in subtract mode: 15 from the back, a side line that has faded to 12.
+        let comp = reg.variant(reg.id("comparator").unwrap(), 1 | 4);
+        let mut puts = vec![(IVec3::new(-1, 1, 0), block), (IVec3::new(0, 1, 0), comp), (IVec3::new(1, 1, 0), wire)];
+        for z in 1..=4 {
+            puts.push((IVec3::new(0, 1, z), wire));
+        }
+        puts.push((IVec3::new(0, 1, 5), block));
+        run(&mut rs, &mut m, &puts, 0.3);
+        let side = power(&m, &reg, IVec3::new(0, 1, 1));
+        assert_eq!(side, 12);
+        assert_eq!(power(&m, &reg, IVec3::new(1, 1, 0)), 3);
+        // A container behind it: the output follows how full it is.
+        let chest = reg.id("chest").unwrap();
+        rs.set_levels([(IVec3::new(-1, 1, 0), 7)].into_iter().collect());
+        let comp = reg.variant(reg.id("comparator").unwrap(), 1);
+        run(&mut rs, &mut m, &[(IVec3::new(-1, 1, 0), chest), (IVec3::new(0, 1, 0), comp), (IVec3::new(0, 1, 1), AIR)], 0.3);
+        assert_eq!(power(&m, &reg, IVec3::new(1, 1, 0)), 7);
+    }
+
+    #[test]
+    fn observer_pulses_when_its_block_changes() {
+        let (mut rs, mut m, reg) = setup();
+        let wire = reg.id("redstone_wire").unwrap();
+        // Looking north (0) at z = -1, its back to dust at z = 1.
+        let obs = reg.variant(reg.id("observer").unwrap(), 0);
+        run(&mut rs, &mut m, &[(IVec3::new(0, 1, 0), obs), (IVec3::new(0, 1, 1), wire)], 0.3);
+        assert_eq!(power(&m, &reg, IVec3::new(0, 1, 1)), 0);
+        run(&mut rs, &mut m, &[(IVec3::new(0, 1, -1), reg.id("dirt").unwrap())], 0.12);
+        assert_eq!(power(&m, &reg, IVec3::new(0, 1, 1)), 15);
+        run(&mut rs, &mut m, &[], 0.3);
+        assert_eq!(power(&m, &reg, IVec3::new(0, 1, 1)), 0);
     }
 }

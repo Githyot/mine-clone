@@ -158,7 +158,7 @@ pub fn redstone_join(reg: &BlockRegistry, id: BlockId) -> u8 {
     match b.shape {
         Shape::Wire => 1,
         Shape::Lever | Shape::Button | Shape::Plate => 2,
-        Shape::Repeater => 3,
+        Shape::Repeater | Shape::Comparator => 3,
         _ => {
             let base = &reg.get(b.base).name;
             u8::from(base.starts_with("redstone_torch") || base == "redstone_block") * 2
@@ -421,10 +421,22 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                 if shape == Shape::Torch {
                     let l = light[i];
                     let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
+                    // On a wall: three pixels up, the foot against the wall and the head leaning
+                    // four pixels out (drawn for a wall to the north, then turned).
+                    let v = t.variant[idu];
+                    let wall = v > 0;
                     for (f, fi) in FACES.iter().enumerate() {
                         let layer = t.faces[idu][f] as u32;
                         for (k, c) in fi.corners.iter().enumerate() {
-                            let pos = [base[0] + if c[0] == 1 { 9 } else { 7 }, base[1] + if c[1] == 1 { 10 } else { 0 }, base[2] + if c[2] == 1 { 9 } else { 7 }];
+                            let mut pos = [if c[0] == 1 { 9 } else { 7 }, if c[1] == 1 { 10 } else { 0 }, if c[2] == 1 { 9 } else { 7 }];
+                            if wall {
+                                pos[1] += 3;
+                                pos[2] = pos[2] - 6 + if c[1] == 1 { 4 } else { 0 };
+                                for _ in 0..(v - 1) & 3 {
+                                    pos = [16 - pos[2], pos[1], pos[0]];
+                                }
+                            }
+                            let pos = [base[0] + pos[0], base[1] + pos[1], base[2] + pos[2]];
                             let [u, v] = fi.uv[k];
                             let u = if u == 0 { 7 } else { 9 };
                             // Sides show the whole stick; the top shows the flame, the bottom the handle end.
@@ -482,7 +494,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     crate::shapes::boxes(shape, t.variant[idu], conn, false, &mut boxes);
                     let tint = |f: usize| if t.tint[idu] & (1 << f) != 0 { biome_tint } else { white };
                     let parts = crate::shapes::has_parts(shape);
-                    let piston = matches!(shape, Shape::Piston | Shape::PistonHead);
+                    let piston = matches!(shape, Shape::Piston | Shape::PistonHead | Shape::Oriented);
                     let pdir = crate::shapes::dir6_of(t.variant[idu]);
                     let facing = crate::shapes::facing_of(t.variant[idu]);
                     for (bi, b) in boxes.iter().enumerate() {
@@ -527,7 +539,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                                     uv = part_uv(f, q, lo, hi);
                                 } else if piston && f >> 1 != DIR6_FACE[pdir] >> 1 {
                                     uv = piston_side_uv(f, q, pdir);
-                                } else if f == 2 && shape == Shape::Repeater {
+                                } else if f == 2 && matches!(shape, Shape::Repeater | Shape::Comparator) {
                                     uv = turn_uv([q[0], q[2]], facing);
                                 }
                                 out.solid.push(pack([base[0] + q[0], base[1] + q[1], base[2] + q[2]], 3, uv, layer, f as u32, 0, sky, blk, tint(f)));

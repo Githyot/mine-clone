@@ -169,6 +169,12 @@
         // Until there are slimes, string makes a piston sticky.
         (pattern: ["S", "P"], key: {'S': "string", 'P': "piston"}, result: "sticky_piston"),
         (pattern: ["GSG", "SGS", "GSG"], key: {'G': "gunpowder", 'S': "sand"}, result: "tnt"),
+        // Until the Nether has quartz, comparators and observers take redstone in its place.
+        (pattern: [" T ", "TRT", "SSS"], key: {'T': "redstone_torch", 'R': "redstone", 'S': "stone"}, result: "comparator"),
+        (pattern: ["CCC", "RRR", "CCC"], key: {'C': "cobblestone", 'R': "redstone"}, result: "observer"),
+        (pattern: ["I I", "ICI", " I "], key: {'I': "iron_ingot", 'C': "chest"}, result: "hopper"),
+        (pattern: ["CCC", "C C", "CRC"], key: {'C': "cobblestone", 'R': "redstone"}, result: "dropper"),
+        (pattern: ["CCC", "CBC", "CRC"], key: {'C': "cobblestone", 'B': "bow", 'R': "redstone"}, result: "dispenser"),
     ],
     shapeless: [
         (ingredients: ["oak_log"], result: "oak_planks", count: 4),

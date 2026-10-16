@@ -462,6 +462,8 @@ struct Game {
     redstone: redstone::Redstone,
     /// Lit TNT, falling and flashing until it goes off.
     tnt: Vec<redstone::PrimedTnt>,
+    /// Seconds until hoppers next move an item.
+    hopper_t: f32,
     bobber: Option<fishing::Bobber>,
     weather: weather::Weather,
     anim: player_model::Animator,
@@ -759,6 +761,7 @@ impl Game {
             fluids: fluids::Fluids::new(&reg_for_fluids),
             redstone: redstone::Redstone::new(reg_for_fluids.clone()),
             tnt: Vec::new(),
+            hopper_t: 0.0,
             weather: weather::Weather::new(weather_save, seed),
             anim: player_model::Animator::default(),
             camera_mode,
@@ -2253,7 +2256,38 @@ impl Game {
                 }
             }
             // Signal goes out the way you look.
-            Shape::Repeater => facing(f.x, f.z),
+            Shape::Repeater | Shape::Comparator => facing(f.x, f.z),
+            // On a wall when placed against one (1 + the wall's side), else standing.
+            Shape::Torch => {
+                if hit.normal.y < 0 {
+                    return None;
+                }
+                if hit.normal.y == 0 {
+                    1 + facing(-hit.normal.x as f32, -hit.normal.z as f32)
+                } else {
+                    0
+                }
+            }
+            // The spout points into the block clicked from the side, else down.
+            Shape::Hopper => {
+                if hit.normal.y == 0 {
+                    1 + facing(-hit.normal.x as f32, -hit.normal.z as f32)
+                } else {
+                    0
+                }
+            }
+            // Observers watch the way you look; droppers and dispensers face you.
+            Shape::Oriented => {
+                let toward = self.reg.get(id).name == "observer";
+                let k = if toward { 1.0 } else { -1.0 };
+                if f.y * k > 0.75 {
+                    4
+                } else if f.y * k < -0.75 {
+                    5
+                } else {
+                    facing(f.x * k, f.z * k)
+                }
+            }
             // The face points back at you (up or down when looking steeply).
             Shape::Piston => {
                 if f.y < -0.75 {
@@ -2285,14 +2319,18 @@ impl Game {
         }
         let id_v = self.variant_id(id, v);
         // Plants, torches and redstone parts need something under them.
-        let on_floor = matches!(b.shape, Shape::Wire | Shape::Plate | Shape::Repeater) || matches!(b.shape, Shape::Lever | Shape::Button) && v & 8 == 0;
+        let on_floor = matches!(b.shape, Shape::Wire | Shape::Plate | Shape::Repeater | Shape::Comparator) || matches!(b.shape, Shape::Lever | Shape::Button) && v & 8 == 0;
         if on_floor {
             let under = self.world.block_or_air(pos - IVec3::Y);
             if !self.reg.is_opaque(under) {
                 return None;
             }
         }
-        if matches!(b.shape, Shape::Cross | Shape::Torch) {
+        if b.shape == Shape::Torch && v > 0 {
+            if !self.reg.get(clicked).solid {
+                return None;
+            }
+        } else if matches!(b.shape, Shape::Cross | Shape::Torch) {
             let under = self.world.block_or_air(pos - IVec3::Y);
             if under == AIR || !self.reg.get(under).solid {
                 return None;

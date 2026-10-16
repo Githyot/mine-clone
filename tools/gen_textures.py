@@ -1570,6 +1570,93 @@ def wire(kind):
     return img
 
 
+
+def comparator(on=False):
+    img = smooth_stone("comparator_on" if on else "comparator")
+    p = RS_LIT if on else RS_DARK
+    # Lines from the two back torches meeting at the front one.
+    for y in range(4, 12):
+        put(img, 5, y, p[1])
+        put(img, 10, y, p[1])
+    for x in range(5, 11):
+        put(img, x, 4, p[1])
+    put(img, 7, 3, p[2] if on else p[1])
+    put(img, 8, 3, p[2] if on else p[1])
+    return img
+
+
+METAL_DARK = pal("#1e1e20", "#2e2e32", "#3c3c42", "#4e4e56", "#646470")
+
+
+def observer_side():
+    rng = rng_for("observer_side")
+    f = fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.3)))
+    img = from_rgb(shade(f, METAL_DARK[1:4], 0.6))
+    rgb = img[..., :3]
+    # An arrow pointing up: the way it looks.
+    for y in range(3, 13):
+        rgb[y, 7:9] = METAL_DARK[4]
+    for k in range(3):
+        rgb[3 + k, 7 - k - 1] = METAL_DARK[4]
+        rgb[3 + k, 8 + k + 1] = METAL_DARK[4]
+    bevel(img, 1.25, 0.7)
+    return img
+
+
+def observer_front():
+    img = from_rgb(METAL_DARK[1])
+    rgb = img[..., :3]
+    # A face: two dark eye slots over a grille mouth.
+    rgb[2:7, 2:7] = METAL_DARK[0]
+    rgb[2:7, 9:14] = METAL_DARK[0]
+    rgb[3:6, 3:6] = METAL_DARK[3]
+    rgb[3:6, 10:13] = METAL_DARK[3]
+    for y in (10, 12):
+        rgb[y, 3:13] = METAL_DARK[0]
+    bevel(img, 1.25, 0.7)
+    return img
+
+
+def observer_back():
+    img = observer_front()
+    rgb = img[..., :3]
+    rgb[2:14, 2:14] = METAL_DARK[2]
+    rgb[6:10, 6:10] = RS_DARK[1]
+    rgb[7:9, 7:9] = RS_DARK[2]
+    return img
+
+
+def dropper_front(dispenser=False):
+    img = furnace_side()
+    rgb = img[..., :3]
+    frame, inner = pal("#3a3a3a", "#141414")
+    if dispenser:
+        # A round mouth.
+        d = np.hypot(XX - 7.5, YY - 7.5)
+        rgb[d < 4.2] = frame
+        rgb[d < 3.0] = inner
+    else:
+        rgb[5:11, 5:11] = frame
+        rgb[6:10, 6:10] = inner
+    return img
+
+
+def hopper_outside():
+    rng = rng_for("hopper_outside")
+    f = fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.3)))
+    img = from_rgb(shade(f, METAL_DARK[2:], 0.6))
+    bevel(img, 1.2, 0.7)
+    return img
+
+
+def hopper_top():
+    img = hopper_outside()
+    rgb = img[..., :3]
+    rgb[2:14, 2:14] = METAL_DARK[0]
+    rgb[2, 2:14] = METAL_DARK[1]
+    rgb[2:14, 2] = METAL_DARK[1]
+    return img
+
 def redstone_registry():
     return {
         "smooth_stone": smooth_stone,
@@ -1589,6 +1676,15 @@ def redstone_registry():
         "redstone_wire_cross": lambda: wire("cross"),
         "redstone_wire_t": lambda: wire("t"),
         "redstone_wire_corner": lambda: wire("corner"),
+        "comparator": comparator,
+        "comparator_on": lambda: comparator(True),
+        "observer_side": observer_side,
+        "observer_front": observer_front,
+        "observer_back": observer_back,
+        "dropper_front": dropper_front,
+        "dispenser_front": lambda: dropper_front(True),
+        "hopper_outside": hopper_outside,
+        "hopper_top": hopper_top,
     }
 
 def to_image(arr):

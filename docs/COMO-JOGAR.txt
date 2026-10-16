@@ -117,6 +117,14 @@ REDSTONE
   Pistão: empurra até 12 blocos; o grudento puxa o bloco de volta. Não move obsidiana,
   rocha-mãe, baús nem fornalhas; flores, tochas e fios na frente quebram.
   TNT: acenda com energia ou com o isqueiro (ferro + pederneira); explode em 4 segundos.
+  Tochas (comuns e de redstone) vão na parede quando colocadas do lado de um bloco.
+  Comparador: compara o sinal de trás com o dos lados (botão direito liga o modo de
+  subtrair) e lê quão cheio está um baú, funil ou fornalha atrás dele.
+  Observador: dá um pulso pela traseira quando o bloco à frente dele muda.
+  Funil: passa um item a cada 0,4 s para o baú, fornalha ou funil para onde aponta e puxa
+  do baú acima ou dos itens no chão em cima dele. Com energia, fica travado.
+  Liberador e ejetor: soltam um item a cada pulso. O ejetor atira flechas, acende TNT,
+  despeja e enche baldes e solta mobs de ovos.
   Receitas: tocha (redstone + graveto), alavanca (graveto + pedregulho), repetidor
   (2 tochas de redstone, redstone e 3 pedras), pistão (3 tábuas, 4 pedregulhos, ferro e
   redstone), pistão grudento (linha + pistão), lâmpada (4 redstone + pedra luminosa).

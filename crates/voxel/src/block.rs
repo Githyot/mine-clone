@@ -53,6 +53,12 @@ pub enum Shape {
     Piston,
     /// The arm of a pushed-out piston.
     PistonHead,
+    /// A redstone comparator: like a repeater, with two torches at the back.
+    Comparator,
+    /// A full block with a front facing any of six ways (observer, dropper, dispenser).
+    Oriented,
+    /// A hopper: a wide bowl over a spout pointing down or to a side.
+    Hopper,
 }
 
 impl Shape {
@@ -76,6 +82,9 @@ impl Shape {
                 | Shape::Repeater
                 | Shape::Piston
                 | Shape::PistonHead
+                | Shape::Comparator
+                | Shape::Oriented
+                | Shape::Hopper
         )
     }
 }

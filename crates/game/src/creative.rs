@@ -134,7 +134,7 @@ impl Game {
             return Some(Tab::Colored);
         }
         // Redstone parts sit with the functional blocks.
-        let redstone = matches!(bl.shape, Shape::Wire | Shape::Lever | Shape::Button | Shape::Plate | Shape::Repeater | Shape::Piston)
+        let redstone = matches!(bl.shape, Shape::Wire | Shape::Lever | Shape::Button | Shape::Plate | Shape::Repeater | Shape::Piston | Shape::Comparator | Shape::Oriented | Shape::Hopper)
             || ["redstone_torch", "redstone_block", "redstone_lamp", "tnt"].contains(&name);
         if redstone {
             return Some(Tab::Functional);

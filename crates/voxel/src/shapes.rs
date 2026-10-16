@@ -19,6 +19,14 @@ pub fn variant_count(shape: Shape) -> u8 {
         // delay - 1 in bits 2..3. Piston: six ways (0..5) | pushed out 8; its head: | sticky 8.
         Shape::Wire | Shape::Lever | Shape::Button | Shape::Repeater | Shape::Piston | Shape::PistonHead => 16,
         Shape::Plate => 2,
+        // Torches: 0 on the floor, 1..4 on a wall (facing - 1 is the wall's side).
+        Shape::Torch => 5,
+        // Comparator: facing | subtract 4 | output strength << 3.
+        Shape::Comparator => 128,
+        // Six ways | triggered 8.
+        Shape::Oriented => 16,
+        // Spout: 0 down, 1..4 north, east, south, west.
+        Shape::Hopper => 5,
         // Liquids: level 0 is the source, 1..7 flow further away, +8 is falling.
         Shape::Liquid => 16,
         _ => 1,
@@ -198,6 +206,16 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
                 out.push([0, 0, 0, 16, 16, 16]);
             }
         }
+        Shape::Comparator => {
+            for b in [[0, 0, 0, 16, 2, 16], [7, 2, 2, 9, 6, 4], [4, 2, 11, 6, 7, 13], [10, 2, 11, 12, 7, 13]] {
+                out.push(rotate(b, f));
+            }
+        }
+        Shape::Hopper => {
+            out.push([0, 10, 0, 16, 16, 16]);
+            out.push([4, 4, 4, 12, 10, 12]);
+            out.push(if variant == 0 { [6, 0, 6, 10, 4, 10] } else { rotate([6, 4, 0, 10, 8, 4], (variant - 1) & 3) });
+        }
         Shape::PistonHead => {
             let d = dir6_of(variant);
             out.push(orient6([0, 12, 0, 16, 16, 16], d));
@@ -210,7 +228,7 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
 /// Boxes after the first of a lever or repeater are its handle or torches, drawn with the
 /// block's `front` texture like a little torch.
 pub fn has_parts(shape: Shape) -> bool {
-    matches!(shape, Shape::Lever | Shape::Repeater)
+    matches!(shape, Shape::Lever | Shape::Repeater | Shape::Comparator)
 }
 
 /// Fences, walls and panes join others of their kind and full solid blocks.

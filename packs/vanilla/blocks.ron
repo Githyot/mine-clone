@@ -160,4 +160,11 @@
     (name: "sticky_piston", display_name: Some("Pistão Grudento"), shape: Piston, hardness: 1.5, tool: Some(Pickaxe), textures: (top: Some("piston_top_sticky"), side: Some("piston_side"), bottom: Some("piston_bottom"))),
     (name: "piston_head", display_name: Some("Cabeça de Pistão"), shape: PistonHead, hardness: 1.5, in_inventory: false, drops: Some([]), textures: (top: Some("piston_top"), side: Some("piston_side"), bottom: Some("piston_top"))),
     (name: "smooth_stone", display_name: Some("Pedra Lisa"), hardness: 2.0, tool: Some(Pickaxe), tier: 1),
+    (name: "comparator", display_name: Some("Comparador"), shape: Comparator, transparency: Cutout, hardness: 0.0, textures: (top: Some("comparator"), side: Some("smooth_stone"), bottom: Some("smooth_stone"), front: Some("redstone_torch_off"))),
+    (name: "comparator_on", display_name: Some("Comparador"), shape: Comparator, transparency: Cutout, hardness: 0.0, in_inventory: false, drops: Some([(item: "comparator")]),
+        textures: (top: Some("comparator_on"), side: Some("smooth_stone"), bottom: Some("smooth_stone"), front: Some("redstone_torch"))),
+    (name: "observer", display_name: Some("Observador"), shape: Oriented, hardness: 3.0, tool: Some(Pickaxe), textures: (top: Some("observer_front"), bottom: Some("observer_back"), side: Some("observer_side"))),
+    (name: "dropper", display_name: Some("Liberador"), shape: Oriented, hardness: 3.5, tool: Some(Pickaxe), textures: (top: Some("dropper_front"), bottom: Some("furnace_top"), side: Some("furnace_side"))),
+    (name: "dispenser", display_name: Some("Ejetor"), shape: Oriented, hardness: 3.5, tool: Some(Pickaxe), textures: (top: Some("dispenser_front"), bottom: Some("furnace_top"), side: Some("furnace_side"))),
+    (name: "hopper", display_name: Some("Funil"), shape: Hopper, transparency: Cutout, hardness: 3.0, tool: Some(Pickaxe), textures: (top: Some("hopper_top"), side: Some("hopper_outside"), bottom: Some("hopper_outside"))),
 ])
