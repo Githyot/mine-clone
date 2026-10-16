@@ -171,19 +171,56 @@ fn click(rng: &mut Rng) -> Vec<f32> {
         .collect()
 }
 
-/// A short falling "oof".
+/// Two-pole resonator: rings at one frequency, like a vowel formant.
+struct Resonator {
+    b1: f32,
+    b2: f32,
+    y1: f32,
+    y2: f32,
+    gain: f32,
+}
+
+impl Resonator {
+    fn new(freq: f32, bandwidth: f32) -> Resonator {
+        let r = (-std::f32::consts::PI * bandwidth / RATE).exp();
+        let b1 = 2.0 * r * (TAU * freq / RATE).cos();
+        Resonator { b1, b2: -r * r, y1: 0.0, y2: 0.0, gain: 1.0 - r }
+    }
+    fn run(&mut self, x: f32) -> f32 {
+        let y = x * self.gain + self.b1 * self.y1 + self.b2 * self.y2;
+        self.y2 = self.y1;
+        self.y1 = y;
+        y
+    }
+}
+
+/// Getting hurt: a short voiced grunt, between the classic "oof" and Terraria's punchier
+/// yelp. A breathy push, then a low "uh" vowel whose pitch drops, every one a little different.
 fn hurt(rng: &mut Rng) -> Vec<f32> {
-    let dur = 0.26;
+    let dur = 0.3;
     let n = (dur * RATE) as usize;
-    let base = rng.range(150.0, 175.0);
+    let base = rng.range(118.0, 142.0);
+    let vowel = rng.range(0.92, 1.08);
+    let mut f1 = Resonator::new(560.0 * vowel, 110.0);
+    let mut f2 = Resonator::new(980.0 * vowel, 160.0);
+    let mut f0 = Resonator::new(base * 2.0, 90.0);
+    let mut breath_lp = LowPass::new(1100.0);
     let mut phase = 0.0f32;
-    let mut lp = LowPass::new(900.0);
     (0..n)
         .map(|i| {
-            let k = i as f32 / n as f32;
-            phase += base * (1.0 - 0.4 * k) / RATE;
-            let saw = (phase.fract() * 2.0 - 1.0) * 0.6 + (phase * TAU).sin() * 0.5;
-            lp.run(saw) * (1.0 - k).powf(1.5) * (k * 40.0).min(1.0) * 1.3
+            let t = i as f32 / RATE;
+            let k = t / dur;
+            // Pitch kicks up for the punch, then falls away.
+            let pitch = base * (1.0 + 0.18 * (-t / 0.03).exp()) * (1.0 - 0.32 * k);
+            phase += pitch / RATE;
+            // Glottal pulse: a sharp click once per period, rich in low harmonics.
+            let p = phase.fract();
+            let pulse = (1.0 - p).powf(6.0) - 0.14;
+            let breath = breath_lp.run(rng.noise()) * (-t / 0.05).exp() * 0.5;
+            let src = pulse + breath;
+            let voiced = f1.run(src) * 1.5 + f2.run(src) * 0.5 + f0.run(src) * 0.8;
+            let env = (t / 0.012).min(1.0) * (1.0 - k).powf(1.8);
+            (voiced * env * 2.2).clamp(-1.0, 1.0)
         })
         .collect()
 }

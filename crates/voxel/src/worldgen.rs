@@ -81,7 +81,8 @@ struct Palette {
     clay: BlockId,
     water: BlockId,
     ice: BlockId,
-    snow: BlockId,
+    snow_layer: BlockId,
+    snow_layer2: BlockId,
     bedrock: BlockId,
     lava: BlockId,
     oak_log: BlockId,
@@ -129,7 +130,8 @@ impl Palette {
             clay: g("clay"),
             water: g("water"),
             ice: g("ice"),
-            snow: g("snow"),
+            snow_layer: g("snow_layer"),
+            snow_layer2: g("snow_layer:1"),
             bedrock: g("bedrock"),
             lava: g("lava"),
             oak_log: g("oak_log"),
@@ -511,8 +513,10 @@ impl Generator {
                     }
                 } else if ground == p.sand && col.biome == Biome::Desert && rng.chance(0.01) {
                     chunk.set(x, above, z, p.dead_bush);
-                } else if ground == p.snow_grass && chunk.get(x, above, z) == AIR && p.snow != AIR && rng.chance(0.0) {
-                    chunk.set(x, above, z, p.snow);
+                } else if ground == p.snow_grass && chunk.get(x, above, z) == AIR && p.snow_layer != AIR {
+                    // A blanket of snow, a little deeper here and there.
+                    let deep = rng.chance(0.15);
+                    chunk.set(x, above, z, if deep { p.snow_layer2 } else { p.snow_layer });
                 }
             }
         }

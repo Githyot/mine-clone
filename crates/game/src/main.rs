@@ -379,6 +379,8 @@ struct Game {
     place_cd: f32,
     target: Option<RayHit>,
     step_dist: f32,
+    /// Distance walked through plants since the last rustle.
+    rustle_dist: f32,
 
     pads: Controllers,
     /// Action waiting for a button press in the controller menu.
@@ -652,6 +654,7 @@ impl Game {
             place_cd: 0.0,
             target: None,
             step_dist: 0.0,
+            rustle_dist: 0.0,
             pads: Controllers::new(),
             rebinding: None,
             pad_held: HashSet::new(),
@@ -1290,6 +1293,23 @@ impl Game {
                         a.play(Sfx::Step(m), vol);
                     }
                 }
+            }
+        }
+        // Pushing through tall grass, flowers and bushes rustles them.
+        {
+            let feet = self.body.pos.floor().as_ivec3();
+            let in_plants = [feet, feet + IVec3::Y].iter().any(|&p| self.reg.get(self.world.block_or_air(p)).shape == Shape::Cross);
+            if in_plants && !self.body.flying {
+                self.rustle_dist += moved.length();
+                if self.rustle_dist > 1.1 {
+                    self.rustle_dist = 0.0;
+                    let vol = self.settings.sound_volume * 0.8;
+                    if let Some(a) = self.audio.as_mut() {
+                        a.play(Sfx::Step(Material::Leaves), vol);
+                    }
+                }
+            } else {
+                self.rustle_dist = 0.9;
             }
         }
 
@@ -2006,6 +2026,14 @@ impl Game {
         if shape == Shape::Slab && cb.base == id && ((cb.variant == 0 && hit.normal == IVec3::Y) || (cb.variant == 1 && hit.normal == -IVec3::Y)) {
             let double = self.variant_id(id, 2);
             if self.body.intersects_block(hit.block) || !self.world.set_block(hit.block, double) {
+                return None;
+            }
+            return self.placed(hit.block, id);
+        }
+        // Another layer of snow on a layer: it grows.
+        if shape == Shape::Layer && cb.base == id && cb.variant < 7 {
+            let more = self.variant_id(id, cb.variant + 1);
+            if !self.world.set_block(hit.block, more) {
                 return None;
             }
             return self.placed(hit.block, id);

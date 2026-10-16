@@ -13,7 +13,7 @@ pub type PBox = [u8; 6];
 pub fn variant_count(shape: Shape) -> u8 {
     match shape {
         Shape::Slab => 3,
-        Shape::Stairs => 8,
+        Shape::Stairs | Shape::Layer => 8,
         Shape::Door | Shape::Trapdoor => 16,
         _ => 1,
     }
@@ -55,6 +55,14 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
             1 => [0, 8, 0, 16, 16, 16],
             _ => [0, 0, 0, 16, 16, 16],
         }),
+        Shape::Layer => {
+            // Two pixels per layer; you stand one layer lower than it looks, like the classic snow.
+            let h = 2 * (variant.min(7) + 1);
+            let h = if collision { h - 2 } else { h };
+            if h > 0 {
+                out.push([0, 0, 0, 16, h, 16]);
+            }
+        }
         Shape::Stairs => {
             let up = variant & 4 != 0;
             let parts = [[0, 0, 0, 16, 8, 16], rotate([0, 8, 0, 16, 16, 8], f)];

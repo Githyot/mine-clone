@@ -35,12 +35,14 @@ pub enum Shape {
     /// A cube whose sides sit one pixel in, each showing its whole picture, so spikes drawn
     /// at the edges of the texture stick out without leaving see-through gaps (the cactus).
     Inset,
+    /// Thin layers that pile up, 1 to 8 (snow).
+    Layer,
 }
 
 impl Shape {
     /// Drawn and collided as boxes from `shapes::boxes`.
     pub fn is_boxes(self) -> bool {
-        matches!(self, Shape::Slab | Shape::Stairs | Shape::Fence | Shape::Wall | Shape::Pane | Shape::Door | Shape::Trapdoor)
+        matches!(self, Shape::Slab | Shape::Stairs | Shape::Fence | Shape::Wall | Shape::Pane | Shape::Door | Shape::Trapdoor | Shape::Layer)
     }
 }
 
@@ -296,7 +298,7 @@ impl BlockRegistry {
                 vb.variant = v;
                 vb.in_inventory = false;
                 // A double slab is a full cube; the upper half of a door uses the top texture.
-                vb.opaque = b.shape == Shape::Slab && v == 2 && b.transparency == Transparency::Opaque;
+                vb.opaque = (b.shape == Shape::Slab && v == 2 || b.shape == Shape::Layer && v == 7) && b.transparency == Transparency::Opaque;
                 if b.shape == Shape::Door {
                     vb.faces = [if v & 8 != 0 { b.faces[2] } else { b.faces[0] }; 6];
                 }

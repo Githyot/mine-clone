@@ -204,7 +204,13 @@ impl ItemRegistry {
         match &b.drops {
             None => {
                 // A double slab gives both halves; a door drops from its lower half only.
-                let n = if b.shape == Shape::Slab && b.variant == 2 { 2 } else { 1 };
+                let n = if b.shape == Shape::Slab && b.variant == 2 {
+                    2
+                } else if b.shape == Shape::Layer {
+                    b.variant as u8 + 1
+                } else {
+                    1
+                };
                 let upper_door = b.shape == Shape::Door && b.variant & 8 != 0;
                 if let (Some(i), false) = (self.of_block(block), upper_door) {
                     out.push(ItemStack::new(i, n));
