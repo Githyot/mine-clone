@@ -98,6 +98,8 @@ struct Args {
     /// Creative inventory tab to open (0..13).
     ctab: Option<usize>,
     show_inventory: bool,
+    /// Where the mouse sits in screenshots (pixels).
+    mouse: Option<(f32, f32)>,
     show_pause: bool,
     /// Open the shader menu once the world is ready (test screenshots).
     show_shaders: bool,
@@ -167,6 +169,7 @@ fn parse_args() -> Args {
             "--wait" => a.wait = it.next().and_then(|v| v.parse().ok()).unwrap_or(0.0),
             "--ctab" => a.ctab = it.next().and_then(|v| v.parse().ok()),
             "--inventory" => a.show_inventory = true,
+            "--mouse" => a.mouse = it.next().and_then(|s| { let (x, y) = s.split_once(',')?; Some((x.parse().ok()?, y.parse().ok()?)) }),
             "--pause" => a.show_pause = true,
             "--shaders-menu" => a.show_shaders = true,
             "--debug" => a.debug = true,
@@ -1203,6 +1206,9 @@ impl Game {
                     for _ in 0..3 {
                         self.particles.update(&self.world, 0.03);
                     }
+                }
+                if let Some(m) = self.args.mouse {
+                    self.mouse_pos = m;
                 }
                 if self.args.show_inventory || self.args.open.as_deref().is_some_and(|o| o != "corpse") {
                     self.set_screen(Screen::Inventory);
@@ -3326,14 +3332,15 @@ impl Game {
             let k = world_h * 0.8 / 2.0;
             let feet = center - up * (world_h * 0.44);
             let (mx, my) = self.mouse_pos;
-            let look_x = ((mx - (bx + bw / 2.0)) / (bw * 0.6)).atan();
-            let look_y = (((by + bh * 0.25) - my) / (bh * 0.6)).atan();
+            // Like the classic screen: the head follows the mouse, but only so far.
+            let look_x = (((mx - (bx + bw / 2.0)) / (bw * 0.6)).atan() * 0.45).clamp(-0.5, 0.5);
+            let look_y = ((((by + bh * 0.25) - my) / (bh * 0.6)).atan() * 0.25).clamp(-0.3, 0.3);
             let def = &self.mobs.reg.defs[pd];
-            let pose = player_model::Pose { pos: block.as_vec3(), look_yaw: look_x - std::f32::consts::PI, look_pitch: look_y, on_ground: true, ..Default::default() };
+            let pose = player_model::Pose { pos: block.as_vec3(), look_yaw: look_x - std::f32::consts::PI, look_pitch: -look_y, on_ground: true, ..Default::default() };
             let base = player_model::Animator::lying(0.0).bones(def, &pose, block, 1.0, 1.0);
             // Stand it up facing the camera, scaled into the box.
             let face = glam::Mat4::from_cols(right.extend(0.0), up.extend(0.0), (-f).extend(0.0), Vec4::W);
-            let m = glam::Mat4::from_translation(feet - block.as_vec3()) * face * glam::Mat4::from_rotation_y(look_x * 0.35) * glam::Mat4::from_scale(Vec3::splat(k));
+            let m = glam::Mat4::from_translation(feet - block.as_vec3()) * face * glam::Mat4::from_rotation_y(look_x * 0.4) * glam::Mat4::from_scale(Vec3::splat(k));
             let mut b = base;
             for mm in b.m.iter_mut() {
                 *mm = (m * glam::Mat4::from_cols_array_2d(mm)).to_cols_array_2d();
@@ -3341,7 +3348,7 @@ impl Game {
             items.extend(self.armor_instances(&b));
             items.push((pd, b));
             let back = center + f * (world_h * 1.3) - block.as_vec3();
-            figure_backdrop = Some(item_render::GpuItem { pos: [back.x, back.y, back.z, world_h * 1.12 * (d + world_h * 1.3) / d], info: [0.0, 0.0, 0.0, 0.0], layers: [0.0; 4], rot: [0.0; 4] });
+            figure_backdrop = Some(item_render::GpuItem { pos: [back.x, back.y, back.z, world_h * 1.22 * (d + world_h * 1.3) / d], info: [0.0, 0.0, 0.0, 0.0], layers: [0.0; 4], rot: [0.0; 4] });
         }
         if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
             let def = &self.mobs.reg.defs[pd];
