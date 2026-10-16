@@ -147,6 +147,23 @@ pub struct MeshTables {
     /// Water drawn with its biome's water colour (swamps).
     water: Vec<bool>,
     water_tints: Vec<[u8; 3]>,
+    /// Redstone: 1 wire, 2 something wire runs into from any side, 3 a repeater (joins along
+    /// its facing), 0 anything else.
+    rs: Vec<u8>,
+}
+
+/// How redstone wire joins the blocks around it (see `MeshTables::rs`).
+pub fn redstone_join(reg: &BlockRegistry, id: BlockId) -> u8 {
+    let b = reg.get(id);
+    match b.shape {
+        Shape::Wire => 1,
+        Shape::Lever | Shape::Button | Shape::Plate => 2,
+        Shape::Repeater | Shape::Comparator => 3,
+        _ => {
+            let base = &reg.get(b.base).name;
+            u8::from(base.starts_with("redstone_torch") || base == "redstone_block") * 2
+        }
+    }
 }
 
 impl MeshTables {
@@ -169,12 +186,14 @@ impl MeshTables {
                 .map(|c| [(c[0] * 200.0).min(255.0) as u8, (c[1] * 200.0).min(255.0) as u8, (c[2] * 200.0).min(255.0) as u8])
                 .collect(),
             water: vec![],
+            rs: vec![],
             water_tints: (0..crate::worldgen::Biome::COUNT)
                 .map(|i| crate::worldgen::Biome::from_u8(i as u8).water_tint().map(|c| (c * 200.0).min(255.0) as u8))
                 .collect(),
         };
         for (i, b) in reg.blocks.iter().enumerate() {
             t.water.push(b.shape == Shape::Liquid && b.name.starts_with("water"));
+            t.rs.push(redstone_join(reg, i as BlockId));
             t.opaque.push(reg.is_opaque(i as BlockId));
             t.shape.push(b.shape);
             t.transp.push(b.transparency);
@@ -402,10 +421,22 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                 if shape == Shape::Torch {
                     let l = light[i];
                     let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
+                    // On a wall: three pixels up, the foot against the wall and the head leaning
+                    // four pixels out (drawn for a wall to the north, then turned).
+                    let v = t.variant[idu];
+                    let wall = v > 0;
                     for (f, fi) in FACES.iter().enumerate() {
                         let layer = t.faces[idu][f] as u32;
                         for (k, c) in fi.corners.iter().enumerate() {
-                            let pos = [base[0] + if c[0] == 1 { 9 } else { 7 }, base[1] + if c[1] == 1 { 10 } else { 0 }, base[2] + if c[2] == 1 { 9 } else { 7 }];
+                            let mut pos = [if c[0] == 1 { 9 } else { 7 }, if c[1] == 1 { 10 } else { 0 }, if c[2] == 1 { 9 } else { 7 }];
+                            if wall {
+                                pos[1] += 3;
+                                pos[2] = pos[2] - 6 + if c[1] == 1 { 4 } else { 0 };
+                                for _ in 0..(v - 1) & 3 {
+                                    pos = [16 - pos[2], pos[1], pos[0]];
+                                }
+                            }
+                            let pos = [base[0] + pos[0], base[1] + pos[1], base[2] + pos[2]];
                             let [u, v] = fi.uv[k];
                             let u = if u == 0 { 7 } else { 9 };
                             // Sides show the whole stick; the top shows the flame, the bottom the handle end.
@@ -417,6 +448,11 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                             out.solid.push(pack(pos, 3, [u, v], layer, f as u32, 0, sky, blk, white));
                         }
                     }
+                    continue;
+                }
+
+                if shape == Shape::Wire {
+                    wire_quads(t, blocks, i, base, light[i], &mut out);
                     continue;
                 }
 
@@ -457,7 +493,12 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     boxes.clear();
                     crate::shapes::boxes(shape, t.variant[idu], conn, false, &mut boxes);
                     let tint = |f: usize| if t.tint[idu] & (1 << f) != 0 { biome_tint } else { white };
-                    for b in &boxes {
+                    let parts = crate::shapes::has_parts(shape);
+                    let piston = matches!(shape, Shape::Piston | Shape::PistonHead | Shape::Oriented);
+                    let pdir = crate::shapes::dir6_of(t.variant[idu]);
+                    let facing = crate::shapes::facing_of(t.variant[idu]);
+                    for (bi, b) in boxes.iter().enumerate() {
+                        let part = parts && bi > 0;
                         let (lo, hi) = ([b[0] as u32, b[1] as u32, b[2] as u32], [b[3] as u32, b[4] as u32, b[5] as u32]);
                         for (f, fi) in FACES.iter().enumerate() {
                             let n = fi.normal;
@@ -475,10 +516,18 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                             }
                             let l = if edge { light[ni] } else { light[i] };
                             let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
-                            let layer = t.faces[idu][f] as u32;
+                            let layer = if part {
+                                t.faces[idu][4]
+                            } else if piston {
+                                // The face it points to shows the piston top, the back its bottom.
+                                let df = DIR6_FACE[pdir];
+                                t.faces[idu][if f == df { 2 } else if f == df ^ 1 { 3 } else { 0 }]
+                            } else {
+                                t.faces[idu][f]
+                            } as u32;
                             for c in fi.corners {
                                 let q = [if c[0] == 1 { hi[0] } else { lo[0] }, if c[1] == 1 { hi[1] } else { lo[1] }, if c[2] == 1 { hi[2] } else { lo[2] }];
-                                let uv = match f {
+                                let mut uv = match f {
                                     0 => [16 - q[2], 16 - q[1]],
                                     1 => [q[2], 16 - q[1]],
                                     2 => [q[0], q[2]],
@@ -486,6 +535,13 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                                     4 => [q[0], 16 - q[1]],
                                     _ => [16 - q[0], 16 - q[1]],
                                 };
+                                if part {
+                                    uv = part_uv(f, q, lo, hi);
+                                } else if piston && f >> 1 != DIR6_FACE[pdir] >> 1 {
+                                    uv = piston_side_uv(f, q, pdir);
+                                } else if f == 2 && matches!(shape, Shape::Repeater | Shape::Comparator) {
+                                    uv = turn_uv([q[0], q[2]], facing);
+                                }
                                 out.solid.push(pack([base[0] + q[0], base[1] + q[1], base[2] + q[2]], 3, uv, layer, f as u32, 0, sky, blk, tint(f)));
                             }
                         }
@@ -619,6 +675,105 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
 }
 
 /// Merge each mask into as few rectangles as possible (grow along a, then along b).
+/// Face index (FACES order) of each of the six piston directions (`shapes::DIRS6`).
+const DIR6_FACE: [usize; 6] = [5, 0, 4, 1, 2, 3];
+
+/// Texture coordinates on a top face for a block turned `k` quarter turns from north: the
+/// picture's top points the way the block faces.
+fn turn_uv(uv: [u32; 2], k: u8) -> [u32; 2] {
+    let [mut x, mut z] = uv;
+    for _ in 0..k {
+        (x, z) = (z, 16 - x);
+    }
+    [x, z]
+}
+
+/// A lever handle or repeater torch: the middle two columns of a torch picture, flame at
+/// the far end of its long side.
+fn part_uv(f: usize, q: [u32; 3], lo: [u32; 3], hi: [u32; 3]) -> [u32; 2] {
+    let size = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
+    let long = if size[1] >= size[0] && size[1] >= size[2] { 1 } else if size[0] >= size[2] { 0 } else { 2 };
+    let normal = f >> 1;
+    let others: Vec<usize> = (0..3).filter(|&a| a != normal).collect();
+    if normal == long {
+        [7 + (q[others[0]] - lo[others[0]]).min(2), 6 + (q[others[1]] - lo[others[1]]).min(2)]
+    } else {
+        let across = if others[0] == long { others[1] } else { others[0] };
+        [7 + (q[across] - lo[across]).min(2), 6 + (hi[long] - q[long]).min(10)]
+    }
+}
+
+/// Piston sides: the picture's top (the wooden edge) points the way the piston faces.
+fn piston_side_uv(f: usize, q: [u32; 3], dir: usize) -> [u32; 2] {
+    let d = crate::shapes::DIRS6[dir];
+    let axis = d.iter().position(|&c| c != 0).unwrap_or(1);
+    let along = if d[axis] > 0 { q[axis] } else { 16 - q[axis] };
+    let normal = f >> 1;
+    let across = (0..3).find(|&a| a != axis && a != normal).unwrap_or(0);
+    [q[across], 16 - along]
+}
+
+/// Redstone dust: one flat quad whose picture (cross, T, corner or line) is turned to match
+/// where it joins, plus a strip up the side of each block it climbs. Brighter with power.
+fn wire_quads(t: &MeshTables, blocks: &[BlockId], i: usize, base: [u32; 3], l: u8, out: &mut SectionMesh) {
+    let idu = blocks[i] as usize;
+    let up = (P * P) as isize;
+    let nb = |o: isize| blocks[(i as isize + o) as usize] as usize;
+    let open_above = !t.opaque[nb(up)];
+    // East, west, south, north.
+    let dirs = [(CONN_PX, 1isize, 0u8), (CONN_NX, -1, 0), (CONN_PZ, P as isize, 1), (CONN_NZ, -(P as isize), 1)];
+    let (mut conn, mut climb) = (0u8, 0u8);
+    for (bit, o, axis) in dirs {
+        let n = nb(o);
+        let joins = match t.rs[n] {
+            1 | 2 => true,
+            // Repeaters only along their length (facing north/south is axis 1).
+            3 => (t.variant[n] & 1 == 0) == (axis == 1),
+            _ => false,
+        };
+        if joins || (!t.opaque[n] && t.rs[nb(o - up)] == 1) {
+            conn |= bit;
+        } else if open_above && t.rs[nb(o + up)] == 1 {
+            conn |= bit;
+            climb |= bit;
+        }
+    }
+    let power = t.variant[idu] as u32;
+    let k = power as f32 / 15.0;
+    let tint = [(70.0 + 185.0 * k) as u8, if power > 0 { (8.0 + 40.0 * k) as u8 } else { 0 }, 0];
+    let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
+    let (e, w, s, n) = (conn & CONN_PX != 0, conn & CONN_NX != 0, conn & CONN_PZ != 0, conn & CONN_NZ != 0);
+    let count = conn.count_ones();
+    // Textures: side line (north-south), top cross, bottom corner (north + east), front T (no south).
+    let (tex, turn) = match count {
+        0 | 4 => (2, 0),
+        1 => (0, u8::from(e || w)),
+        2 if (e && w) || (n && s) => (0, u8::from(e)),
+        2 => (3, if n && e { 0 } else if e && s { 1 } else if s && w { 2 } else { 3 }),
+        _ => (4, if !s { 0 } else if !w { 1 } else if !n { 2 } else { 3 }),
+    };
+    let layer = t.faces[idu][tex] as u32;
+    let fi = &FACES[2];
+    for c in fi.corners.iter() {
+        let pos = [base[0] + c[0] * 16, base[1] + 1, base[2] + c[2] * 16];
+        let uv = turn_uv([c[0] * 16, c[2] * 16], turn);
+        out.solid.push(pack(pos, 3, uv, layer, 2, 0, sky, blk, tint));
+    }
+    // Up the wall of a block it climbs: one pixel out from it, facing back into this block.
+    let line = t.faces[idu][0] as u32;
+    for (bit, f, axis, at) in [(CONN_PX, 1usize, 0usize, 15u32), (CONN_NX, 0, 0, 1), (CONN_PZ, 5, 2, 15), (CONN_NZ, 4, 2, 1)] {
+        if climb & bit == 0 {
+            continue;
+        }
+        let fi = &FACES[f];
+        for (k, c) in fi.corners.iter().enumerate() {
+            let mut q = [c[0] * 16, c[1] * 16, c[2] * 16];
+            q[axis] = at;
+            out.solid.push(pack([base[0] + q[0], base[1] + q[1], base[2] + q[2]], 3, fi.uv[k], line, f as u32, 0, sky, blk, tint));
+        }
+    }
+}
+
 fn greedy(masks: &mut [[Option<FaceKey>; 256]], out: &mut SectionMesh) {
     for f in 0..6 {
         let fi = &FACES[f];

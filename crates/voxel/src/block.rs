@@ -39,12 +39,53 @@ pub enum Shape {
     Layer,
     /// A sloped roof (Macaw's Roofs idea): eight thin steps rising to the side it faces.
     Roof,
+    /// Redstone dust lying on a block; the variant is its power, 0 to 15.
+    Wire,
+    /// On the floor or a wall; flips on and off.
+    Lever,
+    /// On the floor or a wall; pressed for a moment.
+    Button,
+    /// Pressure plate, pressed while something stands on it.
+    Plate,
+    /// A redstone repeater: a thin slab with two little torches.
+    Repeater,
+    /// Piston base, facing any of six ways, pushed out or not.
+    Piston,
+    /// The arm of a pushed-out piston.
+    PistonHead,
+    /// A redstone comparator: like a repeater, with two torches at the back.
+    Comparator,
+    /// A full block with a front facing any of six ways (observer, dropper, dispenser).
+    Oriented,
+    /// A hopper: a wide bowl over a spout pointing down or to a side.
+    Hopper,
 }
 
 impl Shape {
     /// Drawn and collided as boxes from `shapes::boxes`.
     pub fn is_boxes(self) -> bool {
-        matches!(self, Shape::Slab | Shape::Stairs | Shape::Fence | Shape::Wall | Shape::Pane | Shape::Door | Shape::Trapdoor | Shape::Layer | Shape::Roof)
+        matches!(
+            self,
+            Shape::Slab
+                | Shape::Stairs
+                | Shape::Fence
+                | Shape::Wall
+                | Shape::Pane
+                | Shape::Door
+                | Shape::Trapdoor
+                | Shape::Layer
+                | Shape::Roof
+                | Shape::Wire
+                | Shape::Lever
+                | Shape::Button
+                | Shape::Plate
+                | Shape::Repeater
+                | Shape::Piston
+                | Shape::PistonHead
+                | Shape::Comparator
+                | Shape::Oriented
+                | Shape::Hopper
+        )
     }
 }
 
@@ -191,6 +232,8 @@ pub struct BlockRegistry {
     // Dense per-id property tables for the hot loops (meshing, lighting).
     opaque: Vec<bool>,
     light: Vec<u8>,
+    /// Id of variant 1 of each base block (variants follow it in order), 0 when it has none.
+    first_variant: Vec<BlockId>,
 }
 
 impl BlockRegistry {
@@ -206,6 +249,7 @@ impl BlockRegistry {
             textures: Vec::new(),
             opaque: Vec::new(),
             light: Vec::new(),
+            first_variant: Vec::new(),
         };
         let mut tex_index: HashMap<String, u16> = HashMap::new();
         let mut tex = |name: &str, reg_tex: &mut Vec<String>| -> u16 {
@@ -289,9 +333,14 @@ impl BlockRegistry {
             });
         }
         // Orientations get hidden ids after every base block, so base ids don't move.
-        for base in 0..reg.blocks.len() {
+        let bases = reg.blocks.len();
+        reg.first_variant = vec![AIR; bases];
+        for base in 0..bases {
             let b = reg.blocks[base].clone();
             let n = crate::shapes::variant_count(b.shape);
+            if n > 1 {
+                reg.first_variant[base] = reg.blocks.len() as BlockId;
+            }
             for v in 1..n {
                 let id = reg.blocks.len() as BlockId;
                 let name = format!("{}:{}", b.name, v);
@@ -332,6 +381,16 @@ impl BlockRegistry {
     #[inline(always)]
     pub fn light_of(&self, id: BlockId) -> u8 {
         self.light[id as usize]
+    }
+
+    /// Variant `v` of a block (any variant of it may be passed); the base itself for 0 or when
+    /// the shape has no such variant.
+    pub fn variant(&self, id: BlockId, v: u8) -> BlockId {
+        let base = self.blocks[id as usize].base;
+        if v == 0 || v >= crate::shapes::variant_count(self.blocks[base as usize].shape) {
+            return base;
+        }
+        self.first_variant[base as usize] + v as BlockId - 1
     }
 
     pub fn id(&self, name: &str) -> Option<BlockId> {

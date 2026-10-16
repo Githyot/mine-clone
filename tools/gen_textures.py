@@ -1402,8 +1402,290 @@ def build_registry():
     })
     for name in TERRACOTTA:
         reg[name] = lambda n=name: terracotta(n)
+    reg.update(redstone_registry())
     return reg
 
+
+
+# --------------------------------------------------------------------------
+# Redstone (Fase 4)
+# --------------------------------------------------------------------------
+
+SMOOTH = pal("#8c8c8c", "#9a9a9a", "#a6a6a6", "#b0b0b0", "#bababa")
+RS_DARK = pal("#3a0606", "#4e0a0a", "#5e1010")
+RS_LIT = pal("#a00c0c", "#d81a12", "#ff4a30", "#ff8a6a")
+
+
+def smooth_stone(name="smooth_stone"):
+    rng = rng_for(name)
+    f = 0.55 + 0.25 * value_noise(rng, 8) + 0.1 * rng.random((N, N))
+    img = from_rgb(shade(np.clip(f, 0, 1), SMOOTH[1:4], 0.4))
+    rgb = img[..., :3]
+    rgb[0, :] = SMOOTH[4]
+    rgb[:, 0] = SMOOTH[4]
+    rgb[15, :] = SMOOTH[0]
+    rgb[:, 15] = SMOOTH[0]
+    return img
+
+
+def redstone_torch(lit=True):
+    img = torch()
+    p = RS_LIT if lit else RS_DARK
+    for (x, y, k) in ((7, 6, 3 if lit else 2), (8, 6, 2), (7, 7, 2 if lit else 1), (8, 7, 1), (7, 8, 1), (8, 8, 0)):
+        put(img, x, y, p[min(k, len(p) - 1)])
+    return img
+
+
+def redstone_block():
+    rng = rng_for("redstone_block")
+    p = pal("#6a0606", "#8e0c0a", "#b0140e", "#cf2216", "#ec3a26")
+    f = fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.4)))
+    img = from_rgb(shade(f, p[1:], 0.7))
+    rgb = img[..., :3]
+    for _ in range(7):
+        x, y = rng.integers(1, 15, 2)
+        put(img, x, y, p[4])
+        put(img, x + 1, y + 1, p[0])
+    rgb[0, :] = p[4]
+    rgb[:, 0] = p[4]
+    rgb[15, :] = p[0]
+    rgb[1:, 15] = p[0]
+    return img
+
+
+def redstone_lamp(on=False):
+    rng = rng_for("redstone_lamp_on" if on else "redstone_lamp")
+    if on:
+        frame = pal("#7a4a20", "#a06830", "#c48a48")
+        glass = pal("#e8a840", "#f6c860", "#ffe08a", "#fff4c8")
+    else:
+        frame = pal("#3c2210", "#5a361c", "#76502c")
+        glass = pal("#2a1a10", "#3a2616", "#4a3220", "#5e4430")
+    f = fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.3)))
+    img = from_rgb(shade(f, glass, 0.7))
+    rgb = img[..., :3]
+    # A frame with four panes, like a lantern seen from the side.
+    for i in (0, 7, 8, 15):
+        rgb[i, :] = frame[1]
+        rgb[:, i] = frame[1]
+    rgb[0, :] = frame[2]
+    rgb[:, 0] = frame[2]
+    rgb[15, :] = frame[0]
+    rgb[:, 15] = frame[0]
+    for (x, y) in ((2, 2), (10, 2), (2, 10), (10, 10)):
+        put(img, x, y, glass[-1])
+        put(img, x + 1, y, glass[-2])
+    return img
+
+
+def lever():
+    img = canvas()
+    stick = pal("#4a3218", "#6b4a26", "#8a6334")
+    for y in range(6, 16):
+        put(img, 7, y, stick[2] if y > 6 else stick[1])
+        put(img, 8, y, stick[1] if y > 6 else stick[0])
+    return img
+
+
+def repeater(on=False):
+    img = smooth_stone("repeater_on" if on else "repeater")
+    p = RS_LIT if on else RS_DARK
+    for y in range(1, 15):
+        put(img, 7, y, p[1])
+        put(img, 8, y, p[2] if on else p[1])
+    # An arrow head at the top: the side the signal leaves.
+    for (x, y) in ((6, 2), (9, 2), (5, 3), (10, 3)):
+        put(img, x, y, p[1])
+    return img
+
+
+def piston_side():
+    rng = rng_for("piston_side")
+    img = cobblestone("piston_side")
+    rgb = img[..., :3]
+    plank = WOODS["oak"]["plank"]
+    grain = value_noise(rng, 8, 1)
+    for y in range(0, 4):
+        for x in range(N):
+            rgb[y, x] = plank[1 + int(grain[y, x] * 3)]
+    rgb[3, :] = plank[0]
+    rgb[0, :] = plank[4]
+    rgb[4:, 0] = scale_rgb(rgb[4:, 0], 0.7)
+    rgb[4:, 15] = scale_rgb(rgb[4:, 15], 0.7)
+    rgb[15, :] = scale_rgb(rgb[15, :], 0.7)
+    return img
+
+
+def piston_top(sticky=False):
+    rng = rng_for("piston_top_sticky" if sticky else "piston_top")
+    img = planks("oak")
+    rgb = img[..., :3]
+    cheb = np.maximum(np.abs(XX - 7.5), np.abs(YY - 7.5))
+    if sticky:
+        slime = pal("#3c8a2c", "#58a83c", "#78c450", "#9adc6c")
+        f = rng.random((N, N))
+        mask = cheb < 5.5
+        rgb[mask] = slime[np.clip((f[mask] * 4).astype(int), 0, 3)]
+    else:
+        iron = pal("#7a7a7a", "#a0a0a0", "#c4c4c4")
+        rgb[cheb < 3] = iron[1]
+        rgb[(cheb >= 2.5) & (cheb < 3)] = iron[0]
+        put(img, 6, 6, iron[2])
+    bevel(img, 1.15, 0.75)
+    return img
+
+
+def piston_bottom():
+    img = cobblestone("piston_bottom")
+    rgb = img[..., :3]
+    cheb = np.maximum(np.abs(XX - 7.5), np.abs(YY - 7.5))
+    rgb[cheb < 2.5] = scale_rgb(rgb[cheb < 2.5], 0.6)
+    bevel(img, 1.15, 0.7)
+    return img
+
+
+def wire(kind):
+    """Redstone dust, light grey so the game can tint it by power. Arms are four pixels wide."""
+    rng = rng_for("redstone_wire_" + kind)
+    arms = {"line": "NS", "cross": "NESW", "t": "NEW", "corner": "NE"}[kind]
+    mask = np.zeros((N, N), bool)
+    if "N" in arms:
+        mask[0:9, 6:10] = True
+    if "S" in arms:
+        mask[7:16, 6:10] = True
+    if "E" in arms:
+        mask[6:10, 7:16] = True
+    if "W" in arms:
+        mask[6:10, 0:9] = True
+    if kind != "line":
+        mask[5:11, 5:11] = True
+    # Ragged edges: dust, not paint.
+    edge = mask & ~(np.roll(mask, 1, 0) & np.roll(mask, -1, 0) & np.roll(mask, 1, 1) & np.roll(mask, -1, 1))
+    holes = edge & (rng.random((N, N)) < 0.35)
+    mask &= ~holes
+    img = canvas()
+    shade_ = 0.78 + 0.22 * rng.random((N, N))
+    img[..., 0] = img[..., 1] = img[..., 2] = 255 * shade_
+    img[..., 3] = np.where(mask, 255, 0)
+    return img
+
+
+
+def comparator(on=False):
+    img = smooth_stone("comparator_on" if on else "comparator")
+    p = RS_LIT if on else RS_DARK
+    # Lines from the two back torches meeting at the front one.
+    for y in range(4, 12):
+        put(img, 5, y, p[1])
+        put(img, 10, y, p[1])
+    for x in range(5, 11):
+        put(img, x, 4, p[1])
+    put(img, 7, 3, p[2] if on else p[1])
+    put(img, 8, 3, p[2] if on else p[1])
+    return img
+
+
+METAL_DARK = pal("#1e1e20", "#2e2e32", "#3c3c42", "#4e4e56", "#646470")
+
+
+def observer_side():
+    rng = rng_for("observer_side")
+    f = fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.3)))
+    img = from_rgb(shade(f, METAL_DARK[1:4], 0.6))
+    rgb = img[..., :3]
+    # An arrow pointing up: the way it looks.
+    for y in range(3, 13):
+        rgb[y, 7:9] = METAL_DARK[4]
+    for k in range(3):
+        rgb[3 + k, 7 - k - 1] = METAL_DARK[4]
+        rgb[3 + k, 8 + k + 1] = METAL_DARK[4]
+    bevel(img, 1.25, 0.7)
+    return img
+
+
+def observer_front():
+    img = from_rgb(METAL_DARK[1])
+    rgb = img[..., :3]
+    # A face: two dark eye slots over a grille mouth.
+    rgb[2:7, 2:7] = METAL_DARK[0]
+    rgb[2:7, 9:14] = METAL_DARK[0]
+    rgb[3:6, 3:6] = METAL_DARK[3]
+    rgb[3:6, 10:13] = METAL_DARK[3]
+    for y in (10, 12):
+        rgb[y, 3:13] = METAL_DARK[0]
+    bevel(img, 1.25, 0.7)
+    return img
+
+
+def observer_back():
+    img = observer_front()
+    rgb = img[..., :3]
+    rgb[2:14, 2:14] = METAL_DARK[2]
+    rgb[6:10, 6:10] = RS_DARK[1]
+    rgb[7:9, 7:9] = RS_DARK[2]
+    return img
+
+
+def dropper_front(dispenser=False):
+    img = furnace_side()
+    rgb = img[..., :3]
+    frame, inner = pal("#3a3a3a", "#141414")
+    if dispenser:
+        # A round mouth.
+        d = np.hypot(XX - 7.5, YY - 7.5)
+        rgb[d < 4.2] = frame
+        rgb[d < 3.0] = inner
+    else:
+        rgb[5:11, 5:11] = frame
+        rgb[6:10, 6:10] = inner
+    return img
+
+
+def hopper_outside():
+    rng = rng_for("hopper_outside")
+    f = fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.3)))
+    img = from_rgb(shade(f, METAL_DARK[2:], 0.6))
+    bevel(img, 1.2, 0.7)
+    return img
+
+
+def hopper_top():
+    img = hopper_outside()
+    rgb = img[..., :3]
+    rgb[2:14, 2:14] = METAL_DARK[0]
+    rgb[2, 2:14] = METAL_DARK[1]
+    rgb[2:14, 2] = METAL_DARK[1]
+    return img
+
+def redstone_registry():
+    return {
+        "smooth_stone": smooth_stone,
+        "redstone_torch": redstone_torch,
+        "redstone_torch_off": lambda: redstone_torch(False),
+        "redstone_block": redstone_block,
+        "redstone_lamp": redstone_lamp,
+        "redstone_lamp_on": lambda: redstone_lamp(True),
+        "lever": lever,
+        "repeater": repeater,
+        "repeater_on": lambda: repeater(True),
+        "piston_side": piston_side,
+        "piston_top": piston_top,
+        "piston_top_sticky": lambda: piston_top(True),
+        "piston_bottom": piston_bottom,
+        "redstone_wire_line": lambda: wire("line"),
+        "redstone_wire_cross": lambda: wire("cross"),
+        "redstone_wire_t": lambda: wire("t"),
+        "redstone_wire_corner": lambda: wire("corner"),
+        "comparator": comparator,
+        "comparator_on": lambda: comparator(True),
+        "observer_side": observer_side,
+        "observer_front": observer_front,
+        "observer_back": observer_back,
+        "dropper_front": dropper_front,
+        "dispenser_front": lambda: dropper_front(True),
+        "hopper_outside": hopper_outside,
+        "hopper_top": hopper_top,
+    }
 
 def to_image(arr):
     arr = np.clip(np.rint(arr), 0, 255).astype(np.uint8)

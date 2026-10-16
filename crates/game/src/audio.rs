@@ -110,6 +110,8 @@ pub enum Sfx {
     Cast(u8),
     /// A spell hitting something.
     SpellHit(u8),
+    /// A piston pushing out (true) or pulling back.
+    Piston(bool),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

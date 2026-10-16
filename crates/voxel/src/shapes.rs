@@ -15,6 +15,18 @@ pub fn variant_count(shape: Shape) -> u8 {
         Shape::Slab => 3,
         Shape::Stairs | Shape::Layer | Shape::Roof => 8,
         Shape::Door | Shape::Trapdoor => 16,
+        // Wire: power 0..15. Lever and button: facing | on 4 | on a wall 8. Repeater: facing |
+        // delay - 1 in bits 2..3. Piston: six ways (0..5) | pushed out 8; its head: | sticky 8.
+        Shape::Wire | Shape::Lever | Shape::Button | Shape::Repeater | Shape::Piston | Shape::PistonHead => 16,
+        Shape::Plate => 2,
+        // Torches: 0 on the floor, 1..4 on a wall (facing - 1 is the wall's side).
+        Shape::Torch => 5,
+        // Comparator: facing | subtract 4 | output strength << 3.
+        Shape::Comparator => 128,
+        // Six ways | triggered 8.
+        Shape::Oriented => 16,
+        // Spout: 0 down, 1..4 north, east, south, west.
+        Shape::Hopper => 5,
         // Liquids: level 0 is the source, 1..7 flow further away, +8 is falling.
         Shape::Liquid => 16,
         _ => 1,
@@ -34,6 +46,23 @@ pub fn liquid_height(variant: u8) -> u32 {
 /// Facing in the low two bits: 0 north (-z), 1 east (+x), 2 south (+z), 3 west (-x).
 pub fn facing_of(variant: u8) -> u8 {
     variant & 3
+}
+
+/// The six ways a piston faces: north, east, south, west, up, down (low three bits).
+pub const DIRS6: [[i32; 3]; 6] = [[0, 0, -1], [1, 0, 0], [0, 0, 1], [-1, 0, 0], [0, 1, 0], [0, -1, 0]];
+
+pub fn dir6_of(variant: u8) -> usize {
+    (variant & 7).min(5) as usize
+}
+
+/// Turn a box drawn pointing up to point along `DIRS6[dir]`.
+fn orient6(b: PBox, dir: usize) -> PBox {
+    match dir {
+        4 => b,
+        5 => flip_y(b),
+        // Tip over so up becomes north, then turn to the side.
+        _ => rotate([b[0], b[2], 16 - b[4], b[3], b[5], 16 - b[1]], dir as u8),
+    }
 }
 
 /// Turn a box drawn facing north by `k` quarter turns (north -> east -> south -> west).
@@ -144,8 +173,62 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
             };
             out.push(b);
         }
+        Shape::Wire => out.push([0, 0, 0, 16, 1, 16]),
+        Shape::Lever => {
+            let on = variant & 4 != 0;
+            // Drawn with the block it hangs on to the north; the handle is the second box.
+            let parts = if variant & 8 != 0 {
+                [[5, 4, 0, 11, 12, 3], if on { [7, 10, 3, 9, 12, 10] } else { [7, 4, 3, 9, 6, 10] }]
+            } else {
+                [[5, 0, 4, 11, 3, 12], if on { [7, 3, 5, 9, 11, 7] } else { [7, 3, 9, 9, 11, 11] }]
+            };
+            out.extend(parts.map(|p| rotate(p, f)));
+        }
+        Shape::Button => {
+            let h = if variant & 4 != 0 { 1 } else { 2 };
+            let b = if variant & 8 != 0 { [5, 6, 0, 11, 10, h] } else { [5, 0, 6, 11, h, 10] };
+            out.push(rotate(b, f));
+        }
+        Shape::Plate => out.push([1, 0, 1, 15, if variant & 1 != 0 { 1 } else { 2 }, 15]),
+        Shape::Repeater => {
+            // Facing is where the signal goes out; the back torch moves back for longer delays.
+            let z = 6 + 2 * ((variant >> 2) & 3);
+            for b in [[0, 0, 0, 16, 2, 16], [7, 2, 2, 9, 7, 4], [7, 2, z, 9, 7, z + 2]] {
+                out.push(rotate(b, f));
+            }
+        }
+        Shape::Piston => {
+            let d = dir6_of(variant);
+            if variant & 8 != 0 {
+                out.push(orient6([0, 0, 0, 16, 12, 16], d));
+                out.push(orient6([6, 12, 6, 10, 16, 10], d));
+            } else {
+                out.push([0, 0, 0, 16, 16, 16]);
+            }
+        }
+        Shape::Comparator => {
+            for b in [[0, 0, 0, 16, 2, 16], [7, 2, 2, 9, 6, 4], [4, 2, 11, 6, 7, 13], [10, 2, 11, 12, 7, 13]] {
+                out.push(rotate(b, f));
+            }
+        }
+        Shape::Hopper => {
+            out.push([0, 10, 0, 16, 16, 16]);
+            out.push([4, 4, 4, 12, 10, 12]);
+            out.push(if variant == 0 { [6, 0, 6, 10, 4, 10] } else { rotate([6, 4, 0, 10, 8, 4], (variant - 1) & 3) });
+        }
+        Shape::PistonHead => {
+            let d = dir6_of(variant);
+            out.push(orient6([0, 12, 0, 16, 16, 16], d));
+            out.push(orient6([6, 0, 6, 10, 12, 10], d));
+        }
         _ => out.push([0, 0, 0, 16, 16, 16]),
     }
+}
+
+/// Boxes after the first of a lever or repeater are its handle or torches, drawn with the
+/// block's `front` texture like a little torch.
+pub fn has_parts(shape: Shape) -> bool {
+    matches!(shape, Shape::Lever | Shape::Repeater | Shape::Comparator)
 }
 
 /// Fences, walls and panes join others of their kind and full solid blocks.
@@ -167,6 +250,16 @@ mod tests {
         boxes(Shape::Stairs, 4, 0, false, &mut v);
         assert_eq!(v[0], [0, 8, 0, 16, 16, 16]);
         assert_eq!(v[1], [0, 0, 0, 16, 8, 8]);
+    }
+
+    #[test]
+    fn pistons_point_six_ways() {
+        let mut v = Vec::new();
+        for (d, want) in [(0, [0, 0, 0, 16, 16, 4]), (1, [12, 0, 0, 16, 16, 16]), (2, [0, 0, 12, 16, 16, 16]), (3, [0, 0, 0, 4, 16, 16]), (4, [0, 12, 0, 16, 16, 16]), (5, [0, 0, 0, 16, 4, 16])] {
+            v.clear();
+            boxes(Shape::PistonHead, d, 0, false, &mut v);
+            assert_eq!(v[0], want, "head facing {d}");
+        }
     }
 
     #[test]

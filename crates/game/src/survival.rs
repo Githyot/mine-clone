@@ -319,7 +319,8 @@ impl Survival {
             let cont = if c.furnace {
                 Container::Furnace(Furnace { inv: load_stacks(items, &c.slots, 3), burn: c.burn, burn_max: c.burn_max, cook: c.cook, xp: 0.0 })
             } else {
-                Container::Chest(load_stacks(items, &c.slots, CHEST_SIZE))
+                // Chests hold 27, hoppers 5, droppers and dispensers 9.
+                Container::Chest(load_stacks(items, &c.slots, c.slots.len().clamp(1, CHEST_SIZE)))
             };
             sv.containers.insert(pos, cont);
         }
@@ -821,6 +822,12 @@ impl Game {
                         self.open_container(Open::Furnace(hit.block));
                         return true;
                     }
+                    "hopper" | "dropper" | "dispenser" => {
+                        let n = if name == "hopper" { 5 } else { 9 };
+                        self.surv.containers.entry(hit.block).or_insert_with(|| Container::Chest(Inventory::new(n)));
+                        self.open_container(Open::Chest(hit.block));
+                        return true;
+                    }
                     "chest" => {
                         if !self.surv.containers.contains_key(&hit.block) {
                             let inv = self.structure_loot(hit.block);
@@ -886,6 +893,15 @@ impl Game {
                 return true;
             }
             return false;
+        }
+        if item.name == "flint_and_steel" {
+            let Some(hit) = self.target else { return false };
+            if self.redstone.kind(self.world.block_or_air(hit.block)) != crate::redstone::Kind::Tnt {
+                return false;
+            }
+            self.prime_tnt(hit.block, 4.0);
+            self.anim.start_swing();
+            return true;
         }
         let Some(block) = item.places else { return false };
         if let Some(pos) = self.place_block_as(block) {
@@ -1566,10 +1582,19 @@ impl Game {
                     slots.push((Slot::Cont(i), x0 + (8 + (i % 9) * 18) as f32 * s, y0 + (18 + (i / 9) * 18) as f32 * s));
                 }
             }
-            Open::Chest(_) => {
-                self.ui.label(x0 + 8.0 * s, y0 + 6.0 * s, "Baú", dark, s);
-                for i in 0..CHEST_SIZE {
-                    slots.push((Slot::Cont(i), x0 + (8 + (i % 9) * 18) as f32 * s, y0 + (18 + (i / 9) * 18) as f32 * s));
+            Open::Chest(p) => {
+                let n = self.open_container_inv().map(|i| i.slots.len()).unwrap_or(CHEST_SIZE);
+                let id = self.world.block_or_air(p);
+                let title = if n == CHEST_SIZE { "Baú".to_string() } else { self.reg.get(self.reg.get(id).base).display_name.clone() };
+                self.ui.label(x0 + 8.0 * s, y0 + 6.0 * s, &title, dark, s);
+                for i in 0..n {
+                    // A row of five (hopper), a 3×3 square (dropper, dispenser) or rows of nine.
+                    let (cx, cy) = match n {
+                        5 => (44 + i * 18, 20),
+                        9 => (62 + (i % 3) * 18, 17 + (i / 3) * 18),
+                        _ => (8 + (i % 9) * 18, 18 + (i / 9) * 18),
+                    };
+                    slots.push((Slot::Cont(i), x0 + cx as f32 * s, y0 + cy as f32 * s));
                 }
             }
         }
