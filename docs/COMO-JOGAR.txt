@@ -4,7 +4,12 @@ MINE CLONE - COMO JOGAR
 Abrir: dê dois cliques em mine-clone.exe (Windows) ou mine-clone (Linux/Mac).
 No Mac, na primeira vez: clique com o botão direito > Abrir (o app não é assinado).
 
-O mundo "Mundo 1" é criado na primeira vez e salvo sozinho a cada minuto e ao sair.
+O jogo abre no menu principal (com o último mundo girando ao fundo):
+  Um jogador     escolha um mundo (clique duas vezes para entrar) ou crie um novo
+                 com nome, semente e modo (Sobrevivência ou Criativo)
+  Multijogador   ainda não (fase 7 do plano)
+  Pacotes de textura, Opções (campo de visão, volumes, sensibilidade, controle...)
+Os mundos se salvam sozinhos a cada minuto e ao sair. "Salvar e sair" volta ao menu.
 Tudo fica na mesma pasta do jogo:
   saves/           seus mundos
   settings.ron     opções (pode editar com o Bloco de Notas)
@@ -18,8 +23,8 @@ Tudo fica na mesma pasta do jogo:
 CONTROLES
   W A S D         andar
   Espaço          pular (aperte 2 vezes rápido para voar / parar de voar)
-  Shift           agachar / descer voando
-  Ctrl            correr
+  Shift           agachar (a câmera abaixa e você não cai da beirada) / descer voando
+  Ctrl ou W 2x    correr (a visão abre um pouco)
   Mouse           olhar
   Botão esquerdo  quebrar bloco / atacar mob
   Botão direito   colocar bloco
