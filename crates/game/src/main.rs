@@ -178,6 +178,20 @@ fn parse_args() -> Args {
 
 /// Folder for settings, saves, resource packs and music: the source tree when run with cargo,
 /// otherwise the folder the executable is in.
+/// Blocks, items and recipes from text.
+fn game_data(blocks: &str, items: &str, recipes: &str) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
+    let reg = BlockRegistry::from_ron(blocks)?;
+    let items = ItemRegistry::from_ron(items, &reg)?;
+    let recipes = Recipes::from_ron(recipes, &items)?;
+    Ok((reg, items, recipes))
+}
+
+/// The data files in `packs/vanilla/` when there are any, each falling back to the built-in copy.
+fn load_game_data(base: &Path) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
+    let read = |name: &str, built_in: &str| std::fs::read_to_string(base.join("packs/vanilla").join(name)).unwrap_or_else(|_| built_in.to_string());
+    game_data(&read("blocks.ron", embedded::BLOCKS_RON), &read("items.ron", embedded::ITEMS_RON), &read("recipes.ron", embedded::RECIPES_RON))
+}
+
 fn base_dir() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_default();
     if cwd.join("packs/vanilla").is_dir() {
@@ -432,24 +446,14 @@ impl Game {
         }
         ensure_folders(&base, &settings);
 
-        // Blocks: a blocks.ron on disk wins (so it can be modded), otherwise the built-in copy.
-        let blocks_text = std::fs::read_to_string(base.join("packs/vanilla/blocks.ron")).unwrap_or_else(|_| embedded::BLOCKS_RON.to_string());
-        let reg = Arc::new(BlockRegistry::from_ron(&blocks_text).unwrap_or_else(|e| {
-            log::error!("{e}; using built-in blocks");
-            BlockRegistry::from_ron(embedded::BLOCKS_RON).unwrap()
-        }));
-
-        // Items and recipes: files on disk win, like blocks.
-        let items_text = std::fs::read_to_string(base.join("packs/vanilla/items.ron")).unwrap_or_else(|_| embedded::ITEMS_RON.to_string());
-        let items = ItemRegistry::from_ron(&items_text, &reg).unwrap_or_else(|e| {
-            log::error!("{e}; using built-in items");
-            ItemRegistry::from_ron(embedded::ITEMS_RON, &reg).unwrap()
+        // Blocks, items and recipes: files on disk win (so they can be modded), otherwise the
+        // built-in copies. They depend on each other, so if any file is missing or doesn't fit
+        // the others (an old copy left from an earlier version), all three come from the built-in set.
+        let (reg, items, recipes) = load_game_data(&base).unwrap_or_else(|e| {
+            log::error!("{e}; using the built-in blocks, items and recipes");
+            game_data(embedded::BLOCKS_RON, embedded::ITEMS_RON, embedded::RECIPES_RON).expect("built-in game data")
         });
-        let recipes_text = std::fs::read_to_string(base.join("packs/vanilla/recipes.ron")).unwrap_or_else(|_| embedded::RECIPES_RON.to_string());
-        let recipes = Recipes::from_ron(&recipes_text, &items).unwrap_or_else(|e| {
-            log::error!("{e}; using built-in recipes");
-            Recipes::from_ron(embedded::RECIPES_RON, &items).unwrap()
-        });
+        let reg = Arc::new(reg);
         let item_base = reg.textures.len() as u16;
         let texture_names: Vec<String> = reg.textures.iter().chain(items.textures.iter()).cloned().chain(extra_textures()).collect();
 
@@ -3246,5 +3250,28 @@ fn draw_heart(ui: &mut UiBatch, x: f32, y: f32, s: f32, color: [u8; 4], fill: f3
                 ui.rect(x + c as f32 * s, y + r as f32 * s, s, s, color);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod data_tests {
+    use super::*;
+
+    #[test]
+    fn built_in_data_loads() {
+        let (reg, items, recipes) = game_data(embedded::BLOCKS_RON, embedded::ITEMS_RON, embedded::RECIPES_RON).unwrap();
+        assert!(reg.id("oak_stairs:5").is_some());
+        assert!(items.id("cobblestone_slab").is_some());
+        assert!(!recipes.shaped.is_empty());
+    }
+
+    #[test]
+    fn stale_blocks_file_is_rejected() {
+        // An old blocks.ron without slabs must make the game use the built-in set, not crash.
+        let dir = std::env::temp_dir().join(format!("mc-stale-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("packs/vanilla")).unwrap();
+        std::fs::write(dir.join("packs/vanilla/blocks.ron"), "(blocks: [(name: \"stone\")])").unwrap();
+        assert!(load_game_data(&dir).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
