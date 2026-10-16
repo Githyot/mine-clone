@@ -188,9 +188,10 @@ def neighbor_differs(ids, dx, dy):
 # --------------------------------------------------------------------------
 
 STONE = pal("#5d5d5d", "#6b6b6b", "#777777", "#828282", "#8e8e8e", "#9c9c9c")
-DIRT = pal("#5a3d24", "#6b4a2d", "#7a5636", "#8a6542", "#9b7551")
-GRASS = pal("#3e7a25", "#4b8b2c", "#57993a", "#64a743", "#74b54f", "#86c35d")
-SAND = pal("#c9b27a", "#d4bf87", "#dccb93", "#e5d5a1", "#eddfb0")
+DIRT = pal("#614329", "#6c4c30", "#775536", "#825f3d", "#8d6945")
+# Soft, low-contrast palettes: the classic blocks read as one colour with gentle speckle.
+GRASS = pal("#4c7a30", "#548436", "#5b8c3b", "#629440", "#6a9c46", "#74a54e")
+SAND = pal("#d3c091", "#d9c799", "#dfcea2", "#e4d5aa", "#eadcb3")
 SANDSTONE = pal("#a99560", "#bba774", "#cbb884", "#d8c793", "#e3d4a2")
 SNOW = pal("#d8e2ea", "#e5edf2", "#eff4f8", "#f8fbfd", "#ffffff")
 COBBLE = pal("#3b3b3b", "#5a5a5a", "#6f6f6f", "#848484", "#999999", "#adadad")
@@ -242,7 +243,7 @@ WOODS = {
 }
 
 NEW_WOODS = ("jungle", "acacia", "dark_oak", "cherry")
-RED_SAND = pal("#a3501e", "#b25a23", "#bf6529", "#cb7131", "#d67e3b")
+RED_SAND = pal("#ae5824", "#b75f28", "#c0662d", "#c96e33", "#d1763a")
 TERRACOTTA = {
     "terracotta": "#985e44",
     "white_terracotta": "#cdb1a2",
@@ -345,7 +346,7 @@ def snow_grass_side():
 
 def sand(name="sand"):
     rng = rng_for(name)
-    f = 0.4 * fbm(rng, ((4, 0.4), (2, 0.6))) + 0.6 * rng.random((N, N))
+    f = 0.55 * fbm(rng, ((4, 0.4), (2, 0.6))) + 0.45 * rng.random((N, N))
     img = from_rgb(shade(f, SAND, 0.4))
     return img
 
