@@ -3,13 +3,13 @@
   "id": "first_light",
   "title": "Primeira Luz",
   "situation": "overworld",
-  "seconds": 171
+  "seconds": 172
  },
  {
   "id": "moss",
   "title": "Musgo",
   "situation": "overworld",
-  "seconds": 200
+  "seconds": 219
  },
  {
   "id": "still_water",
@@ -21,7 +21,7 @@
   "id": "block_by_block",
   "title": "Bloco a Bloco",
   "situation": "creative",
-  "seconds": 160
+  "seconds": 140
  },
  {
   "id": "embers",
@@ -33,7 +33,7 @@
   "id": "void",
   "title": "Vazio",
   "situation": "end",
-  "seconds": 246
+  "seconds": 258
  },
  {
   "id": "beginning",
@@ -45,7 +45,7 @@
   "id": "wandering",
   "title": "Andarilho",
   "situation": "overworld",
-  "seconds": 151
+  "seconds": 150
  },
  {
   "id": "harvest",
