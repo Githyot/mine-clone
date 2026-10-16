@@ -1,0 +1,47 @@
+MINE CLONE - COMO JOGAR
+=======================
+
+Abrir: dê dois cliques em mine-clone.exe (Windows) ou mine-clone (Linux/Mac).
+No Mac, na primeira vez: clique com o botão direito > Abrir (o app não é assinado).
+
+O mundo "Mundo 1" é criado na primeira vez e salvo sozinho a cada minuto e ao sair.
+Tudo fica na mesma pasta do jogo:
+  saves/           seus mundos
+  settings.ron     opções (pode editar com o Bloco de Notas)
+  music/           coloque suas músicas aqui (mp3, ogg, wav, flac)
+  resourcepacks/   coloque pacotes de textura aqui (pasta ou .zip, inclusive do Minecraft)
+  screenshots/     fotos tiradas com F2
+  crash.txt        aparece só se o jogo fechar com erro (me mande esse arquivo)
+
+CONTROLES
+  W A S D         andar
+  Espaço          pular (aperte 2 vezes rápido para voar / parar de voar)
+  Shift           agachar / descer voando
+  Ctrl            correr
+  Mouse           olhar
+  Botão esquerdo  quebrar bloco
+  Botão direito   colocar bloco
+  Botão do meio   copiar o bloco que você está olhando
+  1 a 9 / roda    escolher bloco da barra
+  E               todos os blocos (clique num bloco para pôr na barra)
+  Esc             menu (distância de visão, música, texturas, salvar e sair)
+  M               tocar a próxima música agora
+  F1              esconder a interface
+  F2              tirar foto
+  F3              informações (FPS, posição, bioma, GPU)
+  F3 + T          recarregar texturas
+  F11             tela cheia
+
+MÚSICA
+  Como no Minecraft antigo: uma música calma de vez em quando, com 10 a 20 minutos de silêncio.
+  No menu (Esc) > Música: Clássica (as do jogo), Minha pasta (só as suas), Ambas, ou Desligada.
+  Suas músicas: arquivos soltos em music/ tocam em qualquer lugar. Para escolher a situação,
+  use subpastas: overworld, underwater (debaixo d'água), creative, nether, end, title.
+  O intervalo entre músicas fica em settings.ron (music_delay_min / music_delay_max, em segundos).
+
+TEXTURAS
+  Coloque o pacote em resourcepacks/ e escolha em Esc > Pacote de texturas.
+  Pacotes do Minecraft (assets/minecraft/textures/block/...) funcionam, inclusive 32x, 64x etc.
+
+OPÇÕES DE TESTE (linha de comando)
+  --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080

@@ -6,3 +6,5 @@
 /music/*
 !/music/README.md
 *.png.tmp
+/screenshots
+/crash.txt

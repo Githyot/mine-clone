@@ -2,6 +2,25 @@
 name = "game"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+description = "The game client: window, renderer, input, HUD and audio."
+
+[[bin]]
+name = "mine-clone"
+path = "src/main.rs"
 
 [dependencies]
+voxel = { path = "../voxel" }
+glam.workspace = true
+bytemuck.workspace = true
+serde.workspace = true
+ron.workspace = true
+crossbeam-channel.workspace = true
+log.workspace = true
+wgpu = "24"
+winit = "0.30"
+pollster = "0.4"
+image = { version = "0.25", default-features = false, features = ["png"] }
+rodio = { version = "0.20", default-features = false, features = ["vorbis", "mp3", "wav", "flac"] }
+font8x8 = "0.3"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+env_logger = "0.11"

@@ -1,0 +1,44 @@
+[
+ {
+  "id": "first_light",
+  "title": "Primeira Luz",
+  "situation": "overworld",
+  "seconds": 119
+ },
+ {
+  "id": "moss",
+  "title": "Musgo",
+  "situation": "overworld",
+  "seconds": 140
+ },
+ {
+  "id": "still_water",
+  "title": "Água Parada",
+  "situation": "underwater",
+  "seconds": 110
+ },
+ {
+  "id": "block_by_block",
+  "title": "Bloco a Bloco",
+  "situation": "creative",
+  "seconds": 103
+ },
+ {
+  "id": "embers",
+  "title": "Brasa",
+  "situation": "nether",
+  "seconds": 120
+ },
+ {
+  "id": "void",
+  "title": "Vazio",
+  "situation": "end",
+  "seconds": 105
+ },
+ {
+  "id": "beginning",
+  "title": "Início",
+  "situation": "title",
+  "seconds": 99
+ }
+]
