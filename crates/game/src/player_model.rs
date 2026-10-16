@@ -295,9 +295,10 @@ impl Animator {
 
     /// The point in the world where the first-person right hand holds an item, so the item
     /// follows the arm through walking and swings.
-    pub fn first_person_hand(&self, eye: Vec3, yaw: f32, pitch: f32) -> Vec3 {
-        // Near the end of the 12-pixel arm, just above the knuckles.
-        (Self::camera(eye, yaw, pitch) * self.arm_place()).transform_point3(Vec3::new(0.0, -0.52, -0.13))
+    pub fn first_person_hand(&self, eye: Vec3, yaw: f32, pitch: f32) -> Mat4 {
+        // The fist, near the end of the 12-pixel arm. In this frame the arm runs along +Y back
+        // to the shoulder, -Z is the top of the arm and +X its outer side.
+        Self::camera(eye, yaw, pitch) * self.arm_place() * Mat4::from_translation(Vec3::new(0.0, -0.56, 0.0))
     }
 
     pub fn first_person_arm(&self, def: &MobDef, eye: Vec3, yaw: f32, pitch: f32, sky: f32, blk: f32) -> Bones {

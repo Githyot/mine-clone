@@ -59,6 +59,8 @@ pub struct EntityRenderer {
     pub items: crate::item_render::ItemGpu,
     /// Meshes after this index are paintings.
     mob_meshes: usize,
+    /// First armour mesh (material * 4 + piece), when there is a player model to fit it to.
+    armor_meshes: Option<usize>,
     /// (mesh, first instance, count) for this frame.
     draws: Vec<(usize, u32, u32)>,
     pub instance_count: usize,
@@ -252,12 +254,127 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
     (mb.verts, mb.indices)
 }
 
+/// Armour materials, by the item-name prefix, with their colour.
+pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 6] = [
+    ("leather", [134, 82, 46]),
+    ("chainmail", [150, 150, 156]),
+    ("iron", [206, 206, 206]),
+    ("golden", [236, 196, 60]),
+    ("diamond", [72, 214, 204]),
+    ("netherite", [74, 66, 70]),
+];
+
+/// The boxes of one armour piece (helmet, chestplate, leggings, boots) on the player model:
+/// (part, origin, size, texture-net origin, inflate). Every box has its own place in the
+/// 64×64 armour texture.
+fn armor_boxes(def: &MobDef, piece: usize) -> Vec<(usize, Vec3, Vec3, (u16, u16), f32)> {
+    let part = |i: usize| {
+        let p = &def.parts[i];
+        (Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32), Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32))
+    };
+    if def.parts.len() < 6 {
+        return Vec::new();
+    }
+    let mut v = Vec::new();
+    match piece {
+        0 => {
+            let (o, sz) = part(0);
+            v.push((0, o, sz, (0, 0), 1.0));
+        }
+        1 => {
+            let (o, sz) = part(1);
+            v.push((1, o, sz, (32, 0), 1.0));
+            for (k, uv) in [(2, (0, 16)), (3, (16, 16))] {
+                let (o, sz) = part(k);
+                // Sleeves cover the upper arm.
+                v.push((k, o + Vec3::Y * 5.0, Vec3::new(sz.x, sz.y - 5.0, sz.z), uv, 1.0));
+            }
+        }
+        2 => {
+            let (o, sz) = part(1);
+            v.push((1, o, Vec3::new(sz.x, 5.0, sz.z), (0, 32), 0.6));
+            for (k, uv) in [(4, (32, 16)), (5, (48, 16))] {
+                let (o, sz) = part(k);
+                v.push((k, o + Vec3::Y * 3.0, Vec3::new(sz.x, sz.y - 3.0, sz.z), uv, 0.6));
+            }
+        }
+        _ => {
+            for (k, uv) in [(4, (24, 32)), (5, (40, 32))] {
+                let (o, sz) = part(k);
+                v.push((k, o, Vec3::new(sz.x, 4.0, sz.z), uv, 1.0));
+            }
+        }
+    }
+    v
+}
+
+/// Our own armour picture for one material: plates with a darker rim and a lit top edge;
+/// chainmail is a mesh of rings with gaps.
+fn armor_skin(def: &MobDef, color: [u8; 3], chain: bool) -> Skin {
+    let mut pixels = vec![0u8; (SKIN_W * SKIN_H * 4) as usize];
+    for piece in 0..4 {
+        for (_, _, size, uv, _) in armor_boxes(def, piece) {
+            let tex = (size.x as i32, size.y as i32, size.z as i32);
+            for (fi, f) in faces(Vec3::ZERO, size, uv, tex).iter().enumerate() {
+                let (rx, ry, rw, rh) = f.rect;
+                // The helmet leaves the face open below the brow.
+                let open_face = piece == 0 && fi == 0;
+                for j in 0..rh {
+                    for i in 0..rw {
+                        let (x, y) = (rx + i, ry + j);
+                        if x < 0 || y < 0 || x >= 64 || y >= 64 {
+                            continue;
+                        }
+                        let h = ((x * 73 + y * 151) ^ (x * y * 17)) & 15;
+                        let mut k = 0.86 + h as f32 / 100.0;
+                        if i == 0 || j == 0 || i == rw - 1 || j == rh - 1 {
+                            k *= 0.68;
+                        } else if j == 1 {
+                            k *= 1.15;
+                        }
+                        let mut a = 255u8;
+                        if open_face && j >= 3 && i >= 1 && i < rw - 1 {
+                            a = 0;
+                        }
+                        if chain && (i + j) % 2 == 1 && i > 0 && j > 0 && i < rw - 1 && j < rh - 1 {
+                            a = 0;
+                        }
+                        let o = ((y as u32 * SKIN_W + x as u32) * 4) as usize;
+                        for c in 0..3 {
+                            pixels[o + c] = (color[c] as f32 * k).min(255.0) as u8;
+                        }
+                        pixels[o + 3] = a;
+                    }
+                }
+            }
+        }
+    }
+    Skin { pixels }
+}
+
+fn armor_mesh(def: &MobDef, piece: usize, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
+    let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
+    for (part, origin, size, uv, inflate) in armor_boxes(def, piece) {
+        let tex = (size.x as i32, size.y as i32, size.z as i32);
+        for f in faces(origin - Vec3::splat(inflate), size + Vec3::splat(2.0 * inflate), uv, tex).iter() {
+            // Both sides, so an open sleeve or helmet still looks solid from inside.
+            mb.face(f, part as u32);
+        }
+    }
+    (mb.verts, mb.indices)
+}
+
 impl EntityRenderer {
     pub fn new(r: &Renderer, reg: &MobRegistry, paintings: &[PaintingDef], base: &Path) -> EntityRenderer {
         let device = &r.device;
         let mut skins: Vec<Skin> = reg.defs.iter().map(|d| load_skin(base, &d.name)).collect();
         let back = crate::paintings::back_pixels(base);
         skins.extend(paintings.iter().map(|p| Skin { pixels: crate::paintings::skin_pixels(p, &back) }));
+        let player = reg.id("player").map(|i| &reg.defs[i]);
+        let armor_layer0 = skins.len();
+        if let Some(pd) = player {
+            skins.extend(ARMOR_MATERIALS.iter().map(|(n, c)| armor_skin(pd, *c, *n == "chainmail")));
+        }
         let layers = skins.len().max(1) as u32;
         let tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("mob skins"),
@@ -358,9 +475,30 @@ impl EntityRenderer {
                 indices: idx.len() as u32,
             });
         }
+        let armor_meshes = player.map(|pd| {
+            let first = meshes.len();
+            for m in 0..ARMOR_MATERIALS.len() {
+                for piece in 0..4 {
+                    let (v, idx) = armor_mesh(pd, piece, (armor_layer0 + m) as u32);
+                    meshes.push(MobMesh {
+                        vbuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("armor verts"), contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX }),
+                        ibuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("armor idx"), contents: bytemuck::cast_slice(&idx), usage: wgpu::BufferUsages::INDEX }),
+                        indices: idx.len() as u32,
+                    });
+                }
+            }
+            first
+        });
         let particles = crate::particles::ParticleGpu::new(r);
         let items = crate::item_render::ItemGpu::new(r);
-        EntityRenderer { particles, items, pipelines, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, draws: Vec::new(), instance_count: 0 }
+        EntityRenderer { particles, items, pipelines, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, armor_meshes, draws: Vec::new(), instance_count: 0 }
+    }
+
+    /// Mesh index of an armour piece (0 helmet .. 3 boots) for the item named `item`.
+    pub fn armor_mesh(&self, item: &str, piece: usize) -> Option<usize> {
+        let first = self.armor_meshes?;
+        let m = ARMOR_MATERIALS.iter().position(|(n, _)| item.starts_with(&format!("{n}_")))?;
+        Some(first + m * 4 + piece.min(3))
     }
 
     /// Mesh index of a painting, for `prepare`.

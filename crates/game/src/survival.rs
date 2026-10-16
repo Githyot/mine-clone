@@ -1667,6 +1667,9 @@ impl Game {
         give(self, 20, "wooden_axe", 1, 40);
         give(self, 22, "string", 6, 0);
         give(self, 27, "feather", 3, 0);
+        for (i, n) in ["golden_helmet", "iron_chestplate", "diamond_leggings", "leather_boots"].iter().enumerate() {
+            self.surv.armor[i] = self.items.id(n).map(|id| ItemStack::new(id, 1));
+        }
         self.surv.hunger = 13.0;
         self.surv.xp = 40;
         self.health = 15.0;
@@ -1743,36 +1746,96 @@ impl Game {
 }
 
 impl Game {
-    /// The item in hand, drawn in front of the camera in first person.
+    /// The item in hand, drawn in front of the camera in first person. It is placed in the
+    /// fist of the first-person arm, so it follows walking, swings and attacks with it: tools
+    /// and weapons are gripped by the handle with the blade up and forward, blocks rest on the
+    /// palm, and other items are held up flat.
     pub(crate) fn held_item_instance(&self, eye: Vec3, cam_block: IVec3) -> Option<GpuItem> {
+        let hand = self.anim.first_person_hand(eye, self.yaw, self.pitch);
+        let l = self.world.light(eye.floor().as_ivec3());
+        let eat = if self.surv.eat > 0.0 { (self.surv.eat * 14.0).sin().abs() * 0.04 } else { 0.0 };
+        // In this frame -Z is the top of the forearm and +Y runs back to the shoulder.
+        let face = (Vec3::Y * 0.85 - Vec3::X * 0.5).normalize();
+        self.item_in_hand(hand, Vec3::NEG_Z, face, 1.0, l, Vec3::Y * eat - cam_block.as_vec3())
+    }
+
+    /// The armour the player wears, drawn over the player model with the same bones.
+    pub(crate) fn armor_instances(&self, bones: &crate::entity::Bones) -> Vec<(usize, crate::entity::Bones)> {
+        (0..4)
+            .filter_map(|piece| {
+                let st = self.surv.armor[piece]?;
+                let mesh = self.entities.armor_mesh(&self.items.get(st.item).name, piece)?;
+                Some((mesh, *bones))
+            })
+            .collect()
+    }
+
+    /// The held item in the right hand of the player model, for the views from outside.
+    pub(crate) fn held_item_third_person(&self, arm: [[f32; 4]; 4], pivot: Vec3) -> Option<GpuItem> {
+        // The bone maps model pixels to the world (relative to `cam_block`); the fist is near
+        // the bottom of the 12-pixel arm. The hanging arm's front (+Z) points the way a held
+        // sword does, and its face looks out to the side.
+        let m = glam::Mat4::from_cols_array_2d(&arm);
+        let fist = m.transform_point3(Vec3::new(pivot.x, pivot.y - 10.0, pivot.z + 1.5));
+        let (_, rot, _) = m.to_scale_rotation_translation();
+        let hand = glam::Mat4::from_rotation_translation(rot, fist);
+        let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
+        self.item_in_hand(hand, Vec3::Z, Vec3::NEG_X, 0.8, l, Vec3::ZERO)
+    }
+
+    /// Place the held item in a fist. `hand` is the fist's frame (its arm runs along +Y back to
+    /// the shoulder), `top` the side the item stands out from and `face` roughly where a tool's
+    /// flat side should look.
+    fn item_in_hand(&self, hand: glam::Mat4, top: Vec3, face: Vec3, scale: f32, l: u8, shift: Vec3) -> Option<GpuItem> {
+        use glam::{EulerRot, Mat3, Quat};
         let st = self.held_stack()?;
         let it = self.items.get(st.item);
-        let f = self.forward();
-        let right = Vec3::new(self.yaw.cos(), 0.0, -self.yaw.sin());
-        let up = right.cross(f);
-        let sw = if self.anim.swing > 0.0 { (self.anim.swing * std::f32::consts::PI).sin() } else { 0.0 };
-        let eat = if self.surv.eat > 0.0 { (self.surv.eat * 14.0).sin().abs() * 0.04 } else { 0.0 };
-        let (flat, layers, size, roll, yaw_off) = match it.look {
+        let (_, arm_rot, fist) = hand.to_scale_rotation_translation();
+        let along = Vec3::NEG_Y;
+        let upright = Quat::from_mat3(&Mat3::from_cols(Vec3::X, top, Vec3::X.cross(top)));
+        let tool = it.tool.is_some() || it.name.ends_with("_sword") || it.name == "stick" || it.name.ends_with("_rod");
+        let (flat, layers, size, local, offset) = match it.look {
             Look::Block(b) => {
                 let bl = self.reg.get(b);
                 if matches!(bl.shape, Shape::Cross | Shape::Torch) {
-                    (1.0, [bl.faces[0] as f32; 3], if bl.shape == Shape::Torch { 0.45 } else { 0.3 }, 0.0, -0.35)
+                    // Torches and plants stand up out of the fist.
+                    let size = if bl.shape == Shape::Torch { 0.42 } else { 0.32 };
+                    (1.0, [bl.faces[0] as f32; 3], size, upright, top * (size * 0.35))
                 } else {
-                    (0.0, [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32], 0.16, 0.0, 0.6)
+                    // A small block on top of the fist, turned a little to show two sides.
+                    (0.0, [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32], 0.18, upright * Quat::from_rotation_y(0.8), top * 0.15 + along * 0.02)
                 }
             }
-            Look::Sprite(l) => (1.0, [(self.item_base + l) as f32; 3], 0.3, if it.tool.is_some() { 0.25 } else { 0.0 }, -0.25),
+            Look::Sprite(l) => {
+                let layer = (self.item_base + l) as f32;
+                if tool {
+                    // The picture's diagonal (handle bottom-left, tip top-right) points out of
+                    // the fist and a little forward along the arm.
+                    let tip = (top * 0.9 + along * 0.45).normalize();
+                    let face = (face - tip * face.dot(tip)).normalize();
+                    let side = face.cross(tip);
+                    let x = (tip - side) * std::f32::consts::FRAC_1_SQRT_2;
+                    let y = (tip + side) * std::f32::consts::FRAC_1_SQRT_2;
+                    let rot = Quat::from_mat3(&Mat3::from_cols(x, y, face));
+                    let size = 0.42;
+                    // Move the picture so its handle (a quarter in from the corner) sits in the fist.
+                    let grip = rot * Vec3::new(-0.3 * size, -0.3 * size, 0.0);
+                    (1.0, [layer; 3], size, rot, -grip + top * 0.05)
+                } else {
+                    // Food and other items: held up, facing the eye.
+                    (1.0, [layer; 3], 0.3, upright * Quat::from_rotation_z(0.3), top * 0.16)
+                }
+            }
         };
-        // Low on the right; a swing pulls it forward and down.
-        // In the right hand, moving with the arm; the item's own centre sits a little above the grip.
-        let p = self.anim.first_person_hand(eye, self.yaw, self.pitch) + up * (size * 0.45 + eat) - cam_block.as_vec3();
-        let l = self.world.light(eye.floor().as_ivec3());
+        let world_rot = arm_rot * local;
+        let p = fist + arm_rot * (offset * scale) + shift;
+        let (yaw, pitch, roll) = world_rot.to_euler(EulerRot::YXZ);
         let blk = ((l & 15) as f32 / 15.0).max(self.hand_light_level());
         Some(GpuItem {
-            pos: [p.x, p.y, p.z, size],
-            info: [self.yaw + yaw_off, flat, (l >> 4) as f32 / 15.0, blk],
+            pos: [p.x, p.y, p.z, size * scale],
+            info: [yaw, flat, (l >> 4) as f32 / 15.0, blk],
             layers: [layers[0], layers[1], layers[2], 0.0],
-            rot: [self.pitch - 0.9 * sw, roll + 0.8 * sw, 0.0, 0.0],
+            rot: [pitch, roll, 0.0, 0.0],
         })
     }
 

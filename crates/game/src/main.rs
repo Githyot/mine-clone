@@ -102,6 +102,8 @@ struct Args {
     kit: bool,
     /// Test: show the target block this far broken (0..1).
     mine: Option<f32>,
+    /// Test hook: freeze the arm swing at this point (0..1) for screenshots.
+    swing: Option<f32>,
     /// Test: hotbar slot in hand (1-9).
     slot: Option<usize>,
     /// Test: open a survival screen (table, furnace or chest).
@@ -164,6 +166,7 @@ fn parse_args() -> Args {
             "--survival" => a.survival = true,
             "--kit" => a.kit = true,
             "--mine" => a.mine = it.next().and_then(|v| v.parse().ok()),
+            "--swing" => a.swing = it.next().and_then(|v| v.parse().ok()),
             "--slot" => a.slot = it.next().and_then(|v| v.parse::<usize>().ok()).map(|v| v.clamp(1, 9) - 1),
             "--open" => a.open = it.next(),
             "--shader" => a.shader = it.next(),
@@ -2946,7 +2949,8 @@ impl Game {
             sky_top: [top[0], top[1], top[2], 1.0],
             sky_horizon: [horizon[0], horizon[1], horizon[2], 1.0],
             effects,
-            hand_light: [eye.x - block.x as f32, eye.y - 0.4 - block.y as f32, eye.z - block.z as f32, self.hand_light_level()],
+            // The light a held torch gives comes from the player's hand, wherever the camera is.
+            hand_light: [head.x - block.x as f32, head.y - 0.4 - block.y as f32, head.z - block.z as f32, self.hand_light_level()],
             ..Default::default()
         };
         let cam = Camera {
@@ -3041,12 +3045,17 @@ impl Game {
         }
         let selection = if self.screen == Screen::Playing || self.args.screenshot.is_some() { self.target.map(|t| t.block) } else { None };
         let mut items = self.mobs.instances(&self.world, block, rd + 16.0);
+        let mut held_third = None;
         if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
             let def = &self.mobs.reg.defs[pd];
             let pose = self.pose(false);
             if third {
                 let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
-                items.push((pd, self.anim.bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0)));
+                let bones = self.anim.bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
+                let pv = def.parts[2].pivot;
+                held_third = self.held_item_third_person(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32));
+                items.extend(self.armor_instances(&bones));
+                items.push((pd, bones));
             } else if self.screen == Screen::Playing && !self.hide_hud {
                 let l = self.world.light(head.floor().as_ivec3());
                 items.push((pd, self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, (l >> 4) as f32 / 15.0, ((l & 15) as f32 / 15.0).max(self.hand_light_level()))));
@@ -3074,15 +3083,16 @@ impl Game {
             let look_x = ((mx - (bx + bw / 2.0)) / (bw * 0.6)).atan();
             let look_y = (((by + bh * 0.25) - my) / (bh * 0.6)).atan();
             let def = &self.mobs.reg.defs[pd];
-            let pose = player_model::Pose { pos: block.as_vec3(), look_yaw: -look_x - std::f32::consts::PI, look_pitch: look_y, on_ground: true, ..Default::default() };
+            let pose = player_model::Pose { pos: block.as_vec3(), look_yaw: look_x - std::f32::consts::PI, look_pitch: look_y, on_ground: true, ..Default::default() };
             let base = player_model::Animator::lying(0.0).bones(def, &pose, block, 1.0, 1.0);
             // Stand it up facing the camera, scaled into the box.
             let face = glam::Mat4::from_cols(right.extend(0.0), up.extend(0.0), (-f).extend(0.0), Vec4::W);
-            let m = glam::Mat4::from_translation(feet - block.as_vec3()) * face * glam::Mat4::from_rotation_y(-look_x * 0.35) * glam::Mat4::from_scale(Vec3::splat(k));
+            let m = glam::Mat4::from_translation(feet - block.as_vec3()) * face * glam::Mat4::from_rotation_y(look_x * 0.35) * glam::Mat4::from_scale(Vec3::splat(k));
             let mut b = base;
             for mm in b.m.iter_mut() {
                 *mm = (m * glam::Mat4::from_cols_array_2d(mm)).to_cols_array_2d();
             }
+            items.extend(self.armor_instances(&b));
             items.push((pd, b));
             let back = center + f * (world_h * 1.3) - block.as_vec3();
             figure_backdrop = Some(item_render::GpuItem { pos: [back.x, back.y, back.z, world_h * 1.12 * (d + world_h * 1.3) / d], info: [0.0, 0.0, 0.0, 0.0], layers: [0.0; 4], rot: [0.0; 4] });
@@ -3106,9 +3116,13 @@ impl Game {
         self.entities.particles.prepare(&self.renderer, &self.particles, &self.world, block);
         let mut drops = self.drop_instances(block);
         drops.extend(figure_backdrop);
+        if let Some(k) = self.args.swing {
+            self.anim.swing = k;
+        }
         if !third && self.screen == Screen::Playing && !self.hide_hud && self.camera_mode == 0 {
             drops.extend(self.held_item_instance(eye, block));
         }
+        drops.extend(held_third);
         if let (Some(k), Some(h)) = (self.args.mine, self.target) {
             let id = self.world.block_or_air(h.block);
             self.mining = Some((h.block, k * self.dig_time(id)));
