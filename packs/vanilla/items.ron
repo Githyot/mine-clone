@@ -96,6 +96,8 @@
     (name: "oak_sapling", texture: Some("oak_sapling")),
     (name: "birch_sapling", texture: Some("birch_sapling")),
     (name: "spruce_sapling", texture: Some("spruce_sapling")),
+    (name: "bow", display_name: Some("Arco"), texture: Some("bow"), max_stack: Some(1)),
+    (name: "arrow", display_name: Some("Flecha"), texture: Some("arrow")),
     (name: "pig_spawn_egg", display_name: Some("Ovo de Porco"), texture: Some("pig_spawn_egg")),
     (name: "cow_spawn_egg", display_name: Some("Ovo de Vaca"), texture: Some("cow_spawn_egg")),
     (name: "sheep_spawn_egg", display_name: Some("Ovo de Ovelha"), texture: Some("sheep_spawn_egg")),

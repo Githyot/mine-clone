@@ -519,6 +519,29 @@ impl Game {
     }
 
     /// A block was broken by the player in survival: drops, experience, tool wear.
+    /// A block blown up: like the classic game, only some of what it would drop survives the
+    /// blast (`keep` is that chance); chests and furnaces always spill their contents.
+    pub(crate) fn blast_drops(&mut self, pos: IVec3, id: BlockId, keep: f32) {
+        let c = pos.as_vec3() + Vec3::splat(0.5);
+        if self.surv.rng.f32() < keep {
+            let tool = self.items.id("diamond_pickaxe").and_then(|i| self.items.get(i).tool.clone());
+            let drops = self.items.drops(&self.reg, id, tool.as_ref(), &mut self.surv.rng);
+            for d in drops {
+                self.pop_drop(c, d);
+            }
+        }
+        if let Some(cont) = self.surv.containers.remove(&pos) {
+            let inv = match cont {
+                Container::Chest(i) => i,
+                Container::Furnace(f) => f.inv,
+            };
+            for s in inv.slots.into_iter().flatten() {
+                self.pop_drop(c, s);
+            }
+        }
+        self.surv.saplings.retain(|(p, _)| *p != pos);
+    }
+
     pub(crate) fn surv_block_broken(&mut self, pos: IVec3, id: BlockId) {
         let tool = self.held_tool();
         let drops = self.items.drops(&self.reg, id, tool.as_ref(), &mut self.surv.rng);
@@ -1776,6 +1799,57 @@ impl Game {
         // In this frame -Z is the top of the forearm and +Y runs back to the shoulder.
         let face = (Vec3::Y * 0.85 - Vec3::X * 0.5).normalize();
         self.item_in_hand(hand, Vec3::NEG_Z, face, 1.0, l, Vec3::Y * eat - cam_block.as_vec3())
+    }
+
+    /// Skeletons' bows and the arrows in flight or stuck in blocks.
+    pub(crate) fn arrow_and_bow_instances(&self, mobs: &[(usize, crate::entity::Bones)], cam_block: IVec3) -> Vec<GpuItem> {
+        use glam::{EulerRot, Mat3, Quat};
+        let mut out = Vec::new();
+        let sprite = |name: &str| self.items.id(name).and_then(|i| match self.items.get(i).look {
+            Look::Sprite(l) => Some((self.item_base + l) as f32),
+            _ => None,
+        });
+        if let Some(bow) = sprite("bow") {
+            for (d, b) in mobs {
+                let def = &self.mobs.reg.defs[*d];
+                if !def.ranged || def.parts.len() < 3 {
+                    continue;
+                }
+                let p = &def.parts[2];
+                let m = glam::Mat4::from_cols_array_2d(&b.m[2]);
+                let fist = m.transform_point3(Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32 - 10.0, p.pivot.2 as f32 + 1.0));
+                let (_, rot, _) = m.to_scale_rotation_translation();
+                // Held upright in the outstretched arm, string towards the body, seen side-on.
+                let tip = Vec3::Z;
+                let face = (Vec3::X - Vec3::Y * 0.7).normalize();
+                let side = face.cross(tip);
+                let x = (tip - side) * std::f32::consts::FRAC_1_SQRT_2;
+                let y = (tip + side) * std::f32::consts::FRAC_1_SQRT_2;
+                let q = rot * Quat::from_mat3(&Mat3::from_cols(x, y, face));
+                let (yaw, pitch, roll) = q.to_euler(EulerRot::YXZ);
+                out.push(GpuItem { pos: [fist.x, fist.y, fist.z, 0.62], info: [yaw, 1.0, b.light[0], b.light[1]], layers: [bow; 4], rot: [pitch, roll, 0.0, 0.0] });
+            }
+        }
+        if let Some(arrow) = sprite("arrow") {
+            let c = cam_block.as_vec3();
+            for a in &self.mobs.arrows {
+                let d = a.vel.normalize_or_zero();
+                if d == Vec3::ZERO && !a.stuck {
+                    continue;
+                }
+                let flat = (d.x * d.x + d.z * d.z).sqrt();
+                // The picture's diagonal lies along the flight, in two crossed planes.
+                let yaw = (-d.z).atan2(d.x);
+                let roll = -std::f32::consts::FRAC_PI_4 + d.y.atan2(flat);
+                let l = self.world.light(a.pos.floor().as_ivec3());
+                let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
+                let p = a.pos - c;
+                for pitch in [0.0, std::f32::consts::FRAC_PI_2] {
+                    out.push(GpuItem { pos: [p.x, p.y, p.z, 0.5], info: [yaw, 1.0, sky, blk], layers: [arrow; 4], rot: [pitch, roll, 0.0, 0.0] });
+                }
+            }
+        }
+        out
     }
 
     /// The armour the player wears, drawn over the player model with the same bones.

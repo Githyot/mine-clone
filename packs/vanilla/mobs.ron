@@ -88,7 +88,7 @@
     ),
     (
         name: "skeleton", display_name: "Esqueleto", kind: Hostile, health: 20, speed: 2.4,
-        drops: [(item: "bone", min: 0, max: 2)], xp: 5,
+        drops: [(item: "bone", min: 0, max: 2), (item: "arrow", min: 0, max: 2)], xp: 5,
         width: 0.6, height: 1.99, spawn: Dark, attack: 3, ranged: true, burns_in_daylight: true,
         parts: [
             (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),

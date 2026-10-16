@@ -608,7 +608,8 @@ pub fn bones_for(mob: &Mob, def: &MobDef, cam_block: IVec3, sky: f32, blk: f32) 
                 let fan = (kk - 1.5) * 0.4 * side;
                 let swing = (t * 2.0 + kk * 1.3 + if k < 4 { 0.0 } else { std::f32::consts::PI }).sin() * 0.35 * amp;
                 let lift = ((t * 2.0 + kk * 1.3).cos().max(0.0)) * 0.3 * amp;
-                Quat::from_rotation_y(fan + swing) * Quat::from_rotation_z((-0.35 - lift) * side)
+                // The legs reach out and down to the ground; lifting raises the tip.
+                Quat::from_rotation_y(fan + swing) * Quat::from_rotation_z((0.5 - lift) * side)
             }
         };
         let part = Mat4::from_translation(pivot) * Mat4::from_quat(rot) * Mat4::from_translation(-pivot);

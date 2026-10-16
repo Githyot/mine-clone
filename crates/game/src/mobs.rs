@@ -18,6 +18,8 @@ pub struct Mobs {
     seed: u64,
     grass: BlockId,
     pub enabled: bool,
+    /// Arrows in flight or stuck in blocks.
+    pub arrows: Vec<Arrow>,
     /// Peaceful difficulty: no monsters at all.
     pub peaceful: bool,
 }
@@ -26,14 +28,62 @@ pub struct Mobs {
 #[derive(Default)]
 pub struct MobOutcome {
     pub damage: Vec<(f32, Option<Vec3>)>,
+    /// Arrows that struck something this tick, for the sound.
+    pub arrow_hits: usize,
+    /// Arrows shot this tick.
+    pub shots: usize,
     pub explosions: Vec<(Vec3, f32)>,
     /// Mobs that died this tick: (def index, where).
     pub deaths: Vec<(usize, Vec3)>,
 }
 
+pub const ARROW_GRAVITY: f32 = 20.0;
+
+/// A skeleton's arrow.
+#[derive(Clone, Debug)]
+pub struct Arrow {
+    pub pos: Vec3,
+    pub vel: Vec3,
+    pub age: f32,
+    /// Stuck in a block (it stays a while, then goes).
+    pub stuck: bool,
+    pub damage: f32,
+}
+
 impl Mobs {
+    /// Fly the arrows: gravity, sticking into blocks, hurting the player they reach.
+    fn update_arrows(&mut self, world: &World, player: Vec3, dt: f32, out: &mut MobOutcome) {
+        for a in self.arrows.iter_mut() {
+            a.age += dt;
+            if a.stuck {
+                continue;
+            }
+            a.vel.y -= ARROW_GRAVITY * dt;
+            // Small steps so fast arrows don't pass through things.
+            let steps = ((a.vel.length() * dt) / 0.25).ceil().max(1.0) as i32;
+            let step = a.vel * dt / steps as f32;
+            for _ in 0..steps {
+                a.pos += step;
+                let rel = a.pos - player;
+                if rel.x.abs() < 0.4 && rel.z.abs() < 0.4 && rel.y > -0.1 && rel.y < 1.9 {
+                    out.damage.push((a.damage, Some(a.pos - a.vel.normalize_or_zero())));
+                    out.arrow_hits += 1;
+                    a.age = 1000.0;
+                    break;
+                }
+                if voxel::physics::Terrain::solid(world, a.pos.floor().as_ivec3()) {
+                    a.pos -= step * 0.5;
+                    a.stuck = true;
+                    out.arrow_hits += 1;
+                    break;
+                }
+            }
+        }
+        self.arrows.retain(|a| a.age < if a.stuck { 30.0 } else { 8.0 });
+    }
+
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, arrows: Vec::new() }
     }
 
     fn next_rand(&mut self) -> u64 {
@@ -154,10 +204,21 @@ impl Mobs {
             for e in &events {
                 match *e {
                     MobEvent::Hit { damage, from } => out.damage.push((damage, Some(from))),
-                    MobEvent::Shoot { damage, hit } => {
-                        if hit {
-                            out.damage.push((damage, Some(m.body.center())))
+                    MobEvent::Shoot { damage, from, at, hit } => {
+                        // A real arrow: aimed at the player's middle (a little off on a miss),
+                        // lobbed so gravity brings it there.
+                        let mut target = at + Vec3::Y * 0.9;
+                        if !hit {
+                            let a = (m.body.pos.x * 13.1 + m.body.pos.z * 7.7).sin() * 3.0;
+                            target += Vec3::new(a.cos(), 0.4, a.sin()) * 1.6;
                         }
+                        let d = target - from;
+                        let flat = Vec3::new(d.x, 0.0, d.z).length();
+                        let speed = 18.0;
+                        let t = (flat / speed).max(0.05);
+                        let vel = Vec3::new(d.x / t, d.y / t + 0.5 * ARROW_GRAVITY * t, d.z / t);
+                        self.arrows.push(Arrow { pos: from, vel, age: 0.0, stuck: false, damage });
+                        out.shots += 1;
                     }
                     MobEvent::Explode { pos, power } => out.explosions.push((pos, power)),
                     MobEvent::Burning | MobEvent::Died { .. } => {}
@@ -167,6 +228,7 @@ impl Mobs {
                 out.deaths.push((m.def, m.body.pos));
             }
         }
+        self.update_arrows(world, player, dt, &mut out);
         self.list.retain(|m| {
             let gone = !m.alive() && m.dead_age > DEATH_TIME;
             let far = (m.body.pos - player).length() > DESPAWN_DIST;

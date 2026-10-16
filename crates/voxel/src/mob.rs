@@ -125,8 +125,8 @@ impl MobRegistry {
 pub enum MobEvent {
     /// Melee hit on the player.
     Hit { damage: f32, from: Vec3 },
-    /// An arrow: hit or miss is decided here.
-    Shoot { damage: f32, hit: bool },
+    /// An arrow leaves `from` aimed at `at` (the player's feet); `hit` says whether the aim is true.
+    Shoot { damage: f32, from: Vec3, at: Vec3, hit: bool },
     Explode { pos: Vec3, power: f32 },
     /// Took damage from the sun; the game shows fire.
     Burning,
@@ -293,7 +293,8 @@ impl Mob {
                 if self.attack_cd <= 0.0 && dist < 15.0 {
                     self.attack_cd = 2.0 + self.rng.f32();
                     let hit = self.rng.chance((1.0 - dist / 22.0).clamp(0.2, 0.85));
-                    out.push(MobEvent::Shoot { damage: def.attack, hit });
+                    let from = self.body.pos + Vec3::Y * (def.height * 0.75);
+                    out.push(MobEvent::Shoot { damage: def.attack, from, at: player, hit });
                 }
             } else if dist > reach {
                 wish = flat.normalize_or_zero();

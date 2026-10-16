@@ -1168,6 +1168,13 @@ impl Game {
             for (pos, power) in out.explosions {
                 self.explode(pos, power);
             }
+            // A soft thrum when a bow is loosed, a wooden thunk when an arrow lands.
+            if out.shots > 0 {
+                self.sfx(Sfx::Place(Material::Cloth));
+            }
+            if out.arrow_hits > 0 {
+                self.sfx(Sfx::Hit(Material::Wood));
+            }
             if self.survival {
                 self.surv_mob_deaths(&out.deaths);
             }
@@ -1872,32 +1879,65 @@ impl Game {
 
     /// A blast: breaks blocks around it and hurts everything nearby.
     fn explode(&mut self, pos: Vec3, power: f32) {
-        let r = power.ceil() as i32;
-        let c = pos.floor().as_ivec3();
-        for dy in -r..=r {
-            for dz in -r..=r {
-                for dx in -r..=r {
-                    let d = IVec3::new(dx, dy, dz);
-                    let dist = d.as_vec3().length();
-                    // Ragged edges look more natural than a perfect ball.
-                    let jitter = ((dx * 73 + dy * 151 + dz * 37 + c.x * 11 + c.z * 7).rem_euclid(10)) as f32 * 0.06;
-                    if dist > power - jitter {
+        // The classic explosion: rays from the centre out through a 16×16×16 grid of
+        // directions; each loses strength as it goes and more through tougher blocks, so soft
+        // ground opens a wide crater while stone holds better.
+        let mut hit: std::collections::HashSet<IVec3> = std::collections::HashSet::new();
+        let mut seed = (pos.x * 91.7 + pos.y * 13.3 + pos.z * 47.1).to_bits();
+        let mut rand = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            (seed % 10000) as f32 / 10000.0
+        };
+        for i in 0..16 {
+            for j in 0..16 {
+                for k in 0..16 {
+                    if !(i == 0 || i == 15 || j == 0 || j == 15 || k == 0 || k == 15) {
                         continue;
                     }
-                    let p = c + d;
-                    let id = self.world.block_or_air(p);
-                    if id == AIR || self.world.is_liquid(id) {
-                        continue;
-                    }
-                    let b = self.reg.get(id);
-                    if b.hardness < 0.0 || b.hardness >= 50.0 {
-                        continue;
-                    }
-                    if self.world.break_block(p) && (dx + dy + dz) % 3 == 0 {
-                        let (layer, tint) = self.block_look(id);
-                        self.particles.block_bits(p, layer, tint, 3, 2.0);
+                    let dir = Vec3::new(i as f32 / 15.0 * 2.0 - 1.0, j as f32 / 15.0 * 2.0 - 1.0, k as f32 / 15.0 * 2.0 - 1.0).normalize();
+                    let mut strength = power * (0.7 + rand() * 0.6);
+                    let mut p = pos;
+                    while strength > 0.0 {
+                        let b = p.floor().as_ivec3();
+                        let id = self.world.block_or_air(b);
+                        if id != AIR {
+                            let blk = self.reg.get(id);
+                            let res = if self.world.is_liquid(id) {
+                                100.0
+                            } else if blk.hardness < 0.0 || blk.hardness >= 50.0 {
+                                1200.0
+                            } else if blk.hardness < 1.0 {
+                                blk.hardness
+                            } else {
+                                blk.hardness * 4.0
+                            };
+                            strength -= (res + 0.3) * 0.3;
+                            if strength > 0.0 {
+                                hit.insert(b);
+                            }
+                        }
+                        p += dir * 0.3;
+                        strength -= 0.225;
                     }
                 }
+            }
+        }
+        let keep = 1.0 / power.max(1.0);
+        let mut n = 0;
+        for b in hit {
+            let id = self.world.block_or_air(b);
+            if id == AIR || !self.world.break_block(b) {
+                continue;
+            }
+            if self.survival {
+                self.blast_drops(b, id, keep);
+            }
+            n += 1;
+            if n % 3 == 0 {
+                let (layer, tint) = self.block_look(id);
+                self.particles.block_bits(b, layer, tint, 3, 2.0);
             }
         }
         let reach = power * 2.0;
@@ -1951,6 +1991,9 @@ impl Game {
                 m.yaw = to.x.atan2(to.z);
             }
         }
+        // An arrow on its way, frozen in the air, for the test picture.
+        let from = self.body.pos + fwd * 4.0 + side * 1.5 + Vec3::Y * 1.6;
+        self.mobs.arrows.push(mobs::Arrow { pos: from, vel: (-fwd * 0.3 + side * 1.0 + Vec3::Y * 0.1) * 0.001, age: 0.0, stuck: true, damage: 0.0 });
     }
 
     /// Place a block where the player is aiming. Returns where it went.
@@ -3079,6 +3122,7 @@ impl Game {
         }
         let selection = if self.screen == Screen::Playing || self.args.screenshot.is_some() { self.target.map(|t| t.block) } else { None };
         let mut items = self.mobs.instances(&self.world, block, rd + 16.0);
+        let mob_items = self.arrow_and_bow_instances(&items, block);
         let mut held_third = None;
         if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
             let def = &self.mobs.reg.defs[pd];
@@ -3169,6 +3213,7 @@ impl Game {
             drops.extend(self.held_item_instance(eye, block));
         }
         drops.extend(held_third);
+        drops.extend(mob_items);
         if let (Some(k), Some(h)) = (self.args.mine, self.target) {
             let id = self.world.block_or_air(h.block);
             self.mining = Some((h.block, k * self.dig_time(id)));
