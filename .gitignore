@@ -1,0 +1,8 @@
+/target
+/saves
+/settings.ron
+/resourcepacks/*
+!/resourcepacks/README.md
+/music/*
+!/music/README.md
+*.png.tmp
