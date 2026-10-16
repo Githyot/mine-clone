@@ -81,6 +81,14 @@ impl UiBatch {
         self.verts.extend_from_slice(&[v(0), v(1), v(2), v(0), v(2), v(3)]);
     }
 
+    /// A rectangle with a colour per corner (top-left, top-right, bottom-right, bottom-left),
+    /// blended smoothly across.
+    pub fn gradient(&mut self, x: f32, y: f32, w: f32, h: f32, c: [[u8; 4]; 4]) {
+        let p = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+        let v = |i: usize| UiVertex { pos: p[i], uv: [0.0; 2], color: c[i], layer: -2 };
+        self.verts.extend_from_slice(&[v(0), v(1), v(2), v(0), v(2), v(3)]);
+    }
+
     pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4]) {
         self.quad([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], [[0.0; 2]; 4], color, -2);
     }

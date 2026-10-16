@@ -180,6 +180,17 @@ impl World {
         })
     }
 
+    /// For the loading screen: 0 not started, 1 generating, 2 lighting or meshing, 3 ready.
+    pub fn chunk_status(&self, pos: ChunkPos) -> u8 {
+        match self.slots.get(&pos) {
+            None => 0,
+            Some(s) if s.mesh_done > 0 => 3,
+            Some(s) if s.chunk.is_some() => 2,
+            Some(s) if s.gen_pending => 1,
+            Some(_) => 0,
+        }
+    }
+
     pub fn is_meshed(&self, pos: ChunkPos) -> bool {
         self.slots.get(&pos).is_some_and(|s| s.mesh_done > 0)
     }

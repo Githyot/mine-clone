@@ -84,6 +84,8 @@ struct Args {
     /// Build a few things in front of the player (used for test screenshots).
     demo: bool,
     shapes: bool,
+    /// Take the --screenshot of the loading screen instead of the game.
+    shot_loading: bool,
     show_inventory: bool,
     show_pause: bool,
     /// Open the shader menu once the world is ready (test screenshots).
@@ -143,6 +145,7 @@ fn parse_args() -> Args {
             "--fly" => a.fly = true,
             "--demo" => a.demo = true,
             "--shapes" => a.shapes = true,
+            "--shot-loading" => a.shot_loading = true,
             "--inventory" => a.show_inventory = true,
             "--pause" => a.show_pause = true,
             "--shaders-menu" => a.show_shaders = true,
@@ -178,6 +181,51 @@ fn parse_args() -> Args {
 
 /// Folder for settings, saves, resource packs and music: the source tree when run with cargo,
 /// otherwise the folder the executable is in.
+/// Shrink a frame to a small grid and blur it, for the loading screen's background.
+fn blurred_backdrop(w: usize, h: usize, px: &[u8]) -> (usize, usize, Vec<[u8; 4]>) {
+    let (bw, bh) = (40usize, ((40 * h / w.max(1)).max(2)).min(40));
+    let mut out = vec![[0u8; 4]; bw * bh];
+    for by in 0..bh {
+        for bx in 0..bw {
+            let (x0, x1) = (bx * w / bw, ((bx + 1) * w / bw).max(bx * w / bw + 1));
+            let (y0, y1) = (by * h / bh, ((by + 1) * h / bh).max(by * h / bh + 1));
+            let mut sum = [0u64; 3];
+            let mut n = 0u64;
+            for y in (y0..y1.min(h)).step_by(2) {
+                for x in (x0..x1.min(w)).step_by(2) {
+                    let i = (y * w + x) * 4;
+                    for k in 0..3 {
+                        sum[k] += px[i + k] as u64;
+                    }
+                    n += 1;
+                }
+            }
+            let n = n.max(1);
+            out[by * bw + bx] = [(sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8, 255];
+        }
+    }
+    // Two passes of a 3x3 box blur soften it further.
+    for _ in 0..2 {
+        let src = out.clone();
+        for y in 0..bh {
+            for x in 0..bw {
+                let mut sum = [0u32; 3];
+                let mut n = 0;
+                for yy in y.saturating_sub(1)..(y + 2).min(bh) {
+                    for xx in x.saturating_sub(1)..(x + 2).min(bw) {
+                        for k in 0..3 {
+                            sum[k] += src[yy * bw + xx][k] as u32;
+                        }
+                        n += 1;
+                    }
+                }
+                out[y * bw + x] = [(sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8, 255];
+            }
+        }
+    }
+    (bw, bh, out)
+}
+
 /// Blocks, items and recipes from text.
 fn game_data(blocks: &str, items: &str, recipes: &str) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
     let reg = BlockRegistry::from_ron(blocks)?;
@@ -421,6 +469,12 @@ struct Game {
     last_frame_info: (usize, usize, usize),
     autosave: f32,
     loaded_frames: u32,
+    /// Loading screen: the last frame shrunk and blurred (width, height, pixels), and whether to
+    /// grab it from the next frame.
+    backdrop: Option<(usize, usize, Vec<[u8; 4]>)>,
+    want_backdrop: bool,
+    /// Loading screen: the chunk it waits around and how far.
+    loading_area: (ChunkPos, i32),
     screenshot_request: bool,
     grabbed: bool,
 }
@@ -651,6 +705,9 @@ impl Game {
             last_frame_info: (0, 0, 0),
             autosave: 0.0,
             loaded_frames: 0,
+            backdrop: None,
+            want_backdrop: true,
+            loading_area: (ChunkPos::new(0, 0), 3),
             screenshot_request: false,
             grabbed: false,
         };
@@ -751,6 +808,9 @@ impl Game {
         }
         if self.screen == Screen::Inventory && s != Screen::Inventory && self.survival {
             self.surv_close();
+        }
+        if s == Screen::Loading && self.screen != Screen::Loading {
+            self.want_backdrop = true;
         }
         self.screen = s;
         self.set_grab(s == Screen::Playing);
@@ -1023,6 +1083,7 @@ impl Game {
             let (sx, sz) = if self.needs_spawn { self.spawn_xz } else { (self.body.pos.x.floor() as i32, self.body.pos.z.floor() as i32) };
             let c = ChunkPos::new(sx >> 4, sz >> 4);
             let near = rd.min(3);
+            self.loading_area = (c, near);
             let mut ready = true;
             for dz in -near..=near {
                 for dx in -near..=near {
@@ -2225,6 +2286,73 @@ impl Game {
         self.ui.scale = gui;
     }
 
+    /// Loading screen like the classic one: the last view blurred, "Carregando terreno...", a green
+    /// bar and a map of the chunks around the spawn coloured by how far along they are.
+    fn draw_loading(&mut self, w: f32, h: f32) {
+        let s = self.ui.scale;
+        match &self.backdrop {
+            Some((bw, bh, px)) => {
+                let (cw, ch) = (w / (*bw - 1) as f32, h / (*bh - 1) as f32);
+                let dark = |c: [u8; 4]| [(c[0] as f32 * 0.75) as u8, (c[1] as f32 * 0.75) as u8, (c[2] as f32 * 0.75) as u8, 255];
+                for y in 0..bh - 1 {
+                    for x in 0..bw - 1 {
+                        let at = |xx: usize, yy: usize| dark(px[yy * bw + xx]);
+                        self.ui.gradient(x as f32 * cw, y as f32 * ch, cw + 0.5, ch + 0.5, [at(x, y), at(x + 1, y), at(x + 1, y + 1), at(x, y + 1)]);
+                    }
+                }
+            }
+            None => self.ui.rect(0.0, 0.0, w, h, [44, 34, 26, 255]),
+        }
+        let (c, near) = self.loading_area;
+        let mut total = 0;
+        let mut done = 0;
+        for dz in -near..=near {
+            for dx in -near..=near {
+                if dx * dx + dz * dz <= near * near {
+                    total += 1;
+                    done += (self.world.chunk_status(c + ChunkPos::new(dx, dz)) == 3) as i32;
+                }
+            }
+        }
+        let pct = done as f32 / total.max(1) as f32;
+        let ty = (h * 0.18).floor();
+        let label = "Carregando terreno...";
+        let tw = self.ui.text_width(label, s);
+        self.ui.text((w - tw) / 2.0 + s, ty + s, label, [40, 40, 40, 255]);
+        self.ui.text((w - tw) / 2.0, ty, label, WHITE);
+        let bw = (w * 0.6).floor();
+        let (bx, by) = ((w - bw) / 2.0, ty + 14.0 * s);
+        self.ui.rect(bx, by, bw, 2.0 * s, [0, 0, 0, 255]);
+        self.ui.rect(bx, by, bw * pct, 2.0 * s, [0, 255, 0, 255]);
+        // Chunk map: a grey square in a thick black frame, one cell per chunk.
+        let r = near + 2;
+        let n = (2 * r + 1) as f32;
+        let cell = (4.0 * s).floor().max(2.0);
+        let inner = n * cell;
+        let border = 8.0 * s;
+        let mx = ((w - inner) / 2.0).floor();
+        let my = (by + 2.0 * s + 22.0 * s).floor();
+        self.ui.rect(mx - border, my - border, inner + 2.0 * border, inner + 2.0 * border, [0, 0, 0, 255]);
+        self.ui.rect(mx, my, inner, inner, [153, 153, 153, 255]);
+        for dz in -r..=r {
+            for dx in -r..=r {
+                let st = self.world.chunk_status(c + ChunkPos::new(dx, dz));
+                let (x, y) = (mx + (dx + r) as f32 * cell, my + (dz + r) as f32 * cell);
+                let col = if dx == 0 && dz == 0 && st == 3 {
+                    [255, 255, 255, 255]
+                } else {
+                    match st {
+                        1 => [47, 53, 119, 255],
+                        2 => [127, 178, 76, 255],
+                        3 => [217, 217, 217, 255],
+                        _ => continue,
+                    }
+                };
+                self.ui.rect(x, y, cell, cell, col);
+            }
+        }
+    }
+
     fn draw_ui(&mut self, mut info_lines: Vec<String>) {
         let (w, h) = (self.renderer.config.width as f32, self.renderer.config.height as f32);
         self.ui.begin(w, h, self.settings.gui_scale);
@@ -2233,12 +2361,10 @@ impl Game {
         let mut clicked_button: Option<usize> = None;
 
         if self.screen == Screen::Loading {
-            self.ui.rect(0.0, 0.0, w, h, [44, 34, 26, 255]);
-            let pct = (self.world.meshed_count as f32 / 49.0).min(1.0);
-            self.ui.text_centered(w / 2.0, h / 2.0 - 30.0 * s, "Gerando o mundo...", WHITE);
-            let bw = 100.0 * s;
-            self.ui.rect(w / 2.0 - bw / 2.0, h / 2.0, bw, 2.0 * s, [128, 128, 128, 255]);
-            self.ui.rect(w / 2.0 - bw / 2.0, h / 2.0, bw * pct, 2.0 * s, [128, 255, 128, 255]);
+            // The first loading frame shows the plain view so it can be captured as the backdrop.
+            if !self.want_backdrop {
+                self.draw_loading(w, h);
+            }
             return;
         }
 
@@ -2972,7 +3098,10 @@ impl Game {
         // Automated screenshots: wait until the view is fully built.
         let mut capture = self.screenshot_request;
         let mut exit_after = false;
-        if self.args.screenshot.is_some() && self.screen != Screen::Loading {
+        if self.args.shot_loading && self.screen == Screen::Loading && self.backdrop.is_some() && self.world.meshed_count >= 12 {
+            capture = true;
+            exit_after = true;
+        } else if self.args.screenshot.is_some() && self.screen != Screen::Loading && !self.args.shot_loading {
             self.loaded_frames += 1;
             if self.loaded_frames % 30 == 0 {
                 log::info!("screenshot wait: frame {}, {:.1} fps, {} jobs pending", self.loaded_frames, self.fps, self.world.pending_jobs());
@@ -3074,7 +3203,17 @@ impl Game {
             }
         }
         self.entities.items.prepare(&self.renderer, &drops);
-        let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds, Some(&self.entities), Some(&self.lod), &self.ui, capture);
+        let grab_backdrop = self.want_backdrop && self.screen == Screen::Loading;
+        let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds, Some(&self.entities), Some(&self.lod), &self.ui, capture || grab_backdrop);
+        let shot = if grab_backdrop {
+            self.want_backdrop = false;
+            if let Some((w, h, px)) = &shot {
+                self.backdrop = Some(blurred_backdrop(*w as usize, *h as usize, px));
+            }
+            shot.filter(|_| capture)
+        } else {
+            shot
+        };
         self.last_frame_info = (info.sections_drawn, info.quads_drawn, info.lod_drawn);
         if let Some((w, h, px)) = shot {
             let path = if exit_after {
