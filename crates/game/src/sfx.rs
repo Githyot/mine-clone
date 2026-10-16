@@ -75,6 +75,18 @@ fn voice(m: Material) -> Voice {
         Material::Glass => Voice { cutoff: 2100.0, body: &[(105.0, 0.4), (940.0, 0.12), (1230.0, 0.08)], body_decay: 0.07, grains: 60.0, grain_len: 0.005, noise_gain: 0.6 },
         // Muffled.
         Material::Cloth => Voice { cutoff: 380.0, body: &[(65.0, 0.2)], body_decay: 0.05, grains: 40.0, grain_len: 0.02, noise_gain: 1.0 },
+        // Damp, soft thud with a little grit.
+        Material::Dirt => Voice { cutoff: 620.0, body: &[(58.0, 0.45), (96.0, 0.2)], body_decay: 0.06, grains: 80.0, grain_len: 0.012, noise_gain: 0.95 },
+        // Loose stones rolling against each other.
+        Material::Gravel => Voice { cutoff: 1100.0, body: &[(85.0, 0.3), (150.0, 0.2)], body_decay: 0.03, grains: 180.0, grain_len: 0.009, noise_gain: 1.0 },
+        // A leafy rustle, airy and low.
+        Material::Leaves => Voice { cutoff: 800.0, body: &[(52.0, 0.15)], body_decay: 0.03, grains: 220.0, grain_len: 0.014, noise_gain: 0.8 },
+        // Packed-snow squeak, kept low and soft.
+        Material::Snow => Voice { cutoff: 700.0, body: &[(62.0, 0.2)], body_decay: 0.04, grains: 150.0, grain_len: 0.018, noise_gain: 0.85 },
+        // A deep clank that rings a moment.
+        Material::Metal => Voice { cutoff: 1000.0, body: &[(110.0, 0.6), (233.0, 0.35), (347.0, 0.2)], body_decay: 0.16, grains: 20.0, grain_len: 0.006, noise_gain: 0.5 },
+        // Stone with crystals in it: a heavier clack and extra grit.
+        Material::Ore => Voice { cutoff: 1250.0, body: &[(100.0, 0.55), (160.0, 0.4), (240.0, 0.25)], body_decay: 0.06, grains: 110.0, grain_len: 0.005, noise_gain: 0.95 },
     }
 }
 
@@ -393,7 +405,7 @@ mod tests {
 
     #[test]
     fn effects_are_low_and_clean() {
-        let mats = [Material::Stone, Material::Wood, Material::Grass, Material::Sand, Material::Glass, Material::Cloth];
+        let mats = Material::ALL;
         let mut all = Vec::new();
         for m in mats {
             all.extend([Sfx::Break(m), Sfx::Place(m), Sfx::Hit(m), Sfx::Step(m)]);

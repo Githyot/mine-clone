@@ -110,26 +110,60 @@ pub enum Material {
     Sand,
     Glass,
     Cloth,
+    Dirt,
+    Gravel,
+    Leaves,
+    Snow,
+    Metal,
+    Ore,
 }
 
 impl Material {
+    /// How a block sounds when walked on, hit, placed or broken, from its name.
     pub fn of(name: &str) -> Material {
-        if name.contains("glass") || name == "ice" || name == "glowstone" {
+        let has = |s: &str| name.contains(s);
+        if has("glass") || name == "ice" || name == "glowstone" {
             Material::Glass
-        } else if name.contains("log") || name.contains("planks") || name.contains("crafting") || name == "bookshelf" {
+        } else if has("_ore") {
+            Material::Ore
+        } else if name.ends_with("iron_block") || name.ends_with("gold_block") || name.ends_with("diamond_block") || has("anvil") || has("iron_door") {
+            Material::Metal
+        } else if has("log") || has("planks") || has("crafting") || name == "bookshelf" || has("oak_") || has("chest") || has("door") || has("fence") || has("ladder") {
             Material::Wood
-        } else if name.contains("wool") || name == "sponge" {
+        } else if has("wool") || name == "sponge" || has("_bed") || has("carpet") {
             Material::Cloth
-        } else if name == "sand" || name == "gravel" || name.contains("snow") || name == "clay" {
+        } else if has("snow") {
+            Material::Snow
+        } else if name == "gravel" {
+            Material::Gravel
+        } else if name == "sand" || name == "red_sand" || name == "clay" {
             Material::Sand
-        } else if name.contains("grass") || name == "dirt" || name.contains("leaves") || name == "poppy" || name == "dandelion"
-            || name == "dead_bush" || name == "melon" || name == "pumpkin" || name == "cactus" || name == "tnt"
-        {
+        } else if has("leaves") || name == "poppy" || name == "dandelion" || name == "dead_bush" || has("sapling") || has("short_grass") || name == "melon" || name == "pumpkin" || name == "cactus" {
+            Material::Leaves
+        } else if name == "dirt" || name == "farmland" || name == "coarse_dirt" || name == "mud" {
+            Material::Dirt
+        } else if has("grass") || name == "tnt" {
             Material::Grass
         } else {
             Material::Stone
         }
     }
+
+    #[allow(dead_code)]
+    pub const ALL: [Material; 12] = [
+        Material::Stone,
+        Material::Wood,
+        Material::Grass,
+        Material::Sand,
+        Material::Glass,
+        Material::Cloth,
+        Material::Dirt,
+        Material::Gravel,
+        Material::Leaves,
+        Material::Snow,
+        Material::Metal,
+        Material::Ore,
+    ];
 }
 
 pub struct Audio {
