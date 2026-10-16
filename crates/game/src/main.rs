@@ -2081,9 +2081,12 @@ impl Game {
         let fwd = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
         let side = Vec3::new(-fwd.z, 0.0, fwd.x);
         let names: Vec<String> = self.mobs.reg.defs.iter().filter(|d| d.spawn != voxel::mob::SpawnRule::Never).map(|d| d.name.clone()).collect();
-        let n = names.len() as f32;
+        // Rows of up to seven, the first ones (the tall monsters) further back.
+        let rows = names.len().div_ceil(7);
         for (i, name) in names.iter().enumerate() {
-            let p = self.body.pos + fwd * 7.0 + side * ((i as f32 - (n - 1.0) / 2.0) * 1.8);
+            let (row, col) = (i / 7, i % 7);
+            let n = (names.len() - row * 7).min(7) as f32;
+            let p = self.body.pos + fwd * (6.0 + (rows - 1 - row) as f32 * 4.5) + side * ((col as f32 - (n - 1.0) / 2.0) * 1.8);
             let x = p.x.floor() as i32;
             let z = p.z.floor() as i32;
             let y = self.world.surface_y(x, z).unwrap_or(p.y as i32) + 1;

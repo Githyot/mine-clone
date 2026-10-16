@@ -22,6 +22,8 @@ pub struct Mobs {
     pub arrows: Vec<Arrow>,
     /// Peaceful difficulty: no monsters at all.
     pub peaceful: bool,
+    /// Blocks each mob may spawn on (from `MobDef::ground`), resolved on first use.
+    ground: Vec<Vec<BlockId>>,
 }
 
 /// What happened to the player this tick.
@@ -83,7 +85,7 @@ impl Mobs {
     }
 
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, arrows: Vec::new() }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, arrows: Vec::new(), ground: Vec::new() }
     }
 
     fn next_rand(&mut self) -> u64 {
@@ -121,7 +123,8 @@ impl Mobs {
             let ground = if cave { self.find_cave_floor(world, x, y, z) } else { Some(IVec3::new(x, y, z)) };
             let Some(g) = ground else { continue };
             let below = world.block_or_air(g);
-            if below == AIR || world.is_liquid(below) {
+            let water = world.fluid(below) == 1;
+            if below == AIR || (world.is_liquid(below) && !water) {
                 continue;
             }
             if world.block_or_air(g + IVec3::Y) != AIR || world.block_or_air(g + IVec3::Y * 2) != AIR {
@@ -131,25 +134,56 @@ impl Mobs {
             let sky = (light >> 4) as f32 * daylight;
             let blk = (light & 15) as f32;
             let dark = sky.max(blk) < 7.0;
+            let biome = world.gen.biome_at(x, z).name();
+            if self.ground.len() != self.reg.defs.len() {
+                let grass = self.grass;
+                self.ground = self
+                    .reg
+                    .defs
+                    .iter()
+                    .map(|d| if d.ground.is_empty() { vec![grass] } else { d.ground.iter().map(|n| world.reg.id_or_air(n)).filter(|&b| b != AIR).collect() })
+                    .collect();
+            }
+            let animals = !cave && !dark && passive < MAX_PASSIVE;
             let candidates: Vec<usize> = self
                 .reg
                 .defs
                 .iter()
                 .enumerate()
-                .filter(|(_, d)| match d.spawn {
-                    SpawnRule::Grass => !cave && below == self.grass && !dark && passive < MAX_PASSIVE,
-                    SpawnRule::Dark => dark && hostile < MAX_HOSTILE && !self.peaceful,
-                    SpawnRule::Never => false,
+                .filter(|(i, d)| {
+                    d.in_biome(biome)
+                        && match d.spawn {
+                            SpawnRule::Grass => animals && !water && self.ground[*i].contains(&below),
+                            SpawnRule::Water => animals && water,
+                            SpawnRule::Dark => dark && !water && hostile < MAX_HOSTILE && !self.peaceful,
+                            SpawnRule::Never => false,
+                        }
                 })
                 .map(|(i, _)| i)
                 .collect();
-            if candidates.is_empty() {
+            let total: u32 = candidates.iter().map(|&i| self.reg.defs[i].weight).sum();
+            if total == 0 {
                 continue;
             }
-            let pick = candidates[(self.next_rand() % candidates.len() as u64) as usize];
+            let mut roll = (self.next_rand() % total as u64) as u32;
+            let mut pick = candidates[0];
+            for &i in &candidates {
+                let w = self.reg.defs[i].weight;
+                if roll < w {
+                    pick = i;
+                    break;
+                }
+                roll -= w;
+            }
             let pos = Vec3::new(g.x as f32 + 0.5, g.y as f32 + 1.0, g.z as f32 + 0.5);
             // Animals come in small groups.
-            let n = if self.reg.defs[pick].kind == Kind::Passive { 2 + (self.next_rand() % 3) as usize } else { 1 };
+            let def = &self.reg.defs[pick];
+            let n = if def.kind != Kind::Hostile {
+                let (lo, hi) = (def.group.0.max(1), def.group.1.max(def.group.0).max(1));
+                lo as usize + (self.next_rand() % (hi - lo + 1) as u64) as usize
+            } else {
+                1
+            };
             for k in 0..n {
                 let off = Vec3::new((k % 2) as f32 * 1.2 - 0.6, 0.0, (k / 2) as f32 * 1.2);
                 let s = self.next_rand();
@@ -190,7 +224,27 @@ impl Mobs {
         }
         let mut events = Vec::new();
         let day = daylight > 0.5;
-        for m in self.list.iter_mut() {
+        // Hungry hunters pick the closest prey in sight.
+        let mut target: Vec<Option<usize>> = vec![None; self.list.len()];
+        for (i, m) in self.list.iter().enumerate() {
+            let def = &self.reg.defs[m.def];
+            if !m.hungry(def) {
+                continue;
+            }
+            target[i] = self
+                .list
+                .iter()
+                .enumerate()
+                .filter(|(_, o)| o.alive() && def.prey.iter().any(|p| *p == self.reg.defs[o.def].name))
+                .map(|(j, o)| (j, (o.body.pos - m.body.pos).length()))
+                .filter(|&(_, d)| d < 12.0)
+                .min_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(j, _)| j);
+        }
+        let prey_pos: Vec<Vec3> = self.list.iter().map(|m| m.body.pos).collect();
+        let mut bites: Vec<(usize, usize, f32)> = Vec::new();
+        for (i, m) in self.list.iter_mut().enumerate() {
+            m.prey = target[i].map(|j| prey_pos[j]);
             let def = &self.reg.defs[m.def];
             // Far away and unloaded: freeze until the player comes back.
             if world.block(m.body.pos.floor().as_ivec3()).is_none() {
@@ -221,11 +275,24 @@ impl Mobs {
                         out.shots += 1;
                     }
                     MobEvent::Explode { pos, power } => out.explosions.push((pos, power)),
+                    MobEvent::Bite { damage } => {
+                        if let Some(j) = target[i] {
+                            bites.push((i, j, damage));
+                        }
+                    }
                     MobEvent::Burning | MobEvent::Died { .. } => {}
                 }
             }
             if was_alive && !m.alive() {
                 out.deaths.push((m.def, m.body.pos));
+            }
+        }
+        for (i, j, damage) in bites {
+            let from = self.list[i].body.center();
+            if self.list[j].hurt(damage, from) {
+                out.deaths.push((self.list[j].def, self.list[j].body.pos));
+                // A full hunter naps rather than hunting again soon.
+                self.list[i].fed = 90.0 + (self.next_rand() % 60) as f32;
             }
         }
         self.update_arrows(world, player, dt, &mut out);

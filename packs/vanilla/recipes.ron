@@ -24,6 +24,7 @@
         (pattern: ["X", "/", "/"], key: {'X': "#stone_tool_materials", '/': "stick"}, result: "stone_shovel"),
         (pattern: ["X", "X", "/"], key: {'X': "#stone_tool_materials", '/': "stick"}, result: "stone_sword"),
         (pattern: ["XX", " /", " /"], key: {'X': "#stone_tool_materials", '/': "stick"}, result: "stone_hoe"),
+        (pattern: ["XX", "XX"], key: {'X': "rabbit_hide"}, result: "leather"),
         (pattern: ["XXX", "X X"], key: {'X': "leather"}, result: "leather_helmet"),
         (pattern: ["X X", "XXX", "XXX"], key: {'X': "leather"}, result: "leather_chestplate"),
         (pattern: ["XXX", "X X", "X X"], key: {'X': "leather"}, result: "leather_leggings"),
@@ -121,5 +122,7 @@
         (input: "beef", result: "cooked_beef", xp: 0.35),
         (input: "chicken", result: "cooked_chicken", xp: 0.35),
         (input: "mutton", result: "cooked_mutton", xp: 0.35),
+        (input: "venison", result: "cooked_venison", xp: 0.35),
+        (input: "rabbit", result: "cooked_rabbit", xp: 0.35),
     ],
 )

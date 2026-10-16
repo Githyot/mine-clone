@@ -586,6 +586,11 @@ pub fn bones_for(mob: &Mob, def: &MobDef, cam_block: IVec3, sky: f32, blk: f32) 
     }
     let scale = 1.0 / 16.0 * (1.0 + swell * 0.3);
     model = model * Mat4::from_scale(Vec3::splat(scale));
+    // Asleep: legs folded flat, the body resting on the ground.
+    let leg_h = def.parts.iter().filter(|p| matches!(p.anim, Anim::Leg(_))).map(|p| p.size.1 as f32).fold(0.0, f32::max);
+    if mob.sleeping && mob.alive() {
+        model = model * Mat4::from_translation(Vec3::new(0.0, -(leg_h - 1.0).max(0.0), 0.0));
+    }
     let amp = (mob.walk_speed / def.speed.max(0.1)).min(1.3);
     let t = mob.walk;
     let airborne = !mob.body.on_ground && !mob.body.in_water;
@@ -594,6 +599,10 @@ pub fn bones_for(mob: &Mob, def: &MobDef, cam_block: IVec3, sky: f32, blk: f32) 
         let rot = match p.anim {
             Anim::None => Quat::IDENTITY,
             Anim::Head => Quat::from_rotation_y(mob.head_yaw) * Quat::from_rotation_x(mob.head_pitch),
+            Anim::Leg(_) if mob.sleeping && mob.alive() => {
+                // Front legs tuck forward, hind legs back.
+                Quat::from_rotation_x(if p.pivot.2 >= 0 { -std::f32::consts::FRAC_PI_2 } else { std::f32::consts::FRAC_PI_2 })
+            }
             Anim::Leg(k) => Quat::from_rotation_x((t + k as f32 * std::f32::consts::PI).sin() * 0.8 * amp),
             Anim::Arm(k) => Quat::from_rotation_x((t + k as f32 * std::f32::consts::PI + std::f32::consts::PI).sin() * 0.7 * amp),
             Anim::ArmForward(k) => Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2 + (mob.age * 2.0 + k as f32).sin() * 0.08),
