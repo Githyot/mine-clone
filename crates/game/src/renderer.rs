@@ -47,6 +47,8 @@ pub struct LineVertex {
 
 struct GpuSection {
     section: usize,
+    /// Face-to-face visibility through the section (see `voxel::mesh::section_visibility`).
+    vis: u64,
     solid: Option<(wgpu::Buffer, u32)>,
     translucent: Option<(wgpu::Buffer, u32)>,
 }
@@ -113,6 +115,8 @@ pub struct Renderer {
     pub texture_size: u32,
     pub vram_bytes: u64,
     copy_src_ok: bool,
+    /// Skip sections the camera can't see through caves and solid rock.
+    pub cave_cull: bool,
 }
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -470,6 +474,7 @@ impl Renderer {
             texture_size,
             vram_bytes: 0,
             copy_src_ok,
+            cave_cull: true,
         }
     }
 
@@ -649,7 +654,7 @@ impl Renderer {
                         };
                         let solid = mk(&m.solid, "section solid");
                         let translucent = mk(&m.translucent, "section translucent");
-                        v.push(GpuSection { section: s, solid, translucent });
+                        v.push(GpuSection { section: s, vis: m.vis, solid, translucent });
                     }
                     self.vram_bytes += v.iter().map(section_bytes).sum::<u64>();
                     if let Some(old) = self.chunks.insert(p, v) {
@@ -658,6 +663,53 @@ impl Renderer {
                 }
             }
         }
+    }
+
+    /// Cave culling: walk from the camera's section outwards, entering a neighbour only through
+    /// faces the current section connects with open blocks and never turning back. Sections
+    /// never reached are behind rock. Returns a grid of `reach` chunks around the camera.
+    fn cave_visible(&self, cam: &Camera, reach: i32, visible: &dyn Fn(Vec3, Vec3) -> bool) -> Option<Vec<bool>> {
+        let csy = cam.block.y >> 4;
+        if !self.cave_cull || !(0..16).contains(&csy) {
+            return None;
+        }
+        let (ccx, ccz) = (cam.block.x >> 4, cam.block.z >> 4);
+        let n = 2 * reach + 1;
+        let index = |dx: i32, sy: i32, dz: i32| (((dx + reach) * n + dz + reach) * 16 + sy) as usize;
+        let mut seen = vec![false; (n * n * 16) as usize];
+        let vis_of = |dx: i32, sy: i32, dz: i32| -> u64 {
+            match self.chunks.get(&IVec2::new(ccx + dx, ccz + dz)) {
+                Some(v) => v.iter().find(|s| s.section == sy as usize).map_or(voxel::mesh::VIS_ALL, |s| s.vis),
+                None => voxel::mesh::VIS_ALL,
+            }
+        };
+        const STEP: [(i32, i32, i32); 6] = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)];
+        let mut queue = std::collections::VecDeque::new();
+        seen[index(0, csy, 0)] = true;
+        // (chunk dx, section y, chunk dz, face entered through or 6, directions taken)
+        queue.push_back((0, csy, 0, 6u8, 0u8));
+        while let Some((x, y, z, from, dirs)) = queue.pop_front() {
+            let vis = vis_of(x, y, z);
+            for (f, &(sx, sy, sz)) in STEP.iter().enumerate() {
+                if dirs & (1 << (f ^ 1)) != 0 {
+                    continue;
+                }
+                if from != 6 && vis & (1 << (from as usize * 6 + f)) == 0 {
+                    continue;
+                }
+                let (nx, ny, nz) = (x + sx, y + sy, z + sz);
+                if nx.abs() > reach || nz.abs() > reach || !(0..16).contains(&ny) || seen[index(nx, ny, nz)] {
+                    continue;
+                }
+                let o = Vec3::new(((ccx + nx) * 16 - cam.block.x) as f32, (ny * 16 - cam.block.y) as f32, ((ccz + nz) * 16 - cam.block.z) as f32);
+                if !visible(o, o + Vec3::splat(16.0)) {
+                    continue;
+                }
+                seen[index(nx, ny, nz)] = true;
+                queue.push_back((nx, ny, nz, (f ^ 1) as u8, dirs | (1 << f)));
+            }
+        }
+        Some(seen)
     }
 
     /// Forget every chunk (another world is being opened).
@@ -712,6 +764,8 @@ impl Renderer {
         let mut solid_draws: Vec<(usize, &wgpu::Buffer, u32)> = Vec::new();
         let mut trans_draws: Vec<(f32, usize, &wgpu::Buffer, u32)> = Vec::new();
         let max_d = cam.far + 24.0;
+        let reach = (max_d / 16.0).ceil() as i32 + 1;
+        let seen = self.cave_visible(cam, reach, &visible);
         for (pos, sections) in &self.chunks {
             let cx = (pos.x * 16 - cam.block.x) as f32;
             let cz = (pos.y * 16 - cam.block.z) as f32;
@@ -724,6 +778,12 @@ impl Renderer {
                 let origin = Vec3::new(cx, (s.section as i32 * 16 - cam.block.y) as f32, cz);
                 if !visible(origin, origin + Vec3::splat(16.0)) {
                     continue;
+                }
+                if let Some(seen) = &seen {
+                    let (dx, dz) = (pos.x - (cam.block.x >> 4), pos.y - (cam.block.z >> 4));
+                    if dx.abs() <= reach && dz.abs() <= reach && !seen[(((dx + reach) * (2 * reach + 1) + dz + reach) * 16) as usize + s.section] {
+                        continue;
+                    }
                 }
                 let idx = instances.len();
                 instances.push(origin.to_array());

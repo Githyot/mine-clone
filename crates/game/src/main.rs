@@ -88,6 +88,7 @@ struct Args {
     /// Open the shader menu once the world is ready (test screenshots).
     show_shaders: bool,
     debug: bool,
+    no_cave_cull: bool,
     /// Spawn a few mobs in front of the player (test screenshots).
     mobs: bool,
     survival: bool,
@@ -144,6 +145,7 @@ fn parse_args() -> Args {
             "--pause" => a.show_pause = true,
             "--shaders-menu" => a.show_shaders = true,
             "--debug" => a.debug = true,
+            "--no-cave-cull" => a.no_cave_cull = true,
             "--mobs" => a.mobs = true,
             "--particles" => a.particles = true,
             "--perf" => a.perf = true,
@@ -469,7 +471,8 @@ impl Game {
         let textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
         let lod = lod::Lod::new(gen.clone(), lod::LodColors::new(&reg, &tex));
         let font = FontAtlas::new();
-        let renderer = pollster::block_on(Renderer::new(window.clone(), settings.vsync, &tex, &font));
+        let mut renderer = pollster::block_on(Renderer::new(window.clone(), settings.vsync, &tex, &font));
+        renderer.cave_cull = !args.no_cave_cull;
         let ui = UiBatch::new(&font);
         let audio = Audio::new(&settings, &base);
 

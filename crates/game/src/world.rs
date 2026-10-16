@@ -13,7 +13,7 @@ use glam::{IVec2, IVec3};
 use voxel::block::Shape;
 use voxel::chunk::{split_xz, Chunk, ChunkPos, CHUNK_HEIGHT};
 use voxel::light::compute_light;
-use voxel::mesh::{mesh_section, MeshInput, MeshTables, SectionMesh};
+use voxel::mesh::{mesh_section, MeshInput, MeshTables, SectionMesh, VIS_ALL};
 use voxel::physics::Terrain;
 use voxel::save::WorldSave;
 use voxel::worldgen::Generator;
@@ -114,7 +114,8 @@ impl World {
                             for s in 0..16 {
                                 if input.section_has_blocks(s) {
                                     let m = mesh_section(&tables, &input, s);
-                                    if !m.is_empty() {
+                                    // Empty but closed-off sections still matter for cave culling.
+                                    if !m.is_empty() || m.vis != VIS_ALL {
                                         v.push((s, m));
                                     }
                                 }

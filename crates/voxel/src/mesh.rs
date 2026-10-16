@@ -52,7 +52,13 @@ pub struct SectionMesh {
     pub solid: Vec<Vertex>,
     /// Blended geometry (water, ice).
     pub translucent: Vec<Vertex>,
+    /// Which faces of the section see each other through non-opaque blocks: bit `a * 6 + b`
+    /// (faces in mesh order +x, -x, +y, -y, +z, -z). Used to skip sections hidden in caves.
+    pub vis: u64,
 }
+
+/// Every face sees every other (an empty section).
+pub const VIS_ALL: u64 = (1 << 36) - 1;
 
 impl SectionMesh {
     pub fn is_empty(&self) -> bool {
@@ -209,8 +215,61 @@ fn pack(pos: [u32; 3], ao: u32, uv: [u32; 2], layer: u32, face: u32, flags: u32,
 }
 
 /// Mesh one 16-block-tall section of the chunk described by `input`.
+/// Flood-fill the open cells of a section and record which of its faces are connected.
+pub fn section_visibility(t: &MeshTables, input: &MeshInput, section: usize) -> u64 {
+    let y0 = section * 16 + 1;
+    let mut seen = [false; 4096];
+    for (i, s) in seen.iter_mut().enumerate() {
+        let (x, y, z) = (i & 15, i >> 8, (i >> 4) & 15);
+        *s = t.opaque[input.blocks[pi(x + 1, y0 + y, z + 1)] as usize];
+    }
+    let mut vis = 0u64;
+    let mut stack: Vec<usize> = Vec::new();
+    for start in 0..4096 {
+        if seen[start] {
+            continue;
+        }
+        seen[start] = true;
+        stack.push(start);
+        let mut faces = 0u8;
+        while let Some(i) = stack.pop() {
+            let (x, y, z) = (i & 15, i >> 8, (i >> 4) & 15);
+            let mut go = |ok: bool, face: u8, j: isize| {
+                if !ok {
+                    faces |= 1 << face;
+                } else {
+                    let j = (i as isize + j) as usize;
+                    if !seen[j] {
+                        seen[j] = true;
+                        stack.push(j);
+                    }
+                }
+            };
+            go(x < 15, 0, 1);
+            go(x > 0, 1, -1);
+            go(y < 15, 2, 256);
+            go(y > 0, 3, -256);
+            go(z < 15, 4, 16);
+            go(z > 0, 5, -16);
+        }
+        for a in 0..6 {
+            if faces & (1 << a) != 0 {
+                for b in 0..6 {
+                    if faces & (1 << b) != 0 {
+                        vis |= 1 << (a * 6 + b);
+                    }
+                }
+            }
+        }
+        if vis == VIS_ALL {
+            break;
+        }
+    }
+    vis
+}
+
 pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> SectionMesh {
-    let mut out = SectionMesh::default();
+    let mut out = SectionMesh { vis: section_visibility(t, input, section), ..Default::default() };
     let blocks = &input.blocks;
     let light = &input.light;
     let y0 = section * 16;
@@ -476,6 +535,7 @@ mod tests {
         assert_eq!(m.solid.len(), 24);
         assert!(input.section_has_blocks(0));
         assert!(!input.section_has_blocks(3));
+        assert_eq!(section_visibility(&t, &input, 0), VIS_ALL);
         // Two touching blocks hide two faces, and the evenly lit faces left merge into a 2x1 box.
         c.set(6, 5, 5, 1);
         let input = MeshInput::new([None, None, None, None, Some(&c), None, None, None, None]);
