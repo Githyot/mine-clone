@@ -107,6 +107,7 @@ impl Game {
         self.yaw = 0.0;
         self.pitch = 0.0;
         self.time_of_day = 1000.0;
+        self.weather = crate::weather::Weather::new(crate::weather::WeatherSave::default(), seed);
         self.needs_spawn = true;
         self.survival = survival.unwrap_or(false);
         self.health = 20.0;
@@ -121,6 +122,7 @@ impl Game {
             self.yaw = l.player_yaw;
             self.pitch = l.player_pitch;
             self.time_of_day = l.time_of_day;
+            self.weather = crate::weather::Weather::new(crate::weather::WeatherSave { raining: l.raining, thunder: l.thunder, timer: l.weather_timer }, l.seed);
             if l.hotbar.len() == 9 {
                 for (i, n) in l.hotbar.iter().enumerate() {
                     self.hotbar[i] = self.reg.id_or_air(n);

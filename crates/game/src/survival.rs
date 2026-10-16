@@ -129,7 +129,7 @@ pub struct Survival {
     pickup_sound: f32,
     last_pos: Vec3,
     was_ground: bool,
-    rng: Rng,
+    pub(crate) rng: Rng,
 }
 
 impl Survival {

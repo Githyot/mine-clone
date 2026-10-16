@@ -70,8 +70,6 @@ pub struct World {
     /// Chunk offsets sorted by distance, for loading nearest-first.
     spiral: Vec<IVec2>,
     spiral_radius: i32,
-    pub water: BlockId,
-    pub lava: BlockId,
     /// 1 for every level of water, 2 for lava, 0 otherwise.
     fluid: Vec<u8>,
     /// Blocks changed since the fluids last looked (they wake the water and lava around them).
@@ -155,8 +153,6 @@ impl World {
             spiral_radius: -1,
             fluid,
             changed: Vec::new(),
-            water,
-            lava,
             solid,
             top,
             meshed_count: 0,

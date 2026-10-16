@@ -34,9 +34,9 @@ fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
     let toward = max(dot(normalize(vec2<f32>(dir.x, dir.z) + vec2<f32>(1e-5, 0.0)), normalize(vec2<f32>(s.x, s.z) + vec2<f32>(1e-5, 0.0))), 0.0);
     let band = clamp(1.0 - abs(dir.y - 0.05) * 4.0, 0.0, 1.0);
     col = mix(col, vec3<f32>(0.95, 0.45, 0.2), low * toward * toward * band * 0.75);
-    // Stars.
+    // Stars (hidden by rain clouds).
     let night = clamp(1.0 - daylight * 1.6, 0.0, 1.0);
-    if (night > 0.0 && dir.y > -0.05) {
+    if (night > 0.0 && dir.y > -0.05 && g.weather.x < 0.5) {
         let q = floor(dir * 220.0);
         let h = hash3(q);
         if (h > 0.9975) {
@@ -90,7 +90,8 @@ fn vnoise(p: vec2<f32>) -> f32 {
 
 fn cloud_at(c: vec2<f32>) -> bool {
     let n = vnoise(c * 0.11) * 0.55 + vnoise(c * 0.31 + vec2<f32>(17.0, 3.0)) * 0.3 + hash2(c) * 0.15;
-    return n > 0.55;
+    // Rain fills the sky with cloud.
+    return n > 0.55 - g.weather.x * 0.22;
 }
 
 struct CloudFrag {
@@ -172,6 +173,8 @@ fn fs_clouds(in: SkyOut) -> CloudFrag {
     let low = clamp(1.0 - abs(s.y) * 3.0, 0.0, 1.0) * step(-0.15, s.y);
     var c = mix(vec3<f32>(0.10, 0.11, 0.16), vec3<f32>(1.0, 1.0, 1.0), day) * shade;
     c = mix(c, c * vec3<f32>(1.15, 0.72, 0.55), low * 0.7);
+    // Rain clouds are dark grey; lightning lights them up.
+    c = c * (1.0 - g.weather.x * 0.35) + vec3<f32>(g.weather.y * 0.6);
     // Fade into the sky with distance.
     let fade = 1.0 - smoothstep(CLOUD_MAX * 0.45, CLOUD_MAX, t);
     c = mix(g.sky_horizon.rgb, c, clamp(fade * 1.2, 0.0, 1.0));

@@ -31,6 +31,13 @@ pub struct LevelData {
     pub survival: bool,
     #[serde(default = "full_health")]
     pub health: f32,
+    /// Weather: raining, storm, and seconds until it changes (0 = pick a fresh spell).
+    #[serde(default)]
+    pub raining: bool,
+    #[serde(default)]
+    pub thunder: bool,
+    #[serde(default)]
+    pub weather_timer: f32,
 }
 
 fn full_health() -> f32 {

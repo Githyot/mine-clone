@@ -18,6 +18,8 @@ struct Globals {
     effects: vec4<f32>,
     // A torch in the hand: xyz relative to the camera's block, w: light level 0..1.
     hand_light: vec4<f32>,
+    // x: rain 0..1, y: lightning flash 0..1.
+    weather: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;

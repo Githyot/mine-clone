@@ -7,6 +7,7 @@ mod audio;
 mod controller;
 mod creative;
 mod fluids;
+mod weather;
 mod entity;
 mod item_render;
 mod menus;
@@ -88,6 +89,8 @@ struct Args {
     shapes: bool,
     /// Take the --screenshot of the loading screen instead of the game.
     shot_loading: bool,
+    rain: bool,
+    storm: bool,
     /// Screenshots: also wait this many seconds of game time (to let water flow).
     wait: f32,
     /// Creative inventory tab to open (0..13).
@@ -156,6 +159,8 @@ fn parse_args() -> Args {
             "--demo" => a.demo = true,
             "--shapes" => a.shapes = true,
             "--shot-loading" => a.shot_loading = true,
+            "--rain" => a.rain = true,
+            "--storm" => a.storm = true,
             "--wait" => a.wait = it.next().and_then(|v| v.parse().ok()).unwrap_or(0.0),
             "--ctab" => a.ctab = it.next().and_then(|v| v.parse().ok()),
             "--inventory" => a.show_inventory = true,
@@ -423,6 +428,7 @@ struct Game {
     mining: Option<(IVec3, f32)>,
     particles: particles::Particles,
     fluids: fluids::Fluids,
+    weather: weather::Weather,
     anim: player_model::Animator,
     /// 0 = first person, 1 = behind, 2 = in front (F5).
     camera_mode: u8,
@@ -582,6 +588,7 @@ impl Game {
         let mut hotbar_names: Vec<String> =
             ["grass_block", "dirt", "stone", "cobblestone", "oak_planks", "oak_log", "glass", "torch", "glowstone"].iter().map(|s| s.to_string()).collect();
         let mut time_of_day = 1000.0;
+        let mut weather_save = weather::WeatherSave::default();
         let mut needs_spawn = true;
         let mut survival = args.survival;
         let mut health = 20.0;
@@ -593,6 +600,7 @@ impl Game {
             yaw = l.player_yaw;
             pitch = l.player_pitch;
             time_of_day = l.time_of_day;
+            weather_save = weather::WeatherSave { raining: l.raining, thunder: l.thunder, timer: l.weather_timer };
             if l.hotbar.len() == 9 {
                 hotbar_names = l.hotbar.clone();
             }
@@ -629,6 +637,9 @@ impl Game {
         log::info!("world '{world_name}' seed {seed}, {} blocks, {} textures ({}px)", reg.len(), reg.textures.len(), renderer.texture_size);
         log::info!("{} interface pictures from packs", ui.gui.len());
         let now = Instant::now();
+        if args.rain || args.storm {
+            weather_save = weather::WeatherSave { raining: true, thunder: args.storm, timer: 600.0 };
+        }
         let mut game = Game {
             window,
             renderer,
@@ -685,6 +696,7 @@ impl Game {
             mining: None,
             particles: particles::Particles::new(),
             fluids: fluids::Fluids::new(&reg_for_fluids),
+            weather: weather::Weather::new(weather_save, seed),
             anim: player_model::Animator::default(),
             camera_mode,
             world_open: !title_mode,
@@ -865,6 +877,9 @@ impl Game {
             hotbar: self.hotbar.iter().map(|&id| self.reg.get(id).name.clone()).collect(),
             survival: self.survival,
             health: self.health,
+            raining: self.weather.state.raining,
+            thunder: self.weather.state.thunder,
+            weather_timer: self.weather.state.timer,
         };
         if self.screen != Screen::Loading || !self.needs_spawn {
             if let Err(e) = self.world.save.save_level(&level) {
@@ -1067,6 +1082,20 @@ impl Game {
         let events = std::mem::take(&mut self.world.events);
         self.renderer.apply_mesh_events(events);
         if self.world_open && self.screen != Screen::Loading {
+            let shot = self.args.screenshot.is_some();
+            self.weather.update(&self.world, eye, dt, shot);
+            if let Some(close) = self.weather.thunder_sound {
+                self.sfx(Sfx::Thunder(close));
+            }
+            if self.weather.rain_sound {
+                let vol = self.settings.sound_volume * 0.5 * self.weather.rain;
+                if let Some(a) = self.audio.as_mut() {
+                    a.play(Sfx::Rain, vol);
+                }
+            }
+            if self.weather.snowing_here && self.weather.rain > 0.9 {
+                self.settle_snow(dt);
+            }
             let fe = self.fluids.update(&mut self.world, dt);
             if let Some(p) = fe.hardened.first() {
                 if p.as_vec3().distance(self.body.pos) < 24.0 {
@@ -1075,7 +1104,9 @@ impl Game {
             }
         } else {
             self.world.changed.clear();
+            self.weather.columns.clear();
         }
+        self.renderer.set_rain(&self.weather.columns);
 
         if self.screen == Screen::Loading {
             let (sx, sz) = if self.needs_spawn { self.spawn_xz } else { (self.body.pos.x.floor() as i32, self.body.pos.z.floor() as i32) };
@@ -2272,14 +2303,47 @@ impl Game {
         }
     }
 
+    /// Snow settles in thin layers on open ground around the player while it snows.
+    fn settle_snow(&mut self, dt: f32) {
+        let Some(layer) = self.reg.id("snow_layer") else { return };
+        let tries = (dt * 6.0).ceil() as i32;
+        let c = self.body.pos.floor().as_ivec3();
+        for _ in 0..tries {
+            let x = c.x + self.surv.rng.range(-24, 25);
+            let z = c.z + self.surv.rng.range(-24, 25);
+            let Some(y) = self.world.surface_y(x, z) else { continue };
+            let p = IVec3::new(x, y, z);
+            let id = self.world.block_or_air(p);
+            let b = self.reg.get(id);
+            if b.base == layer {
+                // Piles up slowly, never past half a block on its own.
+                if b.variant < 3 && self.surv.rng.chance(0.2) {
+                    self.world.set_block(p, self.variant_id(layer, b.variant + 1));
+                }
+            } else if self.reg.is_opaque(id) && b.shape == Shape::Cube && self.world.block_or_air(p + IVec3::Y) == AIR {
+                self.world.set_block(p + IVec3::Y, layer);
+            }
+        }
+    }
+
     fn sky(&self) -> ([f32; 3], [f32; 3], f32, Vec3) {
         let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
         let sun = Vec3::new(a.cos(), a.sin(), 0.0);
         let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
         let lerp = |n: [f32; 3], d: [f32; 3]| [n[0] + (d[0] - n[0]) * daylight, n[1] + (d[1] - n[1]) * daylight, n[2] + (d[2] - n[2]) * daylight];
-        let top = lerp([0.008, 0.01, 0.035], [0.47, 0.65, 1.0]);
-        let horizon = lerp([0.02, 0.025, 0.06], [0.74, 0.84, 1.0]);
-        (top, horizon, daylight.max(0.16), sun)
+        let mut top = lerp([0.008, 0.01, 0.035], [0.47, 0.65, 1.0]);
+        let mut horizon = lerp([0.02, 0.025, 0.06], [0.74, 0.84, 1.0]);
+        // Rain greys the sky and dims the day; lightning lights everything for a moment.
+        let gloom = self.weather.gloom();
+        let flash = self.weather.flash;
+        for c in [&mut top, &mut horizon] {
+            let grey = (c[0] + c[1] + c[2]) / 3.0;
+            for v in c.iter_mut() {
+                *v = (*v + (grey - *v) * (gloom * 1.8).min(1.0)) * (1.0 - gloom * 0.85) + flash * 0.5;
+            }
+        }
+        let daylight = daylight * (1.0 - gloom) + flash * 0.6;
+        (top, horizon, daylight.clamp(0.16, 1.0), sun)
     }
 
     /// F9: frame rate and machine usage, top right.
@@ -3090,6 +3154,7 @@ impl Game {
             effects,
             // The light a held torch gives comes from the player's hand, wherever the camera is.
             hand_light: [head.x - block.x as f32, head.y - 0.4 - block.y as f32, head.z - block.z as f32, self.hand_light_level()],
+            weather: [self.weather.rain, self.weather.flash, 0.0, 0.0],
             ..Default::default()
         };
         let cam = Camera {

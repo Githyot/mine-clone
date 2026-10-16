@@ -36,6 +36,8 @@ pub struct Globals {
     pub effects: [f32; 4],
     /// Light carried in the hand: xyz relative to the camera's block, w: level 0..1.
     pub hand_light: [f32; 4],
+    /// x: rain 0..1, y: lightning flash 0..1.
+    pub weather: [f32; 4],
 }
 
 #[repr(C)]
@@ -80,6 +82,7 @@ struct ScenePipes {
     cloud: wgpu::RenderPipeline,
     line: wgpu::RenderPipeline,
     lod: wgpu::RenderPipeline,
+    rain: wgpu::RenderPipeline,
 }
 
 pub struct Renderer {
@@ -109,6 +112,8 @@ pub struct Renderer {
     inst_buf: wgpu::Buffer,
     inst_cap: usize,
     line_buf: wgpu::Buffer,
+    rain_buf: wgpu::Buffer,
+    rain_count: u32,
     ui_buf: wgpu::Buffer,
     ui_cap: usize,
     chunks: HashMap<ChunkPos, Vec<GpuSection>>,
@@ -122,6 +127,9 @@ pub struct Renderer {
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 /// Near clipping plane (blocks).
 const NEAR: f32 = 0.05;
+
+/// Most rain columns drawn (a circle of radius 10 has about 320).
+const RAIN_MAX: usize = 512;
 
 fn shader(device: &wgpu::Device, name: &str, src: &str) -> wgpu::ShaderModule {
     let full = format!("{}\n{}", include_str!("shaders/common.wgsl"), src);
@@ -237,6 +245,12 @@ impl Renderer {
         let sky = shader(&device, "sky", include_str!("shaders/sky.wgsl"));
         let lines = shader(&device, "lines", include_str!("shaders/lines.wgsl"));
         let lod = shader(&device, "lod", include_str!("shaders/lod.wgsl"));
+        let rain = shader(&device, "rain", include_str!("shaders/rain.wgsl"));
+        let rain_layout = [wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<crate::weather::RainColumn>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4],
+        }];
         let ui = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("ui"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/ui.wgsl").into()),
@@ -341,6 +355,7 @@ impl Renderer {
             cloud: make("clouds", f, &globals_only, &sky, "vs_sky", "fs_clouds", &[], blend_alpha, None, depth_state(false, C::Less), T::TriangleList),
             line: make("lines", f, &globals_only, &lines, "vs_lines", "fs_lines", &line_layout, blend_alpha, None, depth_state(false, C::LessEqual), T::LineList),
             lod: make("lod", f, &globals_only, &lod, "vs_lod", "fs_lod", &lod_layout, None, None, depth_state(true, C::Less), T::TriangleList),
+            rain: make("rain", f, &globals_only, &rain, "vs_rain", "fs_rain", &rain_layout, blend_alpha, None, depth_state(false, C::Less), T::TriangleList),
         };
         let pipes = [scene_pipes(format), scene_pipes(HDR)];
         let post = PostFx::new(&device, format);
@@ -438,6 +453,12 @@ impl Renderer {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let rain_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("rain"),
+            size: RAIN_MAX as u64 * std::mem::size_of::<crate::weather::RainColumn>() as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let line_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("lines"),
             size: 64 * std::mem::size_of::<LineVertex>() as u64,
@@ -479,6 +500,8 @@ impl Renderer {
             inst_buf,
             inst_cap,
             line_buf,
+            rain_buf,
+            rain_count: 0,
             ui_buf,
             ui_cap,
             chunks: HashMap::new(),
@@ -753,6 +776,15 @@ impl Renderer {
         self.vram_bytes = 0;
     }
 
+    /// Rain and snow columns for the next frames (empty when it's dry).
+    pub fn set_rain(&mut self, cols: &[crate::weather::RainColumn]) {
+        let n = cols.len().min(RAIN_MAX);
+        if n > 0 {
+            self.queue.write_buffer(&self.rain_buf, 0, bytemuck::cast_slice(&cols[..n]));
+        }
+        self.rain_count = n as u32;
+    }
+
     pub fn chunk_count(&self) -> usize {
         self.chunks.len()
     }
@@ -972,6 +1004,11 @@ impl Renderer {
                 pass.set_vertex_buffer(0, b.slice(..));
                 pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
                 quads += *q as usize;
+            }
+            if self.rain_count > 0 {
+                pass.set_pipeline(&pipes.rain);
+                pass.set_vertex_buffer(0, self.rain_buf.slice(..));
+                pass.draw(0..6, 0..self.rain_count);
             }
             if line_count > 0 {
                 pass.set_pipeline(&pipes.line);
