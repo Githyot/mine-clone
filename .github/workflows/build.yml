@@ -1,0 +1,73 @@
+name: build
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux libraries
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libxkbcommon-dev libudev-dev
+      - name: Unit tests
+        run: cargo test --workspace
+      - name: Benchmark the world pipeline
+        run: cargo run --release -p voxel --example bench
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+            exe: mine-clone.exe
+          - os: ubuntu-latest
+            name: linux
+            exe: mine-clone
+          - os: macos-latest
+            name: macos
+            exe: mine-clone
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libxkbcommon-dev libudev-dev
+      - name: Build (release)
+        run: cargo build --release -p game
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p dist/MineClone
+          cp target/release/${{ matrix.exe }} dist/MineClone/
+          cp -r packs dist/MineClone/packs
+          cp README.md dist/MineClone/
+          cp docs/COMO-JOGAR.txt dist/MineClone/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MineClone-${{ matrix.name }}
+          path: dist/MineClone
+      - name: Zip for release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: cd dist && 7z a ../MineClone-${{ matrix.name }}.zip MineClone
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: MineClone-${{ matrix.name }}.zip

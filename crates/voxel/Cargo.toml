@@ -1,0 +1,14 @@
+[package]
+name = "voxel"
+version.workspace = true
+edition.workspace = true
+description = "World data, generation, lighting, meshing and physics. No GPU or window code."
+
+[dependencies]
+glam.workspace = true
+bytemuck.workspace = true
+serde.workspace = true
+ron.workspace = true
+lz4_flex.workspace = true
+
+[dev-dependencies]

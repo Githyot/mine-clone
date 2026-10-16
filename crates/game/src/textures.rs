@@ -1,0 +1,303 @@
+//! Block textures: the base game's art plus resource packs stacked on top, like Minecraft.
+//!
+//! A resource pack is a folder or a `.zip` inside `resourcepacks/`. Two layouts are understood:
+//! - ours: `textures/block/<name>.png`
+//! - Minecraft's: `assets/minecraft/textures/block/<name>.png` (and the older `.../blocks/` names),
+//!   so any Minecraft texture pack you own works. Grey textures that Minecraft colours at runtime
+//!   (grass, leaves, water) are coloured here when they are loaded.
+
+use std::io::{Cursor, Read};
+use std::path::{Path, PathBuf};
+
+use crate::embedded;
+
+pub struct TextureSet {
+    /// Width and height of every layer.
+    pub size: u32,
+    /// RGBA8 pixels per layer, each `size * size * 4` bytes.
+    pub layers: Vec<Vec<u8>>,
+    /// Names of the packs that were used, for the debug screen.
+    pub packs: Vec<String>,
+}
+
+enum PackKind {
+    Dir(PathBuf),
+    Zip(zip::ZipArchive<Cursor<Vec<u8>>>),
+}
+
+struct Pack {
+    name: String,
+    kind: PackKind,
+}
+
+impl Pack {
+    fn open(path: &Path) -> Option<Pack> {
+        let name = path.file_name()?.to_string_lossy().to_string();
+        if path.is_dir() {
+            Some(Pack { name, kind: PackKind::Dir(path.to_path_buf()) })
+        } else if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")) {
+            let bytes = std::fs::read(path).ok()?;
+            let zip = zip::ZipArchive::new(Cursor::new(bytes)).ok()?;
+            Some(Pack { name, kind: PackKind::Zip(zip) })
+        } else {
+            None
+        }
+    }
+
+    fn read(&mut self, rel: &str) -> Option<Vec<u8>> {
+        match &mut self.kind {
+            PackKind::Dir(d) => std::fs::read(d.join(rel)).ok(),
+            PackKind::Zip(z) => {
+                // Some zips wrap everything in one top-level folder; try both.
+                let direct = z.by_name(rel).ok().map(|mut f| {
+                    let mut v = Vec::new();
+                    let _ = f.read_to_end(&mut v);
+                    v
+                });
+                if direct.is_some() {
+                    return direct;
+                }
+                let names: Vec<String> = z.file_names().map(|s| s.to_string()).collect();
+                let hit = names.into_iter().find(|n| n.ends_with(&format!("/{rel}")))?;
+                let mut f = z.by_name(&hit).ok()?;
+                let mut v = Vec::new();
+                f.read_to_end(&mut v).ok()?;
+                Some(v)
+            }
+        }
+    }
+}
+
+/// Packs available in `dir`, sorted by name.
+pub fn list_resource_packs(dir: &Path) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(dir)
+        .map(|r| {
+            r.filter_map(|e| e.ok())
+                .filter(|e| {
+                    let p = e.path();
+                    p.is_dir() || p.extension().is_some_and(|x| x.eq_ignore_ascii_case("zip"))
+                })
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    v.sort();
+    v
+}
+
+/// How Minecraft names our textures (newest names first, then pre-1.13 names).
+fn minecraft_names(name: &str) -> Vec<String> {
+    let mut v = vec![name.to_string()];
+    let extra: &[&str] = match name {
+        "grass_block_top" => &["grass_top"],
+        "grass_block_side" => &["grass_side"],
+        "snow_grass_side" => &["grass_block_snow", "grass_side_snowed"],
+        "short_grass" => &["grass", "tallgrass"],
+        "water" => &["water_still"],
+        "lava" => &["lava_still"],
+        "poppy" => &["flower_rose"],
+        "dandelion" => &["flower_dandelion"],
+        "bricks" => &["brick"],
+        "stone_bricks" => &["stonebrick"],
+        "mossy_cobblestone" => &["cobblestone_mossy"],
+        "sandstone_side" => &["sandstone", "sandstone_normal"],
+        "furnace_front" => &["furnace_front_off"],
+        "torch" => &["torch_on"],
+        "dead_bush" => &["deadbush"],
+        "melon_side" => &["melon_side"],
+        _ => &[],
+    };
+    v.extend(extra.iter().map(|s| s.to_string()));
+    for wood in ["oak", "birch", "spruce"] {
+        if name == format!("{wood}_log") {
+            v.push(format!("log_{wood}"));
+        } else if name == format!("{wood}_log_top") {
+            v.push(format!("log_{wood}_top"));
+        } else if name == format!("{wood}_planks") {
+            v.push(format!("planks_{wood}"));
+        } else if name == format!("{wood}_leaves") {
+            v.push(format!("leaves_{wood}"));
+        }
+    }
+    if let Some(color) = name.strip_suffix("_wool") {
+        let old = if color == "light_gray" { "silver" } else { color };
+        v.push(format!("wool_colored_{old}"));
+    }
+    v
+}
+
+/// Colour Minecraft applies to its grey textures.
+fn minecraft_tint(name: &str) -> Option<[u8; 3]> {
+    match name {
+        "grass_block_top" | "short_grass" => Some([0x79, 0xC0, 0x5A]),
+        "oak_leaves" => Some([0x59, 0xAE, 0x30]),
+        "spruce_leaves" => Some([0x61, 0x99, 0x61]),
+        "birch_leaves" => Some([0x80, 0xA7, 0x55]),
+        "water" => Some([0x3F, 0x76, 0xE4]),
+        _ => None,
+    }
+}
+
+fn decode(bytes: &[u8]) -> Option<image::RgbaImage> {
+    image::load_from_memory(bytes).ok().map(|i| i.to_rgba8())
+}
+
+/// Keep only the first square frame (animated textures are vertical strips).
+fn first_frame(img: image::RgbaImage) -> image::RgbaImage {
+    let w = img.width();
+    if img.height() > w {
+        image::imageops::crop_imm(&img, 0, 0, w, w).to_image()
+    } else {
+        img
+    }
+}
+
+fn tint(img: &mut image::RgbaImage, c: [u8; 3]) {
+    for p in img.pixels_mut() {
+        for k in 0..3 {
+            p.0[k] = (p.0[k] as u32 * c[k] as u32 / 255) as u8;
+        }
+    }
+}
+
+fn resize_nearest(img: &image::RgbaImage, size: u32) -> Vec<u8> {
+    if img.width() == size && img.height() == size {
+        return img.as_raw().clone();
+    }
+    let mut out = vec![0u8; (size * size * 4) as usize];
+    for y in 0..size {
+        for x in 0..size {
+            let sx = x * img.width() / size;
+            let sy = y * img.height() / size;
+            let p = img.get_pixel(sx, sy).0;
+            let i = ((y * size + x) * 4) as usize;
+            out[i..i + 4].copy_from_slice(&p);
+        }
+    }
+    out
+}
+
+fn missing(size: u32) -> Vec<u8> {
+    let mut out = vec![0u8; (size * size * 4) as usize];
+    for y in 0..size {
+        for x in 0..size {
+            let magenta = ((x * 2 / size) + (y * 2 / size)) % 2 == 0;
+            let i = ((y * size + x) * 4) as usize;
+            out[i..i + 4].copy_from_slice(if magenta { &[248, 0, 248, 255] } else { &[0, 0, 0, 255] });
+        }
+    }
+    out
+}
+
+/// Folder holding the base game's textures when running from the source tree, if present.
+pub fn vanilla_texture_dir(base: &Path) -> Option<PathBuf> {
+    let d = base.join("packs/vanilla/textures/block");
+    d.is_dir().then_some(d)
+}
+
+pub fn load(names: &[String], base: &Path, enabled_packs: &[String]) -> TextureSet {
+    let mut packs: Vec<Pack> = enabled_packs.iter().filter_map(|n| Pack::open(&base.join("resourcepacks").join(n))).collect();
+    let used: Vec<String> = packs.iter().map(|p| p.name.clone()).collect();
+    let vanilla_dir = vanilla_texture_dir(base);
+
+    let mut images: Vec<Option<image::RgbaImage>> = Vec::with_capacity(names.len());
+    for full in names {
+        // Item sprites are named "item/<name>" and live in the item folders.
+        let (kind, name) = match full.strip_prefix("item/") {
+            Some(n) => ("item", n),
+            None => ("block", full.as_str()),
+        };
+        let mc_folders: [&str; 2] = if kind == "item" { ["item", "items"] } else { ["block", "blocks"] };
+        let mut found: Option<image::RgbaImage> = None;
+        'packs: for pack in packs.iter_mut() {
+            if let Some(img) = pack.read(&format!("textures/{kind}/{name}.png")).and_then(|b| decode(&b)) {
+                found = Some(first_frame(img));
+                break;
+            }
+            for mc in minecraft_names(name) {
+                for folder in mc_folders {
+                    let path = format!("assets/minecraft/textures/{folder}/{mc}.png");
+                    if let Some(img) = pack.read(&path).and_then(|b| decode(&b)) {
+                        let mut img = first_frame(img);
+                        if let Some(c) = minecraft_tint(name) {
+                            tint(&mut img, c);
+                        }
+                        // Minecraft draws grass sides as dirt plus a grey overlay coloured by biome.
+                        if name == "grass_block_side" {
+                            let ov = format!("assets/minecraft/textures/{folder}/{mc}_overlay.png");
+                            if let Some(mut o) = pack.read(&ov).and_then(|b| decode(&b)).map(first_frame) {
+                                tint(&mut o, [0x79, 0xC0, 0x5A]);
+                                if o.dimensions() == img.dimensions() {
+                                    for (d, s) in img.pixels_mut().zip(o.pixels()) {
+                                        if s.0[3] > 127 {
+                                            *d = *s;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        found = Some(img);
+                        break 'packs;
+                    }
+                }
+            }
+        }
+        if found.is_none() {
+            if let Some(d) = &vanilla_dir {
+                let dir = if kind == "item" { d.with_file_name("item") } else { d.clone() };
+                found = std::fs::read(dir.join(format!("{name}.png"))).ok().and_then(|b| decode(&b));
+            }
+        }
+        if found.is_none() {
+            let list = if kind == "item" { embedded::ITEM_TEXTURES } else { embedded::TEXTURES };
+            found = list.iter().find(|(n, _)| *n == name).and_then(|(_, b)| decode(b));
+        }
+        if found.is_none() {
+            log::warn!("missing texture '{full}'");
+        }
+        images.push(found.map(first_frame));
+    }
+
+    // All layers of a texture array share one size: use the largest (packs can be 32x, 64x...).
+    let size = images.iter().flatten().map(|i| i.width()).max().unwrap_or(16).clamp(16, 256).next_power_of_two();
+    let layers = images.iter().map(|i| i.as_ref().map(|i| resize_nearest(i, size)).unwrap_or_else(|| missing(size))).collect();
+    TextureSet { size, layers, packs: used }
+}
+
+/// Mip chain for one layer, averaging only visible pixels so cut-out edges don't darken.
+pub fn mip_chain(base: &[u8], size: u32, levels: u32) -> Vec<Vec<u8>> {
+    let mut out = vec![base.to_vec()];
+    let mut s = size;
+    for _ in 1..levels {
+        let prev = out.last().unwrap();
+        let ns = (s / 2).max(1);
+        let mut next = vec![0u8; (ns * ns * 4) as usize];
+        for y in 0..ns {
+            for x in 0..ns {
+                let mut c = [0u32; 4];
+                let mut wsum = 0u32;
+                for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                    let i = (((y * 2 + dy) * s + x * 2 + dx) * 4) as usize;
+                    let a = prev[i + 3] as u32;
+                    for k in 0..3 {
+                        c[k] += prev[i + k] as u32 * a;
+                    }
+                    c[3] += a;
+                    wsum += a;
+                }
+                let o = ((y * ns + x) * 4) as usize;
+                if wsum > 0 {
+                    for k in 0..3 {
+                        next[o + k] = (c[k] / wsum) as u8;
+                    }
+                }
+                // Keep cut-out textures from fading away at a distance.
+                let a = c[3] / 4;
+                next[o + 3] = if a > 0 && a < 255 { (a * 5 / 4).min(255) as u8 } else { a as u8 };
+            }
+        }
+        out.push(next);
+        s = ns;
+    }
+    out
+}

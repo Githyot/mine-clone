@@ -1,0 +1,14 @@
+/target
+/saves
+/settings.ron
+/resourcepacks/*
+!/resourcepacks/README.md
+/music/*
+!/music/README.md
+*.png.tmp
+/screenshots
+/crash.txt
+__pycache__/
+/paintings/*
+/shaderpacks
+/.claude/
