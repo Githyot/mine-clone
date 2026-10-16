@@ -27,6 +27,9 @@ pub fn variant_count(shape: Shape) -> u8 {
         Shape::Oriented => 16,
         // Spout: 0 down, 1..4 north, east, south, west.
         Shape::Hopper => 5,
+        // Rails: shape 0..9 (see `RAIL_ENDS`); powered, detector and activator rails only
+        // bend into 0..5 and add 10 when powered.
+        Shape::Rail => 16,
         // Liquids: level 0 is the source, 1..7 flow further away, +8 is falling.
         Shape::Liquid => 16,
         _ => 1,
@@ -216,6 +219,7 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
             out.push([4, 4, 4, 12, 10, 12]);
             out.push(if variant == 0 { [6, 0, 6, 10, 4, 10] } else { rotate([6, 4, 0, 10, 8, 4], (variant - 1) & 3) });
         }
+        Shape::Rail => out.push(if rail_rises(variant).is_some() { [0, 0, 0, 16, 8, 16] } else { [0, 0, 0, 16, 2, 16] }),
         Shape::PistonHead => {
             let d = dir6_of(variant);
             out.push(orient6([0, 12, 0, 16, 16, 16], d));
@@ -223,6 +227,38 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
         }
         _ => out.push([0, 0, 0, 16, 16, 16]),
     }
+}
+
+/// The two ends of each rail shape as (dx, dz): north-south, east-west, rising to the east,
+/// west, north and south (the first end is the high one), then the curves south-east,
+/// south-west, north-west and north-east.
+pub const RAIL_ENDS: [[[i32; 2]; 2]; 10] = [
+    [[0, -1], [0, 1]],
+    [[1, 0], [-1, 0]],
+    [[1, 0], [-1, 0]],
+    [[-1, 0], [1, 0]],
+    [[0, -1], [0, 1]],
+    [[0, 1], [0, -1]],
+    [[0, 1], [1, 0]],
+    [[0, 1], [-1, 0]],
+    [[0, -1], [-1, 0]],
+    [[0, -1], [1, 0]],
+];
+
+/// Which of the ten rail shapes a variant is.
+pub fn rail_shape(variant: u8) -> usize {
+    (if variant >= 10 { variant - 10 } else { variant }) as usize % 10
+}
+
+/// A powered, detector or activator rail that is on.
+pub fn rail_on(variant: u8) -> bool {
+    variant >= 10
+}
+
+/// The direction (dx, dz) a sloping rail climbs toward.
+pub fn rail_rises(variant: u8) -> Option<[i32; 2]> {
+    let s = rail_shape(variant);
+    (2..6).contains(&s).then(|| RAIL_ENDS[s][0])
 }
 
 /// Boxes after the first of a lever or repeater are its handle or torches, drawn with the

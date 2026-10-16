@@ -709,6 +709,51 @@ def flint_and_steel():
     return outline(from_map(rows, m))
 
 
+def honeycomb():
+    rows = [
+        "................",
+        "................",
+        "....111.111.....",
+        "...12321232.....",
+        "...1343134321...",
+        "....121.12321...",
+        "...111.1.1111...",
+        "..12321232121...",
+        "..13431343432...",
+        "...12112321.....",
+        "....1.1.1.......",
+        "...1232121......",
+        "...134343.......",
+        "....1221........",
+        "................",
+        "................",
+    ]
+    return outline(from_map(rows, pmap(pal("#7a4a08", "#c07a10", "#e8a828", "#ffd660"))))
+
+
+def minecart_item():
+    rows = [
+        "................",
+        "................",
+        "................",
+        "................",
+        "..1..........1..",
+        "..14444444444 1.",
+        "..1433333333341.",
+        "..1432222222341.",
+        "..1432222222341.",
+        "..1433333333341.",
+        "...14444444441..",
+        "...11111111111..",
+        "....155...551...",
+        "....1551..5511..",
+        ".....11....11...",
+        "................",
+    ]
+    rows = [r.replace(" ", "4") for r in rows]
+    return outline(from_map(rows, pmap(pal("#1e1e22", "#2e2e34", "#4a4a52", "#6e6e78", "#9a9aa4", "#3a3a40"), "123456")))
+
+
 def string_item():
     img = canvas()
     c1, c2 = hexrgb("#f4f4f0"), hexrgb("#c8c8c2")
@@ -1547,6 +1592,7 @@ def item_registry():
         "diamond": diamond, "emerald": emerald, "lapis_lazuli": lapis,
         "redstone": redstone, "flint": flint, "string": string_item,
         "flint_and_steel": flint_and_steel,
+        "honeycomb": honeycomb, "minecart": minecart_item,
         "feather": feather, "leather": leather, "bone": bone,
         "gunpowder": gunpowder, "rotten_flesh": rotten_flesh,
         "clay_ball": clay_ball, "brick": brick,

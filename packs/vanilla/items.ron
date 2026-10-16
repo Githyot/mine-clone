@@ -141,6 +141,9 @@
     (name: "lapis_lazuli", display_name: Some("Lápis-lazúli")),
     (name: "redstone", display_name: Some("Pó de Redstone"), places: Some("redstone_wire")),
     (name: "flint_and_steel", display_name: Some("Isqueiro"), max_stack: Some(1)),
+    // Wax for copper. Until there are bees, flowers drop it now and then.
+    (name: "honeycomb", display_name: Some("Favo de Mel")),
+    (name: "minecart", display_name: Some("Carrinho de Mina"), max_stack: Some(1)),
     (name: "flint", display_name: Some("Pederneira")),
     (name: "string", display_name: Some("Linha")),
     (name: "feather", display_name: Some("Pena")),

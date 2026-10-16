@@ -106,6 +106,8 @@ pub struct Survival {
     pub drops: Vec<Dropped>,
     pub orbs: Vec<Orb>,
     pub corpses: Vec<Corpse>,
+    /// Minecarts in the world.
+    pub carts: Vec<crate::rails::Minecart>,
     /// The second hand's slot (holds anything; nothing uses it yet).
     pub offhand: Option<ItemStack>,
     /// Creative inventory: open tab, first row shown, and the search text.
@@ -161,6 +163,7 @@ impl Survival {
             drops: Vec::new(),
             orbs: Vec::new(),
             corpses: Vec::new(),
+            carts: Vec::new(),
             offhand: None,
             ctab: 0,
             cscroll: 0,
@@ -253,6 +256,9 @@ struct Saved {
     corpses: Vec<([f32; 3], f32, Vec<SavedStack>)>,
     #[serde(default)]
     offhand: SavedStack,
+    /// Minecarts: where and which way.
+    #[serde(default)]
+    carts: Vec<([f32; 3], f32)>,
 }
 
 fn save_stacks(items: &ItemRegistry, inv: &Inventory) -> Vec<SavedStack> {
@@ -290,6 +296,7 @@ impl Survival {
             saplings: self.saplings.iter().map(|(p, t)| (p.to_array(), *t)).collect(),
             armor: self.armor.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect(),
             offhand: self.offhand.map(|s| (items.get(s.item).name.clone(), s.count, s.damage)),
+            carts: self.carts.iter().map(|c| (c.body.pos.to_array(), c.yaw)).collect(),
             corpses: self
                 .corpses
                 .iter()
@@ -332,6 +339,7 @@ impl Survival {
         for (i, a) in worn.slots.into_iter().enumerate() {
             sv.armor[i] = a;
         }
+        sv.carts = s.carts.iter().map(|(p, yaw)| crate::rails::Minecart::new(Vec3::from(*p), *yaw)).collect();
         sv.saplings = s.saplings.into_iter().map(|(p, t)| (IVec3::from(p), t)).collect();
         sv.offhand = load_stacks(items, std::slice::from_ref(&s.offhand), 1).slots[0];
         sv
@@ -805,6 +813,12 @@ impl Game {
         if self.talk_to_npc() {
             return true;
         }
+        if let Some(st) = self.held_stack() {
+            let name = self.items.get(st.item).name.clone();
+            if (name == "honeycomb" || self.held_tool().is_some_and(|t| t.kind == voxel::block::ToolKind::Axe)) && self.copper_use(&name) {
+                return true;
+            }
+        }
         if let Some(hit) = self.target {
             let id = self.world.block_or_air(hit.block);
             let name = self.reg.get(id).name.clone();
@@ -822,7 +836,7 @@ impl Game {
                         self.open_container(Open::Furnace(hit.block));
                         return true;
                     }
-                    "hopper" | "dropper" | "dispenser" => {
+                    "hopper" | "dropper" | "dispenser" | "crafter" => {
                         let n = if name == "hopper" { 5 } else { 9 };
                         self.surv.containers.entry(hit.block).or_insert_with(|| Container::Chest(Inventory::new(n)));
                         self.open_container(Open::Chest(hit.block));
@@ -1382,7 +1396,7 @@ impl Game {
             let (flat, layers, mut size) = match it.look {
                 Look::Block(b) => {
                     let bl = self.reg.get(b);
-                    if matches!(bl.shape, Shape::Cross | Shape::Torch) {
+                    if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail) {
                         (1.0, [bl.faces[0] as f32; 3], 0.4)
                     } else {
                         (0.0, [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32], 0.22)
@@ -2170,7 +2184,7 @@ impl Game {
         let (flat, layers, size, local, offset) = match it.look {
             Look::Block(b) => {
                 let bl = self.reg.get(b);
-                if matches!(bl.shape, Shape::Cross | Shape::Torch) {
+                if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail) {
                     // Torches and plants stand up out of the fist.
                     let size = if bl.shape == Shape::Torch { 0.42 } else { 0.32 };
                     (1.0, [bl.faces[0] as f32; 3], size, upright, top * (size * 0.35))

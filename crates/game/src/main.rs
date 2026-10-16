@@ -5,6 +5,7 @@
 
 mod audio;
 mod controller;
+mod copper;
 mod creative;
 mod fishing;
 mod magic;
@@ -23,6 +24,7 @@ mod paintings;
 mod particles;
 mod player_model;
 mod post;
+mod rails;
 mod renderer;
 mod settings;
 mod sfx;
@@ -94,6 +96,8 @@ struct Args {
     shapes: bool,
     /// Build test redstone circuits in front of the player.
     redstone: bool,
+    /// Build the Phase 4 test scene: rails and carts, copper, a crafter.
+    phase4: bool,
     /// Take the --screenshot of the loading screen instead of the game.
     shot_loading: bool,
     rain: bool,
@@ -169,6 +173,7 @@ fn parse_args() -> Args {
             "--demo" => a.demo = true,
             "--shapes" => a.shapes = true,
             "--redstone" => a.redstone = true,
+            "--fase4" => a.phase4 = true,
             "--shot-loading" => a.shot_loading = true,
             "--rain" => a.rain = true,
             "--find" => a.find = it.next(),
@@ -464,6 +469,9 @@ struct Game {
     tnt: Vec<redstone::PrimedTnt>,
     /// Seconds until hoppers next move an item.
     hopper_t: f32,
+    /// The cart the player sits in.
+    riding: Option<usize>,
+    copper: copper::Copper,
     bobber: Option<fishing::Bobber>,
     weather: weather::Weather,
     anim: player_model::Animator,
@@ -762,6 +770,8 @@ impl Game {
             redstone: redstone::Redstone::new(reg_for_fluids.clone()),
             tnt: Vec::new(),
             hopper_t: 0.0,
+            riding: None,
+            copper: copper::Copper::new(&reg_for_fluids),
             weather: weather::Weather::new(weather_save, seed),
             anim: player_model::Animator::default(),
             camera_mode,
@@ -1170,6 +1180,8 @@ impl Game {
             self.update_leaf_decay(dt);
             self.update_fishing(dt);
             self.update_redstone(dt);
+            self.update_carts(dt);
+            self.update_random_ticks(dt);
             let fe = self.fluids.update(&mut self.world, dt);
             if let Some(p) = fe.hardened.first() {
                 if p.as_vec3().distance(self.body.pos) < 24.0 {
@@ -1210,6 +1222,9 @@ impl Game {
                 }
                 if self.args.redstone {
                     self.build_redstone();
+                }
+                if self.args.phase4 {
+                    self.build_phase4();
                 }
                 if self.args.mobs {
                     self.spawn_demo_mobs();
@@ -1446,7 +1461,9 @@ impl Game {
         let was_ground = self.body.on_ground;
         // The camera pass for screenshots holds still.
         if self.args.screenshot.is_none() {
-            self.body.step(&self.world, &input, dt);
+            if !self.ride_step(wish, input.sneak) {
+                self.body.step(&self.world, &input, dt);
+            }
         } else {
             // Held still, but still know about water for the picture.
             self.body.head_in_water = voxel::physics::Terrain::liquid(&self.world, self.body.eye().floor().as_ivec3());
@@ -1553,6 +1570,10 @@ impl Game {
         let attack = self.mouse_held[0] || self.pad_held.contains(&Action::Attack);
         let use_ = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
         self.attack_cd -= dt;
+        if attack && self.attack_cd <= 0.0 && self.break_cd <= 0.0 && self.cart_attack() {
+            self.attack_cd = 0.3;
+            self.break_cd = 0.3;
+        }
         if attack && self.attack_cd <= 0.0 && self.break_cd <= 0.0 {
             let block_dist = self.target.map(|t| t.distance).unwrap_or(f32::MAX);
             if let Some((i, t)) = paintings::pick(&self.paintings, &self.painting_defs, self.body.eye(), self.forward(), REACH) {
@@ -1678,7 +1699,9 @@ impl Game {
             }
         }
         if use_ && self.place_cd <= 0.0 {
-            if self.crouch <= 0.5 && self.toggle_shaped() {
+            if self.cart_use() {
+                self.place_cd = 0.3;
+            } else if self.crouch <= 0.5 && self.toggle_shaped() {
                 self.place_cd = 0.25;
             } else if self.surv_use() {
                 self.place_cd = self.place_cd.max(0.22);
@@ -2257,6 +2280,8 @@ impl Game {
             }
             // Signal goes out the way you look.
             Shape::Repeater | Shape::Comparator => facing(f.x, f.z),
+            // Rails join the rails around them.
+            Shape::Rail => self.rail_variant(pos, id, f),
             // On a wall when placed against one (1 + the wall's side), else standing.
             Shape::Torch => {
                 if hit.normal.y < 0 {
@@ -2319,7 +2344,7 @@ impl Game {
         }
         let id_v = self.variant_id(id, v);
         // Plants, torches and redstone parts need something under them.
-        let on_floor = matches!(b.shape, Shape::Wire | Shape::Plate | Shape::Repeater | Shape::Comparator) || matches!(b.shape, Shape::Lever | Shape::Button) && v & 8 == 0;
+        let on_floor = matches!(b.shape, Shape::Wire | Shape::Plate | Shape::Repeater | Shape::Comparator | Shape::Rail) || matches!(b.shape, Shape::Lever | Shape::Button) && v & 8 == 0;
         if on_floor {
             let under = self.world.block_or_air(pos - IVec3::Y);
             if !self.reg.is_opaque(under) {
@@ -2337,6 +2362,9 @@ impl Game {
             }
         }
         if self.world.place_block(pos, id_v) {
+            if shape == Shape::Rail {
+                self.connect_rail(pos);
+            }
             return self.placed(pos, id);
         }
         None
@@ -3485,6 +3513,7 @@ impl Game {
         for p in &self.paintings {
             items.push((self.entities.painting_mesh(p.def), p.bones(block, &self.world)));
         }
+        items.extend(self.cart_instances(block));
         // The player figure in the inventory, in 3D, turning its head toward the mouse.
         let mut figure_backdrop = None;
         if let (Some((bx, by, bw, bh)), Some(pd)) = (self.surv.figure_box.take(), self.mobs.reg.id("player")) {

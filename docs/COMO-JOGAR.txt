@@ -128,6 +128,29 @@ REDSTONE
   Receitas: tocha (redstone + graveto), alavanca (graveto + pedregulho), repetidor
   (2 tochas de redstone, redstone e 3 pedras), pistão (3 tábuas, 4 pedregulhos, ferro e
   redstone), pistão grudento (linha + pistão), lâmpada (4 redstone + pedra luminosa).
+  Fabricador (crafter): guarde a receita nas 9 casas (3x3); a cada pulso de energia ele
+  fabrica uma vez e solta o resultado pela frente (ou no baú da frente). Receita: 5 ferro,
+  mesa de trabalho, liberador e 2 redstone.
+
+TRILHOS E CARRINHOS
+  Trilhos se ligam sozinhos aos vizinhos, fazem curvas e sobem um bloco em rampa.
+  Ponha o carrinho num trilho com o botão direito; botão direito no carrinho para entrar,
+  W/S empurram um pouco, Shift para sair. Bata nele para quebrar (volta como item).
+  Trilho impulsor: com energia acelera o carrinho (parado, empurra para longe de uma
+  parede); sem energia freia. A energia passa por até 8 trilhos impulsores em linha.
+  Trilho detector: dá energia enquanto um carrinho passa por cima.
+  Trilho ativador: com energia, tira quem estiver no carrinho.
+  Receitas: trilho (6 ferro + graveto, dá 16), impulsor (6 ouro, graveto, redstone),
+  detector (6 ferro, placa de pedra, redstone), ativador (6 ferro, 2 gravetos, tocha de
+  redstone), carrinho (5 ferro em U).
+
+COBRE
+  Blocos de cobre ao ar livre esverdeiam devagar: novo, exposto, desgastado e oxidado
+  (uns 20 minutos por fase). Favo de mel (cai às vezes de flores, até termos abelhas)
+  encera o bloco e para a ferrugem; machado raspa a cera ou uma fase de ferrugem.
+  Do bloco saem cobre cortado, escadas, lajes, cobre talhado, grade (vazada), porta,
+  alçapão e a lâmpada de cobre, que acende ou apaga a cada pulso de energia (mais fraca
+  quanto mais oxidada) e dá sinal 15 para um comparador quando acesa.
 
 FORMAS DE BLOCO
   Escadas, lajes, cercas, muros, painéis de vidro, portas e alçapões. A escada vira para onde

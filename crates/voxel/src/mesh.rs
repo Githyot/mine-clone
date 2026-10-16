@@ -161,7 +161,7 @@ pub fn redstone_join(reg: &BlockRegistry, id: BlockId) -> u8 {
         Shape::Repeater | Shape::Comparator => 3,
         _ => {
             let base = &reg.get(b.base).name;
-            u8::from(base.starts_with("redstone_torch") || base == "redstone_block") * 2
+            u8::from(base.starts_with("redstone_torch") || base == "redstone_block" || base == "detector_rail") * 2
         }
     }
 }
@@ -453,6 +453,10 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
 
                 if shape == Shape::Wire {
                     wire_quads(t, blocks, i, base, light[i], &mut out);
+                    continue;
+                }
+                if shape == Shape::Rail {
+                    rail_quad(t, blocks[i], base, light[i], &mut out);
                     continue;
                 }
 
@@ -771,6 +775,40 @@ fn wire_quads(t: &MeshTables, blocks: &[BlockId], i: usize, base: [u32; 3], l: u
             q[axis] = at;
             out.solid.push(pack([base[0] + q[0], base[1] + q[1], base[2] + q[2]], 3, fi.uv[k], line, f as u32, 0, sky, blk, tint));
         }
+    }
+}
+
+/// A rail: one quad a pixel off the ground (or up the slope), its picture turned to run the
+/// way the rail does. Curves and powered rails use the `top` texture.
+fn rail_quad(t: &MeshTables, id: BlockId, base: [u32; 3], l: u8, out: &mut SectionMesh) {
+    use crate::shapes::{rail_on, rail_shape};
+    let idu = id as usize;
+    let v = t.variant[idu];
+    let s = rail_shape(v);
+    let tex = if rail_on(v) || s >= 6 { 2 } else { 0 };
+    // The straight picture runs north-south; the curve joins north and east.
+    let turn = match s {
+        0 | 4 | 5 => 0,
+        1..=3 => 1,
+        6 => 1,
+        7 => 2,
+        8 => 3,
+        _ => 0,
+    };
+    let layer = t.faces[idu][tex] as u32;
+    let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
+    let white = [200, 200, 200];
+    for c in FACES[2].corners.iter() {
+        let lift = match s {
+            2 => c[0] * 16,
+            3 => (1 - c[0]) * 16,
+            4 => (1 - c[2]) * 16,
+            5 => c[2] * 16,
+            _ => 0,
+        };
+        let pos = [base[0] + c[0] * 16, base[1] + 1 + lift, base[2] + c[2] * 16];
+        let uv = turn_uv([c[0] * 16, c[2] * 16], turn);
+        out.solid.push(pack(pos, 3, uv, layer, 2, 0, sky, blk, white));
     }
 }
 

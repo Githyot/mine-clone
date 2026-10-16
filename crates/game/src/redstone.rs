@@ -56,6 +56,10 @@ pub enum Kind {
     Observer,
     /// Droppers (false) and dispensers (true): act once each time power arrives.
     Dispenser(bool),
+    /// Copper bulbs (lit or not): switch on or off each time power arrives.
+    Bulb(bool),
+    /// Rails: 0 plain, 1 powered, 2 detector, 3 activator.
+    Rail(u8),
 }
 
 /// What a piston does with a block in its way.
@@ -137,8 +141,12 @@ pub struct Redstone {
     /// Torch switches in the last second, and torches burnt out until a time.
     flips: HashMap<IVec3, (f64, u32)>,
     burnt: HashMap<IVec3, f64>,
-    /// Plates something stands on this frame.
+    /// Plates something stands on this frame (and detector rails a cart is on).
     occupied: HashSet<IVec3>,
+    /// Copper bulbs remember whether they were powered (they switch on the rising edge), and
+    /// each one's lit or unlit twin.
+    bulb_power: HashMap<IVec3, bool>,
+    bulb_twin: HashMap<BlockId, BlockId>,
     pub events: Vec<Event>,
 }
 
@@ -164,6 +172,16 @@ impl Redstone {
                     Shape::Oriented if base == "observer" => Kind::Observer,
                     Shape::Oriented if base == "dropper" => Kind::Dispenser(false),
                     Shape::Oriented if base == "dispenser" => Kind::Dispenser(true),
+                    // The crafter fires like a dropper; what it does then is up to the game.
+                    Shape::Oriented if base == "crafter" => Kind::Dispenser(false),
+                    Shape::Rail => Kind::Rail(match base {
+                        "powered_rail" => 1,
+                        "detector_rail" => 2,
+                        "activator_rail" => 3,
+                        _ => 0,
+                    }),
+                    _ if base.ends_with("copper_bulb") => Kind::Bulb(false),
+                    _ if base.ends_with("copper_bulb_lit") => Kind::Bulb(true),
                     _ => match base {
                         "redstone_torch" => Kind::Torch(true),
                         "redstone_torch_off" => Kind::Torch(false),
@@ -186,7 +204,7 @@ impl Redstone {
                 let base = reg.get(b.base).name.as_str();
                 if i as BlockId == AIR || b.shape == Shape::Liquid {
                     Push::Free
-                } else if b.hardness < 0.0 || ["obsidian", "bedrock", "chest", "furnace", "hopper", "dropper", "dispenser"].contains(&base) || base.ends_with("_bed") || kind[i] == Kind::Head || (b.shape == Shape::Piston && b.variant & 8 != 0) {
+                } else if b.hardness < 0.0 || ["obsidian", "bedrock", "chest", "furnace", "hopper", "dropper", "dispenser", "crafter"].contains(&base) || base.ends_with("_bed") || kind[i] == Kind::Head || (b.shape == Shape::Piston && b.variant & 8 != 0) {
                     Push::Stop
                 } else if !b.solid || matches!(b.shape, Shape::Cross | Shape::Torch | Shape::Layer | Shape::Door | Shape::Repeater) || kind[i] != Kind::None && !matches!(kind[i], Kind::Block | Kind::Lamp(_) | Kind::Tnt | Kind::Piston(_) | Kind::Observer) {
                     Push::Break
@@ -196,6 +214,15 @@ impl Redstone {
             })
             .collect();
         let join = (0..reg.len()).map(|i| voxel::mesh::redstone_join(&reg, i as BlockId)).collect();
+        let mut bulb_twin = HashMap::new();
+        for (i, b) in reg.blocks.iter().enumerate() {
+            if b.name.ends_with("copper_bulb") {
+                if let Some(lit) = reg.id(&format!("{}_lit", b.name)) {
+                    bulb_twin.insert(i as BlockId, lit);
+                    bulb_twin.insert(lit, i as BlockId);
+                }
+            }
+        }
         Redstone {
             kind,
             opaque,
@@ -219,6 +246,8 @@ impl Redstone {
             flips: HashMap::new(),
             burnt: HashMap::new(),
             occupied: HashSet::new(),
+            bulb_power: HashMap::new(),
+            bulb_twin,
             events: Vec::new(),
         }
     }
@@ -318,6 +347,7 @@ impl Redstone {
             Kind::Repeater(true) => d == h4(v),
             Kind::Comparator(true) => return if d == h4(v) { v >> 3 } else { 0 },
             Kind::Observer => v & 8 != 0 && d == -dir6(v),
+            Kind::Rail(2) => v >= 10,
             _ => false,
         };
         if on {
@@ -338,6 +368,7 @@ impl Redstone {
             Kind::Repeater(true) => d == h4(v),
             Kind::Comparator(true) => return if d == h4(v) { v >> 3 } else { 0 },
             Kind::Observer => v & 8 != 0 && d == -dir6(v),
+            Kind::Rail(2) => v >= 10 && d == IVec3::NEG_Y,
             _ => false,
         };
         if on {
@@ -463,11 +494,20 @@ impl Redstone {
         for &p in changed {
             self.touch(p);
             self.notice(g, p);
+            // A bulb just placed lights if it is placed into power.
+            if matches!(self.kind(self.at(g, p)), Kind::Bulb(_)) {
+                self.bulb_power.entry(p).or_insert(false);
+            }
         }
         self.occupied.clear();
         for &p in occupied {
             self.occupied.insert(p);
             let id = self.at(g, p);
+            if self.kind(id) == Kind::Rail(2) && self.v(id) < 10 {
+                let on = self.reg.variant(id, self.v(id) + 10);
+                self.put(g, p, on);
+                self.schedule(p, 10.0 * RT);
+            }
             if let Kind::Plate(_) = self.kind(id) {
                 if self.v(id) & 1 == 0 {
                     let pressed = self.reg.variant(id, 1);
@@ -690,8 +730,78 @@ impl Redstone {
                     g.set(p, new);
                 }
             }
+            Kind::Bulb(_) => {
+                let powered = self.input(g, p, IVec3::ZERO) > 0;
+                let was = *self.bulb_power.entry(p).or_insert(powered);
+                if powered != was {
+                    self.bulb_power.insert(p, powered);
+                    if powered {
+                        if let Some(&twin) = self.bulb_twin.get(&id) {
+                            self.put(g, p, twin);
+                            self.events.push(Event::Click(p));
+                        }
+                    }
+                }
+            }
+            Kind::Rail(k) => {
+                if !self.supported(g, p, IVec3::NEG_Y) {
+                    return self.pop(g, p);
+                }
+                let on = if k == 1 || k == 3 { self.rail_powered(g, p, id) } else { v >= 10 };
+                if on != (v >= 10) && k != 2 {
+                    let new = self.reg.variant(id, if on { v + 10 } else { v - 10 });
+                    self.put(g, p, new);
+                    // The rails down the line feel it too.
+                    for q in self.rail_links(g, p, new) {
+                        if self.queued.insert(q) {
+                            self.queue.push(q);
+                        }
+                    }
+                }
+            }
             Kind::None | Kind::Wire | Kind::Block | Kind::Observer => {}
         }
+    }
+
+    /// Rails this rail at `p` joins: one block along each end, a block up for the end it climbs
+    /// toward, or a block down when the rail there climbs up to this one.
+    pub fn rail_links<G: Grid>(&self, g: &G, p: IVec3, id: BlockId) -> Vec<IVec3> {
+        let v = self.v(id);
+        let s = voxel::shapes::rail_shape(v);
+        let mut out = Vec::new();
+        for (k, e) in voxel::shapes::RAIL_ENDS[s].iter().enumerate() {
+            let q = p + IVec3::new(e[0], 0, e[1]);
+            let up = k == 0 && voxel::shapes::rail_rises(v).is_some();
+            for c in if up { [q + IVec3::Y, q] } else { [q, q - IVec3::Y] } {
+                if matches!(self.kind(self.at(g, c)), Kind::Rail(_)) {
+                    out.push(c);
+                    break;
+                }
+            }
+        }
+        out
+    }
+
+    /// A powered or activator rail is on when power reaches it or a rail of the same kind up
+    /// to eight blocks down the line.
+    fn rail_powered<G: Grid>(&self, g: &G, p: IVec3, id: BlockId) -> bool {
+        let base = self.reg.get(id).base;
+        let mut seen = vec![p];
+        let mut k = 0;
+        while k < seen.len() && seen.len() <= 17 {
+            let q = seen[k];
+            if self.input(g, q, IVec3::ZERO) > 0 {
+                return true;
+            }
+            let qid = self.at(g, q);
+            for n in self.rail_links(g, q, qid) {
+                if self.reg.get(self.at(g, n)).base == base && !seen.contains(&n) && (n - p).abs().max_element() <= 8 {
+                    seen.push(n);
+                }
+            }
+            k += 1;
+        }
+        false
     }
 
     /// What a comparator at `p` puts out: the back signal (or how full a container behind it
@@ -701,6 +811,7 @@ impl Redstone {
         let back = p - out;
         let rear = match self.levels.get(&back) {
             Some(&l) => l,
+            None if self.kind(self.at(g, back)) == Kind::Bulb(true) => 15,
             None => self.power_from(g, p, -out),
         };
         let left = IVec3::new(out.z, 0, -out.x);
@@ -765,6 +876,14 @@ impl Redstone {
                     let new = self.reg.variant(id, 0);
                     self.put(g, p, new);
                     self.events.push(Event::Click(p));
+                }
+            }
+            Kind::Rail(2) if v >= 10 => {
+                if self.occupied.contains(&p) {
+                    self.schedule(p, 10.0 * RT);
+                } else {
+                    let new = self.reg.variant(id, v - 10);
+                    self.put(g, p, new);
                 }
             }
             Kind::Piston(sticky) => self.piston(g, p, id, sticky),
@@ -938,6 +1057,9 @@ impl crate::Game {
                 occupied.push(p);
             }
         }
+        // Detector rails feel carts, not feet.
+        occupied.retain(|&p| self.redstone.kind(self.world.block_or_air(p)) != Kind::Rail(2));
+        occupied.extend(self.cart_cells());
         let levels = self.container_levels();
         self.redstone.set_levels(levels);
         let changed = self.world.changed.clone();
@@ -1084,6 +1206,9 @@ impl crate::Game {
         let id = self.world.block_or_air(p);
         let b = self.reg.get(id);
         let dispenser = self.reg.get(b.base).name == "dispenser";
+        if self.reg.get(b.base).name == "crafter" {
+            return self.crafter_fire(p);
+        }
         let d = dir6(b.variant);
         let front = p + d;
         let Some(Container::Chest(inv)) = self.surv.containers.get_mut(&p) else { return };
@@ -1157,6 +1282,37 @@ impl crate::Game {
         let spread = Vec3::new(self.surv.rng.f32() - 0.5, 0.0, self.surv.rng.f32() - 0.5) * 0.6;
         self.spawn_drop(out - Vec3::Y * 0.12, one, dir * 4.0 + spread + Vec3::Y * 1.0);
         self.sfx(crate::audio::Sfx::Click);
+    }
+
+    /// A crafter fires: its nine slots are a 3×3 crafting grid. One of each ingredient is used
+    /// up and the result leaves through the front, into a container there or onto the ground.
+    fn crafter_fire(&mut self, p: IVec3) {
+        use crate::survival::Container;
+        use glam::Vec3;
+        let d = dir6(self.reg.get(self.world.block_or_air(p)).variant);
+        let Some(Container::Chest(inv)) = self.surv.containers.get(&p) else { return };
+        let grid: Vec<Option<voxel::item::ItemStack>> = (0..9).map(|i| inv.slots.get(i).copied().flatten()).collect();
+        let Some(result) = self.recipes.craft(&grid, 3) else {
+            self.sfx(crate::audio::Sfx::Click);
+            return;
+        };
+        if let Some(Container::Chest(inv)) = self.surv.containers.get_mut(&p) {
+            for i in 0..inv.slots.len().min(9) {
+                if inv.slots[i].is_some() {
+                    inv.take(i, 1);
+                }
+            }
+        }
+        let front = p + d;
+        let left = match self.surv.containers.get_mut(&front) {
+            Some(Container::Chest(dest)) => dest.add(&self.items, result),
+            _ => Some(result),
+        };
+        if let Some(st) = left {
+            let out = p.as_vec3() + Vec3::splat(0.5) + d.as_vec3() * 0.7;
+            self.spawn_drop(out - Vec3::Y * 0.12, st, d.as_vec3() * 2.0 + Vec3::Y * 0.5);
+        }
+        self.sfx(crate::audio::Sfx::Place(crate::audio::Material::Wood));
     }
 
     /// Test scene (--redstone): a few classic circuits on a stone floor in front of the player.
@@ -1507,4 +1663,41 @@ mod tests {
         run(&mut rs, &mut m, &[], 0.3);
         assert_eq!(power(&m, &reg, IVec3::new(0, 1, 1)), 0);
     }
+
+    #[test]
+    fn copper_bulb_toggles_on_each_pulse() {
+        let (mut rs, mut m, reg) = setup();
+        let bulb = reg.id("copper_bulb").unwrap();
+        let lit = reg.id("copper_bulb_lit").unwrap();
+        let lever = reg.id("lever").unwrap();
+        let b = IVec3::new(0, 1, 0);
+        let l = IVec3::new(1, 1, 0);
+        run(&mut rs, &mut m, &[(b, bulb), (l, reg.variant(lever, 1))], 0.5);
+        assert_eq!(m.get(b), Some(bulb));
+        // On: it lights and stays lit when the lever goes off again.
+        run(&mut rs, &mut m, &[(l, reg.variant(lever, 1 | 4))], 0.5);
+        assert_eq!(m.get(b), Some(lit));
+        run(&mut rs, &mut m, &[(l, reg.variant(lever, 1))], 0.5);
+        assert_eq!(m.get(b), Some(lit));
+        // The next pulse puts it out.
+        run(&mut rs, &mut m, &[(l, reg.variant(lever, 1 | 4))], 0.5);
+        assert_eq!(m.get(b), Some(bulb));
+    }
+
+    #[test]
+    fn powered_rails_pass_power_down_the_line() {
+        let (mut rs, mut m, reg) = setup();
+        let rail = reg.id("powered_rail").unwrap();
+        let block = reg.id("redstone_block").unwrap();
+        let mut puts: Vec<(IVec3, BlockId)> = (0..12).map(|x| (IVec3::new(x, 1, 0), reg.variant(rail, 1))).collect();
+        puts.push((IVec3::new(-1, 1, 0), block));
+        run(&mut rs, &mut m, &puts, 0.5);
+        for x in 0..=8 {
+            assert!(power(&m, &reg, IVec3::new(x, 1, 0)) >= 10, "rail {x} should be on");
+        }
+        for x in 10..12 {
+            assert!(power(&m, &reg, IVec3::new(x, 1, 0)) < 10, "rail {x} should be off");
+        }
+    }
+
 }

@@ -330,4 +330,20 @@
         ],
         layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.3), (part: 2, inflate: 0.3), (part: 3, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)],
     ),
+    // Not a creature: the minecart's model (Phase 4), drawn by the entity renderer like one.
+    // Painted by tools/gen_minecart.py. +Z runs along the rail.
+    (
+        name: "minecart", display_name: "Carrinho de Mina", kind: Passive, health: 6, speed: 0.0,
+        width: 0.98, height: 0.7, spawn: Never,
+        parts: [
+            (size: (14, 2, 18), origin: (-7, 1, -9), uv: (0, 0)),
+            (size: (2, 8, 20), origin: (-8, 1, -10), uv: (0, 20)),
+            (size: (2, 8, 20), origin: (6, 1, -10), uv: (0, 20)),
+            (size: (12, 8, 2), origin: (-6, 1, 8), uv: (0, 48)),
+            (size: (12, 8, 2), origin: (-6, 1, -10), uv: (0, 48)),
+            (size: (16, 2, 2), origin: (-8, 0, -7), uv: (28, 48)),
+            (size: (16, 2, 2), origin: (-8, 0, 5), uv: (28, 48)),
+        ],
+        layers: [(part: 1, inflate: 0.3), (part: 2, inflate: 0.3)],
+    ),
 ])

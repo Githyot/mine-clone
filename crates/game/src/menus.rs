@@ -99,6 +99,7 @@ impl Game {
         self.world = World::new(self.reg.clone(), gen.clone(), save.clone(), tables);
         self.fluids = crate::fluids::Fluids::new(&self.reg);
         self.redstone = crate::redstone::Redstone::new(self.reg.clone());
+        self.riding = None;
         self.tnt.clear();
         self.renderer.clear_chunks();
         self.world_name = name.to_string();

@@ -59,6 +59,8 @@ pub enum Shape {
     Oriented,
     /// A hopper: a wide bowl over a spout pointing down or to a side.
     Hopper,
+    /// A rail: flat on the ground, straight, curved or sloping up a block (see `shapes::RAIL_ENDS`).
+    Rail,
 }
 
 impl Shape {
@@ -85,6 +87,7 @@ impl Shape {
                 | Shape::Comparator
                 | Shape::Oriented
                 | Shape::Hopper
+                | Shape::Rail
         )
     }
 }

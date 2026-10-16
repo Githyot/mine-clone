@@ -1403,6 +1403,7 @@ def build_registry():
     for name in TERRACOTTA:
         reg[name] = lambda n=name: terracotta(n)
     reg.update(redstone_registry())
+    reg.update(phase4_registry())
     return reg
 
 
@@ -1686,6 +1687,252 @@ def redstone_registry():
         "hopper_outside": hopper_outside,
         "hopper_top": hopper_top,
     }
+
+# --------------------------------------------------------------------------
+# Phase 4: crafter, the copper family (four stages of rust) and rails.
+
+COPPER_STAGES = ["", "exposed_", "weathered_", "oxidized_"]
+COPPER_PAL = [
+    pal("#7a3a1c", "#c06a3c", "#cf7a48", "#dc8a55", "#e69d68", "#f6c29a"),
+    pal("#6e4a3a", "#a7765e", "#b58467", "#c19172", "#cc9f82", "#dcb59a"),
+    pal("#36604e", "#5c8a6e", "#6c9a78", "#7aa884", "#8fb995", "#b0d1b0"),
+    pal("#235a4e", "#4a9a85", "#56a690", "#62b29c", "#74c0aa", "#9ad8c4"),
+]
+# Spots of the next colour along (green on copper, copper on the green).
+COPPER_SPOT = ["#4a9e8a", "#5c9a78", "#b5805c", "#3c8a76"]
+
+
+def copper_base(k, name):
+    """Copper sheet of stage k with a few spots of the next stage's colour."""
+    p = COPPER_PAL[k]
+    rng = rng_for(name)
+    shine = normalize(np.sin((XX - YY) * 0.6) + 0.3 * rng.random((N, N)))
+    img = from_rgb(shade(0.3 + 0.45 * shine, p[1:-1], 0.6))
+    spots = fbm(rng, ((4, 0.5), (2, 0.5))) > (0.78 - 0.08 * k)
+    img[spots, :3] = hexrgb(COPPER_SPOT[k])
+    return img, p
+
+
+def copper_stage_block(k):
+    name = COPPER_STAGES[k] + "copper" if k else "copper_block"
+    img, p = copper_base(k, name)
+    rgb = img[..., :3]
+    rgb[0, :] = p[-1]
+    rgb[:, 0] = p[-1]
+    rgb[15, :] = p[0]
+    rgb[1:, 15] = p[0]
+    for y in (5, 10):
+        for x in range(2, 14):
+            put(img, x, y, scale_rgb(rgb[y, x], 0.9))
+    return img
+
+
+def cut_copper(k):
+    img, p = copper_base(k, COPPER_STAGES[k] + "cut_copper")
+    rgb = img[..., :3]
+    # Four plates, each with a lit top-left and a dark bottom-right edge.
+    for (x0, y0) in ((0, 0), (8, 0), (0, 8), (8, 8)):
+        rgb[y0, x0:x0 + 8] = p[-1]
+        rgb[y0:y0 + 8, x0] = p[-1]
+        rgb[y0 + 7, x0:x0 + 8] = p[0]
+        rgb[y0:y0 + 8, x0 + 7] = p[0]
+    return img
+
+
+def chiseled_copper(k):
+    img, p = copper_base(k, COPPER_STAGES[k] + "chiseled_copper")
+    rgb = img[..., :3]
+    bevel(img, 1.25, 0.6)
+    # Engraved squares, one inside the other.
+    for r, c in ((5, 0), (2, -1)):
+        a, b = 7 - r, 8 + r
+        col = p[0] if c == 0 else p[-1]
+        rgb[a, a:b + 1] = col
+        rgb[b, a:b + 1] = col
+        rgb[a:b + 1, a] = col
+        rgb[a:b + 1, b] = col
+    rgb[7:9, 7:9] = p[-1]
+    return img
+
+
+def copper_grate(k):
+    img, p = copper_base(k, COPPER_STAGES[k] + "copper_grate")
+    rgb = img[..., :3]
+    bevel(img, 1.2, 0.65)
+    # A lattice: 2×2 holes in every 4×4 cell, inside a frame.
+    for y in range(1, 15):
+        for x in range(1, 15):
+            if (x % 4) in (1, 2) and (y % 4) in (1, 2):
+                img[y, x, 3] = 0
+            elif (x % 4) == 0 or (y % 4) == 0:
+                rgb[y, x] = scale_rgb(rgb[y, x], 0.85)
+    return img
+
+
+def copper_door(k, upper):
+    img, p = copper_base(k, COPPER_STAGES[k] + ("copper_door_upper" if upper else "copper_door_lower"))
+    rgb = img[..., :3]
+    rgb[:, 0] = p[0]
+    rgb[:, 15] = p[0]
+    if upper:
+        rgb[0, :] = p[0]
+        # Two small windows.
+        for x0 in (3, 9):
+            img[3:8, x0:x0 + 4, 3] = 0
+            rgb[2, x0 - 1:x0 + 5] = p[-1]
+            rgb[8, x0 - 1:x0 + 5] = p[0]
+        rgb[11, 2:14] = p[0]
+    else:
+        rgb[15, :] = p[0]
+        rgb[3:14, 3] = p[-1]
+        rgb[3, 3:13] = p[-1]
+        rgb[3:14, 12] = p[0]
+        rgb[13, 3:13] = p[0]
+        for (x, y) in ((5, 5), (10, 5), (5, 11), (10, 11)):
+            put(img, x, y, p[-1])
+        put(img, 13, 7, p[0])
+        put(img, 13, 8, p[0])
+    return img
+
+
+def copper_trapdoor(k):
+    img, p = copper_base(k, COPPER_STAGES[k] + "copper_trapdoor")
+    rgb = img[..., :3]
+    bevel(img, 1.2, 0.6)
+    for (x0, y0) in ((3, 3), (9, 3), (3, 9), (9, 9)):
+        img[y0:y0 + 4, x0:x0 + 4, 3] = 0
+    rgb[7:9, 1:15] = p[-1]
+    rgb[1:15, 7:9] = p[-1]
+    return img
+
+
+def copper_bulb(k, lit=False):
+    img, p = copper_base(k, COPPER_STAGES[k] + ("copper_bulb_lit" if lit else "copper_bulb"))
+    rgb = img[..., :3]
+    bevel(img, 1.25, 0.6)
+    d = np.hypot(XX - 7.5, YY - 7.5)
+    if lit:
+        glow = pal("#c06a20", "#f0a040", "#ffd27a", "#fff3c8")
+        f = np.clip(1.0 - d / 5.5, 0, 1)
+        core = d < 5.2
+        rgb[core] = glow[np.clip((f[core] * 3.99).astype(int), 0, 3)]
+    else:
+        dark = pal("#2a2420", "#3e3630", "#524840")
+        core = d < 5.2
+        rgb[core] = dark[np.clip(((1 - d[core] / 5.2) * 2.99).astype(int), 0, 2)]
+    # The cage over the glass.
+    rgb[core & ((XX == 7) | (XX == 8) | (YY == 7) | (YY == 8))] = p[1]
+    ring = (d >= 5.2) & (d < 6.3)
+    rgb[ring] = p[0]
+    return img
+
+
+def crafter_side():
+    img = from_rgb(METAL_DARK[2])
+    rgb = img[..., :3]
+    wood = planks("oak")[..., :3]
+    rgb[3:13, 1:15] = wood[3:13, 1:15]
+    rgb[3, 1:15] = METAL_DARK[1]
+    rgb[12, 1:15] = METAL_DARK[1]
+    for x in (1, 14):
+        rgb[3:13, x] = METAL_DARK[1]
+    put(img, 7, 7, RS_DARK[2])
+    put(img, 8, 7, RS_DARK[2])
+    bevel(img, 1.3, 0.7)
+    return img
+
+
+def crafter_front():
+    img = from_rgb(METAL_DARK[2])
+    rgb = img[..., :3]
+    # A 3×3 window of crafting cells.
+    for i in range(3):
+        for j in range(3):
+            x0, y0 = 2 + i * 4, 2 + j * 4
+            rgb[y0:y0 + 4, x0:x0 + 4] = METAL_DARK[0]
+            rgb[y0 + 1:y0 + 4, x0 + 1:x0 + 4] = METAL_DARK[1]
+    bevel(img, 1.3, 0.7)
+    return img
+
+
+def crafter_back():
+    img = crafter_side()
+    rgb = img[..., :3]
+    rgb[6:10, 6:10] = RS_DARK[1]
+    return img
+
+
+IRON_RAIL = pal("#5a5a5e", "#8c8c92", "#b4b4ba")
+GOLD_RAIL = pal("#8a6410", "#d8a830", "#f4d660")
+TIE = pal("#4a3018", "#6e4a26", "#8a6034")
+
+
+def rail_texture(kind="rail", on=False, corner=False):
+    """Two metal rails over wooden ties, transparent between. Straight runs north-south."""
+    img = canvas()
+    metal = GOLD_RAIL if kind == "powered" else IRON_RAIL
+    tie = TIE
+    if corner:
+        # Joins north (top) and east (right): arcs around the top-right corner.
+        r = np.hypot(XX - 15.5, YY + 0.5)
+        ties = np.zeros((N, N), bool)
+        ang = np.arctan2(YY + 0.5, 15.5 - XX)
+        for a in np.linspace(0.12, np.pi / 2 - 0.12, 4):
+            ties |= (np.abs(ang - a) < 0.14) & (r > 2.5) & (r < 14.5)
+        img[ties, :3] = tie[1]
+        img[ties, 3] = 255
+        for lo, hi in ((3.0, 5.0), (11.5, 13.5)):
+            m = (r >= lo) & (r < hi)
+            img[m, :3] = metal[1]
+            img[m & (r < lo + 0.8), :3] = metal[2]
+            img[m, 3] = 255
+        return img
+    for y0 in (1, 5, 9, 13):
+        img[y0:y0 + 2, 1:15, :3] = tie[1]
+        img[y0, 1:15, :3] = tie[2]
+        img[y0:y0 + 2, 1:15, 3] = 255
+    if kind in ("powered", "activator"):
+        # A strip of redstone down the middle.
+        lit = RS_LIT if on else RS_DARK
+        img[:, 7:9, :3] = lit[1]
+        img[::2, 7, :3] = lit[2]
+        img[:, 7:9, 3] = 255
+    if kind == "detector":
+        img[5:11, 5:11, :3] = pal("#6a6a6a")[0]
+        img[6:10, 6:10, :3] = pal("#8a8a8a")[0]
+        img[7:9, 7:9, :3] = (RS_LIT if on else RS_DARK)[2]
+        img[5:11, 5:11, 3] = 255
+    for x0 in (2, 12):
+        img[:, x0:x0 + 2, :3] = metal[1]
+        img[:, x0, :3] = metal[2]
+        img[:, x0:x0 + 2, 3] = 255
+    return img
+
+
+def phase4_registry():
+    reg = {
+        "crafter_side": crafter_side,
+        "crafter_front": crafter_front,
+        "crafter_back": crafter_back,
+        "rail": rail_texture,
+        "rail_corner": lambda: rail_texture(corner=True),
+    }
+    for kind in ("powered", "detector", "activator"):
+        reg[f"{kind}_rail"] = lambda k=kind: rail_texture(k)
+        reg[f"{kind}_rail_on"] = lambda k=kind: rail_texture(k, True)
+    for k, sp in enumerate(COPPER_STAGES):
+        if k:
+            reg[f"{sp}copper"] = lambda k=k: copper_stage_block(k)
+        reg[f"{sp}cut_copper"] = lambda k=k: cut_copper(k)
+        reg[f"{sp}chiseled_copper"] = lambda k=k: chiseled_copper(k)
+        reg[f"{sp}copper_grate"] = lambda k=k: copper_grate(k)
+        reg[f"{sp}copper_door_lower"] = lambda k=k: copper_door(k, False)
+        reg[f"{sp}copper_door_upper"] = lambda k=k: copper_door(k, True)
+        reg[f"{sp}copper_trapdoor"] = lambda k=k: copper_trapdoor(k)
+        reg[f"{sp}copper_bulb"] = lambda k=k: copper_bulb(k)
+        reg[f"{sp}copper_bulb_lit"] = lambda k=k: copper_bulb(k, True)
+    return reg
+
 
 def to_image(arr):
     arr = np.clip(np.rint(arr), 0, 255).astype(np.uint8)

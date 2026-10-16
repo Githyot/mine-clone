@@ -113,7 +113,7 @@ impl Game {
         if name == "fishing_bobber" {
             return None;
         }
-        if name == "flint_and_steel" {
+        if name == "flint_and_steel" || name == "minecart" {
             return Some(Tab::Tools);
         }
         if let Some(t) = &it.tool {
@@ -134,8 +134,9 @@ impl Game {
             return Some(Tab::Colored);
         }
         // Redstone parts sit with the functional blocks.
-        let redstone = matches!(bl.shape, Shape::Wire | Shape::Lever | Shape::Button | Shape::Plate | Shape::Repeater | Shape::Piston | Shape::Comparator | Shape::Oriented | Shape::Hopper)
-            || ["redstone_torch", "redstone_block", "redstone_lamp", "tnt"].contains(&name);
+        let redstone = matches!(bl.shape, Shape::Wire | Shape::Lever | Shape::Button | Shape::Plate | Shape::Repeater | Shape::Piston | Shape::Comparator | Shape::Oriented | Shape::Hopper | Shape::Rail)
+            || ["redstone_torch", "redstone_block", "redstone_lamp", "tnt"].contains(&name)
+            || name.ends_with("copper_bulb");
         if redstone {
             return Some(Tab::Functional);
         }
