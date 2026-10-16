@@ -69,6 +69,7 @@ ROLES = {
     "rabbit": ["body", "head", "ear", "ear", "tail", "foreleg", "foreleg", "hindleg", "hindleg"],
     "bear": ["body", "head", "snout", "ear", "ear", "hump", "leg", "leg", "leg", "leg"],
     "duck": ["body", "head", "bill", "tail", "wing", "wing", "leg", "leg"],
+    "forest_guardian": ["head", "body", "arm", "arm", "leg", "leg", "branch", "branch"],
 }
 
 # (size, origin, uv) per part, mirroring mobs.ron.
@@ -131,6 +132,10 @@ HARDCODED = {
              ((4, 1, 3), (-2, 8, 6), (46, 0)), ((4, 2, 2), (-2, 7, -7), (46, 4)),
              ((1, 4, 7), (-4, 3, -4), (0, 14)), ((1, 4, 7), (3, 3, -4), (0, 14)),
              ((1, 3, 1), (-2, 0, 0), (16, 14)), ((1, 3, 1), (1, 0, 0), (16, 14))],
+    "forest_guardian": [((10, 10, 8), (-5, 26, -4), (0, 0)), ((12, 14, 6), (-6, 12, -3), (0, 18)),
+                        ((4, 16, 4), (-10, 10, -2), (36, 0)), ((4, 16, 4), (6, 10, -2), (36, 0)),
+                        ((5, 12, 4), (-6, 0, -2), (36, 20)), ((5, 12, 4), (1, 0, -2), (36, 20)),
+                        ((2, 6, 2), (-6, 34, -1), (54, 0)), ((2, 6, 2), (4, 34, -1), (54, 0))],
 }
 
 
@@ -150,6 +155,7 @@ HARDCODED_LAYERS = {
     "rabbit": [(0, 0.3), (4, 0.4)],
     "bear": [(0, 0.7), (1, 0.5), (5, 0.7), (6, 0.4)],
     "duck": [(0, 0.3), (4, 0.3), (5, 0.3)],
+    "forest_guardian": [(0, 0.8), (1, 0.6), (2, 0.5), (3, 0.5)],
 }
 
 
@@ -1374,13 +1380,83 @@ def paint_duck(c):
     return pick(DUCK_FOOT, 0.3 + 0.6 * c.jit)
 
 
+# ---- forest guardian (boss) ------------------------------------------------
+GBARK = pal("#2a1c10", "#3a2816", "#4c341c", "#5e4224", "#70522e")
+GLEAF = pal("#1c3a12", "#28501a", "#356a22", "#44822c", "#5a9a3a")
+GLOW = (120, 255, 140)
+GLOW_DIM = (40, 160, 70)
+
+
+def gbark(c, bias=0.0):
+    n = fbm(c.seed + 7, c.gx, c.gy * 0.5, c.gz, 2.6, 3)
+    # vertical grooves in the bark
+    groove = (int(c.gx + c.gz * 0.7) % 3 == 0) and c.face in SIDES
+    t = 0.2 + 0.65 * n + 0.25 * (c.jit - 0.5) + bias - (0.25 if groove else 0.0)
+    return pick(GBARK, t)
+
+
+def paint_forest_guardian(c):
+    if c.role == "head":
+        if c.face == "front":
+            # two glowing eyes deep under a heavy brow, a hollow knot for a mouth
+            if (c.i, c.j) in {(2, 4), (3, 4), (6, 4), (7, 4)}:
+                return GLOW if c.i in (3, 6) else GLOW_DIM
+            if (c.i, c.j) in {(2, 5), (3, 5), (6, 5), (7, 5)}:
+                return GLOW_DIM
+            if c.j == 3 and 1 <= c.i <= 8:
+                return GBARK[0]  # brow shadow
+            if 3 <= c.i <= 6 and 7 <= c.j <= 8:
+                return (14, 10, 6) if 4 <= c.i <= 5 else GBARK[0]
+        return gbark(c, 0.05)
+    if c.role == "body":
+        if c.face == "front" and 4 <= c.i <= 7 and 4 <= c.j <= 7:
+            # a green heart-light showing through a crack in the chest
+            core = (c.i in (5, 6) and c.j in (5, 6))
+            return GLOW if core else GLOW_DIM if c.jit > 0.4 else GBARK[0]
+        return gbark(c)
+    if c.role == "arm":
+        if c.j >= c.fh - 3 and c.face in SIDES:
+            return pick(GBARK, 0.1 + 0.3 * c.jit)  # gnarled fingers
+        return gbark(c, 0.05)
+    if c.role == "leg":
+        if c.face == "bottom" or (c.face in SIDES and c.j >= c.fh - 2):
+            return pick(ROOT_C, c.jit)
+        return gbark(c, -0.05)
+    # branches on the head: bark with a leaf at the tip
+    if c.face == "top" or (c.face in SIDES and c.j == 0):
+        return pick(GLEAF, 0.4 + 0.5 * c.jit)
+    return gbark(c, 0.1)
+
+
+def overlay_forest_guardian(c):
+    if c.face == "bottom":
+        return None
+    if c.role == "head":
+        if c.face == "front":
+            return pick(GLEAF, 0.3 + 0.6 * c.jit) if c.j == 0 and c.jit > 0.3 else None
+        if c.face == "top" or c.j <= 2 + int(c.jit * 3):
+            return pick(GLEAF, 0.2 + 0.7 * c.jit) if c.jit > 0.15 else None  # leafy crown
+        return None
+    if c.role == "body":
+        if c.face == "top" or (c.j <= 2 and c.jit > 0.3):
+            return pick(MOSS, 0.2 + 0.7 * c.jit)  # moss on the shoulders
+        if clustered(c, 71, 2.0, 0.62) and c.jit > 0.35:
+            return pick(MOSS, 0.3 + 0.6 * c.jit)
+        return None
+    if c.role == "arm":
+        if c.face == "top" or (c.j <= 3 and c.jit > 0.35):
+            return pick(MOSS, 0.2 + 0.7 * c.jit)
+        return None
+    return None
+
+
 PAINTERS = {
     "pig": paint_pig, "cow": paint_cow, "sheep": paint_sheep,
     "chicken": paint_chicken, "zombie": paint_zombie,
     "skeleton": paint_skeleton, "stalker": paint_stalker, "spider": paint_spider,
     "player": paint_player,
     "deer": paint_deer, "fox": paint_fox, "rabbit": paint_rabbit, "bear": paint_bear,
-    "duck": paint_duck,
+    "duck": paint_duck, "forest_guardian": paint_forest_guardian,
 }
 
 
@@ -1720,7 +1796,7 @@ OVERLAYS = {
     "skeleton": overlay_skeleton, "stalker": overlay_stalker, "spider": overlay_spider,
     "player": overlay_player,
     "deer": overlay_deer, "fox": overlay_fox, "rabbit": overlay_rabbit, "bear": overlay_bear,
-    "duck": overlay_duck,
+    "duck": overlay_duck, "forest_guardian": overlay_forest_guardian,
 }
 
 
@@ -1803,7 +1879,7 @@ def main():
             assert 0 <= idx < len(parts), (name, idx)
     os.makedirs(OUT_DIR, exist_ok=True)
     order = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "stalker", "spider",
-             "player", "deer", "fox", "rabbit", "bear", "duck"]
+             "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols

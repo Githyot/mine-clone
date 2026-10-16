@@ -247,4 +247,21 @@
         ],
         layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.3), (part: 2, inflate: 0.3), (part: 3, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)],
     ),
+    (
+        // First boss (Etapa 5): an old tree spirit woken by the ancient seed. Drawn 2.2x bigger.
+        name: "forest_guardian", display_name: "Guardião da Floresta", kind: Hostile, health: 300, speed: 2.1,
+        drops: [(item: "guardian_heart"), (item: "life_crystal", min: 1, max: 2), (item: "oak_sapling", min: 2, max: 5), (item: "emerald", min: 2, max: 6)], xp: 100,
+        width: 1.8, height: 4.9, spawn: Never, attack: 7, scale: 2.2, boss: true,
+        parts: [
+            (size: (10, 10, 8), origin: (-5, 26, -4), uv: (0, 0), anim: Head, pivot: (0, 26, 0)),
+            (size: (12, 14, 6), origin: (-6, 12, -3), uv: (0, 18)),
+            (size: (4, 16, 4), origin: (-10, 10, -2), uv: (36, 0), anim: Arm(0), pivot: (-8, 24, 0)),
+            (size: (4, 16, 4), origin: (6, 10, -2), uv: (36, 0), anim: Arm(1), pivot: (8, 24, 0)),
+            (size: (5, 12, 4), origin: (-6, 0, -2), uv: (36, 20), anim: Leg(0), pivot: (-3, 12, 0)),
+            (size: (5, 12, 4), origin: (1, 0, -2), uv: (36, 20), anim: Leg(1), pivot: (3, 12, 0)),
+            (size: (2, 6, 2), origin: (-6, 34, -1), uv: (54, 0), anim: Head, pivot: (0, 26, 0)),
+            (size: (2, 6, 2), origin: (4, 34, -1), uv: (54, 0), anim: Head, pivot: (0, 26, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.8), (part: 1, inflate: 0.6), (part: 2, inflate: 0.5), (part: 3, inflate: 0.5)],
+    ),
 ])

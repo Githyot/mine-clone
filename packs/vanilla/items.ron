@@ -134,6 +134,10 @@
     (name: "thunder_tome", display_name: Some("Livro do Trovão")),
     (name: "flame_tome", display_name: Some("Livro das Chamas")),
     (name: "mana_crystal", display_name: Some("Cristal de Mana")),
+    // Bosses: the summon item, its trophy material and what it makes.
+    (name: "ancient_seed", display_name: Some("Semente Ancestral")),
+    (name: "guardian_heart", display_name: Some("Coração do Guardião")),
+    (name: "guardian_staff", display_name: Some("Cajado do Guardião")),
     (name: "lapis_lazuli", display_name: Some("Lápis-lazúli")),
     (name: "redstone", display_name: Some("Pó de Redstone")),
     (name: "flint", display_name: Some("Pederneira")),

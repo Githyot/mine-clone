@@ -48,6 +48,7 @@ const SPELLS: &[SpellDef] = &[
     SpellDef { item: "fire_staff", school: 0, cost: 8.0, cooldown: 1.0, damage: 10.0, speed: 14.0, life: 2.5, shot: Shot::Burst(3.0) },
     SpellDef { item: "frost_staff", school: 1, cost: 8.0, cooldown: 0.9, damage: 4.0, speed: 24.0, life: 1.0, shot: Shot::Fan(5) },
     SpellDef { item: "thunder_tome", school: 5, cost: 10.0, cooldown: 1.2, damage: 12.0, speed: 0.0, life: 0.0, shot: Shot::Strike },
+    SpellDef { item: "guardian_staff", school: 4, cost: 6.0, cooldown: 0.6, damage: 6.0, speed: 26.0, life: 1.2, shot: Shot::Fan(3) },
     SpellDef { item: "flame_tome", school: 0, cost: 1.0, cooldown: 0.08, damage: 1.5, speed: 12.0, life: 0.35, shot: Shot::Flame },
 ];
 
@@ -67,6 +68,8 @@ pub struct Bolt {
     vel: Vec3,
     life: f32,
     spell: usize,
+    /// A monster's bolt (school, damage): it hurts the player instead of mobs.
+    hostile: Option<(u8, f32)>,
 }
 
 /// The caster's mana and spells in flight.
@@ -164,20 +167,25 @@ impl Game {
                 for k in 0..n {
                     let a = (k as f32 - (n - 1) as f32 / 2.0) * 0.12;
                     let dir = (fwd * a.cos() + right * a.sin()).normalize();
-                    self.magic.bolts.push(Bolt { pos: from, vel: dir * sp.speed, life: sp.life, spell: i });
+                    self.magic.bolts.push(Bolt { pos: from, vel: dir * sp.speed, life: sp.life, spell: i, hostile: None });
                 }
             }
             Shot::Flame => {
                 let jitter = Vec3::new(self.surv.rng.f32() - 0.5, self.surv.rng.f32() - 0.5, self.surv.rng.f32() - 0.5) * 0.15;
-                self.magic.bolts.push(Bolt { pos: from, vel: (fwd + jitter).normalize() * sp.speed, life: sp.life, spell: i });
+                self.magic.bolts.push(Bolt { pos: from, vel: (fwd + jitter).normalize() * sp.speed, life: sp.life, spell: i, hostile: None });
             }
-            _ => self.magic.bolts.push(Bolt { pos: from, vel: fwd * sp.speed, life: sp.life, spell: i }),
+            _ => self.magic.bolts.push(Bolt { pos: from, vel: fwd * sp.speed, life: sp.life, spell: i, hostile: None }),
         }
         // The flame book hisses on its own rhythm, not on every puff.
         if sp.shot != Shot::Flame || self.magic.since_cast == 0.0 && self.surv.rng.f32() < 0.25 {
             self.sfx(Sfx::Cast(sp.school));
         }
         self.anim.start_swing();
+    }
+
+    /// A monster's bolt (bosses): flies straight and hurts the player.
+    pub(crate) fn enemy_bolt(&mut self, from: Vec3, vel: Vec3, school: u8, damage: f32) {
+        self.magic.bolts.push(Bolt { pos: from, vel, life: 3.0, spell: 0, hostile: Some((school, damage)) });
     }
 
     fn update_bolts(&mut self, dt: f32) {
@@ -187,9 +195,30 @@ impl Game {
         let layer = self.glow_layer();
         let mut bolts = std::mem::take(&mut self.magic.bolts);
         let mut hits: Vec<(Vec3, usize, Option<usize>)> = Vec::new();
+        let mut player_hits: Vec<(Vec3, u8, f32)> = Vec::new();
+        let me = self.body.pos;
         bolts.retain_mut(|b| {
             let sp = &SPELLS[b.spell];
             b.life -= dt;
+            if let Some((school, dmg)) = b.hostile {
+                if b.life <= 0.0 {
+                    return false;
+                }
+                let step = b.vel * dt;
+                let n = (step.length() / 0.25).ceil().max(1.0) as usize;
+                for _ in 0..n {
+                    b.pos += step / n as f32;
+                    let d = b.pos - me;
+                    if d.x.abs() < 0.45 && d.z.abs() < 0.45 && d.y > -0.1 && d.y < 1.9 {
+                        player_hits.push((b.pos, school, dmg));
+                        return false;
+                    }
+                    if self.world.solid(b.pos.floor().as_ivec3()) {
+                        return false;
+                    }
+                }
+                return true;
+            }
             if b.life <= 0.0 {
                 if matches!(sp.shot, Shot::Burst(_)) {
                     hits.push((b.pos, b.spell, None));
@@ -223,6 +252,10 @@ impl Game {
         // Trails.
         for b in &bolts {
             let sp = &SPELLS[b.spell];
+            if let Some((school, _)) = b.hostile {
+                self.particles.glow(b.pos, -b.vel * 0.05, layer, color(school), 0.1, 0.35);
+                continue;
+            }
             let (size, count) = match sp.shot {
                 Shot::Burst(_) => (0.16, 3),
                 Shot::Flame => (0.12, 1),
@@ -235,6 +268,10 @@ impl Game {
         self.magic.bolts = bolts;
         for (at, spell, mob) in hits {
             self.spell_hit(at, spell, mob);
+        }
+        for (at, school, dmg) in player_hits {
+            self.damage(dmg, Some(at));
+            self.sfx(Sfx::SpellHit(school));
         }
     }
 

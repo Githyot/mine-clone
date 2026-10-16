@@ -69,6 +69,8 @@
         (pattern: ["SMS", " / ", " / "], key: {'S': "sapphire", 'M': "silver_ingot", '/': "stick"}, result: "frost_staff"),
         (pattern: [" T ", "LML", " T "], key: {'T': "topaz", 'L': "leather", 'M': "gold_ingot"}, result: "thunder_tome"),
         (pattern: [" R ", "LML", " R "], key: {'R': "ruby", 'L': "leather", 'M': "gold_ingot"}, result: "flame_tome"),
+        (pattern: ["SAS", "AMA", "SAS"], key: {'S': "oak_sapling", 'A': "apple", 'M': "mossy_cobblestone"}, result: "ancient_seed"),
+        (pattern: [" H ", " W ", " / "], key: {'H': "guardian_heart", 'W': "emerald_wand", '/': "stick"}, result: "guardian_staff"),
         (pattern: ["XXX", " / ", " / "], key: {'X': "copper_ingot", '/': "stick"}, result: "copper_pickaxe"),
         (pattern: ["XX", "X/", " /"], key: {'X': "copper_ingot", '/': "stick"}, result: "copper_axe"),
         (pattern: ["X", "/", "/"], key: {'X': "copper_ingot", '/': "stick"}, result: "copper_shovel"),

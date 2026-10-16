@@ -8,6 +8,7 @@ mod controller;
 mod creative;
 mod fishing;
 mod magic;
+mod bosses;
 mod fluids;
 mod weather;
 mod entity;
@@ -427,6 +428,7 @@ struct Game {
     /// 20 at the start, up to 40 with life crystals.
     max_health: f32,
     magic: magic::Magic,
+    boss: bosses::BossState,
     /// Seconds since the player was last hurt (red flash, invulnerability).
     hurt_age: f32,
     regen: f32,
@@ -620,8 +622,10 @@ impl Game {
         let mut health = 20.0;
         let mut max_health = 20.0f32;
         let mut max_mana = 20.0f32;
+        let mut bosses_beaten = Vec::new();
         if let Some(l) = &level {
             max_mana = l.max_mana;
+            bosses_beaten = l.bosses.clone();
             survival = l.survival || args.survival;
             max_health = l.max_health.clamp(20.0, 40.0);
             health = if l.health > 0.0 { l.health.min(max_health) } else { max_health };
@@ -724,6 +728,7 @@ impl Game {
             health,
             max_health,
             magic: magic::Magic::new(max_mana),
+            boss: bosses::BossState::new(bosses_beaten),
             hurt_age: 100.0,
             regen: 0.0,
             fall_peak: f32::MIN,
@@ -924,6 +929,7 @@ impl Game {
             health: self.health,
             max_health: self.max_health,
             max_mana: self.magic.max_mana,
+            bosses: self.boss.defeated.clone(),
             raining: self.weather.state.raining,
             thunder: self.weather.state.thunder,
             weather_timer: self.weather.state.timer,
@@ -1202,6 +1208,24 @@ impl Game {
                 if let Some(i) = self.args.slot {
                     self.selected = i;
                 }
+                if std::env::var("MC_BOSS").is_ok() {
+                    // Test hook: the Forest Guardian in front, hurt to show its bar and angry volley.
+                    let f = self.forward();
+                    let flat = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
+                    let at = self.body.pos + flat * 14.0;
+                    let y = self.world.surface_y(at.x.floor() as i32, at.z.floor() as i32).map(|y| y as f32 + 1.0).unwrap_or(at.y);
+                    if self.mobs.spawn("forest_guardian", Vec3::new(at.x, y, at.z)) {
+                        let m = self.mobs.list.last_mut().unwrap();
+                        m.yaw = (-flat.x).atan2(-flat.z);
+                        m.health = m.max_health * 0.4;
+                        self.boss.called_help = true;
+                        for _ in 0..8 {
+                            self.update_boss(0.5);
+                            self.update_magic(0.03, false);
+                            self.particles.update(&self.world, 0.03);
+                        }
+                    }
+                }
                 if let Ok(spell) = std::env::var("MC_CAST") {
                     // Test hook: a caster in hand, a few spells frozen in flight.
                     if let Some(id) = self.items.id(&spell) {
@@ -1270,6 +1294,7 @@ impl Game {
             let use_held = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
             self.surv_update(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
             self.update_magic(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
+            self.update_boss(if self.args.screenshot.is_some() { 0.0 } else { dt });
         }
         if self.world_open && !matches!(self.screen, Screen::Loading | Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Shaders) {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
@@ -1290,6 +1315,13 @@ impl Game {
             }
             if out.arrow_hits > 0 {
                 self.sfx(Sfx::Hit(Material::Wood));
+            }
+            for &(def, _) in &out.deaths {
+                let d = &self.mobs.reg.defs[def];
+                if d.boss {
+                    let (n, dn) = (d.name.clone(), d.display_name.clone());
+                    self.boss_defeated(&n, &dn);
+                }
             }
             if self.survival {
                 self.surv_mob_deaths(&out.deaths);
@@ -2627,6 +2659,7 @@ impl Game {
                 }
             }
             self.draw_hotbar_items(hx, hy, cell);
+            self.draw_boss_bar(w);
             if self.survival {
                 self.draw_survival_hud(hx, hy, cell);
                 self.draw_mana(w);

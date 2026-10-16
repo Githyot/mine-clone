@@ -842,6 +842,9 @@ impl Game {
             // Casting happens while the button is held (update_magic).
             return true;
         }
+        if item.name == "ancient_seed" {
+            return self.use_ancient_seed();
+        }
         if item.name == "mana_crystal" && self.survival {
             return self.use_mana_crystal();
         }

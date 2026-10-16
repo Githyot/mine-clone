@@ -126,6 +126,16 @@ pub struct MobDef {
     /// How often it is picked among the mobs that may spawn at a spot.
     #[serde(default = "d_weight")]
     pub weight: u32,
+    /// Drawn this many times bigger than its model (bosses).
+    #[serde(default = "d_scale")]
+    pub scale: f32,
+    /// A boss: health bar at the top of the screen, never wanders off.
+    #[serde(default = "d_false")]
+    pub boss: bool,
+}
+
+fn d_scale() -> f32 {
+    1.0
 }
 
 impl MobDef {

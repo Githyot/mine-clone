@@ -543,6 +543,57 @@ def mana_crystal():
     return outline(from_map(rows, pmap(p)))
 
 
+def ancient_seed():
+    """A big dark acorn with a green glow sprouting from its cap."""
+    rows = [
+        "................",
+        "........gG......",
+        ".......gGg......",
+        "........g.......",
+        ".....cccccc.....",
+        "....cCCCCCCc....",
+        "....cccccccc....",
+        ".....s3333s.....",
+        ".....344443.....",
+        ".....344543.....",
+        ".....334443.....",
+        "......3443......",
+        "......2332......",
+        ".......22.......",
+        "................",
+        "................",
+    ]
+    cols = {"g": hexrgb("#3c9a3a"), "G": hexrgb("#9cff9a"), "c": hexrgb("#4a3420"), "C": hexrgb("#6a4c2c"),
+            "s": hexrgb("#3a2814"), "2": hexrgb("#3a2410"), "3": hexrgb("#5e3c1c"), "4": hexrgb("#7e5428"),
+            "5": hexrgb("#a8763c")}
+    return outline(from_map(rows, cols))
+
+
+def guardian_heart():
+    """A knot of living wood with a green light in it."""
+    rows = [
+        "................",
+        "................",
+        "...333....333...",
+        "..34443..34443..",
+        ".3445543344443..",
+        ".3456654444443..",
+        ".3456654444432..",
+        ".3445543444332..",
+        "..344444443322..",
+        "...3444443322...",
+        "....34443322....",
+        ".....34332......",
+        "......332.......",
+        ".......2........",
+        "................",
+        "................",
+    ]
+    cols = {"2": hexrgb("#2a1c10"), "3": hexrgb("#4c341c"), "4": hexrgb("#70522e"),
+            "5": hexrgb("#3cb850"), "6": hexrgb("#b8ffb0")}
+    return outline(from_map(rows, cols))
+
+
 def emerald():
     rows = [
         "................",
@@ -1464,6 +1515,9 @@ def item_registry():
     reg["thunder_tome"] = lambda: tome(("#1c2a5a", "#2c4290"), ("#f2c22c", "#fff6c8"))
     reg["flame_tome"] = lambda: tome(("#4a0c0c", "#8a1a14"), ("#f07a20", "#ffe080"))
     reg["mana_crystal"] = mana_crystal
+    reg["ancient_seed"] = ancient_seed
+    reg["guardian_heart"] = guardian_heart
+    reg["guardian_staff"] = lambda: staff("emerald", "golden")
     reg.update({
         "diamond": diamond, "emerald": emerald, "lapis_lazuli": lapis,
         "redstone": redstone, "flint": flint, "string": string_item,

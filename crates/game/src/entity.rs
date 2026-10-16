@@ -671,7 +671,7 @@ pub fn bones_for(mob: &Mob, def: &MobDef, cam_block: IVec3, sky: f32, blk: f32) 
         let t = (mob.dead_age / DEATH_TIME).clamp(0.0, 1.0);
         model = model * Mat4::from_translation(Vec3::new(0.0, -t * 0.4, 0.0)) * Mat4::from_rotation_z(t * std::f32::consts::FRAC_PI_2);
     }
-    let scale = 1.0 / 16.0 * (1.0 + swell * 0.3);
+    let scale = def.scale / 16.0 * (1.0 + swell * 0.3);
     model = model * Mat4::from_scale(Vec3::splat(scale));
     // Asleep: legs folded flat, the body resting on the ground.
     let leg_h = def.parts.iter().filter(|p| matches!(p.anim, Anim::Leg(_))).map(|p| p.size.1 as f32).fold(0.0, f32::max);

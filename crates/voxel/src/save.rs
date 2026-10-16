@@ -37,6 +37,9 @@ pub struct LevelData {
     /// Most mana (two per star); mana crystals raise it.
     #[serde(default = "full_health")]
     pub max_mana: f32,
+    /// Bosses beaten in this world (mob names).
+    #[serde(default)]
+    pub bosses: Vec<String>,
     /// Weather: raining, storm, and seconds until it changes (0 = pick a fresh spell).
     #[serde(default)]
     pub raining: bool,
