@@ -72,6 +72,8 @@ pub struct Settings {
     pub resource_packs: Vec<String>,
     /// The bundled pack was turned on once already (so turning it off sticks).
     pub bundled_pack_offered: bool,
+    /// Creative: hotbars saved by name (up to 9 rows of 9 items).
+    pub saved_hotbars: Vec<Vec<String>>,
     pub show_clouds: bool,
     /// The view sways a little while walking.
     pub view_bobbing: bool,
@@ -106,6 +108,7 @@ impl Default for Settings {
             music_delay_max: 1200.0,
             resource_packs: Vec::new(),
             bundled_pack_offered: false,
+            saved_hotbars: Vec::new(),
             show_clouds: true,
             view_bobbing: true,
             flat_drops: true,

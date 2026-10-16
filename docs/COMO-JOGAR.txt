@@ -31,7 +31,7 @@ CONTROLES
   Botão direito   colocar bloco / abrir mesa, fornalha, baú, cama / segurar para comer
   Botão do meio   copiar o bloco que você está olhando
   1 a 9 / roda    escolher bloco da barra
-  E               criativo: todos os blocos; sobrevivência: inventário e fabricação 2x2
+  E               inventário (criativo: abas com todos os itens; sobrevivência: fabricação 2x2)
   Q               jogar fora o item da mão (Ctrl+Q joga a pilha toda)
   P               pendurar uma pintura na parede que você está olhando
   Esc             menu (distância de visão, música, texturas, salvar e sair)
@@ -93,6 +93,16 @@ SOBREVIVÊNCIA
   Armaduras de couro, ferro, ouro e diamante: faça na mesa, vista com o botão direito ou
   nos 4 espaços ao lado do boneco. Protegem de mobs e explosões e se gastam.
   Tocha (ou pedra luminosa) na mão ilumina em volta de você.
+
+INVENTÁRIO CRIATIVO
+  Sete abas em cima (construção, coloridos, naturais, funcionais, portas e luzes, barras
+  salvas, busca) e seis embaixo (ferramentas, combate, comidas, ingredientes, ovos de
+  criatura e o seu inventário). Clique num item para pegar uma pilha (botão direito: um),
+  Shift+clique manda direto para a mochila, 1-9 sobre um item põe na barra. Clicar na lista
+  segurando algo joga fora; a lixeira (X vermelho) também, e Shift+clique nela esvazia tudo.
+  Busca: digite o nome. Barras salvas: Shift+clique numa linha salva a barra atual, clique
+  carrega. Ovos de criatura: botão direito no chão faz nascer o bicho.
+  Botão do meio num bloco do mundo põe esse bloco na mão.
 
 FORMAS DE BLOCO
   Escadas, lajes, cercas, muros, painéis de vidro, portas e alçapões. A escada vira para onde

@@ -134,6 +134,7 @@ impl Game {
         }
         self.fall_peak = self.body.pos.y;
         self.paintings = paintings::load(&save.dir, &self.painting_defs);
+        self.surv = crate::survival::Survival::load(&save.dir, &self.items);
         self.title_world = name.to_string();
     }
 
@@ -417,6 +418,7 @@ impl Game {
 
     /// Typing into the new-world form.
     pub(crate) fn type_text(&mut self, text: &str) {
+        self.creative_type(text);
         if self.screen != Screen::CreateWorld {
             return;
         }

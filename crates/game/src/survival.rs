@@ -97,6 +97,12 @@ pub struct Survival {
     pub drops: Vec<Dropped>,
     pub orbs: Vec<Orb>,
     pub corpses: Vec<Corpse>,
+    /// The second hand's slot (holds anything; nothing uses it yet).
+    pub offhand: Option<ItemStack>,
+    /// Creative inventory: open tab, first row shown, and the search text.
+    pub ctab: usize,
+    pub cscroll: usize,
+    pub csearch: String,
     /// Recipe book: first row shown, and the item whose recipes are open (with which one).
     pub book_scroll: usize,
     pub book_view: Option<(ItemId, usize)>,
@@ -139,6 +145,10 @@ impl Survival {
             drops: Vec::new(),
             orbs: Vec::new(),
             corpses: Vec::new(),
+            offhand: None,
+            ctab: 0,
+            cscroll: 0,
+            csearch: String::new(),
             book_scroll: 0,
             book_view: None,
             side: Side::Closed,
@@ -223,6 +233,8 @@ struct Saved {
     armor: Vec<SavedStack>,
     #[serde(default)]
     corpses: Vec<([f32; 3], f32, Vec<SavedStack>)>,
+    #[serde(default)]
+    offhand: SavedStack,
 }
 
 fn save_stacks(items: &ItemRegistry, inv: &Inventory) -> Vec<SavedStack> {
@@ -259,6 +271,7 @@ impl Survival {
             containers,
             saplings: self.saplings.iter().map(|(p, t)| (p.to_array(), *t)).collect(),
             armor: self.armor.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect(),
+            offhand: self.offhand.map(|s| (items.get(s.item).name.clone(), s.count, s.damage)),
             corpses: self
                 .corpses
                 .iter()
@@ -301,6 +314,7 @@ impl Survival {
             sv.armor[i] = a;
         }
         sv.saplings = s.saplings.into_iter().map(|(p, t)| (IVec3::from(p), t)).collect();
+        sv.offhand = load_stacks(items, std::slice::from_ref(&s.offhand), 1).slots[0];
         sv
     }
 }
@@ -339,7 +353,7 @@ pub fn item_icon(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRegistry,
 }
 
 /// Fill `r` except for the `hole` rectangle inside it.
-fn rect_around(ui: &mut UiBatch, r: (f32, f32, f32, f32), hole: Option<(f32, f32, f32, f32)>, c: [u8; 4]) {
+pub(crate) fn rect_around(ui: &mut UiBatch, r: (f32, f32, f32, f32), hole: Option<(f32, f32, f32, f32)>, c: [u8; 4]) {
     let (x, y, w, h) = r;
     let Some((hx, hy, hw, hh)) = hole else {
         ui.rect(x, y, w, h, c);
@@ -388,12 +402,13 @@ fn draw_shield(ui: &mut UiBatch, x: f32, y: f32, s: f32, fill: f32, empty: bool)
 
 /// One clickable slot in a container screen.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Slot {
+pub(crate) enum Slot {
     Inv(usize),
     Craft(usize),
     CraftOut,
     Cont(usize),
     Armor(usize),
+    Offhand,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -658,10 +673,25 @@ impl Game {
             // Eating is handled while the button is held (update).
             return false;
         }
+        if let Some(mob) = item.name.strip_suffix("_spawn_egg") {
+            let Some(hit) = self.target else { return false };
+            let at = (hit.block + hit.normal).as_vec3() + Vec3::new(0.5, 0.0, 0.5);
+            if self.mobs.spawn(mob, at) {
+                if self.survival {
+                    let sel = self.selected;
+                    self.surv.inv.take(sel, 1);
+                }
+                self.anim.start_swing();
+                return true;
+            }
+            return false;
+        }
         let Some(block) = item.places else { return false };
         if let Some(pos) = self.place_block_as(block) {
-            let sel = self.selected;
-            self.surv.inv.take(sel, 1);
+            if self.survival {
+                let sel = self.selected;
+                self.surv.inv.take(sel, 1);
+            }
             if self.reg.get(block).name.ends_with("_sapling") {
                 let t = 60.0 + self.surv.rng.f32() * 120.0;
                 self.surv.saplings.push((pos, t));
@@ -750,6 +780,17 @@ impl Game {
             let f = self.forward();
             self.spawn_drop(self.body.eye() - Vec3::Y * 0.3, s, f * 5.0 + Vec3::Y);
         }
+    }
+
+    /// Middle click in creative: the block's item into the hand, a full stack if it isn't there.
+    pub(crate) fn creative_pick(&mut self, id: BlockId) {
+        let Some(item) = self.items.of_block(id) else { return };
+        if let Some(i) = (0..9).find(|&i| self.surv.inv.slots[i].is_some_and(|s| s.item == item)) {
+            self.selected = i;
+            return;
+        }
+        let n = self.items.get(item).max_stack.max(1);
+        self.surv.inv.slots[self.selected] = Some(ItemStack::new(item, n));
     }
 
     /// Middle click in survival: pick the block's item from the inventory into the hand.
@@ -1102,13 +1143,17 @@ impl Game {
     // Interface.
 
     /// Hotbar items, hunger and experience over the classic hotbar frame.
-    pub(crate) fn draw_survival_hud(&mut self, hx: f32, hy: f32, cell: f32) {
+    pub(crate) fn draw_hotbar_items(&mut self, hx: f32, hy: f32, cell: f32) {
         let s = self.ui.scale;
         for i in 0..9 {
             if let Some(st) = self.surv.inv.slots[i] {
                 item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &st, hx + i as f32 * cell + 3.0 * s, hy + 2.5 * s, 14.0 * s);
             }
         }
+    }
+
+    pub(crate) fn draw_survival_hud(&mut self, hx: f32, hy: f32, cell: f32) {
+        let s = self.ui.scale;
         // Hunger: ten drumsticks on the right, above the hotbar.
         let y = hy - 11.0 * s;
         let shake = self.surv.saturation <= 0.0 && self.surv.hunger <= 6.0;
@@ -1353,12 +1398,13 @@ impl Game {
         self.recipes.craft(&grid, n)
     }
 
-    fn slot_get(&self, slot: Slot) -> Option<ItemStack> {
+    pub(crate) fn slot_get(&self, slot: Slot) -> Option<ItemStack> {
         match slot {
             Slot::Inv(i) => self.surv.inv.slots[i],
             Slot::Craft(i) => self.surv.craft[i],
             Slot::CraftOut => None,
             Slot::Armor(i) => self.surv.armor[i],
+            Slot::Offhand => self.surv.offhand,
             Slot::Cont(i) => match self.open_container_inv() {
                 Some(inv) => inv.slots.get(i).copied().flatten(),
                 None => None,
@@ -1366,12 +1412,13 @@ impl Game {
         }
     }
 
-    fn slot_set(&mut self, slot: Slot, v: Option<ItemStack>) {
+    pub(crate) fn slot_set(&mut self, slot: Slot, v: Option<ItemStack>) {
         match slot {
             Slot::Inv(i) => self.surv.inv.slots[i] = v,
             Slot::Craft(i) => self.surv.craft[i] = v,
             Slot::CraftOut => {}
             Slot::Armor(i) => self.surv.armor[i] = v,
+            Slot::Offhand => self.surv.offhand = v,
             Slot::Cont(i) => {
                 if let Some(inv) = self.open_container_inv_mut() {
                     if i < inv.slots.len() {
@@ -1413,7 +1460,7 @@ impl Game {
         }
     }
 
-    fn click_slot(&mut self, slot: Slot, right: bool, shift: bool) {
+    pub(crate) fn click_slot(&mut self, slot: Slot, right: bool, shift: bool) {
         let furnace_out = slot == Slot::Cont(2) && matches!(self.surv.open, Open::Furnace(_));
         if slot == Slot::CraftOut {
             self.click_craft_output(shift);
@@ -1709,11 +1756,7 @@ impl Game {
 
     /// 0..1 light given off by what the player holds (a torch, glowstone...).
     pub(crate) fn hand_light_level(&self) -> f32 {
-        let id = if self.survival {
-            self.held_stack().and_then(|s| self.items.get(s.item).places).unwrap_or(AIR)
-        } else {
-            self.hotbar[self.selected]
-        };
+        let id = self.held_stack().and_then(|s| self.items.get(s.item).places).unwrap_or(AIR);
         self.reg.light_of(id) as f32 / 15.0
     }
 }

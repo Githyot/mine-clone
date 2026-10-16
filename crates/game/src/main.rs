@@ -5,6 +5,7 @@
 
 mod audio;
 mod controller;
+mod creative;
 mod entity;
 mod item_render;
 mod menus;
@@ -86,6 +87,8 @@ struct Args {
     shapes: bool,
     /// Take the --screenshot of the loading screen instead of the game.
     shot_loading: bool,
+    /// Creative inventory tab to open (0..13).
+    ctab: Option<usize>,
     show_inventory: bool,
     show_pause: bool,
     /// Open the shader menu once the world is ready (test screenshots).
@@ -146,6 +149,7 @@ fn parse_args() -> Args {
             "--demo" => a.demo = true,
             "--shapes" => a.shapes = true,
             "--shot-loading" => a.shot_loading = true,
+            "--ctab" => a.ctab = it.next().and_then(|v| v.parse().ok()),
             "--inventory" => a.show_inventory = true,
             "--pause" => a.show_pause = true,
             "--shaders-menu" => a.show_shaders = true,
@@ -355,8 +359,6 @@ struct Game {
 
     hotbar: [BlockId; 9],
     selected: usize,
-    inventory: Vec<BlockId>,
-    inv_scroll: usize,
     time_of_day: f32,
 
     screen: Screen,
@@ -599,7 +601,6 @@ impl Game {
         for (i, n) in hotbar_names.iter().enumerate() {
             hotbar[i] = reg.id_or_air(n);
         }
-        let inventory: Vec<BlockId> = (1..reg.len() as BlockId).filter(|&i| reg.get(i).in_inventory).collect();
         let packs = textures::list_resource_packs(&base.join("resourcepacks"));
         let show_debug = args.debug;
         let (shader_packs, pack_errors) = shaderpack::list_packs(&base.join("shaderpacks"));
@@ -627,8 +628,6 @@ impl Game {
             needs_spawn,
             hotbar,
             selected: 0,
-            inventory,
-            inv_scroll: 0,
             time_of_day,
             screen: if title_mode { Screen::Title } else { Screen::Loading },
             keys: HashSet::new(),
@@ -813,7 +812,7 @@ impl Game {
             // Loading frames say nothing about how the game runs.
             self.perf.reset();
         }
-        if self.screen == Screen::Inventory && s != Screen::Inventory && self.survival {
+        if self.screen == Screen::Inventory && s != Screen::Inventory {
             self.surv_close();
         }
         if s == Screen::Loading && self.screen != Screen::Loading {
@@ -897,6 +896,9 @@ impl Game {
             self.form_key(code);
             return;
         }
+        if self.creative_key(code) {
+            return;
+        }
         if repeat {
             return;
         }
@@ -912,8 +914,7 @@ impl Game {
                 Screen::Loading | Screen::Dead | Screen::Title => {}
             },
             KeyCode::KeyE => match self.screen {
-                Screen::Playing if self.survival => self.surv_open_inventory(),
-                Screen::Playing => self.set_screen(Screen::Inventory),
+                Screen::Playing => self.surv_open_inventory(),
                 Screen::Inventory => self.set_screen(Screen::Playing),
                 _ => {}
             },
@@ -977,12 +978,8 @@ impl Game {
             KeyCode::Digit9,
         ];
         if let Some(i) = digits.iter().position(|&d| d == code) {
-            if self.screen == Screen::Inventory && self.survival {
+            if self.screen == Screen::Inventory {
                 self.inv_number_key = Some(i);
-            } else if self.screen == Screen::Inventory {
-                if let Some(id) = self.hovered_inventory_block() {
-                    self.hotbar[i] = id;
-                }
             } else {
                 self.selected = i;
                 self.show_held_name();
@@ -991,16 +988,8 @@ impl Game {
     }
 
     fn show_held_name(&mut self) {
-        if self.survival {
-            if let Some(st) = self.held_stack() {
-                let n = self.items.get(st.item).display_name.clone();
-                self.toast(n, 1.5);
-            }
-            return;
-        }
-        let id = self.hotbar[self.selected];
-        if id != AIR {
-            let n = self.reg.get(id).display_name.clone();
+        if let Some(st) = self.held_stack() {
+            let n = self.items.get(st.item).display_name.clone();
             self.toast(n, 1.5);
         }
     }
@@ -1029,53 +1018,18 @@ impl Game {
                     self.shader_scroll += 1;
                 }
             }
-            Screen::Inventory if self.survival => {
+            Screen::Inventory if self.creative_screen_open() => self.creative_scroll(lines > 0.0),
+            Screen::Inventory => {
                 if lines > 0.0 {
                     self.surv.book_scroll = self.surv.book_scroll.saturating_sub(1);
                 } else {
                     self.surv.book_scroll += 1;
                 }
             }
-            Screen::Inventory => {
-                let rows = self.inventory.len().div_ceil(9);
-                let visible = self.inventory_layout().3;
-                if lines > 0.0 {
-                    self.inv_scroll = self.inv_scroll.saturating_sub(1);
-                } else if self.inv_scroll + visible < rows {
-                    self.inv_scroll += 1;
-                }
-            }
             _ => {}
         }
     }
 
-    // ---------- inventory layout (shared by drawing and clicking) ----------
-    fn inventory_layout(&self) -> (f32, f32, f32, usize) {
-        let s = self.ui.scale;
-        let cell = 18.0 * s;
-        let w = cell * 9.0 + 16.0 * s;
-        let rows = (((self.ui.height - 80.0 * s) / cell).floor() as usize).clamp(3, 8);
-        let x = (self.ui.width - w) / 2.0;
-        let y = ((self.ui.height - (cell * rows as f32 + 60.0 * s)) / 2.0).max(4.0 * s);
-        (x, y, cell, rows)
-    }
-
-    fn hovered_inventory_block(&self) -> Option<BlockId> {
-        let (x, y, cell, rows) = self.inventory_layout();
-        let s = self.ui.scale;
-        let gx = x + 8.0 * s;
-        let gy = y + 20.0 * s;
-        let (mx, my) = self.mouse_pos;
-        if mx < gx || my < gy {
-            return None;
-        }
-        let col = ((mx - gx) / cell) as usize;
-        let row = ((my - gy) / cell) as usize;
-        if col >= 9 || row >= rows {
-            return None;
-        }
-        self.inventory.get((row + self.inv_scroll) * 9 + col).copied()
-    }
 
     fn update(&mut self, dt: f32) {
         self.now += dt;
@@ -1115,6 +1069,10 @@ impl Game {
                 if self.args.mobs {
                     self.spawn_demo_mobs();
                 }
+                self.fill_creative_hotbar();
+                if let Some(c) = self.args.ctab {
+                    self.surv.ctab = c.min(12);
+                }
                 if self.args.kit {
                     self.test_kit();
                 }
@@ -1147,7 +1105,7 @@ impl Game {
                 } else {
                     self.set_screen(Screen::Playing);
                 }
-                self.toast(if self.survival { "Bem-vindo! Esc = menu, E = inventário" } else { "Bem-vindo! Esc = menu, E = blocos" }, 6.0);
+                self.toast("Bem-vindo! Esc = menu, E = inventário", 6.0);
             }
         }
 
@@ -1497,8 +1455,6 @@ impl Game {
         if use_ && self.place_cd <= 0.0 {
             if self.crouch <= 0.5 && self.toggle_shaped() {
                 self.place_cd = 0.25;
-            } else if !self.survival {
-                self.try_place();
             } else if self.surv_use() {
                 self.place_cd = self.place_cd.max(0.22);
             }
@@ -1511,11 +1467,7 @@ impl Game {
                     self.surv_pick(id);
                     self.show_held_name();
                 } else if id != AIR {
-                    if let Some(i) = self.hotbar.iter().position(|&h| h == id) {
-                        self.selected = i;
-                    } else {
-                        self.hotbar[self.selected] = id;
-                    }
+                    self.creative_pick(id);
                     self.show_held_name();
                 }
             }
@@ -1973,13 +1925,6 @@ impl Game {
         }
     }
 
-    fn try_place(&mut self) {
-        let id = self.hotbar[self.selected];
-        if id != AIR {
-            self.place_block_as(id);
-        }
-    }
-
     /// Place a block where the player is aiming. Returns where it went.
     fn place_block_as(&mut self, id: BlockId) -> Option<IVec3> {
         let hit = self.target?;
@@ -2406,11 +2351,8 @@ impl Game {
             for i in 0..9 {
                 let x = hx + i as f32 * cell;
                 self.ui.frame(x, hy, cell, cell, s, [110, 110, 110, 255]);
-                let id = self.hotbar[i];
-                if id != AIR && !self.survival {
-                    self.ui.block_icon(&self.reg, id, x + 3.0 * s, hy + 2.5 * s, 14.0 * s);
-                }
             }
+            self.draw_hotbar_items(hx, hy, cell);
             if self.survival {
                 self.draw_survival_hud(hx, hy, cell);
             }
@@ -2561,49 +2503,8 @@ impl Game {
                     clicked_button = Some(0);
                 }
             }
-            Screen::Inventory if self.survival => self.draw_survival_inventory(w, h, mouse),
-            Screen::Inventory => {
-                self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 120]);
-                let (x, y, cell, vis_rows) = self.inventory_layout();
-                let pw = cell * 9.0 + 16.0 * s;
-                let ph = cell * vis_rows as f32 + 30.0 * s;
-                self.ui.rect(x, y, pw, ph, [198, 198, 198, 255]);
-                self.ui.frame(x, y, pw, ph, s, [255, 255, 255, 255]);
-                self.ui.label(x + 8.0 * s, y + 6.0 * s, "Blocos (modo criativo)", [64, 64, 64, 255], s);
-                let gx = x + 8.0 * s;
-                let gy = y + 20.0 * s;
-                let hovered = self.hovered_inventory_block();
-                for row in 0..vis_rows {
-                    for col in 0..9 {
-                        let cx = gx + col as f32 * cell;
-                        let cy = gy + row as f32 * cell;
-                        self.ui.rect(cx, cy, cell - s, cell - s, [139, 139, 139, 255]);
-                        if let Some(&id) = self.inventory.get((row + self.inv_scroll) * 9 + col) {
-                            if hovered == Some(id) {
-                                self.ui.rect(cx, cy, cell - s, cell - s, [200, 200, 200, 255]);
-                            }
-                            self.ui.block_icon(&self.reg, id, cx + 1.5 * s, cy + 1.0 * s, 14.0 * s);
-                        }
-                    }
-                }
-                let rows = self.inventory.len().div_ceil(9);
-                if rows > vis_rows {
-                    let t = format!("rolar {}/{}", self.inv_scroll + 1, rows - vis_rows + 1);
-                    let tw = self.ui.text_width(&t, s);
-                    self.ui.label(x + pw - tw - 8.0 * s, y + 6.0 * s, &t, [64, 64, 64, 255], s);
-                }
-                if let Some(id) = hovered {
-                    let name = self.reg.get(id).display_name.clone();
-                    let tw = self.ui.text_width(&name, s);
-                    let (mx, my) = mouse;
-                    self.ui.rect(mx + 8.0 * s, my - 14.0 * s, tw + 6.0 * s, 12.0 * s, [16, 0, 16, 235]);
-                    self.ui.text(mx + 11.0 * s, my - 12.0 * s, &name, WHITE);
-                    if self.clicked {
-                        self.hotbar[self.selected] = id;
-                    }
-                }
-                self.ui.text_centered(w / 2.0, y + ph + 4.0 * s, "Clique para pôr na barra, ou aponte e aperte 1-9", WHITE);
-            }
+            Screen::Inventory if self.creative_screen_open() => self.draw_creative_inventory(w, h, mouse),
+            Screen::Inventory => self.draw_survival_inventory(w, h, mouse),
             Screen::Controls => {
                 self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 170]);
                 clicked_button = self.draw_controls_menu(w, h, mouse);
@@ -3185,7 +3086,7 @@ impl Game {
         self.entities.particles.prepare(&self.renderer, &self.particles, &self.world, block);
         let mut drops = self.drop_instances(block);
         drops.extend(figure_backdrop);
-        if self.survival && !third && self.screen == Screen::Playing && !self.hide_hud && self.camera_mode == 0 {
+        if !third && self.screen == Screen::Playing && !self.hide_hud && self.camera_mode == 0 {
             drops.extend(self.held_item_instance(eye, block));
         }
         if let (Some(k), Some(h)) = (self.args.mine, self.target) {

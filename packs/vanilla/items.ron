@@ -96,4 +96,12 @@
     (name: "oak_sapling", texture: Some("oak_sapling")),
     (name: "birch_sapling", texture: Some("birch_sapling")),
     (name: "spruce_sapling", texture: Some("spruce_sapling")),
+    (name: "pig_spawn_egg", display_name: Some("Ovo de Porco"), texture: Some("pig_spawn_egg")),
+    (name: "cow_spawn_egg", display_name: Some("Ovo de Vaca"), texture: Some("cow_spawn_egg")),
+    (name: "sheep_spawn_egg", display_name: Some("Ovo de Ovelha"), texture: Some("sheep_spawn_egg")),
+    (name: "chicken_spawn_egg", display_name: Some("Ovo de Galinha"), texture: Some("chicken_spawn_egg")),
+    (name: "zombie_spawn_egg", display_name: Some("Ovo de Zumbi"), texture: Some("zombie_spawn_egg")),
+    (name: "skeleton_spawn_egg", display_name: Some("Ovo de Esqueleto"), texture: Some("skeleton_spawn_egg")),
+    (name: "stalker_spawn_egg", display_name: Some("Ovo de Rastejante"), texture: Some("stalker_spawn_egg")),
+    (name: "spider_spawn_egg", display_name: Some("Ovo de Aranha"), texture: Some("spider_spawn_egg")),
 ])
