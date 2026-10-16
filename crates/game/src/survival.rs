@@ -81,6 +81,8 @@ pub enum Open {
     Table,
     Furnace(IVec3),
     Chest(IVec3),
+    /// A town NPC's shop (goods in `Survival::shop`).
+    Shop,
 }
 
 pub struct Survival {
@@ -90,6 +92,10 @@ pub struct Survival {
     pub cursor: Option<ItemStack>,
     pub craft: [Option<ItemStack>; 9],
     pub open: Open,
+    /// The open shop: goods, their prices in emeralds and the seller's name.
+    pub shop: Inventory,
+    pub shop_prices: Vec<u8>,
+    pub shop_name: String,
     pub hunger: f32,
     pub saturation: f32,
     pub exhaustion: f32,
@@ -143,6 +149,9 @@ impl Survival {
             cursor: None,
             craft: [None; 9],
             open: Open::Craft,
+            shop: Inventory::new(0),
+            shop_prices: Vec::new(),
+            shop_name: String::new(),
             hunger: 20.0,
             saturation: 5.0,
             exhaustion: 0.0,
@@ -790,6 +799,9 @@ impl Game {
     /// Right click in survival. Returns true when something happened.
     pub(crate) fn surv_use(&mut self) -> bool {
         if self.loot_corpse() {
+            return true;
+        }
+        if self.talk_to_npc() {
             return true;
         }
         if let Some(hit) = self.target {
@@ -1547,6 +1559,13 @@ impl Game {
                 self.ui.rect(ax, ay, 24.0 * s, 8.0 * s, [139, 139, 139, 255]);
                 self.ui.rect(ax, ay, 24.0 * s * cook.clamp(0.0, 1.0), 8.0 * s, [240, 240, 240, 255]);
             }
+            Open::Shop => {
+                let title = format!("{}: loja", self.surv.shop_name);
+                self.ui.label(x0 + 8.0 * s, y0 + 6.0 * s, &title, dark, s);
+                for i in 0..self.surv.shop.slots.len().min(18) {
+                    slots.push((Slot::Cont(i), x0 + (8 + (i % 9) * 18) as f32 * s, y0 + (18 + (i / 9) * 18) as f32 * s));
+                }
+            }
             Open::Chest(_) => {
                 self.ui.label(x0 + 8.0 * s, y0 + 6.0 * s, "Baú", dark, s);
                 for i in 0..CHEST_SIZE {
@@ -1610,7 +1629,7 @@ impl Game {
             }
         }
         // Right-drag (like Mouse Tweaks): one item into each slot the mouse passes over.
-        if self.rdown && !self.rclicked {
+        if self.rdown && !self.rclicked && open != Open::Shop {
             if let (Some(slot), Some(c)) = (hovered, self.surv.cursor) {
                 let fresh = self.surv.drag_last != Some(slot) && !matches!(slot, Slot::CraftOut | Slot::Armor(_)) && !(slot == Slot::Cont(2) && matches!(open, Open::Furnace(_)));
                 let fits = match self.slot_get(slot) {
@@ -1625,7 +1644,7 @@ impl Game {
         self.surv.drag_last = if self.rdown { hovered.or(self.surv.drag_last) } else { None };
         // Number keys over a slot swap it with that hotbar slot.
         if let (Some(slot), Some(k)) = (hovered, self.inv_number_key.take()) {
-            if slot != Slot::CraftOut {
+            if slot != Slot::CraftOut && !(open == Open::Shop && matches!(slot, Slot::Cont(_))) {
                 let a = self.slot_get(slot);
                 let b = self.surv.inv.slots[k];
                 self.slot_set(slot, b);
@@ -1647,6 +1666,10 @@ impl Game {
                     name = format!("{name} ({}/{})", t.durability - st.damage, t.durability);
                 } else if let Some(f) = &it.food {
                     name = format!("{name} (+{} fome)", f.hunger);
+                }
+                if let (Some(Slot::Cont(i)), Open::Shop) = (hovered, open) {
+                    let price = self.surv.shop_prices.get(i).copied().unwrap_or(0);
+                    name = format!("{name} x{}: {price} esmeralda(s)", st.count);
                 }
                 let tw = self.ui.text_width(&name, s);
                 let (mx, my) = mouse;
@@ -1707,6 +1730,7 @@ impl Game {
                 Container::Chest(i) => Some(i),
                 Container::Furnace(f) => Some(&f.inv),
             },
+            Open::Shop => Some(&self.surv.shop),
             _ => None,
         }
     }
@@ -1733,6 +1757,10 @@ impl Game {
     }
 
     pub(crate) fn click_slot(&mut self, slot: Slot, right: bool, shift: bool) {
+        if let (Slot::Cont(i), Open::Shop) = (slot, self.surv.open) {
+            self.buy(i);
+            return;
+        }
         let furnace_out = slot == Slot::Cont(2) && matches!(self.surv.open, Open::Furnace(_));
         if slot == Slot::CraftOut {
             self.click_craft_output(shift);

@@ -132,6 +132,9 @@ pub struct MobDef {
     /// A boss: health bar at the top of the screen, never wanders off.
     #[serde(default = "d_false")]
     pub boss: bool,
+    /// A town NPC: lives in a house, never despawns, talks and trades.
+    #[serde(default = "d_false")]
+    pub town: bool,
 }
 
 fn d_scale() -> f32 {
@@ -227,6 +230,8 @@ pub struct Mob {
     /// Seconds left burning (fire spells) and slowed (frost spells).
     pub on_fire: f32,
     pub chill: f32,
+    /// Where a town NPC lives; it wanders near here.
+    pub home: Option<Vec3>,
     fire_tick: f32,
     rng: Rng,
 }
@@ -266,6 +271,7 @@ impl Mob {
             fed: 20.0 + rng.f32() * 40.0,
             on_fire: 0.0,
             chill: 0.0,
+            home: None,
             fire_tick: 0.0,
             rng,
         }
@@ -486,8 +492,12 @@ impl Mob {
                         self.sleep_t = 15.0 + self.rng.f32() * 25.0;
                     } else if self.idle <= 0.0 {
                         let a = self.rng.f32() * std::f32::consts::TAU;
-                        let r = 3.0 + self.rng.f32() * 6.0;
-                        self.wander = Some(self.body.pos + Vec3::new(a.cos() * r, 0.0, a.sin() * r));
+                        // Town folk potter about near home.
+                        let (centre, r) = match self.home {
+                            Some(h) => (h, self.rng.f32() * 3.0),
+                            None => (self.body.pos, 3.0 + self.rng.f32() * 6.0),
+                        };
+                        self.wander = Some(centre + Vec3::new(a.cos() * r, 0.0, a.sin() * r));
                         self.idle = 3.0 + self.rng.f32() * 4.0;
                     }
                 }

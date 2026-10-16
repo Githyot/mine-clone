@@ -296,9 +296,10 @@ impl Mobs {
             }
         }
         self.update_arrows(world, player, dt, &mut out);
+        let reg = &self.reg;
         self.list.retain(|m| {
             let gone = !m.alive() && m.dead_age > DEATH_TIME;
-            let far = (m.body.pos - player).length() > DESPAWN_DIST;
+            let far = (m.body.pos - player).length() > DESPAWN_DIST && !reg.defs[m.def].town;
             let fell = m.body.pos.y < -64.0;
             !(gone || far || fell)
         });

@@ -40,6 +40,9 @@ pub struct LevelData {
     /// Bosses beaten in this world (mob names).
     #[serde(default)]
     pub bosses: Vec<String>,
+    /// Town NPCs living here: (mob name, home position).
+    #[serde(default)]
+    pub npcs: Vec<(String, [f32; 3])>,
     /// Weather: raining, storm, and seconds until it changes (0 = pick a fresh spell).
     #[serde(default)]
     pub raining: bool,

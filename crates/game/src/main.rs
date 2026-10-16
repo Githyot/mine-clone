@@ -9,6 +9,7 @@ mod creative;
 mod fishing;
 mod magic;
 mod bosses;
+mod npcs;
 mod fluids;
 mod weather;
 mod entity;
@@ -429,6 +430,7 @@ struct Game {
     max_health: f32,
     magic: magic::Magic,
     boss: bosses::BossState,
+    town: npcs::Town,
     /// Seconds since the player was last hurt (red flash, invulnerability).
     hurt_age: f32,
     regen: f32,
@@ -623,9 +625,11 @@ impl Game {
         let mut max_health = 20.0f32;
         let mut max_mana = 20.0f32;
         let mut bosses_beaten = Vec::new();
+        let mut town_npcs = Vec::new();
         if let Some(l) = &level {
             max_mana = l.max_mana;
             bosses_beaten = l.bosses.clone();
+            town_npcs = l.npcs.iter().map(|(n, h)| npcs::NpcSave { name: n.clone(), home: *h }).collect();
             survival = l.survival || args.survival;
             max_health = l.max_health.clamp(20.0, 40.0);
             health = if l.health > 0.0 { l.health.min(max_health) } else { max_health };
@@ -729,6 +733,7 @@ impl Game {
             max_health,
             magic: magic::Magic::new(max_mana),
             boss: bosses::BossState::new(bosses_beaten),
+            town: npcs::Town::new(town_npcs),
             hurt_age: 100.0,
             regen: 0.0,
             fall_peak: f32::MIN,
@@ -930,6 +935,7 @@ impl Game {
             max_health: self.max_health,
             max_mana: self.magic.max_mana,
             bosses: self.boss.defeated.clone(),
+            npcs: self.town.npcs.iter().map(|n| (n.name.clone(), n.home)).collect(),
             raining: self.weather.state.raining,
             thunder: self.weather.state.thunder,
             weather_timer: self.weather.state.timer,
@@ -1208,6 +1214,10 @@ impl Game {
                 if let Some(i) = self.args.slot {
                     self.selected = i;
                 }
+                if std::env::var("MC_HOUSE").is_ok() {
+                    // Test hook: two small houses in front; people move in; MC_SHOP opens a shop.
+                    self.test_houses();
+                }
                 if std::env::var("MC_BOSS").is_ok() {
                     // Test hook: the Forest Guardian in front, hurt to show its bar and angry volley.
                     let f = self.forward();
@@ -1258,7 +1268,7 @@ impl Game {
                 if let Some(m) = self.args.mouse {
                     self.mouse_pos = m;
                 }
-                if self.args.show_inventory || self.args.open.as_deref().is_some_and(|o| o != "corpse") {
+                if self.args.show_inventory || self.surv.open == survival::Open::Shop || self.args.open.as_deref().is_some_and(|o| o != "corpse") {
                     self.set_screen(Screen::Inventory);
                 } else if self.args.show_pause {
                     self.set_screen(Screen::Paused);
@@ -1295,6 +1305,7 @@ impl Game {
             self.surv_update(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
             self.update_magic(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
             self.update_boss(if self.args.screenshot.is_some() { 0.0 } else { dt });
+            self.update_npcs(if self.args.screenshot.is_some() { 0.0 } else { dt });
         }
         if self.world_open && !matches!(self.screen, Screen::Loading | Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Shaders) {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;

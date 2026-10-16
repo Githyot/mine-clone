@@ -70,6 +70,11 @@ ROLES = {
     "bear": ["body", "head", "snout", "ear", "ear", "hump", "leg", "leg", "leg", "leg"],
     "duck": ["body", "head", "bill", "tail", "wing", "wing", "leg", "leg"],
     "forest_guardian": ["head", "body", "arm", "arm", "leg", "leg", "branch", "branch"],
+    "npc_guide": ["head", "body", "arm", "arm", "leg", "leg"],
+    "npc_merchant": ["head", "body", "arm", "arm", "leg", "leg"],
+    "npc_nurse": ["head", "body", "arm", "arm", "leg", "leg"],
+    "npc_wizard": ["head", "body", "arm", "arm", "leg", "leg"],
+    "npc_smith": ["head", "body", "arm", "arm", "leg", "leg"],
 }
 
 # (size, origin, uv) per part, mirroring mobs.ron.
@@ -137,6 +142,9 @@ HARDCODED = {
                         ((5, 12, 4), (-6, 0, -2), (36, 20)), ((5, 12, 4), (1, 0, -2), (36, 20)),
                         ((2, 6, 2), (-6, 34, -1), (54, 0)), ((2, 6, 2), (4, 34, -1), (54, 0))],
 }
+# Town NPCs share the player's model.
+for _n in ("npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith"):
+    HARDCODED[_n] = HARDCODED["player"]
 
 
 # `layers` per mob as (part index, inflate), mirroring mobs.ron (checked).
@@ -157,6 +165,8 @@ HARDCODED_LAYERS = {
     "duck": [(0, 0.3), (4, 0.3), (5, 0.3)],
     "forest_guardian": [(0, 0.8), (1, 0.6), (2, 0.5), (3, 0.5)],
 }
+for _n in ("npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith"):
+    HARDCODED_LAYERS[_n] = HARDCODED_LAYERS["player"]
 
 
 # --------------------------------------------------------------------------
@@ -1450,6 +1460,46 @@ def overlay_forest_guardian(c):
     return None
 
 
+# ---- town NPCs: the player's painter in each one's own colours --------------
+TOWNSFOLK = {
+    "npc_guide": dict(PHAIR=pal("#2a1a0e", "#3a2412", "#4c3018", "#5e3c1e", "#6e4824"),
+                      PTUNIC=pal("#1c2e4a", "#243a5c", "#2e486e", "#385680", "#426490"),
+                      PTROUSER=pal("#6a5a3a", "#7a6844", "#8a764e", "#988458")),
+    "npc_merchant": dict(PHAIR=pal("#5a5a5a", "#6e6e6e", "#828282", "#969696", "#aaaaaa"),
+                         PTUNIC=pal("#4a2c10", "#5c3816", "#6e441c", "#805022", "#925c28"),
+                         PTROUSER=pal("#2a3a20", "#344628", "#3e5230", "#485e38"),
+                         PSKIN=pal("#c08a66", "#cc9874", "#d6a582", "#e0b290", "#e8bf9e")),
+    "npc_nurse": dict(PHAIR=pal("#8a3a1a", "#a04622", "#b6542a", "#c86234", "#d6703e"),
+                      PTUNIC=pal("#c8c8c8", "#d6d6d6", "#e2e2e2", "#ececec", "#f6f6f6"),
+                      PTROUSER=pal("#b8b8c0", "#c6c6ce", "#d2d2da", "#dedee6"),
+                      PLEATHER=pal("#8a1a1a", "#a02222", "#b42a2a", "#c83434"),
+                      PSKIN=pal("#d0a080", "#daac8c", "#e4b898", "#ecc4a4", "#f2d0b2")),
+    "npc_wizard": dict(PHAIR=pal("#b8b8b8", "#c8c8c8", "#d8d8d8", "#e6e6e6", "#f4f4f4"),
+                       PTUNIC=pal("#2a1448", "#341a5a", "#40206c", "#4c287e", "#5a3090"),
+                       PTROUSER=pal("#2a1448", "#341a5a", "#40206c", "#4c287e"),
+                       PLEATHER=pal("#8a6a10", "#a07c16", "#b88e1c", "#cca024"),
+                       PIRIS=(70, 60, 140)),
+    "npc_smith": dict(PHAIR=pal("#141010", "#1e1814", "#282018", "#32281e", "#3c3024"),
+                      PTUNIC=pal("#2a2a2c", "#343436", "#3e3e40", "#48484a", "#525254"),
+                      PTROUSER=pal("#3a2a1a", "#463220", "#523a26", "#5e442c"),
+                      PSKIN=pal("#7a4a30", "#8a563a", "#9a6244", "#a86e4e", "#b47a58")),
+}
+
+
+def townsfolk(name, base):
+    colours = TOWNSFOLK[name]
+
+    def paint(c):
+        g = globals()
+        saved = {k: g[k] for k in colours}
+        g.update(colours)
+        try:
+            return base(c)
+        finally:
+            g.update(saved)
+    return paint
+
+
 PAINTERS = {
     "pig": paint_pig, "cow": paint_cow, "sheep": paint_sheep,
     "chicken": paint_chicken, "zombie": paint_zombie,
@@ -1458,6 +1508,8 @@ PAINTERS = {
     "deer": paint_deer, "fox": paint_fox, "rabbit": paint_rabbit, "bear": paint_bear,
     "duck": paint_duck, "forest_guardian": paint_forest_guardian,
 }
+for _n in TOWNSFOLK:
+    PAINTERS[_n] = townsfolk(_n, paint_player)
 
 
 # --------------------------------------------------------------------------
@@ -1798,6 +1850,8 @@ OVERLAYS = {
     "deer": overlay_deer, "fox": overlay_fox, "rabbit": overlay_rabbit, "bear": overlay_bear,
     "duck": overlay_duck, "forest_guardian": overlay_forest_guardian,
 }
+for _n in TOWNSFOLK:
+    OVERLAYS[_n] = townsfolk(_n, overlay_player)
 
 
 # --------------------------------------------------------------------------
@@ -1879,7 +1933,8 @@ def main():
             assert 0 <= idx < len(parts), (name, idx)
     os.makedirs(OUT_DIR, exist_ok=True)
     order = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "stalker", "spider",
-             "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian"]
+             "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian",
+             "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols
