@@ -81,11 +81,13 @@ pub struct Structures {
     pub list: Vec<Structure>,
     /// Blocks a foundation pushes through: air, water, plants, snow.
     soft: Vec<bool>,
+    /// Trees and plants, cleared from around a building so they don't grow through it.
+    plant: Vec<bool>,
 }
 
 impl Structures {
     pub fn empty() -> Structures {
-        Structures { list: Vec::new(), soft: Vec::new() }
+        Structures { list: Vec::new(), soft: Vec::new(), plant: Vec::new() }
     }
 
     pub fn from_ron(text: &str, reg: &BlockRegistry) -> Result<Structures, String> {
@@ -137,7 +139,8 @@ impl Structures {
             list.push(Structure { def, size: IVec3::new(sx, sy, sz), cells, foundation, turned, chest });
         }
         let soft = reg.blocks.iter().map(|b| matches!(b.shape, Shape::Liquid | Shape::Cross | Shape::Layer | Shape::Invisible) || b.name == "air").collect();
-        Ok(Structures { list, soft })
+        let plant = reg.blocks.iter().map(|b| b.shape == Shape::Cross || b.name.ends_with("_leaves") || b.name.ends_with("_log") || b.name == "vine").collect();
+        Ok(Structures { list, soft, plant })
     }
 }
 
@@ -235,6 +238,15 @@ impl Generator {
                 for lx in 0..16 {
                     let (wx, wz) = (pos.x * 16 + lx, pos.y * 16 + lz);
                     let (x, z) = (wx - p.origin.x, wz - p.origin.z);
+                    // A clearing one block wider than the building, free of trees.
+                    if x >= -1 && z >= -1 && x <= f.x && z <= f.y {
+                        for y in p.origin.y.max(1)..(p.origin.y + s.size.y + 6).min(CHUNK_HEIGHT as i32) {
+                            let cur = chunk.get(lx as usize, y as usize, lz as usize);
+                            if structs.plant.get(cur as usize).copied().unwrap_or(false) {
+                                chunk.set(lx as usize, y as usize, lz as usize, crate::block::AIR);
+                            }
+                        }
+                    }
                     if x < 0 || z < 0 || x >= f.x || z >= f.y {
                         continue;
                     }
@@ -331,3 +343,4 @@ mod tests {
         }
     }
 }
+
