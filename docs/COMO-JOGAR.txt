@@ -38,13 +38,17 @@ CONTROLES
   F2              tirar foto
   F3              informações (FPS, posição, bioma, GPU)
   F3 + T          recarregar texturas
+  F5              câmera: primeira pessoa > atrás do personagem > de frente
   F11             tela cheia
 
 MODOS E MOBS
+  Mundo novo: o modo padrão já é Sobrevivência (troque na tela de criar mundo).
   Esc > Modo: Criativo (voa, não leva dano) ou Sobrevivência (10 corações, sem voar).
   Na sobrevivência você leva dano de quedas altas, lava, afogamento (bolhas azuis),
   ataques de mobs e explosões. A vida volta devagar quando você fica longe do perigo.
   Se morrer, aperte "Renascer".
+  O personagem anda, corre, pula, nada, agacha e golpeia com animações próprias (veja com F5).
+  O balanço da visão ao andar pode ser desligado em Opções > Balanço da visão.
   Animais (porco, vaca, ovelha, galinha) aparecem na grama durante o dia.
   Monstros (zumbi, esqueleto, rastejante, aranha) aparecem no escuro e nas cavernas.
   Zumbis e esqueletos pegam fogo no sol. O rastejante chega perto e explode.

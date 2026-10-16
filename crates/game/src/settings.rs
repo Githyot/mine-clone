@@ -71,6 +71,8 @@ pub struct Settings {
     /// Enabled resource packs from the `resourcepacks` folder, highest priority first.
     pub resource_packs: Vec<String>,
     pub show_clouds: bool,
+    /// The view sways a little while walking.
+    pub view_bobbing: bool,
     /// Animals and monsters spawn in the world.
     pub mobs: bool,
     pub gui_scale: u32,
@@ -100,6 +102,7 @@ impl Default for Settings {
             music_delay_max: 1200.0,
             resource_packs: Vec::new(),
             show_clouds: true,
+            view_bobbing: true,
             mobs: true,
             gui_scale: 0,
             controller: ControllerSettings::default(),

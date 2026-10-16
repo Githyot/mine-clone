@@ -62,6 +62,7 @@ ROLES = {
     "stalker": ["head", "body", "leg", "leg", "leg", "leg"],
     "spider": ["head", "neck", "abdomen", "leg", "leg", "leg", "leg",
                "leg", "leg", "leg", "leg"],
+    "player": ["head", "body", "arm", "arm", "leg", "leg"],
 }
 
 # (size, origin, uv) per part, mirroring mobs.ron.
@@ -94,6 +95,10 @@ HARDCODED = {
                ((10, 8, 12), (-5, 4, -15), (0, 20))]
               + [((16, 2, 2), (-19, 7, z), (0, 40)) for z in (2, 0, -2, -4)]
               + [((16, 2, 2), (3, 7, z), (0, 40)) for z in (2, 0, -2, -4)],
+    # right/left arm and leg have their own uv so they can differ (bracer, patch)
+    "player": [((8, 8, 8), (-4, 24, -4), (0, 0)), ((8, 12, 4), (-4, 12, -2), (16, 16)),
+               ((4, 12, 4), (-8, 12, -2), (40, 16)), ((4, 12, 4), (4, 12, -2), (32, 48)),
+               ((4, 12, 4), (-4, 0, -2), (0, 16)), ((4, 12, 4), (0, 0, -2), (16, 48))],
 }
 
 
@@ -107,6 +112,7 @@ HARDCODED_LAYERS = {
     "skeleton": [(1, 0.5)],
     "stalker": [(0, 0.8), (1, 0.8)],
     "spider": [(1, 0.6), (2, 0.7)],
+    "player": [(0, 0.5), (1, 0.3), (2, 0.3), (3, 0.3), (4, 0.3), (5, 0.3)],
 }
 
 
@@ -806,10 +812,188 @@ def paint_spider(c):
     return spider_fur(c, 0.05)
 
 
+# ---- player ----------------------------------------------------------------
+# An original adventurer: warm skin, dark auburn hair, forest-green hooded
+# tunic with a leather belt and satchel strap, rust trousers, dark boots and a
+# leather bracer on the left wrist.
+PSKIN = pal("#a8694a", "#b97a58", "#c78a65", "#d29a74", "#dca984")
+PHAIR = pal("#3a170d", "#4f2114", "#652c1a", "#7a3720", "#8e4428")
+PTUNIC = pal("#1c3a20", "#26492a", "#305a33", "#3b6b3c", "#467b45")
+PLEATHER = pal("#3f2514", "#52311b", "#653e23", "#784c2c")
+PTROUSER = pal("#7a3c20", "#8a4626", "#99512d", "#a75d35")
+PBOOT = pal("#1e1510", "#291d16", "#35261c", "#42301f")
+PBRASS = (184, 146, 70)
+PEYE_WHITE = (238, 234, 226)
+PIRIS = (52, 86, 60)
+PBROW = (58, 26, 15)
+PLIP = (150, 84, 66)
+
+
+def p_noise(c, pal_, salt, base=0.15, span=0.6, jit=0.3, scale=3.0):
+    n = fbm(c.seed + salt, c.gx, c.gy, c.gz, scale, 2)
+    return pick(pal_, base + span * n + jit * (c.jit - 0.5))
+
+
+def pskin(c):
+    return p_noise(c, PSKIN, 3, 0.3, 0.4, 0.2)
+
+
+def phair(c):
+    # streaky: stretched along y so locks read as strands
+    n = fbm(c.seed + 9, c.gx * 1.8, c.gy * 0.6, c.gz * 1.8, 2.0, 2)
+    return pick(PHAIR, 0.1 + 0.7 * n + 0.35 * (c.jit - 0.5))
+
+
+def ptunic(c):
+    return p_noise(c, PTUNIC, 5, 0.2, 0.55, 0.3)
+
+
+def ptrouser(c):
+    return p_noise(c, PTROUSER, 7, 0.15, 0.6, 0.3)
+
+
+def pleather(c):
+    return p_noise(c, PLEATHER, 13, 0.2, 0.5, 0.4, 2.0)
+
+
+def p_left(c):
+    """True for the part on the +X side (the character's left)."""
+    return c.gx - c.x >= 0
+
+
+def p_strap_x(y):
+    """Satchel strap column for body row y (0 = shoulder): right shoulder -> left hip."""
+    return 1 + int(round(y * 5 / 7))
+
+
+def paint_player(c):
+    if c.role == "head":
+        if c.face == "bottom":
+            return mul(pskin(c), 0.85)
+        if c.face == "top":
+            return phair(c)
+        if c.face == "front":
+            i, j = c.i, c.j
+            # tousled fringe swept to the character's left
+            if j == 0 or (j == 1 and (i <= 4 or i == 7)) or (j == 2 and i in (0, 1, 7)):
+                return phair(c)
+            if j == 3 and i in (0, 7):
+                return PHAIR[0]  # sideburns
+            if j == 3 and i in (1, 2, 5, 6):
+                return PBROW
+            if j == 4:
+                if i in (1, 6):
+                    return PEYE_WHITE
+                if i in (2, 5):
+                    return PIRIS
+            if j == 5 and i in (3, 4):
+                return mul(pskin(c), 0.86 if i == 3 else 0.93)  # nose shadow
+            if j == 5 and i in (1, 6):
+                return mix(pskin(c), (200, 100, 86), 0.25)  # cheeks
+            if j == 6 and i in (3, 4):
+                return PLIP
+            if j == 6 and i in (2, 5):
+                return mul(pskin(c), 0.92)
+            return pskin(c)
+        # sides and back: hair, ragged lower edge; longer at the back
+        edge = (6 if c.face == "back" else 3) + int(
+            hash01(c.seed + 17, int(c.gx * 2), int(c.gz * 2)) * 2)
+        if c.face in ("left", "right") and c.z > 6 and c.j >= 2:
+            edge = 2 if c.j < 4 else 0  # temple/sideburn region near the face
+            if c.z > 7 and c.j == 3:
+                return PHAIR[0]
+        if c.j < edge:
+            return phair(c)
+        if c.face in ("left", "right") and 3.5 < c.z < 5 and c.j in (4, 5):
+            return mul(pskin(c), 0.84)  # ear
+        return pskin(c)
+    if c.role == "body":
+        if c.face == "top":
+            if 2 < c.x < 6 and 1 < c.z < 3:
+                return pskin(c)  # neck
+            return ptunic(c)
+        if c.face == "bottom":
+            return ptrouser(c)
+        j = c.j
+        xi = int(c.x)
+        if j in (8, 9):
+            if c.face == "front" and j == 8 and xi in (3, 4):
+                return PBRASS if xi == 3 else mul(PBRASS, 0.78)
+            return pleather(c) if j == 8 else mul(pleather(c), 0.8)
+        if c.face in ("front", "back") and j < 8 and xi == p_strap_x(j):
+            return PLEATHER[2] if c.jit > 0.4 else PLEATHER[1]
+        if c.face == "front" and j < 8 and xi == p_strap_x(j) - 1 and c.jit < 0.25:
+            return PLEATHER[0]  # strap shadow
+        if c.face == "front" and j <= 2:
+            # V-neck with lacing
+            if j == 0 and xi in (3, 4):
+                return pskin(c)
+            if j == 1 and xi in (3, 4):
+                return mul(pskin(c), 0.9) if xi == 3 else (210, 196, 160)
+            if j == 2 and xi == 3:
+                return (210, 196, 160)
+        if c.face == "left" and 7 <= j <= 11 and j != 8 and j != 9:
+            return pleather(c)  # satchel hanging at the left hip
+        col = ptunic(c)
+        if j == c.fh - 1:
+            col = mul(col, 0.8)  # hem
+        return col
+    if c.role == "arm":
+        left = p_left(c)
+        if c.face == "top":
+            return ptunic(c)
+        if c.face == "bottom":
+            return pskin(c)
+        j = c.j
+        if left and 7 <= j <= 9:
+            if j == 8 and c.i in (1, 2) and c.face in SIDES:
+                return PBRASS if c.i == 1 else (54, 36, 22)  # buckle / lace
+            return pleather(c)
+        if not left and j == 8:
+            return mix(ptunic(c), (196, 186, 150), 0.25)  # rolled cuff
+        if j < (7 if left else 8):
+            col = ptunic(c)
+            if j == 0:
+                col = mul(col, 1.08)
+            return col
+        col = pskin(c)
+        if j == c.fh - 1:
+            col = mul(col, 0.9)
+        if c.face == "front" and j == c.fh - 1 and c.i in (1, 3):
+            col = mul(col, 0.88)  # knuckles
+        return col
+    # legs
+    left = p_left(c)
+    if c.face == "bottom":
+        return PBOOT[0]
+    if c.face == "top":
+        return ptrouser(c)
+    j = c.j
+    if j >= 8:
+        if j == 8:
+            return PBOOT[3] if c.jit > 0.3 else PBOOT[2]  # folded boot top
+        if j == c.fh - 1:
+            return PBOOT[0]  # sole
+        if c.face == "front" and j == 9 and c.i in (1, 2):
+            return (120, 96, 66)  # laces
+        return pick(PBOOT, 0.2 + 0.5 * c.jit)
+    col = ptrouser(c)
+    if c.face == "front" and j in (4, 5):
+        col = mul(col, 0.9)  # knee crease
+    if left and c.face == "front" and 3 <= j <= 4 and 1 <= c.i <= 2:
+        return (118, 92, 58) if c.jit > 0.3 else (104, 80, 50)  # knee patch
+    if left and c.face == "front" and (c.i, j) in {(0, 3), (3, 4)}:
+        return (40, 24, 18)  # patch stitches
+    if c.face in ("left", "right") and j in (0, 1, 2) and c.i == (1 if c.face == "left" else 2):
+        return mul(col, 0.85)  # seam
+    return col
+
+
 PAINTERS = {
     "pig": paint_pig, "cow": paint_cow, "sheep": paint_sheep,
     "chicken": paint_chicken, "zombie": paint_zombie,
     "skeleton": paint_skeleton, "stalker": paint_stalker, "spider": paint_spider,
+    "player": paint_player,
 }
 
 
@@ -979,10 +1163,85 @@ def overlay_spider(c):
     return None
 
 
+def overlay_player(c):
+    j = c.j
+    if c.role == "head":
+        if c.face == "bottom":
+            return None
+        if c.face == "front":
+            # a few locks falling over the forehead, never over the eyes
+            if j == 0 and c.jit > 0.2:
+                return phair(c)
+            if j == 1 and c.i in (1, 2, 3) and c.jit > 0.35:
+                return phair(c)
+            if j == 2 and c.i == 2 and c.jit > 0.3:
+                return PHAIR[1]
+            return None
+        if c.face == "top":
+            if clustered(c, 91, 2.5, 0.42) and c.jit > 0.3:
+                return phair(c)  # tousled tufts
+            if c.z < 1.5 and c.jit > 0.35:
+                return ptunic(c)  # hood rim lying behind the crown
+            return None
+        # hood pushed back: folds at the back of the head and the rear of the sides
+        if c.face == "back" and j >= 4 and c.jit > 0.18:
+            return ptunic(c) if j > 4 else mul(ptunic(c), 0.82)
+        if c.face in ("left", "right") and c.z < 2.5 and j >= 3 and c.jit > 0.25:
+            return mul(ptunic(c), 0.9 if c.z < 1.5 else 0.8)
+        if c.face == "back" and j < 4 and hash01(c.seed + 93, c.px, 0) > 0.4 and c.jit > 0.3:
+            return phair(c)  # locks over the hood
+        if c.face in ("left", "right") and j <= 2 and c.jit > 0.45:
+            return phair(c)
+        return None
+    if c.role == "body":
+        if c.face == "bottom":
+            return None
+        if c.face == "top":
+            # hood bunched around the back of the neck
+            if c.z < 1.5 and c.jit > 0.2:
+                return ptunic(c)
+            return None
+        xi = int(c.x)
+        if j == 8:
+            if c.face == "front" and xi in (3, 4):
+                return PBRASS if xi == 3 else mul(PBRASS, 0.78)
+            return pleather(c)
+        if c.face in ("front", "back") and j < 8 and xi == p_strap_x(j):
+            return PLEATHER[2] if c.jit > 0.4 else PLEATHER[1]
+        if c.face == "back" and j <= 1 and c.jit > 0.25:
+            return mul(ptunic(c), 0.85)  # hood base
+        if c.face == "front" and j == 0 and xi not in (3, 4) and c.jit > 0.3:
+            return mul(ptunic(c), 0.9)  # collar
+        if c.face == "left" and 9 <= j <= 11 and c.jit > 0.15:
+            return pleather(c) if j > 9 else PLEATHER[3]  # satchel flap
+        return None
+    if c.role == "arm":
+        if c.face in ("top", "bottom"):
+            return None
+        if p_left(c):
+            if j in (7, 9) and c.jit > 0.15:
+                return pleather(c)  # bracer edges
+            if j == 8 and c.i == 1 and c.face == "front":
+                return PBRASS
+            return None
+        if j == 8 and c.jit > 0.2:
+            return mix(ptunic(c), (196, 186, 150), 0.2)  # rolled cuff
+        return None
+    # legs
+    if c.face in ("top", "bottom"):
+        return None
+    if j == 7 and c.jit > 0.3:
+        return mul(ptrouser(c), 0.85)  # trouser cuff over the boot
+    if j == 8 and c.jit > 0.15:
+        return PBOOT[3] if c.jit > 0.5 else PBOOT[2]  # boot top fold
+    return None
+
+
 OVERLAYS = {
     "pig": overlay_pig, "cow": overlay_cow, "sheep": overlay_sheep,
     "chicken": overlay_chicken, "zombie": overlay_zombie,
     "skeleton": overlay_skeleton, "stalker": overlay_stalker, "spider": overlay_spider,
+    "player": overlay_player,
 }
 
 
@@ -1064,9 +1323,10 @@ def main():
         for idx, _ in parsed_layers[name]:
             assert 0 <= idx < len(parts), (name, idx)
     os.makedirs(OUT_DIR, exist_ok=True)
-    order = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "stalker", "spider"]
+    order = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "stalker", "spider",
+             "player"]
     scale, gap = 4, 8
-    cols = 4
+    cols = 5
     rows = (len(order) + cols - 1) // cols
     sheet_w = cols * SKIN * scale + (cols + 1) * gap
     sheet_h = rows * SKIN_H * scale + (rows + 1) * gap

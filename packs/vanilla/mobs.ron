@@ -125,4 +125,17 @@
         ],
         layers: [(part: 1, inflate: 0.6), (part: 2, inflate: 0.7)],
     ),
+    (
+        name: "player", display_name: "Jogador", kind: Passive, health: 20, speed: 4.3,
+        width: 0.6, height: 1.8, spawn: Never,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (4, 12, 4), origin: (-8, 12, -2), uv: (40, 16), anim: Arm(0), pivot: (-6, 22, 0)),
+            (size: (4, 12, 4), origin: (4, 12, -2), uv: (32, 48), anim: Arm(1), pivot: (6, 22, 0)),
+            (size: (4, 12, 4), origin: (-4, 0, -2), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (4, 12, 4), origin: (0, 0, -2), uv: (16, 48), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.3), (part: 2, inflate: 0.3), (part: 3, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)],
+    ),
 ])

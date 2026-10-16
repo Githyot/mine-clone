@@ -86,6 +86,7 @@ impl Mobs {
                 .filter(|(_, d)| match d.spawn {
                     SpawnRule::Grass => !cave && below == self.grass && !dark && passive < MAX_PASSIVE,
                     SpawnRule::Dark => dark && hostile < MAX_HOSTILE,
+                    SpawnRule::Never => false,
                 })
                 .map(|(i, _)| i)
                 .collect();

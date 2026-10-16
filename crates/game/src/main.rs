@@ -11,6 +11,7 @@ mod lod;
 mod mobs;
 mod paintings;
 mod particles;
+mod player_model;
 mod post;
 mod renderer;
 mod settings;
@@ -78,6 +79,7 @@ struct Args {
     mobs: bool,
     survival: bool,
     particles: bool,
+    camera: u8,
     /// Show the title screen even with --world/--screenshot.
     title: bool,
     /// Shader pack to use ("off" turns shaders off).
@@ -121,6 +123,7 @@ fn parse_args() -> Args {
             "--debug" => a.debug = true,
             "--mobs" => a.mobs = true,
             "--particles" => a.particles = true,
+            "--camera" => a.camera = it.next().and_then(|v| v.parse().ok()).unwrap_or(1),
             "--title" => a.title = true,
             "--survival" => a.survival = true,
             "--shader" => a.shader = it.next(),
@@ -307,6 +310,9 @@ struct Game {
     /// Survival mining: block being broken and how far along (seconds).
     mining: Option<(IVec3, f32)>,
     particles: particles::Particles,
+    anim: player_model::Animator,
+    /// 0 = first person, 1 = behind, 2 = in front (F5).
+    camera_mode: u8,
     /// A world is being played (not just shown behind the title).
     world_open: bool,
     /// The world loaded behind the menus.
@@ -380,6 +386,7 @@ impl Game {
         }));
 
         // Without --world the game opens on the title screen, with the last played world behind it.
+        let camera_mode = args.camera.min(2);
         let title_mode = args.title || (args.world.is_none() && args.screenshot.is_none());
         let world_name = args.world.clone().or_else(|| menus::list_worlds(&base).first().map(|w| w.name.clone())).unwrap_or_else(|| "Mundo 1".into());
         let save = Arc::new(WorldSave::new(level_path_hint(&base, &world_name)));
@@ -519,6 +526,8 @@ impl Game {
             painting_check: 0.0,
             mining: None,
             particles: particles::Particles::new(),
+            anim: player_model::Animator::default(),
+            camera_mode,
             world_open: !title_mode,
             title_world: world_name,
             title_spin: 0.0,
@@ -750,6 +759,7 @@ impl Game {
             KeyCode::F3 => self.show_debug = !self.show_debug,
             KeyCode::F1 => self.hide_hud = !self.hide_hud,
             KeyCode::F2 => self.screenshot_request = true,
+            KeyCode::F5 => self.camera_mode = (self.camera_mode + 1) % 3,
             KeyCode::F11 => {
                 let fs = self.window.fullscreen().is_some();
                 self.window.set_fullscreen(if fs { None } else { Some(Fullscreen::Borderless(None)) });
@@ -1060,6 +1070,11 @@ impl Game {
             }
         }
 
+        let lava = self.reg.id_or_air("lava");
+        let feet = self.body.pos.floor().as_ivec3();
+        let pose = self.pose(lava != AIR && (self.world.block_or_air(feet) == lava || self.world.block_or_air(feet + IVec3::Y) == lava));
+        self.anim.update(&pose, dt);
+
         // Water: splash going in, strokes while swimming, drips coming out, bubbles below.
         let in_water = self.body.in_water;
         if in_water && !self.was_in_water {
@@ -1140,6 +1155,7 @@ impl Game {
                     let def = &self.mobs.reg.defs[m.def];
                     self.last_hit = Some((def.display_name.clone(), m.health.max(0.0), m.max_health, self.now + 3.0));
                     self.sfx(Sfx::MobHit);
+                    self.anim.start_swing();
                     self.pads.rumble(0.3, 0.6, 0.1);
                 }
             }
@@ -1161,6 +1177,7 @@ impl Game {
                     self.mining_tick -= dt;
                     if self.mining_tick <= 0.0 && id != AIR {
                         self.mining_tick = 0.24;
+                        self.anim.start_swing();
                         self.sfx(Sfx::Hit(Material::of(&self.reg.get(id).name)));
                         let (layer, tint) = self.block_look(id);
                         self.particles.block_bits(b, layer, tint, 3, 0.6);
@@ -1183,6 +1200,7 @@ impl Game {
                     self.mining = None;
                     let (layer, tint) = self.block_look(id);
                     self.particles.block_bits(hit.block, layer, tint, 18, 1.0);
+                    self.anim.start_swing();
                     self.break_cd = if self.survival { 0.25 } else { 0.22 };
                     let m = Material::of(&self.reg.get(id).name);
                     let vol = self.settings.sound_volume;
@@ -1445,6 +1463,23 @@ impl Game {
         self.settings.save(&self.base.join("settings.ron"));
     }
 
+    fn pose(&self, burning: bool) -> player_model::Pose {
+        player_model::Pose {
+            pos: self.body.pos,
+            vel: self.body.vel,
+            look_yaw: self.yaw,
+            look_pitch: self.pitch,
+            on_ground: self.body.on_ground,
+            in_water: self.body.in_water,
+            head_in_water: self.body.head_in_water,
+            flying: self.body.flying,
+            sneaking: self.crouch,
+            sprinting: self.sprinting,
+            burning,
+            hurt: self.survival && self.hurt_age < 0.3,
+        }
+    }
+
     /// Texture layer and tint for particles of a block.
     fn block_look(&self, id: BlockId) -> (u16, [f32; 3]) {
         let b = self.reg.get(id);
@@ -1585,7 +1620,7 @@ impl Game {
         let f = self.forward();
         let fwd = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
         let side = Vec3::new(-fwd.z, 0.0, fwd.x);
-        let names: Vec<String> = self.mobs.reg.defs.iter().map(|d| d.name.clone()).collect();
+        let names: Vec<String> = self.mobs.reg.defs.iter().filter(|d| d.spawn != voxel::mob::SpawnRule::Never).map(|d| d.name.clone()).collect();
         let n = names.len() as f32;
         for (i, name) in names.iter().enumerate() {
             let p = self.body.pos + fwd * 7.0 + side * ((i as f32 - (n - 1.0) / 2.0) * 1.8);
@@ -1628,6 +1663,7 @@ impl Game {
         }
         if self.world.place_block(pos, id) {
             self.place_cd = 0.22;
+            self.anim.start_swing();
             self.pads.rumble(0.0, 0.35, 0.05);
             let m = Material::of(&b.name);
             let vol = self.settings.sound_volume;
@@ -2300,7 +2336,24 @@ impl Game {
         }
         self.update(dt);
 
-        let eye = self.body.eye() - Vec3::Y * (0.25 * self.crouch);
+        let head = self.body.eye() - Vec3::Y * (0.25 * self.crouch);
+        let playing_view = self.world_open && !matches!(self.screen, Screen::Loading);
+        let third = playing_view && self.camera_mode != 0;
+        let mut view_fwd = self.forward();
+        let eye = if third {
+            // Pull the camera back (or around to the front), stopping short of walls.
+            let dir = if self.camera_mode == 1 { -view_fwd } else { view_fwd };
+            let world = &self.world;
+            let dist = raycast(head, dir, 4.0, |p| world.block(p).is_some_and(|id| id != AIR && !world.is_liquid(id))).map(|h| (h.distance - 0.3).max(0.2)).unwrap_or(4.0);
+            if self.camera_mode == 2 {
+                view_fwd = -view_fwd;
+            }
+            head + dir * dist
+        } else if playing_view && self.settings.view_bobbing {
+            head + self.anim.view_bob(self.yaw, self.body.on_ground && !self.body.flying)
+        } else {
+            head
+        };
         let block = eye.floor().as_ivec3();
         let (top, horizon, daylight, sun) = self.sky();
         let underwater = self.body.head_in_water;
@@ -2334,7 +2387,7 @@ impl Game {
         let cam = Camera {
             block,
             frac: Vec3::from_slice(&g.cam_pos[..3]),
-            forward: self.forward(),
+            forward: view_fwd,
             fov_y: (self.settings.fov * (1.0 + 0.12 * self.fov_kick)).to_radians(),
             far: view_end + 32.0,
         };
@@ -2414,6 +2467,17 @@ impl Game {
         }
         let selection = if self.screen == Screen::Playing || self.args.screenshot.is_some() { self.target.map(|t| t.block) } else { None };
         let mut items = self.mobs.instances(&self.world, block, rd + 16.0);
+        if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
+            let def = &self.mobs.reg.defs[pd];
+            let pose = self.pose(false);
+            if third {
+                let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
+                items.push((pd, self.anim.bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0)));
+            } else if self.screen == Screen::Playing && !self.hide_hud {
+                let l = self.world.light(head.floor().as_ivec3());
+                items.push((pd, self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0)));
+            }
+        }
         for p in &self.paintings {
             items.push((self.entities.painting_mesh(p.def), p.bones(block, &self.world)));
         }

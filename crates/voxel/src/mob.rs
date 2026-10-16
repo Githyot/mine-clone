@@ -51,6 +51,8 @@ pub enum SpawnRule {
     Grass,
     /// Anywhere dark (night or caves).
     Dark,
+    /// Never spawns by itself (the player's own model).
+    Never,
 }
 
 fn d_false() -> bool {

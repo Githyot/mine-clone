@@ -459,6 +459,7 @@ impl Game {
             format!("VSync: {}", onoff(st.vsync)),
             format!("Mobs: {}", onoff(st.mobs)),
             format!("Tamanho da interface: {}", if st.gui_scale == 0 { "Automático".to_string() } else { st.gui_scale.to_string() }),
+            format!("Balanço da visão: {}", onoff(st.view_bobbing)),
             "Controle...".to_string(),
             "Pacotes de textura...".to_string(),
         ]
@@ -527,7 +528,8 @@ impl Game {
                 self.mobs.enabled = st.mobs;
             }
             11 => st.gui_scale = (st.gui_scale + 1) % 5,
-            12 => {
+            12 => st.view_bobbing = !st.view_bobbing,
+            13 => {
                 self.options_back = self.screen;
                 self.set_screen(Screen::Controls);
             }
