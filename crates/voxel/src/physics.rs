@@ -35,6 +35,12 @@ pub struct Input {
 pub struct Body {
     /// Feet position (centre of the bottom face of the box).
     pub pos: Vec3,
+    pub half_width: f32,
+    pub height: f32,
+    /// Horizontal speed used instead of the player constants when set (mobs).
+    pub speed_override: Option<f32>,
+    /// Entities that can't jump out of water (and don't jump).
+    pub no_jump: bool,
     pub vel: Vec3,
     pub on_ground: bool,
     pub flying: bool,
@@ -46,16 +52,42 @@ pub struct Body {
 
 impl Body {
     pub fn new(pos: Vec3) -> Self {
-        Body { pos, vel: Vec3::ZERO, on_ground: false, flying: false, in_water: false, head_in_water: false, fall_distance: 0.0 }
+        Self::sized(pos, PLAYER_WIDTH, PLAYER_HEIGHT)
+    }
+
+    pub fn sized(pos: Vec3, width: f32, height: f32) -> Self {
+        Body {
+            pos,
+            half_width: width / 2.0,
+            height,
+            speed_override: None,
+            no_jump: false,
+            vel: Vec3::ZERO,
+            on_ground: false,
+            flying: false,
+            in_water: false,
+            head_in_water: false,
+            fall_distance: 0.0,
+        }
     }
 
     pub fn eye(&self) -> Vec3 {
-        self.pos + Vec3::new(0.0, EYE_HEIGHT, 0.0)
+        self.pos + Vec3::new(0.0, if self.height > 1.7 { EYE_HEIGHT } else { self.height * 0.85 }, 0.0)
     }
 
-    fn aabb(&self) -> (Vec3, Vec3) {
-        let h = PLAYER_WIDTH / 2.0;
-        (self.pos - Vec3::new(h, 0.0, h), self.pos + Vec3::new(h, PLAYER_HEIGHT, h))
+    pub fn center(&self) -> Vec3 {
+        self.pos + Vec3::new(0.0, self.height / 2.0, 0.0)
+    }
+
+    pub fn aabb(&self) -> (Vec3, Vec3) {
+        let h = self.half_width;
+        (self.pos - Vec3::new(h, 0.0, h), self.pos + Vec3::new(h, self.height, h))
+    }
+
+    /// Push the body away (hit by something).
+    pub fn knockback(&mut self, dir: Vec3, strength: f32) {
+        let d = Vec3::new(dir.x, 0.0, dir.z).normalize_or_zero();
+        self.vel += d * strength + Vec3::new(0.0, strength * 0.6, 0.0);
     }
 
     /// True if the player's box overlaps the given block cell.
@@ -95,14 +127,15 @@ impl Body {
             self.vel.y *= 1.0 - (dt * 2.0).min(1.0);
             self.fall_distance = 0.0;
         } else {
-            let speed = if input.sneak { SNEAK_SPEED } else if input.sprint { SPRINT_SPEED } else { WALK_SPEED };
+            let base = self.speed_override.unwrap_or(WALK_SPEED);
+            let speed = if input.sneak { base * 0.3 } else if input.sprint { base * 1.3 } else { base };
             let target = wish * speed;
             // Quick acceleration on the ground, little control in the air.
             let k = if self.on_ground { (dt * 20.0).min(1.0) } else { (dt * 3.0).min(1.0) };
             self.vel.x += (target.x - self.vel.x) * k;
             self.vel.z += (target.z - self.vel.z) * k;
             self.vel.y = (self.vel.y - GRAVITY * dt).max(-TERMINAL_VELOCITY);
-            if input.jump && self.on_ground {
+            if input.jump && self.on_ground && !self.no_jump {
                 self.vel.y = JUMP_SPEED;
                 if input.sprint {
                     self.vel += wish * 1.0;

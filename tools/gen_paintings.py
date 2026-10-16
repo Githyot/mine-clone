@@ -234,48 +234,36 @@ def bowl_of_fruit(c):
     c.put(13, 12, (74, 52, 30))
 
 
-def sleeping_cat(c):
+def ginger_cat(c):
     c.vgrad(pal("#2b4a52", "#335860", "#3c6670"), 0, 10)
     c.speckle(1, 1, 14, 9, 0.06, 0.08)
     # cushion
     c.rect(1, 10, 14, 14, (132, 40, 48))
     c.line(1, 10, 14, 10, (170, 62, 66))
     c.rect(1, 13, 14, 14, (100, 28, 36))
-    fur = pal("#a8541e", "#c86e2a", "#e08c3e", "#f0aa5c")
-    # curled body
-    for y in range(6, 11):
-        for x in range(3, 13):
-            if ((x + .5 - 8) / 5.2) ** 2 + ((y + .5 - 9.4) / 3.4) ** 2 <= 1:
-                stripe = (x + y // 2) % 3 == 0
-                c.put(x, y, fur[0] if stripe else c.dpick(fur, 0.55 + 0.4 * (10 - y) / 4, x, y))
-    # head resting on the left
-    for y in range(6, 10):
-        for x in range(2, 7):
-            if ((x + .5 - 4.4) / 2.6) ** 2 + ((y + .5 - 8) / 2.1) ** 2 <= 1:
-                c.put(x, y, fur[2])
-    c.put(2, 5, fur[1]); c.put(2, 6, fur[1]); c.put(3, 6, fur[2])
-    c.put(5, 5, fur[1]); c.put(5, 6, fur[2]); c.put(6, 6, fur[1])
-    c.put(2, 6, (226, 140, 136))
-    c.put(3, 8, (60, 30, 20)); c.put(4, 8, (60, 30, 20))  # closed eyes
-    c.put(5, 8, (60, 30, 20)) if False else None
-    c.put(4, 9, (200, 110, 110))  # nose
-    # tail wrapping round the front
-    for x in range(5, 13):
-        c.put(x, 11, fur[1] if x % 3 else fur[0])
-    c.put(13, 10, fur[1])
-    c.put(5, 11, fur[3])
-    # dark outline around the cat so it reads at a glance
-    catcols = set(fur) | {(226, 140, 136), (60, 30, 20), (200, 110, 110)}
-    snap = {(x, y): c.get(x, y) for x in range(16) for y in range(16)}
-    for (x, y), col in snap.items():
-        if col in catcols or x in (0, 15) or y in (0, 15):
-            continue
-        if any(snap.get((x + dx, y + dy)) in catcols for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))):
-            c.put(x, y, mul(col, 0.55))
-    # "zzz"
-    for x, y in ((9, 2), (10, 2), (9, 4), (10, 3)):
-        c.put(x, y, (220, 226, 230))
-    c.put(12, 1, (170, 186, 194))
+    # hand-placed sprite: a ginger cat curled up on a cushion, head on the left
+    sprite = [
+        "..O...O.........",
+        ".OpO.OpO.OOOO...",
+        ".OlllllOOfdfdfO.",
+        ".OlelelOfdfdfdfO",
+        ".OlwnwlOffdfdfdO",
+        "..OlwlOfffffffdO",
+        "...OOlllllllllO.",
+        "..OdldldldldldO.",
+        "...OOOOOOOOOOO..",
+    ]
+    colors = {"O": (70, 34, 18), "p": (226, 140, 136), "l": (240, 166, 86),
+              "f": (224, 136, 60), "d": (176, 86, 34), "e": (70, 34, 18),
+              "w": (250, 226, 196), "n": (200, 100, 104)}
+    for row, line in enumerate(sprite):
+        assert len(line) == 16
+        for x, ch in enumerate(line):
+            if ch in colors:
+                c.put(x, row + 4, colors[ch])
+    # a little window with moonlight on the wall
+    c.rect(10, 1, 13, 3, (34, 52, 70))
+    c.put(12, 2, (220, 226, 200))
 
 
 def abstract_tiles(c):
@@ -689,7 +677,8 @@ def snowy_pine_forest(c):
 
 def volcano(c):
     sky = pal("#1a0e1a", "#2c1222", "#46162a", "#6a1e2c", "#922a2a", "#b8402a")
-    c.vgrad(sky, 0, 44)
+    c.vgrad(sky, 0, 48)
+    c.rect(0, 48, 63, 63, sky[-1])
     # ash cloud
     for t in range(0, 320):
         a = c.rnd(t, 1) * math.tau
@@ -723,23 +712,27 @@ def volcano(c):
         r = 3 + c.rnd(k, 6) * 14
         c.put(int(32 + math.cos(a) * r), int(16 + math.sin(a) * r * 0.9),
               lava[0] if k % 2 else lava[1])
-    # lava lake + rocks in front
+    # dark rocky foreground with glowing cracks
     for x in range(c.w):
-        top = 56 + int(round(1.5 * math.sin(x / 5.0)))
+        top = 57 + int(round(1.5 * math.sin(x / 5.0) + 0.8 * math.sin(x / 2.1)))
         for y in range(top, c.h):
-            col = c.dpick(lava[::-1], 0.35 + 0.6 * (y - top) / 8, x, y)
-            if c.rnd(x // 2, y, 41) > 0.82 and y > top:
-                col = (60, 24, 20)  # cooling crust
-            c.put(x, y, col)
-    c.poly([(0, 64), (0, 52), (6, 50), (12, 55), (16, 64)], rock[1])
-    c.poly([(48, 64), (52, 53), (58, 51), (64, 54), (64, 64)], rock[1])
-    c.line(1, 52, 6, 50, rock[3]); c.line(52, 53, 58, 51, rock[3])
+            c.put(x, y, c.dpick(rock, 0.55 - 0.5 * (y - top) / 7 + 0.15 * c.rnd(x, y, 4), x, y))
+        c.put(x, top, rock[3])
+    for sx, sy, ex, ey in ((8, 59, 14, 62), (14, 62, 20, 61), (40, 60, 46, 63), (46, 63, 54, 60)):
+        c.line(sx, sy, ex, ey, (232, 96, 30))
+    for x, y in ((14, 62), (46, 63), (20, 61)):
+        c.put(x, y, (255, 196, 64))
+    # where the flows meet the ground they pool and glow
+    for x in range(c.w):
+        for y in range(54, 60):
+            if c.get(x, y) in (lava[1], lava[2], lava[3]) and y < c.h - 1:
+                c.put(x, y + 1, lava[1])
 
 
 PAINTINGS = [
     # (name, width, height, Portuguese title, painter)
     ("bowl_of_fruit", 1, 1, "Fruteira", bowl_of_fruit),
-    ("sleeping_cat", 1, 1, "Gato dormindo", sleeping_cat),
+    ("ginger_cat", 1, 1, "Gato laranja na almofada", ginger_cat),
     ("abstract_tiles", 1, 1, "Composição abstrata", abstract_tiles),
     ("red_mushroom", 1, 1, "Cogumelo na floresta", red_mushroom),
     ("blocky_portrait", 1, 2, "Retrato de um amigo quadrado", portrait),

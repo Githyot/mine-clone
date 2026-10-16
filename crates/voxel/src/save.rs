@@ -26,6 +26,15 @@ pub struct LevelData {
     pub time_of_day: f32,
     #[serde(default)]
     pub hotbar: Vec<String>,
+    /// Survival mode (health, damage) instead of creative.
+    #[serde(default)]
+    pub survival: bool,
+    #[serde(default = "full_health")]
+    pub health: f32,
+}
+
+fn full_health() -> f32 {
+    20.0
 }
 
 pub struct WorldSave {

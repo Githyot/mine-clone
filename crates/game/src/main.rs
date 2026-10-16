@@ -5,6 +5,9 @@
 
 mod audio;
 mod controller;
+mod entity;
+mod mobs;
+mod paintings;
 mod renderer;
 mod settings;
 mod textures;
@@ -62,6 +65,9 @@ struct Args {
     show_inventory: bool,
     show_pause: bool,
     debug: bool,
+    /// Spawn a few mobs in front of the player (test screenshots).
+    mobs: bool,
+    survival: bool,
 }
 
 fn parse_args() -> Args {
@@ -96,6 +102,8 @@ fn parse_args() -> Args {
             "--inventory" => a.show_inventory = true,
             "--pause" => a.show_pause = true,
             "--debug" => a.debug = true,
+            "--mobs" => a.mobs = true,
+            "--survival" => a.survival = true,
             "--help" | "-h" => {
                 println!(
                     "mine-clone [--world NAME] [--seed N] [--render-distance N] [--size WxH]\n\
@@ -160,6 +168,10 @@ enum Screen {
     Inventory,
     /// Controller settings and button mapping.
     Controls,
+    /// Survival: the player died.
+    Dead,
+    /// Choosing a painting for the wall the player is looking at.
+    Paintings,
 }
 
 struct Toast {
@@ -209,6 +221,31 @@ struct Game {
     pad_held: HashSet<Action>,
     pad_back: bool,
     pad_scroll_cd: f32,
+
+    mobs: mobs::Mobs,
+    entities: entity::EntityRenderer,
+    /// Survival mode: health, damage, no flying.
+    survival: bool,
+    health: f32,
+    /// Seconds since the player was last hurt (red flash, invulnerability).
+    hurt_age: f32,
+    regen: f32,
+    /// Highest point of the current fall.
+    fall_peak: f32,
+    /// Seconds of breath left under water.
+    air: f32,
+    attack_cd: f32,
+    /// Name and health of the mob the player hit last (shown above the hotbar).
+    last_hit: Option<(String, f32, f32, f32)>,
+
+    painting_defs: Vec<paintings::PaintingDef>,
+    paintings: Vec<paintings::Painting>,
+    /// Air cell and wall direction chosen for the painting picker.
+    painting_spot: Option<(IVec3, IVec3)>,
+    /// Painting shown on the wall while its button is hovered: (def, anchor).
+    painting_preview: Option<(usize, IVec3)>,
+    painting_scroll: usize,
+    painting_check: f32,
 
     ui: UiBatch,
     show_debug: bool,
@@ -268,6 +305,18 @@ impl Game {
         let ui = UiBatch::new(&font);
         let audio = Audio::new(&settings, &base);
 
+        // Mobs: a mobs.ron on disk wins, like blocks.
+        let mobs_text = std::fs::read_to_string(base.join("packs/vanilla/mobs.ron")).unwrap_or_else(|_| embedded::MOBS_RON.to_string());
+        let mob_reg = voxel::mob::MobRegistry::from_ron(&mobs_text).unwrap_or_else(|e| {
+            log::error!("{e}; using built-in mobs");
+            voxel::mob::MobRegistry::from_ron(embedded::MOBS_RON).unwrap_or_default()
+        });
+        let painting_defs = paintings::load_defs(&base);
+        let paintings = paintings::load(&save.dir, &painting_defs);
+        let entities = entity::EntityRenderer::new(&renderer, &mob_reg, &painting_defs, &base);
+        let mut mobs = mobs::Mobs::new(mob_reg, reg.id_or_air("grass_block"), seed);
+        mobs.enabled = settings.mobs;
+
         let (sx, sy, sz) = gen.find_spawn();
         let mut body = Body::new(Vec3::new(sx as f32 + 0.5, sy as f32, sz as f32 + 0.5));
         let (mut yaw, mut pitch) = (0.0, 0.0);
@@ -275,7 +324,11 @@ impl Game {
             ["grass_block", "dirt", "stone", "cobblestone", "oak_planks", "oak_log", "glass", "torch", "glowstone"].iter().map(|s| s.to_string()).collect();
         let mut time_of_day = 1000.0;
         let mut needs_spawn = true;
+        let mut survival = args.survival;
+        let mut health = 20.0;
         if let Some(l) = &level {
+            survival = l.survival || args.survival;
+            health = if l.health > 0.0 { l.health } else { 20.0 };
             body.pos = Vec3::from(l.player_pos);
             body.flying = l.flying;
             yaw = l.player_yaw;
@@ -299,6 +352,9 @@ impl Game {
         }
         if args.fly {
             body.flying = true;
+        }
+        if survival {
+            body.flying = false;
         }
         let mut hotbar = [AIR; 9];
         for (i, n) in hotbar_names.iter().enumerate() {
@@ -346,6 +402,22 @@ impl Game {
             pad_held: HashSet::new(),
             pad_back: false,
             pad_scroll_cd: 0.0,
+            mobs,
+            entities,
+            survival,
+            health,
+            hurt_age: 100.0,
+            regen: 0.0,
+            fall_peak: f32::MIN,
+            air: 10.0,
+            attack_cd: 0.0,
+            last_hit: None,
+            painting_defs,
+            paintings,
+            painting_spot: None,
+            painting_preview: None,
+            painting_scroll: 0,
+            painting_check: 0.0,
             ui,
             show_debug,
             hide_hud: false,
@@ -403,6 +475,8 @@ impl Game {
             flying: self.body.flying,
             time_of_day: self.time_of_day,
             hotbar: self.hotbar.iter().map(|&id| self.reg.get(id).name.clone()).collect(),
+            survival: self.survival,
+            health: self.health,
         };
         if self.screen != Screen::Loading || !self.needs_spawn {
             if let Err(e) = self.world.save.save_level(&level) {
@@ -410,6 +484,7 @@ impl Game {
             }
         }
         self.world.save_all();
+        paintings::save(&self.world.save.dir, &self.paintings);
         self.settings.save(&self.base.join("settings.ron"));
     }
 
@@ -456,7 +531,8 @@ impl Game {
                 Screen::Playing => self.set_screen(Screen::Paused),
                 Screen::Paused | Screen::Inventory => self.set_screen(Screen::Playing),
                 Screen::Controls => self.set_screen(Screen::Paused),
-                Screen::Loading => {}
+                Screen::Paintings => self.set_screen(Screen::Playing),
+                Screen::Loading | Screen::Dead => {}
             },
             KeyCode::KeyE => match self.screen {
                 Screen::Playing => self.set_screen(Screen::Inventory),
@@ -464,6 +540,11 @@ impl Game {
                 _ => {}
             },
             KeyCode::KeyT if f3 => self.reload_textures(),
+            KeyCode::KeyP => match self.screen {
+                Screen::Playing => self.open_paintings(),
+                Screen::Paintings => self.set_screen(Screen::Playing),
+                _ => {}
+            },
             KeyCode::F3 => self.show_debug = !self.show_debug,
             KeyCode::F1 => self.hide_hud = !self.hide_hud,
             KeyCode::F2 => self.screenshot_request = true,
@@ -477,7 +558,7 @@ impl Game {
                     a.skip(sit, &self.settings);
                 }
             }
-            KeyCode::Space if self.screen == Screen::Playing => {
+            KeyCode::Space if self.screen == Screen::Playing && !self.survival => {
                 if self.now - self.last_space < 0.3 {
                     self.body.flying = !self.body.flying;
                     self.body.vel.y = 0.0;
@@ -528,6 +609,13 @@ impl Game {
                 let d = if lines > 0.0 { 8 } else { 1 };
                 self.selected = (self.selected + d) % 9;
                 self.show_held_name();
+            }
+            Screen::Paintings => {
+                if lines > 0.0 {
+                    self.painting_scroll = self.painting_scroll.saturating_sub(1);
+                } else {
+                    self.painting_scroll += 1;
+                }
             }
             Screen::Inventory => {
                 let rows = self.inventory.len().div_ceil(9);
@@ -600,6 +688,9 @@ impl Game {
                 if self.args.demo {
                     self.build_demo();
                 }
+                if self.args.mobs {
+                    self.spawn_demo_mobs();
+                }
                 if self.args.show_inventory {
                     self.set_screen(Screen::Inventory);
                 } else if self.args.show_pause {
@@ -618,6 +709,31 @@ impl Game {
 
         if self.screen == Screen::Playing || self.screen == Screen::Inventory || self.screen == Screen::Paused {
             self.update_player(dt);
+            self.update_survival(dt);
+        }
+        if self.screen != Screen::Loading && self.screen != Screen::Paused && self.screen != Screen::Controls {
+            let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
+            let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
+            let creative = !self.survival || self.screen == Screen::Dead;
+            // Screenshots hold the world still so the picture is stable.
+            let mdt = if self.args.screenshot.is_some() { 0.0 } else { dt };
+            let out = self.mobs.update(&self.world, self.body.pos, creative, daylight, mdt);
+            for (dmg, from) in out.damage {
+                self.damage(dmg, from);
+            }
+            for (pos, power) in out.explosions {
+                self.explode(pos, power);
+            }
+            self.painting_check -= dt;
+            if self.painting_check <= 0.0 {
+                self.painting_check = 0.5;
+                let defs = &self.painting_defs;
+                let world = &self.world;
+                self.paintings.retain(|p| {
+                    let n = IVec3::from(p.facing);
+                    p.cells(defs).iter().all(|&c| world.block(c - n).is_none() || voxel::physics::Terrain::solid(world, c - n))
+                });
+            }
         }
 
         let sit = self.situation();
@@ -703,11 +819,41 @@ impl Game {
         }
         let attack = self.mouse_held[0] || self.pad_held.contains(&Action::Attack);
         let use_ = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
+        self.attack_cd -= dt;
+        if attack && self.attack_cd <= 0.0 && self.break_cd <= 0.0 {
+            let block_dist = self.target.map(|t| t.distance).unwrap_or(f32::MAX);
+            if let Some((i, t)) = paintings::pick(&self.paintings, &self.painting_defs, self.body.eye(), self.forward(), REACH) {
+                if t < block_dist {
+                    self.paintings.remove(i);
+                    self.break_cd = 0.3;
+                    self.attack_cd = 0.3;
+                    self.sfx(Sfx::Break(Material::Wood));
+                }
+            }
+        }
+        if attack && self.attack_cd <= 0.0 {
+            let block_dist = self.target.map(|t| t.distance).unwrap_or(f32::MAX);
+            if let Some((i, t)) = self.mobs.pick(self.body.eye(), self.forward(), 3.5) {
+                if t < block_dist {
+                    self.attack_cd = 0.45;
+                    self.break_cd = 0.3;
+                    let eye = self.body.eye();
+                    let dmg = if self.body.vel.y < -0.5 && !self.body.on_ground { 6.0 } else { 4.0 };
+                    let m = &mut self.mobs.list[i];
+                    m.hurt(dmg, eye);
+                    let def = &self.mobs.reg.defs[m.def];
+                    self.last_hit = Some((def.display_name.clone(), m.health.max(0.0), m.max_health, self.now + 3.0));
+                    self.sfx(Sfx::MobHit);
+                    self.pads.rumble(0.3, 0.6, 0.1);
+                }
+            }
+        }
         if attack && self.break_cd <= 0.0 {
             if let Some(hit) = self.target {
                 let id = self.world.block_or_air(hit.block);
                 if id != AIR && self.reg.get(id).hardness >= 0.0 && self.world.break_block(hit.block) {
-                    self.break_cd = 0.22;
+                    // Survival: harder blocks take longer (no tools yet).
+                    self.break_cd = if self.survival { 0.25 + self.reg.get(id).hardness.min(5.0) * 0.25 } else { 0.22 };
                     let m = Material::of(&self.reg.get(id).name);
                     let vol = self.settings.sound_volume;
                     if let Some(a) = self.audio.as_mut() {
@@ -732,6 +878,235 @@ impl Game {
                     }
                     self.show_held_name();
                 }
+            }
+        }
+    }
+
+    /// Open the painting picker for the wall face the player is looking at.
+    fn open_paintings(&mut self) {
+        let Some(hit) = self.target else {
+            self.toast("Mire em uma parede para pendurar uma pintura", 3.0);
+            return;
+        };
+        if hit.normal.y != 0 {
+            self.toast("Pinturas vão em paredes, não no chão ou no teto", 3.0);
+            return;
+        }
+        self.painting_spot = Some((hit.block + hit.normal, hit.normal));
+        self.painting_scroll = 0;
+        self.painting_preview = None;
+        self.set_screen(Screen::Paintings);
+    }
+
+    /// Paintings that fit the chosen wall: (def index, anchor), biggest first.
+    fn fitting_paintings(&self) -> Vec<(usize, IVec3)> {
+        let Some((cell, n)) = self.painting_spot else { return Vec::new() };
+        let mut v: Vec<(usize, IVec3)> = Vec::new();
+        for (i, d) in self.painting_defs.iter().enumerate() {
+            if let Some(a) = paintings::fit(&self.world, &self.paintings, &self.painting_defs, cell, n, d.width, d.height) {
+                v.push((i, a));
+            }
+        }
+        v.sort_by_key(|(i, _)| std::cmp::Reverse(self.painting_defs[*i].width * self.painting_defs[*i].height));
+        v
+    }
+
+    fn hang_painting(&mut self, def: usize, anchor: IVec3) {
+        let Some((_, n)) = self.painting_spot else { return };
+        self.paintings.push(paintings::Painting { name: self.painting_defs[def].name.clone(), anchor: anchor.to_array(), facing: n.to_array(), def });
+        self.sfx(Sfx::Place(Material::Wood));
+        self.pads.rumble(0.0, 0.35, 0.05);
+        self.set_screen(Screen::Playing);
+    }
+
+    fn draw_paintings_menu(&mut self, w: f32, h: f32, mouse: (f32, f32)) {
+        let s = self.ui.scale;
+        // Light backdrop on the left half only, so the preview on the wall stays visible.
+        let pw = (200.0 * s).min(w * 0.5);
+        self.ui.rect(0.0, 0.0, pw + 12.0 * s, h, [0, 0, 0, 150]);
+        let fits = self.fitting_paintings();
+        let x = 6.0 * s;
+        let mut y = 8.0 * s;
+        self.ui.text(x, y, "Escolha uma pintura (P fecha)", WHITE);
+        y += 12.0 * s;
+        if fits.is_empty() {
+            self.ui.text(x, y, "Nenhuma cabe aqui: precisa de parede", GRAY);
+            self.ui.text(x, y + 10.0 * s, "e espaço livre na frente.", GRAY);
+            return;
+        }
+        let bh = 14.0 * s;
+        let rows = (((h - y - 8.0 * s) / (bh + 2.0 * s)).floor() as usize).max(2) - 1;
+        self.painting_scroll = self.painting_scroll.min(fits.len().saturating_sub(rows));
+        self.painting_preview = None;
+        if self.ui.button(x, y, pw, bh, "Aleatória (cabe aqui)", mouse) {
+            if self.clicked {
+                let k = (self.now * 1000.0) as usize % fits.len();
+                let (d, a) = fits[k];
+                self.hang_painting(d, a);
+                return;
+            }
+        }
+        y += bh + 2.0 * s;
+        for &(d, a) in fits.iter().skip(self.painting_scroll).take(rows) {
+            let def = &self.painting_defs[d];
+            let label = format!("{} ({}x{})", def.title, def.width, def.height);
+            if self.ui.button(x, y, pw, bh, &label, mouse) {
+                self.painting_preview = Some((d, a));
+                if self.clicked {
+                    self.hang_painting(d, a);
+                    return;
+                }
+            }
+            y += bh + 2.0 * s;
+        }
+        if fits.len() > rows {
+            self.ui.text(x, y, &format!("roda do mouse: mais ({}/{})", self.painting_scroll + rows.min(fits.len()), fits.len()), GRAY);
+        }
+    }
+
+    fn sfx(&mut self, s: Sfx) {
+        let vol = self.settings.sound_volume;
+        if let Some(a) = self.audio.as_mut() {
+            a.play(s, vol);
+        }
+    }
+
+    /// Hurt the player (survival only). `from` pushes the player away.
+    fn damage(&mut self, amount: f32, from: Option<Vec3>) {
+        if !self.survival || self.screen == Screen::Dead || self.hurt_age < 0.5 || amount <= 0.0 {
+            return;
+        }
+        self.health -= amount;
+        self.hurt_age = 0.0;
+        self.regen = 0.0;
+        if let Some(f) = from {
+            self.body.knockback(self.body.pos - f, 5.0);
+        }
+        self.sfx(Sfx::Hurt);
+        self.pads.rumble(0.9, 0.6, 0.25);
+        if self.health <= 0.0 {
+            self.health = 0.0;
+            self.set_screen(Screen::Dead);
+        }
+    }
+
+    fn update_survival(&mut self, dt: f32) {
+        self.hurt_age += dt;
+        if !self.survival || self.screen == Screen::Dead {
+            self.fall_peak = self.body.pos.y;
+            return;
+        }
+        self.body.flying = false;
+        // Fall damage: one point per block beyond three.
+        if self.body.on_ground || self.body.in_water {
+            let fall = self.fall_peak - self.body.pos.y;
+            if fall > 3.5 && !self.body.in_water {
+                self.damage((fall - 3.0).floor(), None);
+            }
+            self.fall_peak = self.body.pos.y;
+        } else {
+            self.fall_peak = self.fall_peak.max(self.body.pos.y);
+        }
+        // Breath under water.
+        if self.body.head_in_water {
+            self.air -= dt;
+            if self.air < -1.0 {
+                self.air = 0.0;
+                self.damage(2.0, None);
+            }
+        } else {
+            self.air = (self.air + dt * 5.0).min(10.0);
+        }
+        // Lava burns.
+        let lava = self.reg.id_or_air("lava");
+        let feet = self.body.pos.floor().as_ivec3();
+        if lava != AIR && (self.world.block_or_air(feet) == lava || self.world.block_or_air(feet + IVec3::Y) == lava) {
+            self.damage(4.0, None);
+        }
+        // Slow natural healing when out of danger.
+        if self.health < 20.0 && self.hurt_age > 4.0 {
+            self.regen += dt;
+            if self.regen > 2.0 {
+                self.regen = 0.0;
+                self.health = (self.health + 1.0).min(20.0);
+            }
+        }
+    }
+
+    /// A blast: breaks blocks around it and hurts everything nearby.
+    fn explode(&mut self, pos: Vec3, power: f32) {
+        let r = power.ceil() as i32;
+        let c = pos.floor().as_ivec3();
+        for dy in -r..=r {
+            for dz in -r..=r {
+                for dx in -r..=r {
+                    let d = IVec3::new(dx, dy, dz);
+                    let dist = d.as_vec3().length();
+                    // Ragged edges look more natural than a perfect ball.
+                    let jitter = ((dx * 73 + dy * 151 + dz * 37 + c.x * 11 + c.z * 7).rem_euclid(10)) as f32 * 0.06;
+                    if dist > power - jitter {
+                        continue;
+                    }
+                    let p = c + d;
+                    let id = self.world.block_or_air(p);
+                    if id == AIR || self.world.is_liquid(id) {
+                        continue;
+                    }
+                    let b = self.reg.get(id);
+                    if b.hardness < 0.0 || b.hardness >= 50.0 {
+                        continue;
+                    }
+                    self.world.break_block(p);
+                }
+            }
+        }
+        let reach = power * 2.0;
+        let d = (self.body.center() - pos).length();
+        if d < reach {
+            let k = 1.0 - d / reach;
+            self.damage((k * power * 7.0).round(), Some(pos));
+            self.body.knockback(self.body.center() - pos, k * 12.0);
+        }
+        for m in self.mobs.list.iter_mut() {
+            let d = (m.body.center() - pos).length();
+            if d < reach && m.alive() {
+                m.hurt((1.0 - d / reach) * power * 7.0, pos);
+            }
+        }
+        self.sfx(Sfx::Explode);
+        self.pads.rumble(1.0, 1.0, 0.6);
+    }
+
+    fn respawn(&mut self) {
+        let (sx, sz) = self.spawn_xz;
+        let y = self.world.surface_y(sx, sz).unwrap_or(100) + 1;
+        self.body.pos = Vec3::new(sx as f32 + 0.5, y as f32, sz as f32 + 0.5);
+        self.body.vel = Vec3::ZERO;
+        self.health = 20.0;
+        self.air = 10.0;
+        self.hurt_age = 100.0;
+        self.fall_peak = self.body.pos.y;
+        self.set_screen(Screen::Playing);
+    }
+
+    /// Test scene: one of every mob in a row in front of the player.
+    fn spawn_demo_mobs(&mut self) {
+        let f = self.forward();
+        let fwd = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
+        let side = Vec3::new(-fwd.z, 0.0, fwd.x);
+        let names: Vec<String> = self.mobs.reg.defs.iter().map(|d| d.name.clone()).collect();
+        let n = names.len() as f32;
+        for (i, name) in names.iter().enumerate() {
+            let p = self.body.pos + fwd * 7.0 + side * ((i as f32 - (n - 1.0) / 2.0) * 1.8);
+            let x = p.x.floor() as i32;
+            let z = p.z.floor() as i32;
+            let y = self.world.surface_y(x, z).unwrap_or(p.y as i32) + 1;
+            let at = Vec3::new(p.x, y as f32, p.z);
+            if self.mobs.spawn(name, at) {
+                // Face the camera.
+                let m = self.mobs.list.last_mut().unwrap();
+                let to = self.body.pos - at;
+                m.yaw = to.x.atan2(to.z);
             }
         }
     }
@@ -848,7 +1223,11 @@ impl Game {
             return;
         }
 
-        if !self.hide_hud && self.screen != Screen::Paused {
+        if self.survival && self.hurt_age < 0.4 {
+            let a = ((0.4 - self.hurt_age) / 0.4 * 90.0) as u8;
+            self.ui.rect(0.0, 0.0, w, h, [200, 0, 0, a]);
+        }
+        if !self.hide_hud && self.screen != Screen::Paused && self.screen != Screen::Dead {
             // Crosshair.
             if self.screen == Screen::Playing {
                 let (cx, cy) = (w / 2.0, h / 2.0);
@@ -874,6 +1253,38 @@ impl Game {
             if self.body.flying {
                 self.ui.text(4.0 * s, h - 12.0 * s, "Voando", GRAY);
             }
+            if self.survival {
+                // Ten hearts above the left of the hotbar, bubbles on the right under water.
+                let y = hy - 11.0 * s;
+                for i in 0..10 {
+                    let x = hx + i as f32 * 8.0 * s;
+                    let v = self.health - i as f32 * 2.0;
+                    let blink = self.hurt_age < 0.6 && ((self.hurt_age * 10.0) as i32) % 2 == 0;
+                    draw_heart(&mut self.ui, x, y, s, [40, 0, 0, 255], 1.0, blink);
+                    if v > 0.0 {
+                        draw_heart(&mut self.ui, x, y, s, [220, 30, 30, 255], if v >= 2.0 { 1.0 } else { 0.5 }, false);
+                    }
+                }
+                if self.air < 10.0 {
+                    let bubbles = (self.air.max(0.0).ceil()) as i32;
+                    for i in 0..bubbles {
+                        let x = hx + cell * 9.0 - (i + 1) as f32 * 8.0 * s;
+                        self.ui.rect(x + s, y + s, 5.0 * s, 5.0 * s, [60, 120, 230, 255]);
+                        self.ui.rect(x + 2.0 * s, y + 2.0 * s, 2.0 * s, 2.0 * s, [220, 240, 255, 255]);
+                    }
+                }
+            }
+            if let Some((name, hp, max, until)) = &self.last_hit {
+                if *until > self.now {
+                    let bw = 120.0 * s;
+                    let bx = w / 2.0 - bw / 2.0;
+                    let by = 14.0 * s;
+                    let label = format!("{name}  {:.0}/{:.0}", hp.ceil(), max);
+                    self.ui.text_centered(w / 2.0, by - 10.0 * s, &label, WHITE);
+                    self.ui.rect(bx, by, bw, 3.0 * s, [40, 10, 10, 220]);
+                    self.ui.rect(bx, by, bw * (hp / max).clamp(0.0, 1.0), 3.0 * s, [210, 40, 40, 255]);
+                }
+            }
             if let Some(t) = &self.toast {
                 if t.until > self.now {
                     let text = t.text.clone();
@@ -897,7 +1308,7 @@ impl Game {
                 let bw = 200.0 * s;
                 let bh = 20.0 * s;
                 let x = (w - bw) / 2.0;
-                let mut y = (h / 2.0 - 132.0 * s).max(26.0 * s);
+                let mut y = (h / 2.0 - 100.0 * s).max(26.0 * s);
                 self.ui.text_centered(w / 2.0, y - 18.0 * s, "Menu do jogo", WHITE);
                 let pack = self.textures_name.clone();
                 let custom = self.audio.as_ref().map(|a| a.custom_track_count()).unwrap_or(0);
@@ -910,13 +1321,31 @@ impl Game {
                     format!("Nuvens: {}", if self.settings.show_clouds { "Sim" } else { "Não" }),
                     format!("VSync: {}", if self.settings.vsync { "Sim" } else { "Não" }),
                     format!("Controle: {}", if self.pads.pad.connected { self.pads.pad.name.as_str() } else { "nenhum conectado" }),
+                    format!("Modo: {}", if self.survival { "Sobrevivência" } else { "Criativo" }),
+                    format!("Mobs: {}", if self.settings.mobs { "Sim" } else { "Não" }),
                     "Salvar e sair".to_string(),
                 ];
+                // First and last buttons are wide; the options between them sit in two columns.
+                let last = labels.len() - 1;
+                let half = (bw - 4.0 * s) / 2.0;
+                let mut col = 0;
                 for (i, l) in labels.iter().enumerate() {
-                    if self.ui.button(x, y, bw, bh, l, mouse) && self.clicked {
+                    let wide = i == 0 || i == last;
+                    if wide && col == 1 {
+                        col = 0;
+                        y += bh + 4.0 * s;
+                    }
+                    let (bx, bwi) = if wide { (x - bw / 2.0, bw * 2.0 + 4.0 * s) } else { (x - bw / 2.0 + col as f32 * (bw + 4.0 * s), bw) };
+                    let _ = half;
+                    if self.ui.button(bx, y, bwi, bh, l, mouse) && self.clicked {
                         clicked_button = Some(i);
                     }
-                    y += bh + 4.0 * s;
+                    if wide || col == 1 {
+                        col = 0;
+                        y += bh + 4.0 * s;
+                    } else {
+                        col = 1;
+                    }
                 }
                 let help = [
                     "WASD andar  Espaço pular (2x = voar)  Shift descer  Ctrl correr",
@@ -933,6 +1362,16 @@ impl Game {
                     let tw = self.ui.text_width(&l, hs);
                     self.ui.text_scaled(w / 2.0 - tw / 2.0, y, &l, GRAY, hs);
                     y += 10.0 * hs;
+                }
+            }
+            Screen::Paintings => self.draw_paintings_menu(w, h, mouse),
+            Screen::Dead => {
+                self.ui.rect(0.0, 0.0, w, h, [120, 0, 0, 110]);
+                self.ui.text_centered(w / 2.0, h / 2.0 - 40.0 * s, "Você morreu!", WHITE);
+                let bw = 200.0 * s;
+                let bh = 20.0 * s;
+                if self.ui.button((w - bw) / 2.0, h / 2.0, bw, bh, "Renascer", mouse) && self.clicked {
+                    clicked_button = Some(0);
                 }
             }
             Screen::Inventory => {
@@ -998,6 +1437,8 @@ impl Game {
         if let Some(i) = clicked_button {
             if self.screen == Screen::Controls {
                 self.controls_button(i);
+            } else if self.screen == Screen::Dead {
+                self.respawn();
             } else {
                 self.pause_button(i);
             }
@@ -1124,6 +1565,7 @@ impl Game {
             }
             Action::PickBlock => self.mouse_held[2] = true,
             Action::Inventory => self.set_screen(Screen::Inventory),
+            Action::Paintings => self.open_paintings(),
             Action::Pause => self.set_screen(Screen::Paused),
             Action::HotbarPrev => self.scroll(1.0),
             Action::HotbarNext => self.scroll(-1.0),
@@ -1251,6 +1693,7 @@ impl Game {
                             self.rebinding = None;
                             self.set_screen(Screen::Paused);
                         }
+                        Screen::Dead => {}
                         _ => self.set_screen(Screen::Playing),
                     }
                 }
@@ -1287,6 +1730,21 @@ impl Game {
                 self.renderer.set_vsync(self.settings.vsync);
             }
             7 => self.set_screen(Screen::Controls),
+            8 => {
+                self.survival = !self.survival;
+                if self.survival {
+                    self.body.flying = false;
+                    self.health = 20.0;
+                    self.fall_peak = self.body.pos.y;
+                    self.toast("Modo sobrevivência: cuidado com quedas e monstros", 4.0);
+                } else {
+                    self.toast("Modo criativo", 3.0);
+                }
+            }
+            9 => {
+                self.settings.mobs = !self.settings.mobs;
+                self.mobs.enabled = self.settings.mobs;
+            }
             _ => {
                 self.save_all();
                 std::process::exit(0);
@@ -1390,7 +1848,16 @@ impl Game {
             }
         }
         let selection = if self.screen == Screen::Playing || self.args.screenshot.is_some() { self.target.map(|t| t.block) } else { None };
-        let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds, &self.ui, capture);
+        let mut items = self.mobs.instances(&self.world, block, rd + 16.0);
+        for p in &self.paintings {
+            items.push((self.entities.painting_mesh(p.def), p.bones(block, &self.world)));
+        }
+        if let (Screen::Paintings, Some((d, anchor)), Some((_, n))) = (self.screen, self.painting_preview, self.painting_spot) {
+            let p = paintings::Painting { name: String::new(), anchor: anchor.to_array(), facing: n.to_array(), def: d };
+            items.push((self.entities.painting_mesh(d), p.bones(block, &self.world)));
+        }
+        self.entities.prepare(&self.renderer, items);
+        let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds, Some(&self.entities), &self.ui, capture);
         self.last_frame_info = (info.sections_drawn, info.quads_drawn);
         if let Some((w, h, px)) = shot {
             let path = if exit_after {
@@ -1525,4 +1992,18 @@ fn main() {
     event_loop.set_control_flow(ControlFlow::Poll);
     let mut app = App { args, game: None };
     event_loop.run_app(&mut app).expect("run");
+}
+
+/// A little pixel heart, 7×6 "pixels" of size `s`. `fill` < 1 draws only the left half.
+fn draw_heart(ui: &mut UiBatch, x: f32, y: f32, s: f32, color: [u8; 4], fill: f32, outline: bool) {
+    const ROWS: [&str; 6] = [".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."];
+    let color = if outline { [255, 255, 255, 255] } else { color };
+    let max_col = if fill >= 1.0 { 7 } else { 4 };
+    for (r, row) in ROWS.iter().enumerate() {
+        for (c, ch) in row.chars().enumerate() {
+            if ch == 'X' && c < max_col {
+                ui.rect(x + c as f32 * s, y + r as f32 * s, s, s, color);
+            }
+        }
+    }
 }

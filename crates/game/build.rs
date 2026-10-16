@@ -28,6 +28,33 @@ fn main() {
     println!("cargo:rerun-if-changed={}", blocks.display());
     code.push_str(&format!("pub static BLOCKS_RON: &str = include_str!({:?});\n", blocks.display().to_string()));
 
+    for (var, sub) in [("ENTITY_TEXTURES", "entity"), ("PAINTING_TEXTURES", "painting")] {
+        let dir = root.join("packs/vanilla/textures").join(sub);
+        println!("cargo:rerun-if-changed={}", dir.display());
+        let mut files: Vec<_> = fs::read_dir(&dir)
+            .map(|r| r.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "png")).collect())
+            .unwrap_or_default();
+        files.sort();
+        code.push_str(&format!("pub static {var}: &[(&str, &[u8])] = &[\n"));
+        for p in &files {
+            let name = p.file_stem().unwrap().to_string_lossy();
+            if name == "preview" {
+                continue;
+            }
+            code.push_str(&format!("    ({:?}, include_bytes!({:?})),\n", name, p.display().to_string()));
+        }
+        code.push_str("];\n");
+    }
+    for (var, file) in [("MOBS_RON", "packs/vanilla/mobs.ron"), ("PAINTINGS_RON", "packs/vanilla/paintings.ron")] {
+        let p = root.join(file);
+        println!("cargo:rerun-if-changed={}", p.display());
+        if p.exists() {
+            code.push_str(&format!("pub static {var}: &str = include_str!({:?});\n", p.display().to_string()));
+        } else {
+            code.push_str(&format!("pub static {var}: &str = \"\";\n"));
+        }
+    }
+
     let music_dir = root.join("assets/music");
     println!("cargo:rerun-if-changed={}", music_dir.display());
     let mut music: Vec<_> = fs::read_dir(&music_dir)

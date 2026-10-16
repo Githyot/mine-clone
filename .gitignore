@@ -8,3 +8,4 @@
 *.png.tmp
 /screenshots
 /crash.txt
+__pycache__/

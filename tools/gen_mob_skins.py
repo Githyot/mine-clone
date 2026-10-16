@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Procedurally generate original 64x64 mob skins.
+"""Procedurally generate original 64x128 mob skins.
 
 The box models (sizes, origins and uv offsets) are read from
 packs/vanilla/mobs.ron and checked against the part roles listed below.  Every
@@ -25,7 +25,12 @@ computed from 3D noise line up across box edges.
 Usage:
     python3 tools/gen_mob_skins.py
 
-Output: packs/vanilla/textures/entity/<mob>.png (64x64 RGBA, unused pixels
+The bottom half of the skin (same uv, v + 64) holds the `layers` overlays
+listed in mobs.ron: wool, fur, hair, rags...  The renderer turns every opaque
+pixel of a layer into a small block standing `inflate` pixels off the body, so
+these are painted as sparse masks with holes.  Transparent pixels are (0,0,0,0).
+
+Output: packs/vanilla/textures/entity/<mob>.png (64x128 RGBA, unused pixels
 fully transparent) and preview.png (every skin at 4x on a checkerboard).
 Deterministic: all randomness is hash-based with fixed seeds.
 """
@@ -41,6 +46,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MOBS_RON = os.path.join(ROOT, "packs", "vanilla", "mobs.ron")
 OUT_DIR = os.path.join(ROOT, "packs", "vanilla", "textures", "entity")
 SKIN = 64
+SKIN_H = 128
+LAYER_V = 64
 BASE_SEED = 0x0B5C_A1E5
 
 # Role of each part, in the order the parts appear in mobs.ron.  The geometry
@@ -90,6 +97,19 @@ HARDCODED = {
 }
 
 
+# `layers` per mob as (part index, inflate), mirroring mobs.ron (checked).
+HARDCODED_LAYERS = {
+    "pig": [(0, 0.5), (1, 0.5)],
+    "cow": [(0, 0.6), (1, 0.5)],
+    "sheep": [(0, 1.5), (1, 1.0), (2, 0.6), (3, 0.6), (4, 0.6), (5, 0.6)],
+    "chicken": [(0, 0.5), (4, 0.4), (5, 0.4)],
+    "zombie": [(0, 0.6), (1, 0.5), (2, 0.4), (3, 0.4), (4, 0.4), (5, 0.4)],
+    "skeleton": [(1, 0.5)],
+    "stalker": [(0, 0.8), (1, 0.8)],
+    "spider": [(1, 0.6), (2, 0.7)],
+}
+
+
 # --------------------------------------------------------------------------
 # mobs.ron parsing
 # --------------------------------------------------------------------------
@@ -98,12 +118,14 @@ PART_RE = re.compile(
     r"\(size:\s*\((\d+),\s*(\d+),\s*(\d+)\),\s*origin:\s*\((-?\d+),\s*(-?\d+),\s*(-?\d+)\),"
     r"\s*uv:\s*\((\d+),\s*(\d+)\)")
 NAME_RE = re.compile(r'name:\s*"([a-z_]+)"')
+LAYERS_RE = re.compile(r"layers:\s*\[(.*?)\]", re.S)
+LAYER_RE = re.compile(r"\(part:\s*(\d+),\s*inflate:\s*([0-9.]+)\)")
 
 
 def parse_mobs(path):
     text = open(path, encoding="utf-8").read()
     names = list(NAME_RE.finditer(text))
-    mobs = {}
+    mobs, layers = {}, {}
     for k, m in enumerate(names):
         end = names[k + 1].start() if k + 1 < len(names) else len(text)
         parts = []
@@ -111,7 +133,9 @@ def parse_mobs(path):
             g = [int(v) for v in p.groups()]
             parts.append((tuple(g[0:3]), tuple(g[3:6]), tuple(g[6:8])))
         mobs[m.group(1)] = parts
-    return mobs
+        lm = LAYERS_RE.search(text, m.end(), end)
+        layers[m.group(1)] = [(int(a), float(b)) for a, b in LAYER_RE.findall(lm.group(1))] if lm else []
+    return mobs, layers
 
 
 # --------------------------------------------------------------------------
@@ -790,12 +814,201 @@ PAINTERS = {
 
 
 # --------------------------------------------------------------------------
+# Layer overlays.  Same context as the painters; return an (r, g, b) for an
+# opaque relief pixel or None to leave the pixel empty.
+# --------------------------------------------------------------------------
+
+
+def clustered(c, salt, scale, threshold):
+    """True where low-frequency noise says a tuft/patch lives here."""
+    return fbm(c.seed + salt, c.gx, c.gy, c.gz, scale, 2) > threshold
+
+
+def overlay_sheep(c):
+    if c.role == "head":
+        # wool cap: top face, upper rows of the sides, nothing on the face
+        if c.face == "front" and c.j > 0:
+            return None
+        if c.face == "bottom":
+            return None
+        if c.face in ("left", "right", "back") and c.j > 2:
+            return None
+    elif c.role == "leg":
+        if c.face == "bottom" or (c.face in SIDES and c.j > 3):
+            return None
+    elif c.face == "bottom":
+        return None
+    if c.jit < 0.25:
+        return None  # ~25% holes so it reads as fluff
+    tip = hash01(c.seed + 13, c.px, c.py)
+    if tip > 0.88:
+        return (248, 246, 240)
+    return wool(c, 1.8)
+
+
+def overlay_cow(c):
+    if c.role == "head":
+        # ear nubs at the top back corners of the sides, a few hair tufts on top
+        if c.face in ("left", "right") and c.j <= 1 and c.z < 2:
+            return pick(COW_BROWN, 0.5 + 0.4 * c.jit)
+        if c.face == "top" and c.z < 2 and c.jit > 0.55:
+            return pick(COW_BROWN, 0.6 + 0.4 * c.jit)
+        if c.face == "top" and 2 <= c.i <= 5 and c.j >= 4 and c.jit > 0.5:
+            return pick(COW_WHITE, 0.4 + 0.4 * c.jit)  # forelock
+        return None
+    # body: shaggy ruff around the neck, sparse fur patches on the back
+    if c.face == "bottom":
+        return None
+    if c.face == "front" and c.j <= 4 and c.jit > 0.35:
+        return cow_coat(c)
+    if c.face == "top" and c.j >= c.fh - 3 and c.jit > 0.45:
+        return cow_coat(c)
+    if clustered(c, 71, 4.0, 0.62) and c.jit > 0.4:
+        return cow_coat(c)
+    return None
+
+
+def overlay_pig(c):
+    if c.role == "head":
+        # floppy ear flaps hanging from the top back corners of the head sides
+        if c.face in ("left", "right") and c.j <= 2 and c.z < 3 and not (c.j == 2 and c.z < 1):
+            return pick(PIG, 0.25 + 0.3 * c.jit)
+        if c.face == "top" and c.z < 2 and c.x not in (3, 4):
+            return pick(PIG, 0.3 + 0.3 * c.jit)
+        return None
+    # body: sparse dried-mud spots, mostly on the lower sides and belly
+    if c.face == "top" and c.jit < 0.9:
+        return None
+    low = c.face == "bottom" or (c.face in SIDES and c.j >= c.fh // 2)
+    if clustered(c, 37, 3.0, 0.66) and c.jit > (0.3 if low else 0.7):
+        return (104, 76, 50) if c.jit > 0.6 else (124, 92, 60)
+    return None
+
+
+def overlay_chicken(c):
+    if c.role == "wing":
+        if c.face in ("left", "right") and (c.j == c.fh - 1 or c.i <= 1) and c.jit > 0.3:
+            return pick(WING, 0.2 + 0.5 * c.jit)
+        return None
+    # body: ruffled feathers on the sides and back, a tail tuft
+    if c.face in ("bottom", "top", "front"):
+        return None
+    if c.face == "back" and c.j <= 2 and c.jit > 0.25:
+        return pick(FEATHER, 0.3 + 0.6 * c.jit)
+    if c.j >= 2 and (c.i + c.j) % 2 == 0 and c.jit > 0.35:
+        return pick(FEATHER, 0.2 + 0.6 * c.jit)
+    return None
+
+
+def overlay_zombie(c):
+    if c.role == "head":
+        if c.face == "top" and c.jit > 0.45:
+            return (34, 32, 28) if c.jit < 0.8 else (52, 48, 40)
+        if c.face in ("back", "left", "right") and c.j == 0 and c.jit > 0.5:
+            return (34, 32, 28)
+        return None
+    if c.role == "body":
+        if c.face in ("top", "bottom"):
+            return None
+        rag = hash01(c.seed + 41, c.px // 2, c.py)
+        if c.j == 0 and c.jit > 0.4:
+            return zshirt(c)  # torn shoulder seams
+        if c.j >= 7 and rag > 0.45 and c.jit > 0.25:
+            return zshirt(c) if c.j < 11 or c.jit > 0.5 else ZSHIRT[0]  # jacket flaps
+        if c.face in ("front", "back") and clustered(c, 43, 2.5, 0.6) and c.jit > 0.6:
+            return zshirt(c)
+        return None
+    if c.role == "arm":
+        if c.face in ("top", "bottom"):
+            return None
+        if c.j <= 3 and c.jit > 0.55:
+            return zshirt(c)  # ragged sleeve edge
+        if c.j >= 9 and hash01(c.seed + 45, c.px, 0) > 0.5 and c.jit > 0.3:
+            return ZSHIRT[1] if c.jit > 0.6 else ZSHIRT[0]  # hanging rags
+        return None
+    # legs
+    if c.face in ("top", "bottom"):
+        return None
+    if c.j >= 8 and hash01(c.seed + 47, c.px, 1) > 0.45 and c.jit > 0.3:
+        return pick(ZPANTS, 0.3 + 0.5 * c.jit)
+    return None
+
+
+def overlay_skeleton(c):
+    if c.face in ("top", "bottom"):
+        return None
+    cloth = pal("#4a4238", "#5c5346", "#6e6454")
+    # a few tattered vertical strips hanging from the shoulders
+    col = c.px
+    strip = hash01(c.seed + 51, col, 0)
+    if strip < 0.3:
+        return None
+    length = 4 + int(hash01(c.seed + 53, col, 1) * 8)
+    if c.j < length and c.jit > 0.3:
+        return pick(cloth, 0.3 + 0.6 * c.jit)
+    return None
+
+
+def overlay_stalker(c):
+    if c.role == "head" and c.face == "front" and 1 <= c.i <= 6 and 1 <= c.j <= 7:
+        return None  # keep the face clear
+    if c.face == "bottom":
+        return None
+    n = fbm(c.seed + 61, c.gx, c.gy, c.gz, 2.5, 2)
+    if n + 0.35 * (c.jit - 0.5) < 0.52:
+        return None
+    leaf = hash01(c.seed + 63, c.px, c.py)
+    if leaf > 0.86:
+        return pick(LICHEN, 0.3 + 0.6 * c.jit)
+    if leaf > 0.7:
+        return MOSS[5] if c.jit > 0.5 else MOSS[4]
+    return pick(MOSS, 0.3 + 0.6 * c.jit)
+
+
+def overlay_spider(c):
+    if c.face == "bottom":
+        return None
+    h = hash01(c.seed + 81, c.px, c.py)
+    if h > 0.9:
+        return HAIR
+    if c.role == "abdomen" and c.face in SIDES:
+        # short vertical hairs: 1px wide, 2px long, scattered
+        k = hash01(c.seed + 83, c.px, c.py // 2)
+        if k > 0.86:
+            return SPIDER[4] if c.py % 2 else HAIR
+    return None
+
+
+OVERLAYS = {
+    "pig": overlay_pig, "cow": overlay_cow, "sheep": overlay_sheep,
+    "chicken": overlay_chicken, "zombie": overlay_zombie,
+    "skeleton": overlay_skeleton, "stalker": overlay_stalker, "spider": overlay_spider,
+}
+
+
+# --------------------------------------------------------------------------
 # Driver
 # --------------------------------------------------------------------------
 
 
-def render_skin(name, parts):
-    img = Image.new("RGBA", (SKIN, SKIN), (0, 0, 0, 0))
+def face_pixels(name, role, size, origin, uv, seed, v_off):
+    """Yield (sx, sy, context) for every pixel of every face of a box."""
+    w, h, d = size
+    for face, (x0, y0, fw, fh) in face_rects(size, uv).items():
+        for j in range(fh):
+            for i in range(fw):
+                sx, sy = x0 + i, y0 + j + v_off
+                lx, ly, lz = local_pos(face, i, j, size)
+                c = SimpleNamespace(
+                    role=role, face=face, i=i, j=j, fw=fw, fh=fh,
+                    x=lx, y=ly, z=lz, w=w, h=h, d=d,
+                    gx=origin[0] + lx, gy=origin[1] + ly, gz=origin[2] + lz,
+                    px=sx, py=sy, jit=hash01(seed + 1, sx, sy), seed=seed)
+                yield sx, sy, c
+
+
+def render_skin(name, parts, layers):
+    img = Image.new("RGBA", (SKIN, SKIN_H), (0, 0, 0, 0))
     px = img.load()
     owner = {}
     seed = BASE_SEED ^ zlib.crc32(name.encode())
@@ -805,23 +1018,29 @@ def render_skin(name, parts):
         if uv in done_uv:
             continue  # shares pixels with an earlier part
         done_uv.add(uv)
-        w, h, d = size
-        for face, (x0, y0, fw, fh) in face_rects(size, uv).items():
-            for j in range(fh):
-                for i in range(fw):
-                    sx, sy = x0 + i, y0 + j
-                    assert 0 <= sx < SKIN and 0 <= sy < SKIN, (name, role, face)
-                    prev = owner.get((sx, sy))
-                    assert prev is None, f"{name}: {role}.{face} overlaps {prev} at {(sx, sy)}"
-                    owner[(sx, sy)] = f"{role}.{face}"
-                    lx, ly, lz = local_pos(face, i, j, size)
-                    c = SimpleNamespace(
-                        role=role, face=face, i=i, j=j, fw=fw, fh=fh,
-                        x=lx, y=ly, z=lz, w=w, h=h, d=d,
-                        gx=origin[0] + lx, gy=origin[1] + ly, gz=origin[2] + lz,
-                        px=sx, py=sy, jit=hash01(seed + 1, sx, sy), seed=seed)
-                    rgb = painter(c)
-                    px[sx, sy] = (*rgb[:3], 255)
+        for sx, sy, c in face_pixels(name, role, size, origin, uv, seed, 0):
+            assert 0 <= sx < SKIN and 0 <= sy < LAYER_V, (name, role, c.face)
+            prev = owner.get((sx, sy))
+            assert prev is None, f"{name}: {role}.{c.face} overlaps {prev} at {(sx, sy)}"
+            owner[(sx, sy)] = f"{role}.{c.face}"
+            rgb = painter(c)
+            px[sx, sy] = (*rgb[:3], 255)
+    overlay = OVERLAYS[name]
+    done_uv = set()
+    for idx, _inflate in layers:
+        size, origin, uv = parts[idx]
+        if uv in done_uv:
+            continue
+        done_uv.add(uv)
+        role = ROLES[name][idx]
+        for sx, sy, c in face_pixels(name, role, size, origin, uv, seed + 500, LAYER_V):
+            assert LAYER_V <= sy < SKIN_H, (name, role, c.face)
+            prev = owner.get((sx, sy))
+            assert prev is None, f"{name}: layer {role}.{c.face} overlaps {prev} at {(sx, sy)}"
+            owner[(sx, sy)] = f"layer {role}.{c.face}"
+            rgb = overlay(c)
+            if rgb is not None:
+                px[sx, sy] = (*rgb[:3], 255)
     return img
 
 
@@ -836,29 +1055,32 @@ def checker(size, cell=8):
 
 
 def main():
-    parsed = parse_mobs(MOBS_RON)
+    parsed, parsed_layers = parse_mobs(MOBS_RON)
     assert set(parsed) == set(ROLES), f"mob list differs: {sorted(parsed)}"
     for name, parts in parsed.items():
         assert parts == HARDCODED[name], f"{name}: parts in mobs.ron changed"
         assert len(parts) == len(ROLES[name]), name
+        assert parsed_layers[name] == HARDCODED_LAYERS[name], f"{name}: layers in mobs.ron changed"
+        for idx, _ in parsed_layers[name]:
+            assert 0 <= idx < len(parts), (name, idx)
     os.makedirs(OUT_DIR, exist_ok=True)
     order = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "stalker", "spider"]
     scale, gap = 4, 8
     cols = 4
     rows = (len(order) + cols - 1) // cols
     sheet_w = cols * SKIN * scale + (cols + 1) * gap
-    sheet_h = rows * SKIN * scale + (rows + 1) * gap
+    sheet_h = rows * SKIN_H * scale + (rows + 1) * gap
     sheet = Image.new("RGBA", (sheet_w, sheet_h), (24, 24, 28, 255))
     for k, name in enumerate(order):
-        img = render_skin(name, parsed[name])
+        img = render_skin(name, parsed[name], parsed_layers[name])
         path = os.path.join(OUT_DIR, f"{name}.png")
         img.save(path)
         print("wrote", os.path.relpath(path, ROOT))
-        big = img.resize((SKIN * scale, SKIN * scale), Image.NEAREST)
+        big = img.resize((SKIN * scale, SKIN_H * scale), Image.NEAREST)
         tile = checker(big.size)
         tile.alpha_composite(big)
         x = gap + (k % cols) * (SKIN * scale + gap)
-        y = gap + (k // cols) * (SKIN * scale + gap)
+        y = gap + (k // cols) * (SKIN_H * scale + gap)
         sheet.paste(tile, (x, y))
     path = os.path.join(OUT_DIR, "preview.png")
     sheet.save(path)

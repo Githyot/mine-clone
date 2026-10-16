@@ -2,7 +2,7 @@
 // at 16 pixels per block; width/height are in blocks.
 (paintings: [
     (name: "bowl_of_fruit", title: "Fruteira", width: 1, height: 1),
-    (name: "sleeping_cat", title: "Gato dormindo", width: 1, height: 1),
+    (name: "ginger_cat", title: "Gato laranja na almofada", width: 1, height: 1),
     (name: "abstract_tiles", title: "Composição abstrata", width: 1, height: 1),
     (name: "red_mushroom", title: "Cogumelo na floresta", width: 1, height: 1),
     (name: "blocky_portrait", title: "Retrato de um amigo quadrado", width: 1, height: 2),

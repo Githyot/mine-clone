@@ -6,6 +6,7 @@ pub mod block;
 pub mod chunk;
 pub mod light;
 pub mod mesh;
+pub mod mob;
 pub mod noise;
 pub mod physics;
 pub mod raycast;

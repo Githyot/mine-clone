@@ -67,10 +67,11 @@ pub struct Renderer {
     depth: wgpu::TextureView,
     globals_buf: wgpu::Buffer,
     globals_bg: wgpu::BindGroup,
-    tex_layout: wgpu::BindGroupLayout,
+    pub globals_layout: wgpu::BindGroupLayout,
+    pub tex_layout: wgpu::BindGroupLayout,
     tex_bg: wgpu::BindGroup,
     block_view: wgpu::TextureView,
-    sampler: wgpu::Sampler,
+    pub sampler: wgpu::Sampler,
     solid_pipe: wgpu::RenderPipeline,
     translucent_pipe: wgpu::RenderPipeline,
     sky_pipe: wgpu::RenderPipeline,
@@ -393,6 +394,7 @@ impl Renderer {
             depth,
             globals_buf,
             globals_bg,
+            globals_layout,
             tex_layout,
             tex_bg,
             block_view,
@@ -583,6 +585,7 @@ impl Renderer {
         globals: &mut Globals,
         selection: Option<IVec3>,
         clouds: bool,
+        entities: Option<&crate::entity::EntityRenderer>,
         ui: &UiBatch,
         capture: bool,
     ) -> (FrameInfo, Option<(u32, u32, Vec<u8>)>) {
@@ -734,6 +737,9 @@ impl Renderer {
                 pass.set_vertex_buffer(0, b.slice(..));
                 pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
                 quads += *q as usize;
+            }
+            if let Some(e) = entities {
+                e.draw(&mut pass);
             }
             if clouds {
                 pass.set_pipeline(&self.cloud_pipe);

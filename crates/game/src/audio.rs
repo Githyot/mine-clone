@@ -75,6 +75,11 @@ pub enum Sfx {
     Place(Material),
     Step(Material),
     Click,
+    /// The player gets hurt.
+    Hurt,
+    /// A mob gets hit.
+    MobHit,
+    Explode,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -292,6 +297,51 @@ fn serde_json_lite(json: &str) -> Vec<TrackInfo> {
         .collect()
 }
 
+/// Hurt grunts, hits and explosions: pitched bodies of sound rather than material noise.
+fn synth_special(sfx: Sfx, noise: &mut impl FnMut() -> f32) -> Option<Vec<f32>> {
+    let rate = 44100.0;
+    let (dur, gain) = match sfx {
+        Sfx::Hurt => (0.25, 0.8),
+        Sfx::MobHit => (0.16, 0.7),
+        Sfx::Explode => (1.4, 1.0),
+        _ => return None,
+    };
+    let n = (dur * rate) as usize;
+    let mut out = Vec::with_capacity(n);
+    let (mut y, mut y2) = (0.0f32, 0.0f32);
+    let mut phase = 0.0f32;
+    for i in 0..n {
+        let t = i as f32 / rate;
+        let k = t / dur;
+        let s = match sfx {
+            Sfx::Hurt => {
+                // A short falling "oof": a pitched buzz through a soft filter.
+                let f = 210.0 - 90.0 * k;
+                phase += f / rate;
+                let saw = (phase.fract() * 2.0 - 1.0) * 0.6 + (phase * std::f32::consts::TAU).sin() * 0.4;
+                y += 0.12 * (saw - y);
+                y * (1.0 - k).powf(1.5) * (k * 40.0).min(1.0)
+            }
+            Sfx::MobHit => {
+                let x = noise();
+                y += 0.3 * (x - y);
+                phase += (120.0 - 60.0 * k) / rate;
+                (y * 0.6 + (phase * std::f32::consts::TAU).sin() * 0.5) * (1.0 - k).powi(3)
+            }
+            _ => {
+                // Explosion: deep rumbling noise with a slow decay and a crack at the start.
+                let x = noise();
+                y += 0.02 * (x - y);
+                y2 += 0.15 * (x - y2);
+                let crack = if t < 0.05 { y2 * (1.0 - t / 0.05) } else { 0.0 };
+                (y * 6.0 + crack) * (1.0 - k).powf(2.2)
+            }
+        };
+        out.push((s * gain).clamp(-1.0, 1.0));
+    }
+    Some(out)
+}
+
 /// Small procedural sound effects (no sound files needed).
 fn synth(sfx: Sfx, seed: u32) -> Vec<f32> {
     let rate = 44100.0;
@@ -302,11 +352,15 @@ fn synth(sfx: Sfx, seed: u32) -> Vec<f32> {
         state ^= state << 5;
         (state as f32 / u32::MAX as f32) * 2.0 - 1.0
     };
+    if let Some(v) = synth_special(sfx, &mut noise) {
+        return v;
+    }
     let (mat, dur, gain) = match sfx {
         Sfx::Break(m) => (m, 0.22, 0.9),
         Sfx::Place(m) => (m, 0.12, 0.7),
         Sfx::Step(m) => (m, 0.09, 0.25),
         Sfx::Click => (Material::Glass, 0.04, 0.4),
+        _ => (Material::Cloth, 0.05, 0.3),
     };
     // Low-pass amount and a resonant tone per material.
     let (lp, tone, tone_mix): (f32, f32, f32) = match mat {

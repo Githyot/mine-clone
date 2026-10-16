@@ -114,10 +114,11 @@ pub enum Action {
     Debug,
     NextSong,
     HideHud,
+    Paintings,
 }
 
 impl Action {
-    pub const ALL: [Action; 14] = [
+    pub const ALL: [Action; 15] = [
         Action::Jump,
         Action::Sneak,
         Action::Sprint,
@@ -132,6 +133,7 @@ impl Action {
         Action::Debug,
         Action::NextSong,
         Action::HideHud,
+        Action::Paintings,
     ];
 
     pub fn label(self) -> &'static str {
@@ -150,6 +152,7 @@ impl Action {
             Action::Debug => "Informações (F3)",
             Action::NextSong => "Próxima música",
             Action::HideHud => "Esconder interface",
+            Action::Paintings => "Pendurar pintura",
         }
     }
 }
@@ -212,6 +215,7 @@ pub fn default_bindings() -> Vec<(Action, Btn)> {
         (Action::Debug, Btn::Up),
         (Action::NextSong, Btn::Right),
         (Action::HideHud, Btn::Down),
+        (Action::Paintings, Btn::Left),
     ]
 }
 
