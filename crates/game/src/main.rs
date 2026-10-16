@@ -6,6 +6,7 @@
 mod audio;
 mod controller;
 mod entity;
+mod menus;
 mod mobs;
 mod paintings;
 mod renderer;
@@ -69,6 +70,8 @@ struct Args {
     /// Spawn a few mobs in front of the player (test screenshots).
     mobs: bool,
     survival: bool,
+    /// Show the title screen even with --world/--screenshot.
+    title: bool,
 }
 
 fn parse_args() -> Args {
@@ -104,6 +107,7 @@ fn parse_args() -> Args {
             "--pause" => a.show_pause = true,
             "--debug" => a.debug = true,
             "--mobs" => a.mobs = true,
+            "--title" => a.title = true,
             "--survival" => a.survival = true,
             "--help" | "-h" => {
                 println!(
@@ -184,6 +188,13 @@ enum Screen {
     Dead,
     /// Choosing a painting for the wall the player is looking at.
     Paintings,
+    /// Main menu, over a panorama of the last world.
+    Title,
+    Worlds,
+    CreateWorld,
+    Multiplayer,
+    Options,
+    Packs,
 }
 
 struct Toast {
@@ -261,6 +272,16 @@ struct Game {
 
     /// Survival mining: block being broken and how far along (seconds).
     mining: Option<(IVec3, f32)>,
+    /// A world is being played (not just shown behind the title).
+    world_open: bool,
+    /// The world loaded behind the menus.
+    title_world: String,
+    title_spin: f32,
+    worlds: Vec<menus::WorldEntry>,
+    world_sel: Option<usize>,
+    new_world: menus::NewWorldForm,
+    /// Where the controller menu returns to.
+    options_back: Screen,
     mining_tick: f32,
     sprinting: bool,
     /// Time W was last pressed (double tap = sprint).
@@ -312,7 +333,9 @@ impl Game {
             BlockRegistry::from_ron(embedded::BLOCKS_RON).unwrap()
         }));
 
-        let world_name = args.world.clone().unwrap_or_else(|| "Mundo 1".into());
+        // Without --world the game opens on the title screen, with the last played world behind it.
+        let title_mode = args.title || (args.world.is_none() && args.screenshot.is_none());
+        let world_name = args.world.clone().or_else(|| menus::list_worlds(&base).first().map(|w| w.name.clone())).unwrap_or_else(|| "Mundo 1".into());
         let save = Arc::new(WorldSave::new(level_path_hint(&base, &world_name)));
         let level = save.load_level();
         let seed = level.as_ref().map(|l| l.seed).or(args.seed).unwrap_or_else(|| {
@@ -400,7 +423,7 @@ impl Game {
             base,
             audio,
             args,
-            world_name,
+            world_name: world_name.clone(),
             seed,
             body,
             yaw,
@@ -412,7 +435,7 @@ impl Game {
             inventory,
             inv_scroll: 0,
             time_of_day,
-            screen: Screen::Loading,
+            screen: if title_mode { Screen::Title } else { Screen::Loading },
             keys: HashSet::new(),
             mouse_held: [false; 3],
             mouse_pos: (0.0, 0.0),
@@ -444,6 +467,13 @@ impl Game {
             painting_scroll: 0,
             painting_check: 0.0,
             mining: None,
+            world_open: !title_mode,
+            title_world: world_name,
+            title_spin: 0.0,
+            worlds: Vec::new(),
+            world_sel: None,
+            new_world: menus::NewWorldForm::default(),
+            options_back: Screen::Paused,
             mining_tick: 0.0,
             sprinting: false,
             last_w: -10.0,
@@ -500,6 +530,10 @@ impl Game {
     }
 
     fn save_all(&mut self) {
+        if !self.world_open {
+            self.settings.save(&self.base.join("settings.ron"));
+            return;
+        }
         let level = LevelData {
             name: self.world_name.clone(),
             seed: self.seed,
@@ -524,6 +558,7 @@ impl Game {
 
     fn situation(&self) -> Situation {
         match self.screen {
+            _ if self.is_title_screen() => Situation::Title,
             Screen::Loading => Situation::Title,
             _ if self.body.head_in_water => Situation::Underwater,
             _ => Situation::Creative,
@@ -556,6 +591,10 @@ impl Game {
             self.keys.remove(&code);
             return;
         }
+        if self.screen == Screen::CreateWorld && code != KeyCode::Escape {
+            self.form_key(code);
+            return;
+        }
         if repeat {
             return;
         }
@@ -564,9 +603,10 @@ impl Game {
             KeyCode::Escape => match self.screen {
                 Screen::Playing => self.set_screen(Screen::Paused),
                 Screen::Paused | Screen::Inventory => self.set_screen(Screen::Playing),
-                Screen::Controls => self.set_screen(Screen::Paused),
+                Screen::Controls => self.set_screen(self.options_back),
                 Screen::Paintings => self.set_screen(Screen::Playing),
-                Screen::Loading | Screen::Dead => {}
+                Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs => self.menu_back(),
+                Screen::Loading | Screen::Dead | Screen::Title => {}
             },
             KeyCode::KeyE => match self.screen {
                 Screen::Playing => self.set_screen(Screen::Inventory),
@@ -748,11 +788,14 @@ impl Game {
             self.time_of_day = self.args.time.unwrap();
         }
 
+        if self.is_title_screen() {
+            self.update_title(dt);
+        }
         if self.screen == Screen::Playing || self.screen == Screen::Inventory || self.screen == Screen::Paused {
             self.update_player(dt);
             self.update_survival(dt);
         }
-        if self.screen != Screen::Loading && self.screen != Screen::Paused && self.screen != Screen::Controls {
+        if self.world_open && !matches!(self.screen, Screen::Loading | Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs) {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
             let creative = !self.survival || self.screen == Screen::Dead;
@@ -1347,7 +1390,8 @@ impl Game {
             let a = ((0.4 - self.hurt_age) / 0.4 * 90.0) as u8;
             self.ui.rect(0.0, 0.0, w, h, [200, 0, 0, a]);
         }
-        if !self.hide_hud && self.screen != Screen::Paused && self.screen != Screen::Dead {
+        let menu_screen = self.is_title_screen() || matches!(self.screen, Screen::Options | Screen::Packs);
+        if !self.hide_hud && self.screen != Screen::Paused && self.screen != Screen::Dead && !menu_screen {
             // Crosshair.
             if self.screen == Screen::Playing {
                 let (cx, cy) = (w / 2.0, h / 2.0);
@@ -1498,6 +1542,20 @@ impl Game {
                 }
             }
             Screen::Paintings => self.draw_paintings_menu(w, h, mouse),
+            Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer => self.draw_title_menus(w, h, mouse),
+            Screen::Options | Screen::Packs => {
+                if self.world_open {
+                    self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 150]);
+                } else {
+                    let ready = self.world.meshed_count > 20;
+                    self.ui.rect(0.0, 0.0, w, h, if ready { [0, 0, 0, 110] } else { [44, 34, 26, 255] });
+                }
+                if self.screen == Screen::Options {
+                    self.draw_options(w, h, mouse);
+                } else {
+                    self.draw_packs(w, h, mouse);
+                }
+            }
             Screen::Dead => {
                 self.ui.rect(0.0, 0.0, w, h, [120, 0, 0, 110]);
                 self.ui.text_centered(w / 2.0, h / 2.0 - 40.0 * s, "Você morreu!", WHITE);
@@ -1657,7 +1715,7 @@ impl Game {
         match i {
             0 => {
                 self.rebinding = None;
-                self.set_screen(Screen::Paused);
+                self.set_screen(self.options_back);
             }
             1 => c.enabled = !c.enabled,
             2 => c.look_sensitivity = c.look_sensitivity % 10 + 1,
@@ -1824,9 +1882,10 @@ impl Game {
                     match self.screen {
                         Screen::Controls => {
                             self.rebinding = None;
-                            self.set_screen(Screen::Paused);
+                            self.set_screen(self.options_back);
                         }
-                        Screen::Dead => {}
+                        Screen::Dead | Screen::Title => {}
+                        Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs => self.menu_back(),
                         _ => self.set_screen(Screen::Playing),
                     }
                 }
@@ -1862,7 +1921,10 @@ impl Game {
                 self.settings.vsync = !self.settings.vsync;
                 self.renderer.set_vsync(self.settings.vsync);
             }
-            7 => self.set_screen(Screen::Controls),
+            7 => {
+                self.options_back = Screen::Paused;
+                self.set_screen(Screen::Controls);
+            }
             8 => {
                 self.survival = !self.survival;
                 if self.survival {
@@ -1879,8 +1941,8 @@ impl Game {
                 self.mobs.enabled = self.settings.mobs;
             }
             _ => {
-                self.save_all();
-                std::process::exit(0);
+                self.quit_to_title();
+                return;
             }
         }
         self.settings.save(&self.base.join("settings.ron"));
@@ -2058,6 +2120,11 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(code) = event.physical_key {
                     game.key(code, event.state == ElementState::Pressed, event.repeat);
+                }
+                if event.state == ElementState::Pressed {
+                    if let Some(t) = &event.text {
+                        game.type_text(t);
+                    }
                 }
             }
             WindowEvent::CursorMoved { position, .. } => game.mouse_pos = (position.x as f32, position.y as f32),

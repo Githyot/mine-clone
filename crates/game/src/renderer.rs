@@ -573,6 +573,12 @@ impl Renderer {
         }
     }
 
+    /// Forget every chunk (another world is being opened).
+    pub fn clear_chunks(&mut self) {
+        self.chunks.clear();
+        self.vram_bytes = 0;
+    }
+
     pub fn chunk_count(&self) -> usize {
         self.chunks.len()
     }
