@@ -1894,8 +1894,14 @@ impl Game {
         give(self, 20, "wooden_axe", 1, 40);
         give(self, 22, "string", 6, 0);
         give(self, 27, "feather", 3, 0);
+        // MC_ARMOR=diamond dresses the kit in one full set (for screenshots).
+        let set = std::env::var("MC_ARMOR").ok();
         for (i, n) in ["golden_helmet", "iron_chestplate", "diamond_leggings", "leather_boots"].iter().enumerate() {
-            self.surv.armor[i] = self.items.id(n).map(|id| ItemStack::new(id, 1));
+            let name = match &set {
+                Some(m) => format!("{m}_{}", ["helmet", "chestplate", "leggings", "boots"][i]),
+                None => n.to_string(),
+            };
+            self.surv.armor[i] = self.items.id(&name).map(|id| ItemStack::new(id, 1));
         }
         self.surv.hunger = 13.0;
         self.surv.xp = 40;

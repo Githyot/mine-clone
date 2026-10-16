@@ -308,40 +308,121 @@ fn armor_boxes(def: &MobDef, piece: usize) -> Vec<(usize, Vec3, Vec3, (u16, u16)
     v
 }
 
-/// Our own armour picture for one material: plates with a darker rim and a lit top edge;
-/// chainmail is a mesh of rings with gaps.
-fn armor_skin(def: &MobDef, color: [u8; 3], chain: bool) -> Skin {
+/// Our own armour picture for one material, drawn pixel by pixel in the classic style: a
+/// speckled metal surface with dark rims where plates meet, bright glints in the top corners,
+/// a collar and belly plates on the chest, a belt and knee caps on the leggings, soles and
+/// cuffs on the boots and a crest on the helmet. Chainmail is a mesh of rings with gaps.
+fn armor_skin(def: &MobDef, color: [u8; 3], chain: bool, matte: bool) -> Skin {
     let mut pixels = vec![0u8; (SKIN_W * SKIN_H * 4) as usize];
+    let glint = if matte { 0.18 } else { 0.5 };
     for piece in 0..4 {
-        for (_, _, size, uv, _) in armor_boxes(def, piece) {
+        for (b, (_, _, size, uv, _)) in armor_boxes(def, piece).into_iter().enumerate() {
             let tex = (size.x as i32, size.y as i32, size.z as i32);
             for (fi, f) in faces(Vec3::ZERO, size, uv, tex).iter().enumerate() {
                 let (rx, ry, rw, rh) = f.rect;
-                // The helmet leaves the face open below the brow.
-                let open_face = piece == 0 && fi == 0;
+                let front = fi == 0;
+                let top = fi == 4;
+                let bottom = fi == 5;
                 for j in 0..rh {
                     for i in 0..rw {
                         let (x, y) = (rx + i, ry + j);
                         if x < 0 || y < 0 || x >= 64 || y >= 64 {
                             continue;
                         }
-                        let h = ((x * 73 + y * 151) ^ (x * y * 17)) & 15;
-                        let mut k = 0.86 + h as f32 / 100.0;
-                        if i == 0 || j == 0 || i == rw - 1 || j == rh - 1 {
-                            k *= 0.68;
-                        } else if j == 1 {
-                            k *= 1.15;
-                        }
+                        let h = (((x * 73 + y * 151) ^ (x * y * 17)) + (x * 31 ^ y * 7)) & 15;
+                        // Speckle: mostly mid tones, a few darker and lighter flecks.
+                        let mut k = [0.74, 0.84, 0.84, 0.9, 0.9, 0.9, 0.96, 0.96, 0.96, 0.96, 1.0, 1.0, 1.0, 1.04, 1.08, 0.8][h as usize];
+                        let mut white = 0.0f32;
+                        let edge = i == 0 || j == 0 || i == rw - 1 || j == rh - 1;
                         let mut a = 255u8;
-                        if open_face && j >= 3 && i >= 1 && i < rw - 1 {
-                            a = 0;
+                        if edge && !top && !bottom {
+                            k *= 0.66;
                         }
-                        if chain && (i + j) % 2 == 1 && i > 0 && j > 0 && i < rw - 1 && j < rh - 1 {
+                        if bottom {
+                            k *= 0.7;
+                        }
+                        let mid = rw / 2;
+                        match piece {
+                            0 => {
+                                // Helmet: open below the brow, with a dark lip over the eyes and a
+                                // raised crest along the top.
+                                if front && j >= 3 && i >= 1 && i < rw - 1 {
+                                    a = 0;
+                                }
+                                if front && j == 2 && i >= 1 && i < rw - 1 {
+                                    k *= 0.74;
+                                }
+                                if top && (i == mid || i == mid - 1) {
+                                    k *= 1.12;
+                                    white = glint * 0.4;
+                                }
+                            }
+                            1 if b == 0 => {
+                                // Chestplate: a V collar, belly plates and a lit breast.
+                                if front && j == 1 && (i - mid).abs() <= 1 {
+                                    k *= 0.7;
+                                }
+                                if (front || fi == 1) && j > 2 && j == rh - 4 && !edge {
+                                    k *= 0.78;
+                                }
+                                if front && j > 1 && j < 5 && (i == 2 || i == rw - 3) {
+                                    k *= 1.08;
+                                }
+                            }
+                            1 => {
+                                // Shoulder plates: lit on top, a dark lower rim.
+                                if j == 1 && !top && !bottom {
+                                    k *= 1.12;
+                                }
+                                if j == rh - 2 && !top && !bottom {
+                                    k *= 0.86;
+                                }
+                            }
+                            2 if b == 0 => {
+                                // Leggings belt with a buckle in front.
+                                if j == 1 && !top && !bottom {
+                                    k *= 0.72;
+                                    if front && (i == mid || i == mid - 1) {
+                                        k = 1.1;
+                                        white = glint;
+                                    }
+                                }
+                            }
+                            2 => {
+                                // Knee caps.
+                                let knee = rh / 2;
+                                if front && (j == knee || j == knee - 1) && i >= 1 && i < rw - 1 {
+                                    k *= if j == knee - 1 { 1.1 } else { 0.8 };
+                                }
+                            }
+                            _ => {
+                                // Boots: a lit cuff, a dark sole and a shiny toe.
+                                if j == 0 && !top && !bottom {
+                                    k = 1.04;
+                                }
+                                if j == rh - 1 && !top && !bottom {
+                                    k *= 0.6;
+                                }
+                                if front && j == rh - 2 && i >= 1 && i < rw - 1 {
+                                    k *= 1.1;
+                                }
+                            }
+                        }
+                        // Glints: the top corners of each face catch the light.
+                        if !bottom && !edge && j == 1 && i == 1 {
+                            white = white.max(glint);
+                        } else if !bottom && !edge && ((j == 1 && i == 2) || (j == 2 && i == 1)) {
+                            white = white.max(glint * 0.5);
+                        } else if !edge && h == 15 && !matte && j < rh / 2 {
+                            white = white.max(glint * 0.45);
+                        }
+                        if chain && (i + j) % 2 == 1 && !edge && !(piece == 0 && front && j < 3) {
                             a = 0;
                         }
                         let o = ((y as u32 * SKIN_W + x as u32) * 4) as usize;
                         for c in 0..3 {
-                            pixels[o + c] = (color[c] as f32 * k).min(255.0) as u8;
+                            let v = (color[c] as f32 * k).min(255.0);
+                            pixels[o + c] = (v + (255.0 - v) * white) as u8;
                         }
                         pixels[o + 3] = a;
                     }
@@ -373,7 +454,7 @@ impl EntityRenderer {
         let player = reg.id("player").map(|i| &reg.defs[i]);
         let armor_layer0 = skins.len();
         if let Some(pd) = player {
-            skins.extend(ARMOR_MATERIALS.iter().map(|(n, c)| armor_skin(pd, *c, *n == "chainmail")));
+            skins.extend(ARMOR_MATERIALS.iter().map(|(n, c)| armor_skin(pd, *c, *n == "chainmail", *n == "leather")));
         }
         let layers = skins.len().max(1) as u32;
         let tex = device.create_texture(&wgpu::TextureDescriptor {
