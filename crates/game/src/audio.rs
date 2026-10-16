@@ -80,6 +80,16 @@ pub enum Sfx {
     /// A mob gets hit.
     MobHit,
     Explode,
+    /// Mining tick while a block is being broken.
+    Hit(Material),
+    /// Falling into water; the value is how hard (0..1).
+    Splash(f32),
+    /// A stroke while swimming at the surface.
+    Swim,
+    /// Climbing out of water.
+    WaterExit,
+    /// Air bubbles under water.
+    Bubbles,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -252,7 +262,7 @@ impl Audio {
             return;
         }
         let seed = (self.rand() * 1e6) as u32;
-        let samples = synth(sfx, seed);
+        let samples = crate::sfx::synth(sfx, seed);
         let src = rodio::buffer::SamplesBuffer::new(1, 44100, samples).amplify(volume);
         let _ = self.handle.play_raw(src);
     }
@@ -295,96 +305,4 @@ fn serde_json_lite(json: &str) -> Vec<TrackInfo> {
             Some(TrackInfo { id: s("id")?, title: s("title")?, situation: s("situation")? })
         })
         .collect()
-}
-
-/// Hurt grunts, hits and explosions: pitched bodies of sound rather than material noise.
-fn synth_special(sfx: Sfx, noise: &mut impl FnMut() -> f32) -> Option<Vec<f32>> {
-    let rate = 44100.0;
-    let (dur, gain) = match sfx {
-        Sfx::Hurt => (0.25, 0.8),
-        Sfx::MobHit => (0.16, 0.7),
-        Sfx::Explode => (1.4, 1.0),
-        _ => return None,
-    };
-    let n = (dur * rate) as usize;
-    let mut out = Vec::with_capacity(n);
-    let (mut y, mut y2) = (0.0f32, 0.0f32);
-    let mut phase = 0.0f32;
-    for i in 0..n {
-        let t = i as f32 / rate;
-        let k = t / dur;
-        let s = match sfx {
-            Sfx::Hurt => {
-                // A short falling "oof": a pitched buzz through a soft filter.
-                let f = 210.0 - 90.0 * k;
-                phase += f / rate;
-                let saw = (phase.fract() * 2.0 - 1.0) * 0.6 + (phase * std::f32::consts::TAU).sin() * 0.4;
-                y += 0.12 * (saw - y);
-                y * (1.0 - k).powf(1.5) * (k * 40.0).min(1.0)
-            }
-            Sfx::MobHit => {
-                let x = noise();
-                y += 0.3 * (x - y);
-                phase += (120.0 - 60.0 * k) / rate;
-                (y * 0.6 + (phase * std::f32::consts::TAU).sin() * 0.5) * (1.0 - k).powi(3)
-            }
-            _ => {
-                // Explosion: deep rumbling noise with a slow decay and a crack at the start.
-                let x = noise();
-                y += 0.02 * (x - y);
-                y2 += 0.15 * (x - y2);
-                let crack = if t < 0.05 { y2 * (1.0 - t / 0.05) } else { 0.0 };
-                (y * 6.0 + crack) * (1.0 - k).powf(2.2)
-            }
-        };
-        out.push((s * gain).clamp(-1.0, 1.0));
-    }
-    Some(out)
-}
-
-/// Small procedural sound effects (no sound files needed).
-fn synth(sfx: Sfx, seed: u32) -> Vec<f32> {
-    let rate = 44100.0;
-    let mut state = seed.wrapping_mul(747796405).wrapping_add(2891336453) | 1;
-    let mut noise = move || {
-        state ^= state << 13;
-        state ^= state >> 17;
-        state ^= state << 5;
-        (state as f32 / u32::MAX as f32) * 2.0 - 1.0
-    };
-    if let Some(v) = synth_special(sfx, &mut noise) {
-        return v;
-    }
-    let (mat, dur, gain) = match sfx {
-        Sfx::Break(m) => (m, 0.22, 0.9),
-        Sfx::Place(m) => (m, 0.12, 0.7),
-        Sfx::Step(m) => (m, 0.09, 0.25),
-        Sfx::Click => (Material::Glass, 0.04, 0.4),
-        _ => (Material::Cloth, 0.05, 0.3),
-    };
-    // Low-pass amount and a resonant tone per material.
-    let (lp, tone, tone_mix): (f32, f32, f32) = match mat {
-        Material::Stone => (0.55, 180.0, 0.15),
-        Material::Wood => (0.25, 140.0, 0.45),
-        Material::Grass => (0.18, 0.0, 0.0),
-        Material::Sand => (0.4, 0.0, 0.0),
-        Material::Glass => (0.85, 1800.0, 0.35),
-        Material::Cloth => (0.08, 0.0, 0.0),
-    };
-    let n = (dur * rate) as usize;
-    let mut out = Vec::with_capacity(n);
-    let mut y = 0.0f32;
-    let crunch = matches!(mat, Material::Sand | Material::Grass);
-    for i in 0..n {
-        let t = i as f32 / rate;
-        let env = (1.0 - t / dur).max(0.0).powf(if matches!(sfx, Sfx::Step(_)) { 3.0 } else { 2.0 });
-        let mut x = noise();
-        if crunch && (i / 300) % 3 == 0 {
-            x *= 0.3;
-        }
-        y += lp * (x - y);
-        let s = y * (1.0 - tone_mix) + (t * tone * std::f32::consts::TAU).sin() * tone_mix * (1.0 - t / dur);
-        out.push(s * env * gain);
-    }
-    out
 }

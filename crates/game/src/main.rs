@@ -10,6 +10,7 @@ mod mobs;
 mod paintings;
 mod renderer;
 mod settings;
+mod sfx;
 mod textures;
 mod ui;
 mod world;
@@ -258,6 +259,19 @@ struct Game {
     painting_scroll: usize,
     painting_check: f32,
 
+    /// Survival mining: block being broken and how far along (seconds).
+    mining: Option<(IVec3, f32)>,
+    mining_tick: f32,
+    sprinting: bool,
+    /// Time W was last pressed (double tap = sprint).
+    last_w: f32,
+    /// 0..1 smoothed sneak (camera drop) and sprint (wider view).
+    crouch: f32,
+    fov_kick: f32,
+    was_in_water: bool,
+    swim_dist: f32,
+    bubble_cd: f32,
+
     ui: UiBatch,
     show_debug: bool,
     hide_hud: bool,
@@ -429,6 +443,15 @@ impl Game {
             painting_preview: None,
             painting_scroll: 0,
             painting_check: 0.0,
+            mining: None,
+            mining_tick: 0.0,
+            sprinting: false,
+            last_w: -10.0,
+            crouch: 0.0,
+            fov_kick: 0.0,
+            was_in_water: false,
+            swim_dist: 0.0,
+            bubble_cd: 4.0,
             ui,
             show_debug,
             hide_hud: false,
@@ -569,6 +592,12 @@ impl Game {
                     a.skip(sit, &self.settings);
                 }
             }
+            KeyCode::KeyW if self.screen == Screen::Playing => {
+                if self.now - self.last_w < 0.3 {
+                    self.sprinting = true;
+                }
+                self.last_w = self.now;
+            }
             KeyCode::Space if self.screen == Screen::Playing && !self.survival => {
                 if self.now - self.last_space < 0.3 {
                     self.body.flying = !self.body.flying;
@@ -685,7 +714,8 @@ impl Game {
             let mut ready = true;
             for dz in -near..=near {
                 for dx in -near..=near {
-                    if !self.world.is_meshed(c + ChunkPos::new(dx, dz)) {
+                    // Chunks load in a circle, so only wait for the ones inside it.
+                    if dx * dx + dz * dz <= near * near && !self.world.is_meshed(c + ChunkPos::new(dx, dz)) {
                         ready = false;
                     }
                 }
@@ -792,8 +822,22 @@ impl Game {
             wish,
             jump: k(KeyCode::Space) || held(Action::Jump),
             sneak: k(KeyCode::ShiftLeft) || k(KeyCode::ShiftRight) || held(Action::Sneak),
-            sprint: k(KeyCode::ControlLeft) || k(KeyCode::ControlRight) || held(Action::Sprint),
+            sprint: false,
         };
+        // Sprint: Ctrl, double-tap W, or the pad button; it lasts while moving forward.
+        let sneaking = input.sneak && !self.body.flying;
+        if k(KeyCode::ControlLeft) || k(KeyCode::ControlRight) || held(Action::Sprint) {
+            self.sprinting = true;
+        }
+        let forward_amount = wish.dot(fwd);
+        if forward_amount < 0.3 || sneaking || (!k(KeyCode::KeyW) && !(playing && self.pads.pad.connected && self.pads.pad.ly > 0.3)) {
+            self.sprinting = false;
+        }
+        let input = Input { sprint: self.sprinting, ..input };
+        let ease = (dt * 10.0).min(1.0);
+        self.crouch += ((if sneaking { 1.0 } else { 0.0 }) - self.crouch) * ease;
+        let moving = (self.body.vel * Vec3::new(1.0, 0.0, 1.0)).length() > 1.0;
+        self.fov_kick += ((if self.sprinting && moving { 1.0 } else { 0.0 }) - self.fov_kick) * ease * 0.8;
         let before = self.body.pos;
         let was_ground = self.body.on_ground;
         // The camera pass for screenshots holds still.
@@ -813,6 +857,31 @@ impl Game {
                         a.play(Sfx::Step(m), vol);
                     }
                 }
+            }
+        }
+
+        // Water: splash going in, strokes while swimming, drips coming out, bubbles below.
+        let in_water = self.body.in_water;
+        if in_water && !self.was_in_water {
+            let strength = (-self.body.vel.y / 14.0).clamp(0.25, 1.0);
+            self.sfx(Sfx::Splash(strength));
+            self.swim_dist = 0.0;
+        } else if !in_water && self.was_in_water && self.body.vel.y > -1.0 {
+            self.sfx(Sfx::WaterExit);
+        }
+        self.was_in_water = in_water;
+        if in_water && !self.body.flying {
+            self.swim_dist += (self.body.pos - before).length();
+            if self.swim_dist > 2.2 {
+                self.swim_dist = 0.0;
+                self.sfx(if self.body.head_in_water { Sfx::Bubbles } else { Sfx::Swim });
+            }
+        }
+        if self.body.head_in_water {
+            self.bubble_cd -= dt;
+            if self.bubble_cd <= 0.0 {
+                self.bubble_cd = 3.0 + (self.now * 7.3).sin().abs() * 4.0;
+                self.sfx(Sfx::Bubbles);
             }
         }
 
@@ -859,12 +928,42 @@ impl Game {
                 }
             }
         }
-        if attack && self.break_cd <= 0.0 {
+        // Survival: hold to dig, with a knock every few moments, like the classic game.
+        if self.survival {
+            let target = self.target.map(|t| t.block);
+            match (attack && self.break_cd <= 0.0, target) {
+                (true, Some(b)) => {
+                    let id = self.world.block_or_air(b);
+                    let progress = match self.mining {
+                        Some((p, t)) if p == b => t + dt,
+                        _ => {
+                            self.mining_tick = 0.0;
+                            0.0
+                        }
+                    };
+                    self.mining = Some((b, progress));
+                    self.mining_tick -= dt;
+                    if self.mining_tick <= 0.0 && id != AIR {
+                        self.mining_tick = 0.24;
+                        self.sfx(Sfx::Hit(Material::of(&self.reg.get(id).name)));
+                    }
+                }
+                _ => self.mining = None,
+            }
+        }
+        let dig_done = match self.mining {
+            Some((b, t)) => {
+                let id = self.world.block_or_air(b);
+                t >= self.dig_time(id)
+            }
+            None => false,
+        };
+        if attack && self.break_cd <= 0.0 && (!self.survival || dig_done) {
             if let Some(hit) = self.target {
                 let id = self.world.block_or_air(hit.block);
                 if id != AIR && self.reg.get(id).hardness >= 0.0 && self.world.break_block(hit.block) {
-                    // Survival: harder blocks take longer (no tools yet).
-                    self.break_cd = if self.survival { 0.25 + self.reg.get(id).hardness.min(5.0) * 0.25 } else { 0.22 };
+                    self.mining = None;
+                    self.break_cd = if self.survival { 0.25 } else { 0.22 };
                     let m = Material::of(&self.reg.get(id).name);
                     let vol = self.settings.sound_volume;
                     if let Some(a) = self.audio.as_mut() {
@@ -972,6 +1071,16 @@ impl Game {
         }
         if fits.len() > rows {
             self.ui.text(x, y, &format!("roda do mouse: mais ({}/{})", self.painting_scroll + rows.min(fits.len()), fits.len()), GRAY);
+        }
+    }
+
+    /// Seconds to dig a block by hand in survival (no tools yet).
+    fn dig_time(&self, id: BlockId) -> f32 {
+        let h = self.reg.get(id).hardness.max(0.0);
+        if h == 0.0 {
+            0.05
+        } else {
+            0.15 + h.min(10.0) * 0.6
         }
     }
 
@@ -1263,6 +1372,19 @@ impl Game {
             self.ui.frame(sx - s, hy - s, cell + 2.0 * s, cell + 2.0 * s, 2.0 * s, [255, 255, 255, 255]);
             if self.body.flying {
                 self.ui.text(4.0 * s, h - 12.0 * s, "Voando", GRAY);
+            } else if self.crouch > 0.5 {
+                self.ui.text(4.0 * s, h - 12.0 * s, "Agachado", GRAY);
+            } else if self.sprinting {
+                self.ui.text(4.0 * s, h - 12.0 * s, "Correndo", GRAY);
+            }
+            if let Some((b, t)) = self.mining {
+                let id = self.world.block_or_air(b);
+                let k = (t / self.dig_time(id)).clamp(0.0, 1.0);
+                if k > 0.02 {
+                    let bw = 24.0 * s;
+                    self.ui.rect(w / 2.0 - bw / 2.0, h / 2.0 + 8.0 * s, bw, 2.0 * s, [0, 0, 0, 160]);
+                    self.ui.rect(w / 2.0 - bw / 2.0, h / 2.0 + 8.0 * s, bw * k, 2.0 * s, [230, 230, 230, 230]);
+                }
             }
             if self.survival {
                 // Ten hearts above the left of the hotbar, bubbles on the right under water.
@@ -1767,6 +1889,9 @@ impl Game {
     fn frame(&mut self) {
         let now = Instant::now();
         let dt = (now - self.last).as_secs_f32().min(0.1);
+        if self.args.screenshot.is_some() && self.screen == Screen::Loading && self.frame_times.len() == 29 {
+            log::info!("loading: {:.1} fps, {} meshed, {} jobs", self.fps, self.world.meshed_count, self.world.pending_jobs());
+        }
         self.last = now;
         self.frame_times.push(dt);
         if self.frame_times.len() >= 30 {
@@ -1775,7 +1900,7 @@ impl Game {
         }
         self.update(dt);
 
-        let eye = self.body.eye();
+        let eye = self.body.eye() - Vec3::Y * (0.25 * self.crouch);
         let block = eye.floor().as_ivec3();
         let (top, horizon, daylight, sun) = self.sky();
         let underwater = self.body.head_in_water;
@@ -1796,7 +1921,7 @@ impl Game {
             block,
             frac: Vec3::from_slice(&g.cam_pos[..3]),
             forward: self.forward(),
-            fov_y: self.settings.fov.to_radians(),
+            fov_y: (self.settings.fov * (1.0 + 0.12 * self.fov_kick)).to_radians(),
             far: rd + 32.0,
         };
 
@@ -1853,6 +1978,9 @@ impl Game {
         let mut exit_after = false;
         if self.args.screenshot.is_some() && self.screen != Screen::Loading {
             self.loaded_frames += 1;
+            if self.loaded_frames % 30 == 0 {
+                log::info!("screenshot wait: frame {}, {:.1} fps, {} jobs pending", self.loaded_frames, self.fps, self.world.pending_jobs());
+            }
             if (self.loaded_frames > 30 && self.world.pending_jobs() == 0) || self.loaded_frames > 1500 {
                 capture = true;
                 exit_after = true;
