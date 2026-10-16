@@ -125,7 +125,7 @@ impl Weather {
         self.rain_sound_in -= dt;
         if self.rain_sound_in <= 0.0 {
             self.rain_sound_in = 1.95;
-            let dry = matches!(here, Biome::Desert) || self.snowing_here;
+            let dry = matches!(here, Biome::Desert | Biome::Badlands) || self.snowing_here;
             let roofed = world.surface_y(eye.x.floor() as i32, eye.z.floor() as i32).is_some_and(|y| y as f32 > eye.y + 1.0);
             self.rain_sound = !dry && self.rain > 0.3;
             if roofed {
@@ -151,7 +151,7 @@ impl Weather {
                 }
                 let (x, z) = (cb.x + dx, cb.z + dz);
                 let biome = world.gen.biome_at(x, z);
-                if matches!(biome, Biome::Desert) {
+                if matches!(biome, Biome::Desert | Biome::Badlands) {
                     continue;
                 }
                 let Some(surface) = world.surface_y(x, z) else { continue };

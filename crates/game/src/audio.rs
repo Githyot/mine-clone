@@ -134,6 +134,8 @@ impl Material {
             Material::Ore
         } else if name.ends_with("iron_block") || name.ends_with("gold_block") || name.ends_with("diamond_block") || has("anvil") || has("iron_door") {
             Material::Metal
+        } else if has("leaves") || has("sapling") || has("mushroom") || name == "vine" || name == "lily_pad" {
+            Material::Leaves
         } else if has("log") || has("planks") || has("crafting") || name == "bookshelf" || has("oak_") || has("chest") || has("door") || has("fence") || has("ladder") {
             Material::Wood
         } else if has("wool") || name == "sponge" || has("_bed") || has("carpet") {

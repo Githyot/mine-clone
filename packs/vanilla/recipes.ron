@@ -1,8 +1,8 @@
 // Crafting and smelting. Ingredients are item names or #tags.
 (
     tags: {
-        "planks": ["oak_planks", "birch_planks", "spruce_planks"],
-        "logs": ["oak_log", "birch_log", "spruce_log"],
+        "planks": ["oak_planks", "birch_planks", "spruce_planks", "jungle_planks", "acacia_planks", "dark_oak_planks", "cherry_planks"],
+        "logs": ["oak_log", "birch_log", "spruce_log", "jungle_log", "acacia_log", "dark_oak_log", "cherry_log"],
         "coals": ["coal", "charcoal"],
         "stone_tool_materials": ["cobblestone", "mossy_cobblestone"],
         "wool": ["white_wool", "orange_wool", "magenta_wool", "light_blue_wool", "yellow_wool", "lime_wool", "pink_wool", "gray_wool", "light_gray_wool", "cyan_wool", "purple_wool", "blue_wool", "brown_wool", "green_wool", "red_wool", "black_wool"],
@@ -86,6 +86,10 @@
         (ingredients: ["oak_log"], result: "oak_planks", count: 4),
         (ingredients: ["birch_log"], result: "birch_planks", count: 4),
         (ingredients: ["spruce_log"], result: "spruce_planks", count: 4),
+        (ingredients: ["jungle_log"], result: "jungle_planks", count: 4),
+        (ingredients: ["acacia_log"], result: "acacia_planks", count: 4),
+        (ingredients: ["dark_oak_log"], result: "dark_oak_planks", count: 4),
+        (ingredients: ["cherry_log"], result: "cherry_planks", count: 4),
         (ingredients: ["copper_ingot", "copper_ingot", "copper_ingot", "tin_ingot"], result: "bronze_ingot", count: 4),
         (ingredients: ["iron_block"], result: "iron_ingot", count: 9),
         (ingredients: ["gold_block"], result: "gold_ingot", count: 9),

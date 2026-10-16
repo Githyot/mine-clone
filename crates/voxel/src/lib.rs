@@ -16,6 +16,7 @@ pub mod rng;
 pub mod save;
 pub mod shapes;
 pub mod structures;
+pub mod trees;
 pub mod worldgen;
 
 pub use block::{BlockId, BlockRegistry, AIR};

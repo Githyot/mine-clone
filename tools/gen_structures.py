@@ -151,7 +151,7 @@ def tower():
     layers.append(rail)
     return {
         "name": "torre_de_vigia",
-        "biomes": ["Plains", "Forest", "Birch Forest", "Taiga", "Mountains", "Snowy Plains"],
+        "biomes": ["Plains", "Forest", "Birch Forest", "Taiga", "Mountains", "Snowy Plains", "Savanna"],
         "spacing": 18,
         "chance": 0.55,
         "foundation": "cobblestone",
@@ -174,7 +174,7 @@ def ruin():
     layers = [floor] + plan
     return {
         "name": "ruina",
-        "biomes": ["Plains", "Forest", "Birch Forest", "Taiga", "Snowy Plains", "Mountains"],
+        "biomes": ["Plains", "Forest", "Birch Forest", "Taiga", "Snowy Plains", "Mountains", "Jungle", "Dark Forest", "Cherry Grove"],
         "spacing": 9,
         "chance": 0.4,
         "sink": 1,
@@ -198,7 +198,7 @@ def well():
     layers[0] = ["SSSSS", "SSSSS", "SSSSS", "SSSSS", "SSSSS"]
     return {
         "name": "poco_do_deserto",
-        "biomes": ["Desert"],
+        "biomes": ["Desert", "Badlands"],
         "spacing": 10,
         "chance": 0.5,
         "sink": 1,
@@ -239,7 +239,9 @@ def ron(structs):
 structs = [
     house("oak_planks", "oak_log", "oak_roof", ["Plains", "Forest"], "casa_de_carvalho"),
     house("spruce_planks", "spruce_log", "spruce_roof", ["Taiga", "Snowy Plains"], "casa_de_pinheiro"),
-    house("birch_planks", "birch_log", "brick_roof", ["Birch Forest"], "casa_de_betula"),
+    house("birch_planks", "birch_log", "brick_roof", ["Birch Forest", "Cherry Grove"], "casa_de_betula"),
+    house("acacia_planks", "acacia_log", "brick_roof", ["Savanna"], "casa_de_acacia"),
+    house("dark_oak_planks", "dark_oak_log", "spruce_roof", ["Dark Forest", "Swamp"], "cabana_escura"),
     tower(),
     ruin(),
     well(),

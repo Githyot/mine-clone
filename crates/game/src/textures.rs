@@ -191,10 +191,18 @@ fn minecraft_names(name: &str) -> Vec<String> {
         "torch" => &["torch_on"],
         "dead_bush" => &["deadbush"],
         "melon_side" => &["melon_side"],
+        "dark_oak_log" => &["log_big_oak"],
+        "dark_oak_log_top" => &["log_big_oak_top"],
+        "dark_oak_planks" => &["planks_big_oak"],
+        "dark_oak_leaves" => &["leaves_big_oak"],
+        "terracotta" => &["hardened_clay"],
+        "red_mushroom" => &["mushroom_red"],
+        "brown_mushroom" => &["mushroom_brown"],
+        "lily_pad" => &["waterlily"],
         _ => &[],
     };
     v.extend(extra.iter().map(|s| s.to_string()));
-    for wood in ["oak", "birch", "spruce"] {
+    for wood in ["oak", "birch", "spruce", "jungle", "acacia"] {
         if name == format!("{wood}_log") {
             v.push(format!("log_{wood}"));
         } else if name == format!("{wood}_log_top") {
@@ -219,6 +227,9 @@ fn minecraft_tint(name: &str) -> Option<[u8; 3]> {
         "oak_leaves" => Some([0x59, 0xAE, 0x30]),
         "spruce_leaves" => Some([0x61, 0x99, 0x61]),
         "birch_leaves" => Some([0x80, 0xA7, 0x55]),
+        "jungle_leaves" | "vine" => Some([0x4A, 0xB0, 0x2A]),
+        "acacia_leaves" | "dark_oak_leaves" => Some([0x5C, 0xA8, 0x34]),
+        "lily_pad" => Some([0x2E, 0x80, 0x30]),
         "water" => Some([0x3F, 0x76, 0xE4]),
         _ => None,
     }

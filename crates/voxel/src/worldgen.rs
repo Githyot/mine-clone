@@ -5,6 +5,7 @@ use crate::block::{BlockId, BlockRegistry, AIR};
 use crate::chunk::{Chunk, ChunkPos, CHUNK_HEIGHT};
 use crate::noise::Perlin;
 use crate::rng::Rng;
+use crate::trees::{self, TreeBlocks, TreeKind, TreeSpace, Wood};
 
 pub const SEA_LEVEL: i32 = 62;
 
@@ -20,10 +21,16 @@ pub enum Biome {
     Mountains = 6,
     BirchForest = 7,
     Taiga = 8,
+    Swamp = 9,
+    Jungle = 10,
+    Savanna = 11,
+    DarkForest = 12,
+    Badlands = 13,
+    CherryGrove = 14,
 }
 
 impl Biome {
-    pub const COUNT: usize = 9;
+    pub const COUNT: usize = 15;
 
     pub fn from_u8(v: u8) -> Biome {
         match v {
@@ -35,6 +42,12 @@ impl Biome {
             6 => Biome::Mountains,
             7 => Biome::BirchForest,
             8 => Biome::Taiga,
+            9 => Biome::Swamp,
+            10 => Biome::Jungle,
+            11 => Biome::Savanna,
+            12 => Biome::DarkForest,
+            13 => Biome::Badlands,
+            14 => Biome::CherryGrove,
             _ => Biome::Plains,
         }
     }
@@ -50,6 +63,12 @@ impl Biome {
             Biome::Mountains => "Mountains",
             Biome::BirchForest => "Birch Forest",
             Biome::Taiga => "Taiga",
+            Biome::Swamp => "Swamp",
+            Biome::Jungle => "Jungle",
+            Biome::Savanna => "Savanna",
+            Biome::DarkForest => "Dark Forest",
+            Biome::Badlands => "Badlands",
+            Biome::CherryGrove => "Cherry Grove",
         }
     }
 
@@ -64,6 +83,21 @@ impl Biome {
             Biome::Mountains => [0.9, 0.98, 0.95],
             Biome::BirchForest => [1.0, 1.05, 0.85],
             Biome::Taiga => [0.78, 0.92, 0.88],
+            Biome::Swamp => [0.74, 0.8, 0.58],
+            Biome::Jungle => [0.82, 1.12, 0.66],
+            Biome::Savanna => [1.16, 1.0, 0.6],
+            Biome::DarkForest => [0.72, 0.86, 0.72],
+            Biome::Badlands => [1.14, 0.94, 0.62],
+            Biome::CherryGrove => [1.02, 1.08, 0.9],
+        }
+    }
+
+    /// Water colour multiplier (RGB): murky green in swamps, plain elsewhere.
+    pub fn water_tint(self) -> [f32; 3] {
+        match self {
+            Biome::Swamp => [0.52, 0.74, 0.4],
+            Biome::Jungle => [0.88, 1.04, 0.96],
+            _ => [1.0, 1.0, 1.0],
         }
     }
 }
@@ -85,11 +119,8 @@ struct Palette {
     snow_layer2: BlockId,
     bedrock: BlockId,
     lava: BlockId,
-    oak_log: BlockId,
     oak_leaves: BlockId,
-    birch_log: BlockId,
     birch_leaves: BlockId,
-    spruce_log: BlockId,
     spruce_leaves: BlockId,
     cactus: BlockId,
     short_grass: BlockId,
@@ -98,6 +129,13 @@ struct Palette {
     dead_bush: BlockId,
     pumpkin: BlockId,
     melon: BlockId,
+    red_sand: BlockId,
+    terracotta: BlockId,
+    lily_pad: BlockId,
+    red_mushroom: BlockId,
+    brown_mushroom: BlockId,
+    cobblestone: BlockId,
+    mossy_cobblestone: BlockId,
     /// (block, min y, max y, veins per chunk, vein size)
     ores: Vec<(BlockId, i32, i32, u32, u32)>,
     emerald: BlockId,
@@ -134,11 +172,8 @@ impl Palette {
             snow_layer2: g("snow_layer:1"),
             bedrock: g("bedrock"),
             lava: g("lava"),
-            oak_log: g("oak_log"),
             oak_leaves: g("oak_leaves"),
-            birch_log: g("birch_log"),
             birch_leaves: g("birch_leaves"),
-            spruce_log: g("spruce_log"),
             spruce_leaves: g("spruce_leaves"),
             cactus: g("cactus"),
             short_grass: g("short_grass"),
@@ -147,6 +182,13 @@ impl Palette {
             dead_bush: g("dead_bush"),
             pumpkin: g("pumpkin"),
             melon: g("melon"),
+            red_sand: g("red_sand"),
+            terracotta: g("terracotta"),
+            lily_pad: g("lily_pad"),
+            red_mushroom: g("red_mushroom"),
+            brown_mushroom: g("brown_mushroom"),
+            cobblestone: g("cobblestone"),
+            mossy_cobblestone: g("mossy_cobblestone"),
             ores,
             emerald: g("emerald_ore"),
         }
@@ -163,8 +205,39 @@ pub struct Generator {
     cave_a: Perlin,
     cave_b: Perlin,
     cheese: Perlin,
+    /// Picks the rarer variant of a climate (badlands in deserts, dark forests, cherry groves).
+    variant: Perlin,
     pal: Palette,
     structures: std::sync::Arc<crate::structures::Structures>,
+    trees: TreeBlocks,
+    /// Coloured terracotta layers of the badlands, repeating every `BANDS` blocks.
+    bands: [BlockId; BANDS],
+}
+
+const BANDS: usize = 48;
+
+fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
+    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// A chunk seen as a place to grow trees: writes outside it are dropped.
+struct ChunkSpace<'a>(&'a mut Chunk);
+
+impl TreeSpace for ChunkSpace<'_> {
+    fn get(&self, x: i32, y: i32, z: i32) -> BlockId {
+        if (0..16).contains(&x) && (0..16).contains(&z) && (0..CHUNK_HEIGHT as i32).contains(&y) {
+            self.0.get(x as usize, y as usize, z as usize)
+        } else {
+            BlockId::MAX
+        }
+    }
+
+    fn set(&mut self, x: i32, y: i32, z: i32, id: BlockId) {
+        if (0..16).contains(&x) && (0..16).contains(&z) && (0..CHUNK_HEIGHT as i32).contains(&y) {
+            self.0.set(x as usize, y as usize, z as usize, id);
+        }
+    }
 }
 
 /// What the top of one column looks like, without generating the chunk (distant terrain).
@@ -189,6 +262,28 @@ struct Column {
 
 impl Generator {
     pub fn new(seed: u64, reg: &BlockRegistry) -> Self {
+        // The badlands' layers: mostly plain terracotta with runs of colour, fixed per seed.
+        let g = |n: &str| reg.id_or_air(n);
+        let colours = [
+            g("terracotta"),
+            g("orange_terracotta"),
+            g("yellow_terracotta"),
+            g("red_terracotta"),
+            g("brown_terracotta"),
+            g("white_terracotta"),
+            g("light_gray_terracotta"),
+        ];
+        let mut bands = [colours[0]; BANDS];
+        let mut r = Rng::new(seed ^ 0xBAD1_A4D5);
+        let mut i = 0;
+        while i < BANDS {
+            let c = if r.chance(0.45) { colours[0] } else { colours[1 + r.below(6) as usize] };
+            let run = r.range(1, 3) as usize;
+            for b in bands.iter_mut().skip(i).take(run) {
+                *b = if c == AIR { colours[0] } else { c };
+            }
+            i += run;
+        }
         Generator {
             structures: std::sync::Arc::new(crate::structures::Structures::empty()),
             seed,
@@ -200,7 +295,10 @@ impl Generator {
             cave_a: Perlin::new(seed ^ 0x06),
             cave_b: Perlin::new(seed ^ 0x07),
             cheese: Perlin::new(seed ^ 0x08),
+            variant: Perlin::new(seed ^ 0x09),
             pal: Palette::new(reg),
+            trees: TreeBlocks::new(reg),
+            bands,
         }
     }
 
@@ -217,14 +315,44 @@ impl Generator {
             h += cont * 10.0;
         }
         h += mount_mask * ridges * ridges * 95.0 * cont.max(0.05).sqrt();
+
+        let climate = self.temperature.fbm2(x / 1100.0, z / 1100.0, 3);
+        let hum = self.humidity.fbm2(x / 900.0 + 300.0, z / 900.0, 3);
+        let var = self.variant.fbm2(x / 520.0 - 70.0, z / 520.0, 2);
+        let sea = SEA_LEVEL as f32;
+        // Badlands: the driest corner of the deserts rises in flat-topped terraces.
+        let bad = smoothstep(0.27, 0.35, climate) * smoothstep(0.06, -0.04, hum) * smoothstep(0.0, 0.12, var);
+        if bad > 0.0 && h > sea + 1.0 {
+            let land = ((h - sea - 1.0) / 6.0).min(1.0);
+            let m = self.detail.fbm2(x / 110.0 + 40.0, z / 110.0 - 40.0, 2);
+            let raise = bad * land * (6.0 + 34.0 * m.max(0.0));
+            // Flat-topped terraces with steep risers, so the cliffs show their layers.
+            let t = h + raise;
+            let k = (t / 7.0).floor();
+            let terraced = (k + (t / 7.0 - k).powi(16)) * 7.0;
+            h = (t + (terraced - t) * smoothstep(0.2, 0.6, bad)).max(sea + 2.0);
+        }
+        // Swamps: wet, mild lowlands flatten out around sea level into pools and mud flats.
+        let swamp = smoothstep(0.26, 0.36, hum) * smoothstep(-0.2, -0.1, climate) * smoothstep(0.3, 0.2, climate);
+        if swamp > 0.0 {
+            let (lo, hi) = (sea - 8.0, sea + 16.0);
+            if h > lo && h < hi {
+                let edge = ((h - lo) / 4.0).min((hi - h) / 6.0).min(1.0);
+                let target = sea - 0.3 + detail * 3.0;
+                h += (target - h) * swamp * edge;
+            }
+        }
         let height = (h as i32).clamp(4, CHUNK_HEIGHT as i32 - 20);
 
-        let temp = self.temperature.fbm2(x / 1100.0, z / 1100.0, 3) - (height - 90).max(0) as f32 / 120.0;
-        let hum = self.humidity.fbm2(x / 900.0 + 300.0, z / 900.0, 3);
-        let biome = if height < SEA_LEVEL - 2 {
+        let temp = climate - (height - 90).max(0) as f32 / 120.0;
+        let biome = if swamp > 0.5 && (SEA_LEVEL - 5..=SEA_LEVEL + 4).contains(&height) {
+            Biome::Swamp
+        } else if height < SEA_LEVEL - 2 {
             Biome::Ocean
-        } else if height <= SEA_LEVEL + 1 && temp > -0.25 {
+        } else if height <= SEA_LEVEL + 1 && temp > -0.25 && swamp < 0.25 {
             Biome::Beach
+        } else if bad > 0.5 {
+            Biome::Badlands
         } else if height > 118 {
             Biome::Mountains
         } else if temp < -0.28 {
@@ -235,8 +363,20 @@ impl Generator {
             }
         } else if temp > 0.32 && hum < 0.05 {
             Biome::Desert
+        } else if temp > 0.22 && (hum > 0.2 || temp > 0.26) {
+            if hum > 0.2 {
+                Biome::Jungle
+            } else {
+                Biome::Savanna
+            }
         } else if hum > 0.22 {
-            Biome::Forest
+            if var > 0.12 {
+                Biome::DarkForest
+            } else {
+                Biome::Forest
+            }
+        } else if var < -0.36 && temp > -0.2 {
+            Biome::CherryGrove
         } else if hum > 0.08 && temp < 0.1 {
             Biome::BirchForest
         } else {
@@ -279,6 +419,9 @@ impl Generator {
                 }
             }
             Biome::Snowy | Biome::Taiga => (p.snow_grass, p.dirt, 3),
+            // Red sand over deep layers of terracotta (the layers are picked in `generate`).
+            Biome::Badlands if p.red_sand != AIR => (p.red_sand, p.terracotta, (h - SEA_LEVEL + 14).max(3)),
+            Biome::Badlands => (p.sand, p.sandstone, 4),
             _ => (p.grass, p.dirt, 3),
         }
     }
@@ -302,6 +445,11 @@ impl Generator {
                 Biome::Taiga => Some((p.spruce_leaves, 1.0)),
                 Biome::Plains => Some((p.oak_leaves, 0.11)),
                 Biome::Snowy | Biome::Mountains if h <= 128 => Some((p.spruce_leaves, 0.11)),
+                Biome::Jungle => Some((self.trees.leaves(Wood::Jungle), 1.0)),
+                Biome::DarkForest => Some((self.trees.leaves(Wood::DarkOak), 1.0)),
+                Biome::Savanna => Some((self.trees.leaves(Wood::Acacia), 0.25)),
+                Biome::CherryGrove => Some((self.trees.leaves(Wood::Cherry), 0.5)),
+                Biome::Swamp => Some((p.oak_leaves, 0.4)),
                 _ => None,
             }
         };
@@ -352,6 +500,9 @@ impl Generator {
                 chunk.biomes[lx + lz * 16] = col.biome as u8;
                 let h = col.height;
                 let (top, filler, filler_depth) = self.top_blocks(col, wx, wz);
+                let banded = filler == p.terracotta && filler != AIR;
+                // Badlands layers wobble a little so they don't look ruled.
+                let wob = if banded { (self.mountain.noise2(wx as f32 / 60.0, wz as f32 / 60.0) * 3.0) as i32 } else { 0 };
                 for y in 0..=h.max(SEA_LEVEL) {
                     let id = if y == 0 || (y <= 4 && rng.below(5) < (5 - y) as u32) {
                         p.bedrock
@@ -376,7 +527,11 @@ impl Generator {
                             top
                         }
                     } else if y > h - filler_depth {
-                        filler
+                        if banded {
+                            self.bands[(y + wob).rem_euclid(BANDS as i32) as usize]
+                        } else {
+                            filler
+                        }
                     } else {
                         p.stone
                     };
@@ -388,7 +543,7 @@ impl Generator {
         }
 
         self.place_ores(&mut chunk, &mut rng, &cols);
-        self.decorate(&mut chunk, &mut rng, &cols);
+        self.decorate(&mut chunk, &mut rng, &cols, pos);
         self.place_structures(&mut chunk);
         chunk
     }
@@ -446,14 +601,20 @@ impl Generator {
         }
     }
 
-    fn decorate(&self, chunk: &mut Chunk, rng: &mut Rng, cols: &[Column]) {
+    fn decorate(&self, chunk: &mut Chunk, rng: &mut Rng, cols: &[Column], pos: ChunkPos) {
         let p = &self.pal;
-        // Trees stay inside the chunk (2 blocks from the edge) so generation never writes to neighbors.
+        // Trees stay inside the chunk (see `TreeKind::reach`) so generation never writes to neighbors.
         let tree_attempts = match cols[8 + 8 * 16].biome {
             Biome::Forest | Biome::BirchForest | Biome::Taiga => 9,
             Biome::Plains | Biome::Snowy => 1,
             Biome::Mountains => 1,
             Biome::Desert => 3,
+            Biome::Jungle => 14,
+            Biome::DarkForest => 16,
+            Biome::Swamp => 4,
+            Biome::Savanna => 2,
+            Biome::CherryGrove => 5,
+            Biome::Badlands => 2,
             _ => 0,
         };
         for _ in 0..tree_attempts {
@@ -461,12 +622,14 @@ impl Generator {
             let z = rng.range(2, 13) as usize;
             let col = &cols[x + z * 16];
             let y = col.height;
-            if y < SEA_LEVEL || y > 200 {
+            // Swamp trees may stand in a block of water.
+            let wading = col.biome == Biome::Swamp && y == SEA_LEVEL - 1;
+            if (y < SEA_LEVEL && !wading) || y > 200 {
                 continue;
             }
             let ground = chunk.get(x, y as usize, z);
-            if col.biome == Biome::Desert {
-                if ground == p.sand && rng.chance(0.6) {
+            if matches!(col.biome, Biome::Desert | Biome::Badlands) {
+                if (ground == p.sand || ground == p.red_sand) && ground != AIR && rng.chance(0.6) {
                     let hgt = rng.range(1, 3);
                     for i in 1..=hgt {
                         chunk.set(x, (y + i) as usize, z, p.cactus);
@@ -474,34 +637,88 @@ impl Generator {
                 }
                 continue;
             }
-            if ground != p.grass && ground != p.snow_grass {
+            if ground != p.grass && ground != p.snow_grass && !(wading && ground == p.dirt) {
                 continue;
             }
-            match col.biome {
-                Biome::Taiga | Biome::Snowy | Biome::Mountains => self.spruce(chunk, rng, x, y, z),
+            let kind = match col.biome {
+                Biome::Taiga | Biome::Snowy | Biome::Mountains => TreeKind::Spruce,
                 Biome::BirchForest => {
                     if rng.chance(0.8) {
-                        self.round_tree(chunk, rng, x, y, z, p.birch_log, p.birch_leaves)
+                        TreeKind::Round(Wood::Birch)
                     } else {
-                        self.round_tree(chunk, rng, x, y, z, p.oak_log, p.oak_leaves)
+                        TreeKind::Round(Wood::Oak)
                     }
                 }
                 Biome::Forest => {
                     if rng.chance(0.2) {
-                        self.round_tree(chunk, rng, x, y, z, p.birch_log, p.birch_leaves)
+                        TreeKind::Round(Wood::Birch)
                     } else {
-                        self.round_tree(chunk, rng, x, y, z, p.oak_log, p.oak_leaves)
+                        TreeKind::Round(Wood::Oak)
                     }
                 }
-                _ => self.round_tree(chunk, rng, x, y, z, p.oak_log, p.oak_leaves),
+                Biome::Jungle => {
+                    let r = rng.f32();
+                    if r < 0.18 {
+                        TreeKind::MegaJungle
+                    } else if r < 0.6 {
+                        TreeKind::Jungle
+                    } else {
+                        TreeKind::Bush(Wood::Jungle)
+                    }
+                }
+                Biome::DarkForest => {
+                    if rng.chance(0.8) {
+                        TreeKind::DarkOak
+                    } else {
+                        TreeKind::Round(Wood::Oak)
+                    }
+                }
+                Biome::Swamp => TreeKind::SwampOak,
+                Biome::Savanna => {
+                    if rng.chance(0.8) {
+                        TreeKind::Acacia
+                    } else {
+                        TreeKind::Round(Wood::Oak)
+                    }
+                }
+                Biome::CherryGrove => {
+                    if rng.chance(0.85) {
+                        TreeKind::Cherry
+                    } else {
+                        TreeKind::Bush(Wood::Oak)
+                    }
+                }
+                _ => TreeKind::Round(Wood::Oak),
+            };
+            // Wide trees are pulled in from the chunk edge; the old trees never move (reach 2).
+            let m = kind.reach();
+            let far = 15 - m - kind.wide_trunk() as i32;
+            let (tx, tz) = ((x as i32).clamp(m, far), (z as i32).clamp(m, far));
+            if (tx, tz) != (x as i32, z as i32) {
+                let c2 = &cols[tx as usize + tz as usize * 16];
+                let g2 = chunk.get(tx as usize, c2.height as usize, tz as usize);
+                if c2.height != y || (g2 != p.grass && !(wading && g2 == p.dirt)) {
+                    continue;
+                }
             }
+            trees::grow(kind, &self.trees, &mut ChunkSpace(chunk), rng, tx, y, tz);
         }
+
+        self.scatter(chunk, cols, pos);
 
         // Ground plants.
         for z in 0..16usize {
             for x in 0..16usize {
                 let col = &cols[x + z * 16];
                 let y = col.height;
+                if col.biome == Biome::Swamp && y < SEA_LEVEL {
+                    // Lily pads on the shallow pools.
+                    let s = SEA_LEVEL as usize;
+                    if y >= SEA_LEVEL - 3 && p.lily_pad != AIR && chunk.get(x, s, z) == p.water && chunk.get(x, s + 1, z) == AIR && rng.chance(0.06) {
+                        chunk.set(x, s + 1, z, p.lily_pad);
+                    }
+                    continue;
+                }
                 if y < SEA_LEVEL || y + 1 >= CHUNK_HEIGHT as i32 {
                     continue;
                 }
@@ -515,16 +732,29 @@ impl Generator {
                     let grass_p = match col.biome {
                         Biome::Plains => 0.22,
                         Biome::Forest | Biome::BirchForest => 0.12,
+                        Biome::Savanna => 0.42,
+                        Biome::Jungle => 0.32,
+                        Biome::CherryGrove => 0.2,
+                        Biome::Swamp => 0.14,
+                        Biome::DarkForest => 0.08,
                         _ => 0.06,
                     };
-                    if r < 0.012 {
+                    let flower_p = if col.biome == Biome::CherryGrove { 0.05 } else { 0.012 };
+                    if r < flower_p {
                         chunk.set(x, above, z, if rng.chance(0.5) { p.poppy } else { p.dandelion });
-                    } else if r < 0.012 + grass_p {
+                    } else if r < flower_p + grass_p {
                         chunk.set(x, above, z, p.short_grass);
                     } else if r < 0.0125 + grass_p && col.biome == Biome::Plains {
                         chunk.set(x, above, z, if rng.chance(0.5) { p.pumpkin } else { p.melon });
+                    } else if r > 0.995 && col.biome == Biome::Jungle {
+                        chunk.set(x, above, z, p.melon);
+                    } else if r > 0.97 && matches!(col.biome, Biome::DarkForest | Biome::Swamp) {
+                        let m = if rng.chance(0.5) { p.red_mushroom } else { p.brown_mushroom };
+                        if m != AIR {
+                            chunk.set(x, above, z, m);
+                        }
                     }
-                } else if ground == p.sand && col.biome == Biome::Desert && rng.chance(0.01) {
+                } else if (ground == p.sand && col.biome == Biome::Desert && rng.chance(0.01)) || (ground == p.red_sand && ground != AIR && rng.chance(0.012)) {
                     chunk.set(x, above, z, p.dead_bush);
                 } else if ground == p.snow_grass && chunk.get(x, above, z) == AIR && p.snow_layer != AIR {
                     // A blanket of snow, a little deeper here and there.
@@ -535,64 +765,83 @@ impl Generator {
         }
     }
 
-    fn round_tree(&self, chunk: &mut Chunk, rng: &mut Rng, x: usize, y: i32, z: usize, log: BlockId, leaves: BlockId) {
-        let h = rng.range(4, 6);
-        let top = y + h;
-        if top + 2 >= CHUNK_HEIGHT as i32 {
+    /// Small extras on their own random stream, so the older trees and plants keep their places:
+    /// mossy boulders and bushes (ideas from Distant Lands and Ecologics).
+    fn scatter(&self, chunk: &mut Chunk, cols: &[Column], pos: ChunkPos) {
+        let p = &self.pal;
+        let mut rng = Rng::for_pos(self.seed, pos.x, pos.y, 2);
+        let biome = cols[8 + 8 * 16].biome;
+        let (boulder_p, mossy) = match biome {
+            Biome::Taiga => (0.3, 0.6),
+            Biome::Mountains => (0.25, 0.15),
+            Biome::Snowy => (0.1, 0.0),
+            Biome::Forest | Biome::BirchForest => (0.1, 0.7),
+            Biome::DarkForest => (0.2, 0.9),
+            Biome::Plains | Biome::Savanna => (0.05, 0.2),
+            Biome::Swamp | Biome::Jungle => (0.05, 0.95),
+            _ => (0.0, 0.0),
+        };
+        if p.cobblestone != AIR && rng.chance(boulder_p) {
+            let (x, z) = (rng.range(2, 13), rng.range(2, 13));
+            self.boulder(chunk, &mut rng, cols, x, z, mossy);
+        }
+        let (bushes, wood) = match biome {
+            Biome::Plains => (if rng.chance(0.4) { 1 } else { 0 }, Wood::Oak),
+            Biome::Forest => (2, Wood::Oak),
+            Biome::BirchForest => (1, Wood::Birch),
+            Biome::Taiga => (1, Wood::Spruce),
+            Biome::Savanna => (2, Wood::Acacia),
+            Biome::CherryGrove => (1, Wood::Oak),
+            Biome::DarkForest => (1, Wood::DarkOak),
+            _ => (0, Wood::Oak),
+        };
+        if !self.trees.has(wood) {
             return;
         }
-        for ly in (top - 2)..=(top + 1) {
-            let r: i32 = if ly >= top { 1 } else { 2 };
-            for dx in -r..=r {
-                for dz in -r..=r {
-                    // Trim corners randomly for the classic round-ish look.
-                    if dx.abs() == r && dz.abs() == r && (ly >= top || rng.chance(0.5)) {
-                        continue;
-                    }
-                    let (px, pz) = (x as i32 + dx, z as i32 + dz);
-                    if (0..16).contains(&px) && (0..16).contains(&pz) {
-                        let (px, py, pz) = (px as usize, ly as usize, pz as usize);
-                        if chunk.get(px, py, pz) == AIR {
-                            chunk.set(px, py, pz, leaves);
-                        }
-                    }
-                }
+        for _ in 0..bushes {
+            let (x, z) = (rng.range(2, 13), rng.range(2, 13));
+            let col = &cols[(x + z * 16) as usize];
+            let y = col.height;
+            if !(SEA_LEVEL..=200).contains(&y) {
+                continue;
+            }
+            let ground = chunk.get(x as usize, y as usize, z as usize);
+            if (ground == p.grass || ground == p.snow_grass) && chunk.get(x as usize, y as usize + 1, z as usize) == AIR {
+                trees::grow(TreeKind::Bush(wood), &self.trees, &mut ChunkSpace(chunk), &mut rng, x, y, z);
             }
         }
-        for ly in (y + 1)..top {
-            chunk.set(x, ly as usize, z, log);
-        }
-        chunk.set(x, y as usize, z, self.pal.dirt);
     }
 
-    fn spruce(&self, chunk: &mut Chunk, rng: &mut Rng, x: usize, y: i32, z: usize) {
+    /// A lump of (mossy) cobblestone that hugs the ground.
+    fn boulder(&self, chunk: &mut Chunk, rng: &mut Rng, cols: &[Column], x: i32, z: i32, mossy: f32) {
         let p = &self.pal;
-        let h = rng.range(6, 9);
-        let top = y + h;
-        if top + 2 >= CHUNK_HEIGHT as i32 {
+        let base = cols[(x + z * 16) as usize].height;
+        if !(SEA_LEVEL..=200).contains(&base) {
             return;
         }
-        let mut r = 0i32;
-        let mut ly = top + 1;
-        while ly > y + 2 {
-            for dx in -r..=r {
-                for dz in -r..=r {
-                    if r > 0 && dx.abs() == r && dz.abs() == r {
+        let r = 1.3 + rng.f32() * 0.9;
+        for dz in -2..=2i32 {
+            for dx in -2..=2i32 {
+                let (px, pz) = (x + dx, z + dz);
+                let d2 = (dx * dx + dz * dz) as f32 + rng.f32() * 0.8;
+                if d2 > r * r {
+                    continue;
+                }
+                let top = base + ((r * r - d2).sqrt() * 1.1).round() as i32;
+                let colh = cols[(px + pz * 16) as usize].height;
+                if colh < SEA_LEVEL {
+                    continue;
+                }
+                for y in (colh + 1)..=top {
+                    let (ux, uy, uz) = (px as usize, y as usize, pz as usize);
+                    if chunk.get(ux, uy, uz) != AIR {
                         continue;
                     }
-                    let (px, pz) = (x as i32 + dx, z as i32 + dz);
-                    if (0..16).contains(&px) && (0..16).contains(&pz) && chunk.get(px as usize, ly as usize, pz as usize) == AIR {
-                        chunk.set(px as usize, ly as usize, pz as usize, p.spruce_leaves);
-                    }
+                    let b = if p.mossy_cobblestone != AIR && rng.chance(mossy) { p.mossy_cobblestone } else if rng.chance(0.25) { p.stone } else { p.cobblestone };
+                    chunk.set(ux, uy, uz, b);
                 }
             }
-            r = if r >= 2 { 1 } else { r + 1 };
-            ly -= 1;
         }
-        for ly in (y + 1)..=top {
-            chunk.set(x, ly as usize, z, p.spruce_log);
-        }
-        chunk.set(x, y as usize, z, p.dirt);
     }
 
     /// A good spawn point: a land column near the origin.
@@ -651,6 +900,71 @@ mod tests {
                     assert_eq!(c.get(lx, SEA_LEVEL as usize, lz), l);
                 }
             }
+        }
+    }
+
+    #[test]
+    fn every_biome_appears() {
+        let reg = registry();
+        let g = Generator::new(1234, &reg);
+        let mut count = [0usize; Biome::COUNT];
+        for z in (-12000..12000).step_by(64) {
+            for x in (-12000..12000).step_by(64) {
+                count[g.biome_at(x, z) as usize] += 1;
+            }
+        }
+        let total: usize = count.iter().sum();
+        for (i, &c) in count.iter().enumerate() {
+            println!("{:>14}: {:.1}%", Biome::from_u8(i as u8).name(), c as f32 * 100.0 / total as f32);
+            assert!(c > 0, "{} never appears", Biome::from_u8(i as u8).name());
+        }
+    }
+
+    #[test]
+    fn new_biomes_grow_their_trees() {
+        let reg = registry();
+        let g = Generator::new(77, &reg);
+        for (biome, log) in [(Biome::Jungle, "jungle_log"), (Biome::Savanna, "acacia_log"), (Biome::DarkForest, "dark_oak_log"), (Biome::CherryGrove, "cherry_log")] {
+            let log = reg.id(log).unwrap();
+            let mut found = false;
+            'search: for cz in -100..100 {
+                for cx in -100..100 {
+                    let (x, z) = (cx * 112 + 8, cz * 112 + 8);
+                    if g.biome_at(x, z) != biome {
+                        continue;
+                    }
+                    let c = g.generate(ChunkPos::new(x >> 4, z >> 4));
+                    if c.all_blocks().contains(&log) {
+                        found = true;
+                        break 'search;
+                    }
+                }
+            }
+            assert!(found, "no {} trees", biome.name());
+        }
+    }
+
+    /// Prints where each biome can be found (for screenshots):
+    /// `SEED=1 cargo test -p voxel --release -- --ignored --nocapture print_biome`.
+    #[test]
+    #[ignore]
+    fn print_biome_locations() {
+        let reg = registry();
+        let seed = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1234);
+        let g = Generator::new(seed, &reg);
+        let mut best: Vec<Option<(i32, i32, i32)>> = vec![None; Biome::COUNT];
+        for r in (0..8000).step_by(48) {
+            for (x, z) in [(r, 0), (-r, 0), (0, r), (0, -r), (r, r), (-r, r), (r, -r), (-r, -r)] {
+                let b = g.biome_at(x, z) as usize;
+                // Prefer the middle of a patch: the same biome 40 blocks around.
+                let solid = [(40, 0), (-40, 0), (0, 40), (0, -40)].iter().all(|(dx, dz)| g.biome_at(x + dx, z + dz) as usize == b);
+                if best[b].is_none() && solid {
+                    best[b] = Some((x, g.height_at(x, z), z));
+                }
+            }
+        }
+        for (i, b) in best.iter().enumerate() {
+            println!("{:>14}: {:?}", Biome::from_u8(i as u8).name(), b);
         }
     }
 }

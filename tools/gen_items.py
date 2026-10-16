@@ -897,6 +897,27 @@ def sapling(wood):
             ".......s........",
         ]
         lp = leaves
+    elif wood == "acacia":
+        # a flat umbrella crown on a bent stem
+        rows = [
+            "................",
+            "................",
+            "................",
+            "...4455443......",
+            "..44554433322...",
+            ".4443333333221..",
+            "....32.s.22.....",
+            ".......s........",
+            "......s.........",
+            "......s..4432...",
+            ".....s..443322..",
+            ".....s....s.....",
+            "......s..s......",
+            ".......ss.......",
+            ".......s........",
+            ".......s........",
+        ]
+        lp = leaves
     else:
         rows = [
             "................",
@@ -1278,7 +1299,7 @@ def item_registry():
         "cooked_mutton": cooked_mutton,
         "red_bed": red_bed_item,
     })
-    for wood in ("oak", "birch", "spruce"):
+    for wood in ("oak", "birch", "spruce", "jungle", "acacia", "dark_oak", "cherry"):
         reg[f"{wood}_sapling"] = lambda w=wood: sapling(w)
     for mat in ARMOR_MATERIALS:
         for kind in ARMOR_KINDS:
@@ -1294,7 +1315,7 @@ def block_registry():
         "red_bed_top": red_bed_top, "red_bed_side": red_bed_side,
         "red_bed_end": red_bed_end, "xp_orb": xp_orb,
     }
-    for wood in ("oak", "birch", "spruce"):
+    for wood in ("oak", "birch", "spruce", "jungle", "acacia", "dark_oak", "cherry"):
         reg[f"{wood}_sapling"] = lambda w=wood: sapling(w)
     return reg
 

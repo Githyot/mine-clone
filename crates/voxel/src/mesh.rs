@@ -144,6 +144,9 @@ pub struct MeshTables {
     /// Liquid surface height in pixels (source 14, falling 16, lower for each step of flow).
     liquid_h: Vec<u32>,
     biome_tints: Vec<[u8; 3]>,
+    /// Water drawn with its biome's water colour (swamps).
+    water: Vec<bool>,
+    water_tints: Vec<[u8; 3]>,
 }
 
 impl MeshTables {
@@ -165,8 +168,13 @@ impl MeshTables {
                 .iter()
                 .map(|c| [(c[0] * 200.0).min(255.0) as u8, (c[1] * 200.0).min(255.0) as u8, (c[2] * 200.0).min(255.0) as u8])
                 .collect(),
+            water: vec![],
+            water_tints: (0..crate::worldgen::Biome::COUNT)
+                .map(|i| crate::worldgen::Biome::from_u8(i as u8).water_tint().map(|c| (c * 200.0).min(255.0) as u8))
+                .collect(),
         };
         for (i, b) in reg.blocks.iter().enumerate() {
+            t.water.push(b.shape == Shape::Liquid && b.name.starts_with("water"));
             t.opaque.push(reg.is_opaque(i as BlockId));
             t.shape.push(b.shape);
             t.transp.push(b.transparency);
@@ -354,7 +362,8 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                 if shape == Shape::Invisible {
                     continue;
                 }
-                let biome_tint = t.biome_tints[(input.biomes[lx + lz * 16] as usize).min(t.biome_tints.len() - 1)];
+                let biome = input.biomes[lx + lz * 16] as usize;
+                let biome_tint = t.biome_tints[biome.min(t.biome_tints.len() - 1)];
                 let wave = if t.wave[idu] { FLAG_WAVE } else { 0 };
                 let base = [lx as u32 * 16, ly as u32 * 16, lz as u32 * 16];
 
@@ -508,7 +517,13 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                         continue;
                     }
                     let layer = t.faces[idu][f] as u32;
-                    let tint = if t.tint[idu] & (1 << f) != 0 { biome_tint } else { white };
+                    let tint = if t.tint[idu] & (1 << f) != 0 {
+                        biome_tint
+                    } else if t.water[idu] {
+                        t.water_tints[biome.min(t.water_tints.len() - 1)]
+                    } else {
+                        white
+                    };
                     let ctm = if t.connected[idu] { connected_edges(blocks, i, id, f) } else { 0 };
                     let mut verts = [Vertex::default(); 4];
                     let mut aos = [3u32; 4];

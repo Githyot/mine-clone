@@ -109,7 +109,8 @@ fn cell(gen: &Generator, colors: &LodColors, wx: i32, wz: i32) -> Cell {
     if let Some(l) = s.liquid {
         // Water surface as the mesher draws it (2/16 below the block top).
         let c = colors.get(l, false, s.biome);
-        let water = [c[0] * 0.85, c[1] * 0.9, c[2]];
+        let w = s.biome.water_tint();
+        let water = [c[0] * 0.85 * w[0], c[1] * 0.9 * w[1], c[2] * w[2]];
         return Cell { y: SEA_LEVEL as f32 + 0.875, canopy: 0.0, top: water, side: water };
     }
     let mut c = Cell { y: s.height as f32 + 1.0, canopy: 0.0, top: colors.get(s.top, false, s.biome), side: colors.get(s.top, true, s.biome) };
