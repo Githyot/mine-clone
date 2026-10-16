@@ -2,6 +2,7 @@
 
 use crate::controller::ControllerSettings;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,6 +35,22 @@ impl MusicMode {
     }
 }
 
+/// How much work the shader packs may do.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShaderQuality {
+    Fast,
+    Fancy,
+}
+
+impl ShaderQuality {
+    pub fn label(self) -> &'static str {
+        match self {
+            ShaderQuality::Fast => "Rápido",
+            ShaderQuality::Fancy => "Bonito",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct Settings {
@@ -58,6 +75,11 @@ pub struct Settings {
     pub mobs: bool,
     pub gui_scale: u32,
     pub controller: ControllerSettings,
+    /// Shader pack in use: a built-in name or a folder in `shaderpacks/` ("" = off).
+    pub shader_pack: String,
+    /// Option values chosen for each shader pack: pack → option name → value.
+    pub shader_options: BTreeMap<String, BTreeMap<String, f32>>,
+    pub shader_quality: ShaderQuality,
 }
 
 impl Default for Settings {
@@ -79,6 +101,9 @@ impl Default for Settings {
             mobs: true,
             gui_scale: 0,
             controller: ControllerSettings::default(),
+            shader_pack: String::new(),
+            shader_options: BTreeMap::new(),
+            shader_quality: ShaderQuality::Fancy,
         }
     }
 }
@@ -98,9 +123,32 @@ impl Settings {
         }
     }
 
+    /// Name of the shader pack in use, for menus.
+    pub fn shader_label(&self) -> &str {
+        if self.shader_pack.is_empty() {
+            "Desligado"
+        } else {
+            &self.shader_pack
+        }
+    }
+
     pub fn save(&self, path: &Path) {
         if let Ok(text) = ron::ser::to_string_pretty(self, ron::ser::PrettyConfig::default()) {
             let _ = std::fs::write(path, text);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_settings_files_still_load() {
+        let s: Settings = ron::from_str("(render_distance: 6, fov: 80.0, mobs: false)").unwrap();
+        assert_eq!(s.render_distance, 6);
+        assert!(!s.mobs);
+        assert!(s.shader_pack.is_empty());
+        assert_eq!(s.shader_quality, ShaderQuality::Fancy);
     }
 }

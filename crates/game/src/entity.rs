@@ -47,7 +47,8 @@ struct MobMesh {
 }
 
 pub struct EntityRenderer {
-    pipeline: wgpu::RenderPipeline,
+    /// [drawing straight to the screen, drawing into the HDR scene for shader packs]
+    pipelines: [wgpu::RenderPipeline; 2],
     skin_bg: wgpu::BindGroup,
     inst_layout: wgpu::BindGroupLayout,
     inst_bg: wgpu::BindGroup,
@@ -304,7 +305,7 @@ impl EntityRenderer {
             bind_group_layouts: &[&r.globals_layout, &r.tex_layout, &inst_layout],
             push_constant_ranges: &[],
         });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let make = |format: wgpu::TextureFormat| device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("entity"),
             layout: Some(&layout),
             vertex: wgpu::VertexState {
@@ -320,7 +321,7 @@ impl EntityRenderer {
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_entity"),
-                targets: &[Some(wgpu::ColorTargetState { format: r.config.format, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+                targets: &[Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::ALL })],
                 compilation_options: Default::default(),
             }),
             primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
@@ -335,6 +336,7 @@ impl EntityRenderer {
             multiview: None,
             cache: None,
         });
+        let pipelines = [make(r.config.format), make(crate::post::HDR)];
         let mut meshes = Vec::new();
         for (i, d) in reg.defs.iter().enumerate() {
             let (v, idx) = build_mesh(d, &skins[i], i as u32);
@@ -354,7 +356,7 @@ impl EntityRenderer {
                 indices: idx.len() as u32,
             });
         }
-        EntityRenderer { pipeline, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, draws: Vec::new(), instance_count: 0 }
+        EntityRenderer { pipelines, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, draws: Vec::new(), instance_count: 0 }
     }
 
     /// Mesh index of a painting, for `prepare`.
@@ -408,11 +410,11 @@ impl EntityRenderer {
         }
     }
 
-    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, hdr: bool) {
         if self.draws.is_empty() {
             return;
         }
-        pass.set_pipeline(&self.pipeline);
+        pass.set_pipeline(&self.pipelines[hdr as usize]);
         pass.set_bind_group(1, &self.skin_bg, &[]);
         pass.set_bind_group(2, &self.inst_bg, &[]);
         for &(m, first, count) in &self.draws {

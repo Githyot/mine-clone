@@ -8,8 +8,10 @@ mod controller;
 mod entity;
 mod mobs;
 mod paintings;
+mod post;
 mod renderer;
 mod settings;
+mod shaderpack;
 mod textures;
 mod ui;
 mod world;
@@ -33,7 +35,8 @@ use winit::window::{CursorGrabMode, Fullscreen, Window, WindowId};
 use audio::{Audio, Material, Sfx, Situation};
 use controller::{Action, Btn, Controllers, TouchpadMode};
 use renderer::{Camera, Globals, Renderer};
-use settings::Settings;
+use settings::{Settings, ShaderQuality};
+use shaderpack::{Builtin, ShaderPack};
 use ui::{FontAtlas, UiBatch, GRAY, WHITE, YELLOW};
 use voxel::block::Shape;
 use voxel::chunk::ChunkPos;
@@ -64,10 +67,14 @@ struct Args {
     demo: bool,
     show_inventory: bool,
     show_pause: bool,
+    /// Open the shader menu once the world is ready (test screenshots).
+    show_shaders: bool,
     debug: bool,
     /// Spawn a few mobs in front of the player (test screenshots).
     mobs: bool,
     survival: bool,
+    /// Shader pack to use ("off" turns shaders off).
+    shader: Option<String>,
 }
 
 fn parse_args() -> Args {
@@ -101,13 +108,16 @@ fn parse_args() -> Args {
             "--demo" => a.demo = true,
             "--inventory" => a.show_inventory = true,
             "--pause" => a.show_pause = true,
+            "--shaders-menu" => a.show_shaders = true,
             "--debug" => a.debug = true,
             "--mobs" => a.mobs = true,
             "--survival" => a.survival = true,
+            "--shader" => a.shader = it.next(),
             "--help" | "-h" => {
                 println!(
                     "mine-clone [--world NAME] [--seed N] [--render-distance N] [--size WxH]\n\
-                     Testing: [--screenshot out.png] [--pos x,y,z] [--look yaw,pitch] [--time ticks] [--fly] [--demo] [--inventory] [--pause] [--debug]"
+                     Testing: [--screenshot out.png] [--pos x,y,z] [--look yaw,pitch] [--time ticks] [--fly] [--demo] [--inventory] [--pause] [--debug]\n\
+                     \x20        [--shader NAME|off] [--shaders-menu]"
                 );
                 std::process::exit(0);
             }
@@ -158,6 +168,7 @@ fn ensure_folders(base: &Path, settings: &Settings) {
              Put your own songs here. In the pause menu set Music to 'Minha pasta' (yours only) or 'Ambas' (both).\n",
         );
     }
+    shaderpack::ensure_folder(&base.join("shaderpacks"));
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -172,6 +183,20 @@ enum Screen {
     Dead,
     /// Choosing a painting for the wall the player is looking at.
     Paintings,
+    /// Shader packs and their options.
+    Shaders,
+}
+
+/// What a row of the shader menu does.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ShaderRow {
+    Back,
+    Quality,
+    Reload,
+    /// Choose a pack (None = shaders off).
+    Pack(Option<usize>),
+    /// Change an option of the pack in use.
+    Opt(usize),
 }
 
 struct Toast {
@@ -253,6 +278,10 @@ struct Game {
     toast: Option<Toast>,
     packs: Vec<String>,
     textures_name: String,
+    shader_packs: Vec<ShaderPack>,
+    /// Why the chosen shader pack is not running (shown in the shader menu).
+    shader_error: Option<String>,
+    shader_scroll: usize,
 
     start: Instant,
     last: Instant,
@@ -277,6 +306,9 @@ impl Game {
         let mut settings = Settings::load(&settings_path);
         if let Some(rd) = args.render_distance {
             settings.render_distance = rd;
+        }
+        if let Some(sh) = &args.shader {
+            settings.shader_pack = if sh == "off" { String::new() } else { sh.clone() };
         }
         ensure_folders(&base, &settings);
 
@@ -363,10 +395,14 @@ impl Game {
         let inventory: Vec<BlockId> = (1..reg.len() as BlockId).filter(|&i| reg.get(i).in_inventory).collect();
         let packs = textures::list_resource_packs(&base.join("resourcepacks"));
         let show_debug = args.debug;
+        let (shader_packs, pack_errors) = shaderpack::list_packs(&base.join("shaderpacks"));
+        for e in &pack_errors {
+            log::warn!("shader pack: {e}");
+        }
 
         log::info!("world '{world_name}' seed {seed}, {} blocks, {} textures ({}px)", reg.len(), reg.textures.len(), renderer.texture_size);
         let now = Instant::now();
-        Game {
+        let mut game = Game {
             window,
             renderer,
             world,
@@ -424,6 +460,9 @@ impl Game {
             toast: None,
             packs,
             textures_name,
+            shader_packs,
+            shader_error: None,
+            shader_scroll: 0,
             start: now,
             last: now,
             now: 0.0,
@@ -434,6 +473,76 @@ impl Game {
             loaded_frames: 0,
             screenshot_request: false,
             grabbed: false,
+        };
+        game.apply_shader();
+        game
+    }
+
+    /// Turn on the shader pack named in the settings (or none). Errors turn shaders off and
+    /// are shown in a toast and in the shader menu; the game keeps running.
+    fn apply_shader(&mut self) {
+        self.shader_error = None;
+        let mut pack = None;
+        if !self.settings.shader_pack.is_empty() {
+            match shaderpack::find(&self.shader_packs, &self.settings.shader_pack) {
+                Some(p) => {
+                    self.settings.shader_pack = p.id.clone();
+                    pack = Some(p.clone());
+                }
+                None => self.shader_error = Some(format!("pacote \"{}\" não encontrado", self.settings.shader_pack)),
+            }
+        }
+        if let Err(e) = self.renderer.set_shader(pack.as_ref(), self.settings.shader_quality) {
+            self.toast(format!("Erro no shader: {e}"), 8.0);
+            self.shader_error = Some(e);
+        }
+        self.sync_shader_options();
+    }
+
+    fn active_shader(&self) -> Option<&ShaderPack> {
+        if self.settings.shader_pack.is_empty() {
+            return None;
+        }
+        shaderpack::find(&self.shader_packs, &self.settings.shader_pack)
+    }
+
+    fn sync_shader_options(&mut self) {
+        let values = self.active_shader().map(|p| p.values(self.settings.shader_options.get(&p.id))).unwrap_or_default();
+        self.renderer.post.options = values;
+    }
+
+    /// Name for the pause menu and the F3 screen.
+    fn shader_name(&self) -> String {
+        match (self.active_shader(), &self.shader_error) {
+            (_, Some(_)) => format!("{} (erro)", self.settings.shader_label()),
+            (Some(p), None) => p.def.name.clone(),
+            (None, None) => "Desligado".to_string(),
+        }
+    }
+
+    /// Terrain shader extras switched on by the built-in "Realçado" pack.
+    fn terrain_effects(&self) -> [f32; 4] {
+        let o = &self.renderer.post.options;
+        match self.renderer.post.builtin() {
+            Some(Builtin::Realcado) => [if o[5] > 0.5 { 2.2 } else { 1.0 }, o[6], 1.6 * o[0].min(1.0), 0.0],
+            Some(Builtin::Suave) => [1.0, 0.0, 0.8 * o[0], 0.0],
+            _ => [1.0, 0.0, 0.0, 0.0],
+        }
+    }
+
+    fn reload_shader_packs(&mut self) {
+        shaderpack::ensure_folder(&self.base.join("shaderpacks"));
+        let (packs, errors) = shaderpack::list_packs(&self.base.join("shaderpacks"));
+        self.shader_packs = packs;
+        self.apply_shader();
+        if self.shader_error.is_none() {
+            if let Some(e) = errors.first() {
+                self.shader_error = Some(e.clone());
+            }
+        }
+        let n = self.shader_packs.iter().filter(|p| matches!(p.source, shaderpack::PackSource::User(_))).count();
+        if self.shader_error.is_none() {
+            self.toast(format!("Pacotes de shader recarregados ({n} seus)"), 3.0);
         }
     }
 
@@ -530,7 +639,7 @@ impl Game {
             KeyCode::Escape => match self.screen {
                 Screen::Playing => self.set_screen(Screen::Paused),
                 Screen::Paused | Screen::Inventory => self.set_screen(Screen::Playing),
-                Screen::Controls => self.set_screen(Screen::Paused),
+                Screen::Controls | Screen::Shaders => self.set_screen(Screen::Paused),
                 Screen::Paintings => self.set_screen(Screen::Playing),
                 Screen::Loading | Screen::Dead => {}
             },
@@ -617,6 +726,13 @@ impl Game {
                     self.painting_scroll += 1;
                 }
             }
+            Screen::Shaders => {
+                if lines > 0.0 {
+                    self.shader_scroll = self.shader_scroll.saturating_sub(1);
+                } else {
+                    self.shader_scroll += 1;
+                }
+            }
             Screen::Inventory => {
                 let rows = self.inventory.len().div_ceil(9);
                 let visible = self.inventory_layout().3;
@@ -695,6 +811,8 @@ impl Game {
                     self.set_screen(Screen::Inventory);
                 } else if self.args.show_pause {
                     self.set_screen(Screen::Paused);
+                } else if self.args.show_shaders {
+                    self.set_screen(Screen::Shaders);
                 } else {
                     self.set_screen(Screen::Playing);
                 }
@@ -711,7 +829,7 @@ impl Game {
             self.update_player(dt);
             self.update_survival(dt);
         }
-        if self.screen != Screen::Loading && self.screen != Screen::Paused && self.screen != Screen::Controls {
+        if !matches!(self.screen, Screen::Loading | Screen::Paused | Screen::Controls | Screen::Shaders) {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
             let creative = !self.survival || self.screen == Screen::Dead;
@@ -962,6 +1080,134 @@ impl Game {
         if fits.len() > rows {
             self.ui.text(x, y, &format!("roda do mouse: mais ({}/{})", self.painting_scroll + rows.min(fits.len()), fits.len()), GRAY);
         }
+    }
+
+    /// Rows of the shader menu, left panel then right panel: (label, action, right panel).
+    fn shader_rows(&self) -> Vec<(String, ShaderRow, bool)> {
+        let cur = if self.settings.shader_pack.is_empty() { None } else { self.active_shader().map(|p| p.id.clone()) };
+        let mark = |on: bool, name: &str| if on { format!("> {name} <") } else { name.to_string() };
+        let mut v = vec![
+            ("Voltar".to_string(), ShaderRow::Back, false),
+            (format!("Qualidade: {}", self.settings.shader_quality.label()), ShaderRow::Quality, false),
+            ("Recarregar pacotes".to_string(), ShaderRow::Reload, false),
+            (mark(cur.is_none(), "Desligado"), ShaderRow::Pack(None), false),
+        ];
+        for (i, p) in self.shader_packs.iter().enumerate() {
+            let user = matches!(p.source, shaderpack::PackSource::User(_));
+            let name = if user { format!("{} (seu)", p.def.name) } else { p.def.name.clone() };
+            v.push((mark(cur.as_deref() == Some(p.id.as_str()), &name), ShaderRow::Pack(Some(i)), false));
+        }
+        if let Some(p) = self.active_shader() {
+            let vals = p.values(self.settings.shader_options.get(&p.id));
+            for (i, o) in p.def.options.iter().take(shaderpack::MAX_OPTIONS).enumerate() {
+                v.push((format!("{}: {}", o.label(), o.display(vals[i])), ShaderRow::Opt(i), true));
+            }
+        }
+        v
+    }
+
+    /// Shader menu: packs on the left, options of the pack in use on the right, and the world
+    /// visible in between so changes can be judged right away.
+    fn draw_shaders_menu(&mut self, w: f32, h: f32, mouse: (f32, f32)) -> Option<usize> {
+        let s = self.ui.scale;
+        let rows = self.shader_rows();
+        let pw = (150.0 * s).min(w * 0.42);
+        let bh = 14.0 * s;
+        let step = bh + 2.0 * s;
+        let top = 22.0 * s;
+        self.ui.rect(0.0, 0.0, pw + 12.0 * s, h, [0, 0, 0, 150]);
+        self.ui.text(6.0 * s, 8.0 * s, "Shaders (Esc volta)", WHITE);
+        let fits = (((h - top - 40.0 * s) / step).floor() as usize).max(4);
+        let left: Vec<usize> = (0..rows.len()).filter(|&i| !rows[i].2).collect();
+        let right: Vec<usize> = (0..rows.len()).filter(|&i| rows[i].2).collect();
+        // The first four rows always show; the pack list scrolls with the wheel.
+        let fixed = 4.min(left.len());
+        let scroll_max = left.len().saturating_sub(fits);
+        self.shader_scroll = self.shader_scroll.min(scroll_max);
+        let mut hit = None;
+        let mut y = top;
+        for (k, &i) in left.iter().enumerate() {
+            if k >= fixed && k < fixed + self.shader_scroll {
+                continue;
+            }
+            if y + bh > h - 30.0 * s {
+                break;
+            }
+            if self.ui.button(6.0 * s, y, pw, bh, &rows[i].0, mouse) && self.clicked {
+                hit = Some(i);
+            }
+            y += step;
+        }
+        if scroll_max > 0 {
+            self.ui.text_scaled(6.0 * s, y, "roda do mouse: mais pacotes", GRAY, (s / 2.0).floor().max(1.0));
+            y += 8.0 * s;
+        }
+        // Description of the pack in use, or why it is not running.
+        let hs = (s / 2.0).floor().max(1.0);
+        let note = match (&self.shader_error, self.active_shader()) {
+            (Some(e), _) => Some((format!("Erro: {e}"), [255, 120, 100, 255])),
+            (None, Some(p)) if !p.def.description.is_empty() => Some((p.def.description.clone(), GRAY)),
+            _ => None,
+        };
+        if let Some((text, color)) = note {
+            // Wrap to the panel width.
+            let mut line = String::new();
+            let mut ly = y + 2.0 * s;
+            for word in text.split(' ') {
+                let try_line = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
+                if self.ui.text_width(&try_line, hs) > pw && !line.is_empty() {
+                    self.ui.text_scaled(6.0 * s, ly, &line, color, hs);
+                    ly += 9.0 * hs;
+                    line = word.to_string();
+                } else {
+                    line = try_line;
+                }
+            }
+            self.ui.text_scaled(6.0 * s, ly, &line, color, hs);
+        }
+        if !right.is_empty() {
+            let rw = (170.0 * s).min(w * 0.42);
+            let rx = w - rw - 6.0 * s;
+            self.ui.rect(rx - 6.0 * s, 0.0, rw + 12.0 * s, top + right.len() as f32 * step + 4.0 * s, [0, 0, 0, 150]);
+            self.ui.text(rx, 8.0 * s, "Opções do pacote", WHITE);
+            for (k, &i) in right.iter().enumerate() {
+                if self.ui.button(rx, top + k as f32 * step, rw, bh, &rows[i].0, mouse) && self.clicked {
+                    hit = Some(i);
+                }
+            }
+        }
+        hit
+    }
+
+    fn shaders_button(&mut self, i: usize) {
+        if let Some(a) = self.audio.as_mut() {
+            a.play(Sfx::Click, self.settings.sound_volume);
+        }
+        let Some(&(_, row, _)) = self.shader_rows().get(i) else { return };
+        match row {
+            ShaderRow::Back => self.set_screen(Screen::Paused),
+            ShaderRow::Quality => {
+                self.settings.shader_quality = match self.settings.shader_quality {
+                    ShaderQuality::Fast => ShaderQuality::Fancy,
+                    ShaderQuality::Fancy => ShaderQuality::Fast,
+                };
+                self.apply_shader();
+            }
+            ShaderRow::Reload => self.reload_shader_packs(),
+            ShaderRow::Pack(p) => {
+                self.settings.shader_pack = p.map(|p| self.shader_packs[p].id.clone()).unwrap_or_default();
+                self.apply_shader();
+            }
+            ShaderRow::Opt(k) => {
+                if let Some(p) = self.active_shader().cloned() {
+                    let o = &p.def.options[k];
+                    let cur = p.values(self.settings.shader_options.get(&p.id))[k];
+                    self.settings.shader_options.entry(p.id.clone()).or_default().insert(o.name().to_string(), o.next(cur));
+                    self.sync_shader_options();
+                }
+            }
+        }
+        self.settings.save(&self.base.join("settings.ron"));
     }
 
     fn sfx(&mut self, s: Sfx) {
@@ -1227,7 +1473,7 @@ impl Game {
             let a = ((0.4 - self.hurt_age) / 0.4 * 90.0) as u8;
             self.ui.rect(0.0, 0.0, w, h, [200, 0, 0, a]);
         }
-        if !self.hide_hud && self.screen != Screen::Paused && self.screen != Screen::Dead {
+        if !self.hide_hud && !matches!(self.screen, Screen::Paused | Screen::Dead | Screen::Shaders) {
             // Crosshair.
             if self.screen == Screen::Playing {
                 let (cx, cy) = (w / 2.0, h / 2.0);
@@ -1323,6 +1569,7 @@ impl Game {
                     format!("Controle: {}", if self.pads.pad.connected { self.pads.pad.name.as_str() } else { "nenhum conectado" }),
                     format!("Modo: {}", if self.survival { "Sobrevivência" } else { "Criativo" }),
                     format!("Mobs: {}", if self.settings.mobs { "Sim" } else { "Não" }),
+                    format!("Shaders: {}", self.shader_name()),
                     "Salvar e sair".to_string(),
                 ];
                 // First and last buttons are wide; the options between them sit in two columns.
@@ -1357,7 +1604,8 @@ impl Game {
                 let hs = (s / 2.0).floor().max(1.0);
                 let folder = self.base.join(&self.settings.music_folder).display().to_string();
                 let packs = self.base.join("resourcepacks").display().to_string();
-                let extra = [format!("Suas músicas: {folder}"), format!("Pacotes de textura: {packs}")];
+                let shaders = self.base.join("shaderpacks").display().to_string();
+                let extra = [format!("Suas músicas: {folder}"), format!("Pacotes de textura: {packs}"), format!("Pacotes de shader: {shaders}")];
                 for l in help.iter().map(|s| s.to_string()).chain(extra) {
                     let tw = self.ui.text_width(&l, hs);
                     self.ui.text_scaled(w / 2.0 - tw / 2.0, y, &l, GRAY, hs);
@@ -1365,6 +1613,7 @@ impl Game {
                 }
             }
             Screen::Paintings => self.draw_paintings_menu(w, h, mouse),
+            Screen::Shaders => clicked_button = self.draw_shaders_menu(w, h, mouse),
             Screen::Dead => {
                 self.ui.rect(0.0, 0.0, w, h, [120, 0, 0, 110]);
                 self.ui.text_centered(w / 2.0, h / 2.0 - 40.0 * s, "Você morreu!", WHITE);
@@ -1437,6 +1686,8 @@ impl Game {
         if let Some(i) = clicked_button {
             if self.screen == Screen::Controls {
                 self.controls_button(i);
+            } else if self.screen == Screen::Shaders {
+                self.shaders_button(i);
             } else if self.screen == Screen::Dead {
                 self.respawn();
             } else {
@@ -1693,6 +1944,7 @@ impl Game {
                             self.rebinding = None;
                             self.set_screen(Screen::Paused);
                         }
+                        Screen::Shaders => self.set_screen(Screen::Paused),
                         Screen::Dead => {}
                         _ => self.set_screen(Screen::Playing),
                     }
@@ -1745,6 +1997,10 @@ impl Game {
                 self.settings.mobs = !self.settings.mobs;
                 self.mobs.enabled = self.settings.mobs;
             }
+            10 => {
+                self.shader_scroll = 0;
+                self.set_screen(Screen::Shaders);
+            }
             _ => {
                 self.save_all();
                 std::process::exit(0);
@@ -1779,6 +2035,7 @@ impl Game {
             sun_dir: [sun.x, sun.y, sun.z, 0.0],
             sky_top: [top[0], top[1], top[2], 1.0],
             sky_horizon: [horizon[0], horizon[1], horizon[2], 1.0],
+            effects: self.terrain_effects(),
             ..Default::default()
         };
         let cam = Camera {
@@ -1811,6 +2068,7 @@ impl Game {
             lines.push(format!("Hora: {:.0}  Seed: {}", self.time_of_day, self.seed));
             lines.push(format!("GPU: {} ({:?})", self.renderer.adapter_info.name, self.renderer.adapter_info.backend));
             lines.push(format!("Texturas: {} ({}px)", self.textures_name, self.renderer.texture_size));
+            lines.push(format!("Shader: {} ({})", self.shader_name(), self.settings.shader_quality.label()));
             if let Some(t) = self.target {
                 let id = self.world.block_or_air(t.block);
                 lines.push(format!("Mirando: {} em {} {} {}", self.reg.get(id).name, t.block.x, t.block.y, t.block.z));
@@ -1880,7 +2138,7 @@ impl Game {
         }
         self.screenshot_request = false;
         if exit_after {
-            println!("frame stats: {:.0} fps, {} sections, {} quads", self.fps, info.sections_drawn, info.quads_drawn);
+            println!("frame stats: {:.0} fps, {} sections, {} quads, shader {}", self.fps, info.sections_drawn, info.quads_drawn, self.shader_name());
             std::process::exit(0);
         }
     }

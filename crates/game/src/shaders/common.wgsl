@@ -13,6 +13,9 @@ struct Globals {
     sun_dir: vec4<f32>,
     sky_top: vec4<f32>,
     sky_horizon: vec4<f32>,
+    // x: plant waving strength (1 = classic), y: rippling water 0/1, z: light source glow
+    // (shader packs only; 0 = off).
+    effects: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
