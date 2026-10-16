@@ -104,6 +104,8 @@ struct Args {
     mine: Option<f32>,
     /// Test hook: freeze the arm swing at this point (0..1) for screenshots.
     swing: Option<f32>,
+    /// Test hook: die on arrival (the body with the items is left on the ground).
+    die: bool,
     /// Test: hotbar slot in hand (1-9).
     slot: Option<usize>,
     /// Test: open a survival screen (table, furnace or chest).
@@ -166,6 +168,7 @@ fn parse_args() -> Args {
             "--survival" => a.survival = true,
             "--kit" => a.kit = true,
             "--mine" => a.mine = it.next().and_then(|v| v.parse().ok()),
+            "--die" => a.die = true,
             "--swing" => a.swing = it.next().and_then(|v| v.parse().ok()),
             "--slot" => a.slot = it.next().and_then(|v| v.parse::<usize>().ok()).map(|v| v.clamp(1, 9) - 1),
             "--open" => a.open = it.next(),
@@ -444,6 +447,8 @@ struct Game {
     item_base: u16,
     surv: survival::Survival,
     rclicked: bool,
+    /// Middle click in a menu this frame.
+    mclicked: bool,
     /// Right button held (menus: drag one item into each slot passed over).
     rdown: bool,
     /// Last frame's camera (view-projection and camera block) for drawing labels over mobs.
@@ -692,6 +697,7 @@ impl Game {
             item_base,
             surv,
             rclicked: false,
+            mclicked: false,
             rdown: false,
             inv_number_key: None,
             bubble_cd: 4.0,
@@ -941,7 +947,7 @@ impl Game {
             KeyCode::F5 => self.camera_mode = (self.camera_mode + 1) % 3,
             KeyCode::KeyZ if self.screen == Screen::Playing => self.prone = !self.prone,
             KeyCode::KeyR if self.screen == Screen::Inventory && self.survival => self.surv.want_recipe = true,
-            KeyCode::KeyQ if self.screen == Screen::Playing && self.survival => {
+            KeyCode::KeyQ if self.screen == Screen::Playing => {
                 let all = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
                 self.surv_throw(all);
             }
@@ -1081,6 +1087,12 @@ impl Game {
                 }
                 if self.args.kit {
                     self.test_kit();
+                }
+                if self.args.die {
+                    // Test hook: die where you stand and step back to look at the body.
+                    self.surv_died();
+                    let f = self.forward();
+                    self.body.pos -= Vec3::new(f.x, 0.0, f.z).normalize_or_zero() * 2.5;
                 }
                 if let Some(i) = self.args.slot {
                     self.selected = i;
@@ -2549,6 +2561,7 @@ impl Game {
         }
         self.clicked = false;
         self.rclicked = false;
+        self.mclicked = false;
 
         if let Some(i) = clicked_button {
             if self.screen == Screen::Controls {
@@ -3105,7 +3118,19 @@ impl Game {
                 }
                 let pose = player_model::Pose { pos: c.pos, crawling: 1.0, look_yaw: c.yaw, on_ground: true, ..Default::default() };
                 let l = self.world.light((c.pos + Vec3::Y * 0.3).floor().as_ivec3());
-                items.push((pd, player_model::Animator::lying(c.yaw).bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0)));
+                let bones = player_model::Animator::lying(c.yaw).bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
+                // The armour stays on the body until it is taken back.
+                let mut worn = [false; 4];
+                for st in &c.items {
+                    let it = self.items.get(st.item);
+                    let Some(a) = it.armor else { continue };
+                    let piece = (a.slot as usize).min(3);
+                    if !worn[piece] {
+                        worn[piece] = true;
+                        items.extend(self.entities.armor_mesh(&it.name, piece).map(|m| (m, bones)));
+                    }
+                }
+                items.push((pd, bones));
             }
         }
         if let (Screen::Paintings, Some((d, anchor)), Some((_, n))) = (self.screen, self.painting_preview, self.painting_spot) {
@@ -3270,6 +3295,8 @@ impl ApplicationHandler for App {
                     game.clicked = true;
                 } else if pressed && idx == 1 {
                     game.rclicked = true;
+                } else if pressed && idx == 2 {
+                    game.mclicked = true;
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {

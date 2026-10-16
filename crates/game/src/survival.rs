@@ -22,7 +22,9 @@ use crate::{Game, Screen};
 pub const INV_SIZE: usize = 36;
 const CHEST_SIZE: usize = 27;
 const SMELT_TIME: f32 = 10.0;
-const PICKUP_DELAY: f32 = 0.6;
+/// Seconds before a dropped item can be picked up; items the player throws wait longer.
+const PICKUP_DELAY: f32 = 0.5;
+const THROWN_DELAY: f32 = 2.0;
 const DESPAWN: f32 = 300.0;
 
 pub struct Dropped {
@@ -782,6 +784,21 @@ impl Game {
         if let Some(s) = self.surv.inv.take(sel, n) {
             let f = self.forward();
             self.spawn_drop(self.body.eye() - Vec3::Y * 0.3, s, f * 5.0 + Vec3::Y);
+            self.mark_thrown();
+        }
+    }
+
+    /// Throw a stack out in front of the player, like dropping it out of the inventory window.
+    pub(crate) fn throw_stack(&mut self, st: ItemStack) {
+        let f = self.forward();
+        self.spawn_drop(self.body.eye() - Vec3::Y * 0.3, st, f * 4.0 + Vec3::Y);
+        self.mark_thrown();
+    }
+
+    /// The last drop was thrown by the player: it waits before it can be picked up again.
+    fn mark_thrown(&mut self) {
+        if let Some(d) = self.surv.drops.last_mut() {
+            d.age = PICKUP_DELAY - THROWN_DELAY;
         }
     }
 
@@ -892,7 +909,7 @@ impl Game {
     fn update_drops(&mut self, dt: f32) {
         let still = Input::default();
         let player = self.body.pos + Vec3::Y * 0.9;
-        let alive = self.screen != Screen::Dead && self.survival;
+        let alive = self.screen != Screen::Dead;
         let mut picked: Vec<usize> = Vec::new();
         for (i, d) in self.surv.drops.iter_mut().enumerate() {
             d.age += dt;
@@ -903,10 +920,12 @@ impl Game {
             // Pulled toward a nearby player.
             let to = player - d.body.pos;
             let dist = to.length();
-            if alive && d.age > PICKUP_DELAY && dist < 2.2 {
-                d.body.vel += to.normalize_or_zero() * dt * 30.0;
-                if dist < 0.9 {
+            // Like the classic game: anything within about a block of the player is taken at once.
+            if alive && d.age > PICKUP_DELAY && dist < 2.6 {
+                if dist < 1.7 {
                     picked.push(i);
+                } else {
+                    d.body.vel += to.normalize_or_zero() * dt * 40.0;
                 }
             }
             d.body.step(&self.world, &still, dt);
@@ -1110,15 +1129,15 @@ impl Game {
                     if matches!(bl.shape, Shape::Cross | Shape::Torch) {
                         (1.0, [bl.faces[0] as f32; 3], 0.4)
                     } else {
-                        (0.0, [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32], 0.25)
+                        (0.0, [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32], 0.22)
                     }
                 }
-                Look::Sprite(l) => (1.0, [(self.item_base + l) as f32; 3], 0.4),
+                Look::Sprite(l) => (1.0, [(self.item_base + l) as f32; 3], 0.36),
             };
             // Stacks show as two or three copies, like the classic game.
             let copies = if d.stack.count > 16 { 3 } else if d.stack.count > 1 { 2 } else { 1 };
-            if lying {
-                size *= 1.15;
+            if lying && flat > 0.5 {
+                size *= 1.1;
             }
             for k in 0..copies {
                 let kf = k as f32;
@@ -1353,6 +1372,7 @@ impl Game {
                         self.surv.cursor = (left > 0).then_some(ItemStack { count: left, ..c });
                         let f = self.forward();
                         self.spawn_drop(self.body.eye() - Vec3::Y * 0.3, thrown, f * 4.0 + Vec3::Y);
+                        self.mark_thrown();
                     }
                 }
                 None => {}

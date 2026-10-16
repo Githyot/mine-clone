@@ -419,8 +419,14 @@ impl Game {
                 if let Some(id) = grid_hover {
                     tip = Some(id);
                     let max = self.items.get(id).max_stack.max(1);
+                    // Items are endless in creative, so they come one at a time; middle click
+                    // (or shift-click into the inventory) gives a full stack.
                     if let Some(k) = self.inv_number_key.take() {
-                        self.surv.inv.slots[k] = Some(ItemStack::new(id, max));
+                        self.surv.inv.slots[k] = Some(ItemStack::new(id, 1));
+                    }
+                    if self.mclicked && self.surv.cursor.is_none() {
+                        self.mclicked = false;
+                        self.surv.cursor = Some(ItemStack::new(id, max));
                     }
                     if click || rclick {
                         self.clicked = false;
@@ -428,11 +434,11 @@ impl Game {
                         match self.surv.cursor {
                             // Holding something: clicking the list throws it away.
                             Some(c) if !(c.item == id && c.count < max) => self.surv.cursor = None,
-                            Some(c) => self.surv.cursor = Some(ItemStack { count: if rclick { c.count + 1 } else { max }, ..c }),
+                            Some(c) => self.surv.cursor = Some(ItemStack { count: c.count + 1, ..c }),
                             None if shift => {
                                 let _ = self.surv.inv.add(&self.items, ItemStack::new(id, max));
                             }
-                            None => self.surv.cursor = Some(ItemStack::new(id, if rclick { 1 } else { max })),
+                            None => self.surv.cursor = Some(ItemStack::new(id, 1)),
                         }
                     }
                 } else if (click || rclick) && self.surv.cursor.is_some() && inside(at(9.0, 18.0), 162.0, 90.0) {
@@ -478,8 +484,13 @@ impl Game {
         }
         // Clicking outside the window drops what the cursor holds.
         let in_panel = mouse.0 >= x0 && mouse.0 < x0 + pw && mouse.1 >= y0 - 28.0 * s && mouse.1 < y0 + ph + 28.0 * s;
-        if self.clicked && !in_panel && over_tab.is_none() {
-            self.surv.cursor = None;
+        // Clicking outside the window throws the held stack (right click: one item).
+        if (self.clicked || self.rclicked) && !in_panel && over_tab.is_none() {
+            if let Some(c) = self.surv.cursor {
+                let n = if self.rclicked && !self.clicked { 1 } else { c.count };
+                self.surv.cursor = (c.count > n).then_some(ItemStack { count: c.count - n, ..c });
+                self.throw_stack(ItemStack { count: n, ..c });
+            }
         }
         if let Some(id) = tip {
             let n = self.items.get(id).display_name.clone();
