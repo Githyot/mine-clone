@@ -119,9 +119,27 @@ fn relief(c: vec4<f32>, in: VOut) -> f32 {
     return clamp(1.0 + slope * 1.1 * strength, 0.72, 1.22);
 }
 
+// Connected textures: on a side that continues into the same block (glass), the outer
+// texel row is swapped for the one just inside, so the frame line disappears.
+fn ctm_sample(in: VOut) -> vec4<f32> {
+    let m = (in.kind >> 3u) & 15u;
+    let dx = dpdx(in.uv);
+    let dy = dpdy(in.uv);
+    var uv = in.uv;
+    if (m != 0u) {
+        let e = 1.0 / 16.0;
+        let f = fract(in.uv);
+        if ((m & 1u) != 0u && f.x < e) { uv.x += e; }
+        if ((m & 2u) != 0u && f.x >= 1.0 - e) { uv.x -= e; }
+        if ((m & 4u) != 0u && f.y < e) { uv.y += e; }
+        if ((m & 8u) != 0u && f.y >= 1.0 - e) { uv.y -= e; }
+    }
+    return textureSampleGrad(tex, samp, uv, in.layer, dx, dy);
+}
+
 @fragment
 fn fs_solid(in: VOut) -> @location(0) vec4<f32> {
-    let c = textureSample(tex, samp, in.uv, in.layer);
+    let c = ctm_sample(in);
     if (c.a < 0.5) {
         discard;
     }
@@ -141,7 +159,7 @@ fn wave_slope(xz: vec2<f32>, t: f32) -> vec2<f32> {
 
 @fragment
 fn fs_translucent(in: VOut) -> @location(0) vec4<f32> {
-    let c = textureSample(tex, samp, in.uv, in.layer);
+    let c = ctm_sample(in);
     if (c.a < 0.02) {
         discard;
     }

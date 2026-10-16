@@ -89,5 +89,9 @@
     (name: "glass_pane", display_name: Some("Painel de Vidro"), shape: Pane, transparency: Cutout, hardness: 0.3, drops: Some([]), textures: (all: Some("glass"))),
     (name: "oak_door", display_name: Some("Porta de Carvalho"), shape: Door, transparency: Cutout, hardness: 3.0, tool: Some(Axe), textures: (side: Some("oak_door_lower"), top: Some("oak_door_upper"))),
     (name: "oak_trapdoor", display_name: Some("Alçapão de Carvalho"), shape: Trapdoor, transparency: Cutout, hardness: 3.0, tool: Some(Axe), textures: (all: Some("oak_trapdoor"))),
+    (name: "oak_roof", display_name: Some("Telhado de Carvalho"), shape: Roof, hardness: 2.0, tool: Some(Axe), textures: (all: Some("oak_planks"))),
+    (name: "spruce_roof", display_name: Some("Telhado de Pinheiro"), shape: Roof, hardness: 2.0, tool: Some(Axe), textures: (all: Some("spruce_planks"))),
+    (name: "brick_roof", display_name: Some("Telhado de Tijolos"), shape: Roof, hardness: 2.0, tool: Some(Pickaxe), tier: 1, textures: (all: Some("bricks"))),
+    (name: "stone_brick_roof", display_name: Some("Telhado de Tijolos de Pedra"), shape: Roof, hardness: 2.0, tool: Some(Pickaxe), tier: 1, textures: (all: Some("stone_bricks"))),
     (name: "snow_layer", display_name: Some("Camada de Neve"), shape: Layer, hardness: 0.1, tool: Some(Shovel), textures: (all: Some("snow"))),
 ])

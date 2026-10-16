@@ -179,7 +179,7 @@ impl UiBatch {
         if b.shape.is_boxes() {
             // Stairs climb away from the viewer; fences, walls and panes show two arms.
             let (variant, conn) = match b.shape {
-                Shape::Stairs => (3, 0),
+                Shape::Stairs | Shape::Roof => (3, 0),
                 Shape::Fence | Shape::Wall | Shape::Pane => (0, voxel::shapes::CONN_PX | voxel::shapes::CONN_NX),
                 _ => (0, 0),
             };

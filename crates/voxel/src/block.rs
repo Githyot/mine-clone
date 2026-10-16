@@ -37,12 +37,14 @@ pub enum Shape {
     Inset,
     /// Thin layers that pile up, 1 to 8 (snow).
     Layer,
+    /// A sloped roof (Macaw's Roofs idea): eight thin steps rising to the side it faces.
+    Roof,
 }
 
 impl Shape {
     /// Drawn and collided as boxes from `shapes::boxes`.
     pub fn is_boxes(self) -> bool {
-        matches!(self, Shape::Slab | Shape::Stairs | Shape::Fence | Shape::Wall | Shape::Pane | Shape::Door | Shape::Trapdoor | Shape::Layer)
+        matches!(self, Shape::Slab | Shape::Stairs | Shape::Fence | Shape::Wall | Shape::Pane | Shape::Door | Shape::Trapdoor | Shape::Layer | Shape::Roof)
     }
 }
 

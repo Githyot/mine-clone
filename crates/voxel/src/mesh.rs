@@ -15,6 +15,11 @@ pub const FLAG_LIQUID: u32 = 2;
 /// Merged quad (greedy meshing): the shader repeats the texture once per block from the
 /// position instead of reading the vertex UVs.
 pub const FLAG_TILE: u32 = 4;
+/// Connected-texture edges (see `connected_edges`).
+pub const FLAG_CTM_U0: u32 = 8;
+pub const FLAG_CTM_U1: u32 = 16;
+pub const FLAG_CTM_V0: u32 = 32;
+pub const FLAG_CTM_V1: u32 = 64;
 
 /// A face that looks the same as its neighbours can merge with them: same texture, tint and
 /// flags, no ambient occlusion and the same light at every corner.
@@ -133,6 +138,7 @@ pub struct MeshTables {
     wave: Vec<bool>,
     height: Vec<u32>,
     variant: Vec<u8>,
+    connected: Vec<bool>,
     biome_tints: Vec<[u8; 3]>,
 }
 
@@ -148,6 +154,7 @@ impl MeshTables {
             wave: vec![],
             height: vec![],
             variant: vec![],
+            connected: vec![],
             biome_tints: biome_tints
                 .iter()
                 .map(|c| [(c[0] * 200.0).min(255.0) as u8, (c[1] * 200.0).min(255.0) as u8, (c[2] * 200.0).min(255.0) as u8])
@@ -174,6 +181,8 @@ impl MeshTables {
             t.wave.push(leaves || (b.shape == Shape::Cross && b.light == 0));
             t.height.push(b.height as u32);
             t.variant.push(b.variant);
+            // Glass joins up with its neighbours: no frame lines between panes of a window.
+            t.connected.push(b.shape == Shape::Cube && (b.name == "glass" || b.name.ends_with("_glass")));
         }
         if t.biome_tints.is_empty() {
             t.biome_tints.push([200, 200, 200]);
@@ -206,6 +215,26 @@ const FACES: [FaceInfo; 6] = [
     // -Z
     FaceInfo { normal: [0, 0, -1], corners: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]], uv: [[0, 16], [16, 16], [16, 0], [0, 0]] },
 ];
+
+/// Connected-texture edge bits: which sides of face `f` of the block at `i` continue into
+/// the same block (u low, u high, v low, v high), so the shader can leave out the frame there.
+fn connected_edges(blocks: &[BlockId], i: usize, id: BlockId, f: usize) -> u32 {
+    let fi = &FACES[f];
+    let d = |a: [u32; 3], b: [u32; 3]| [a[0] as i32 - b[0] as i32, a[1] as i32 - b[1] as i32, a[2] as i32 - b[2] as i32];
+    let du = d(fi.corners[1], fi.corners[0]);
+    let dv = d(fi.corners[0], fi.corners[3]);
+    let at = |o: [i32; 3]| (i as isize + o[0] as isize + o[2] as isize * P as isize + o[1] as isize * (P * P) as isize) as usize;
+    let n = fi.normal;
+    let mut bits = 0;
+    for (bit, o) in [(FLAG_CTM_U0, du.map(|x| -x)), (FLAG_CTM_U1, du), (FLAG_CTM_V0, dv.map(|x| -x)), (FLAG_CTM_V1, dv)] {
+        // Joined when the neighbour is the same block and its own face here is showing too.
+        let front = [o[0] + n[0], o[1] + n[1], o[2] + n[2]];
+        if blocks[at(o)] == id && blocks[at(front)] != id {
+            bits |= bit;
+        }
+    }
+    bits
+}
 
 #[inline(always)]
 fn pack(pos: [u32; 3], ao: u32, uv: [u32; 2], layer: u32, face: u32, flags: u32, sky: u32, blk: u32, tint: [u8; 3]) -> Vertex {
@@ -448,6 +477,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     }
                     let layer = t.faces[idu][f] as u32;
                     let tint = if t.tint[idu] & (1 << f) != 0 { biome_tint } else { white };
+                    let ctm = if t.connected[idu] { connected_edges(blocks, i, id, f) } else { 0 };
                     let mut verts = [Vertex::default(); 4];
                     let mut aos = [3u32; 4];
                     let mut lights = [(0u32, 0u32); 4];
@@ -504,11 +534,11 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                         }
                         aos[k] = ao;
                         lights[k] = (sky, blk);
-                        verts[k] = pack(pos, ao, uv, layer, f as u32, wave | if liquid { FLAG_LIQUID } else { 0 }, sky, blk, tint);
+                        verts[k] = pack(pos, ao, uv, layer, f as u32, wave | ctm | if liquid { FLAG_LIQUID } else { 0 }, sky, blk, tint);
                     }
                     // Plain full faces with even light go to the merge masks instead.
                     let uniform = aos.iter().all(|&a| a == 3) && lights.iter().all(|&l| l == lights[0]);
-                    if uniform && hgt == 16 && (!liquid || f == 2) {
+                    if uniform && hgt == 16 && (!liquid || f == 2) && !t.connected[idu] {
                         let (na, aa, ba) = face_axes(f);
                         let lp = [lx, ly, lz];
                         masks[f * 16 + lp[na]][lp[aa] + lp[ba] * 16] = Some(FaceKey {

@@ -13,7 +13,7 @@ pub type PBox = [u8; 6];
 pub fn variant_count(shape: Shape) -> u8 {
     match shape {
         Shape::Slab => 3,
-        Shape::Stairs | Shape::Layer => 8,
+        Shape::Stairs | Shape::Layer | Shape::Roof => 8,
         Shape::Door | Shape::Trapdoor => 16,
         _ => 1,
     }
@@ -68,6 +68,15 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
             let parts = [[0, 0, 0, 16, 8, 16], rotate([0, 8, 0, 16, 16, 8], f)];
             for p in parts {
                 out.push(if up { flip_y(p) } else { p });
+            }
+        }
+        Shape::Roof => {
+            // Two-pixel steps from full height at the back down to one step at the front,
+            // fine enough to read as a slope and low enough to walk up.
+            let up = variant & 4 != 0;
+            for k in 0..8u8 {
+                let b = rotate([0, 0, 2 * k, 16, 16 - 2 * k, 2 * k + 2], f);
+                out.push(if up { flip_y(b) } else { b });
             }
         }
         Shape::Fence | Shape::Wall | Shape::Pane => {

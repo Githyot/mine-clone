@@ -2055,7 +2055,7 @@ impl Game {
         let upper = if hit.normal.y != 0 { hit.normal.y < 0 } else { at.y - pos.y as f32 > 0.5 };
         let v = match shape {
             Shape::Slab => upper as u8,
-            Shape::Stairs => facing(f.x, f.z) | if upper { 4 } else { 0 },
+            Shape::Stairs | Shape::Roof => facing(f.x, f.z) | if upper { 4 } else { 0 },
             Shape::Door => facing(f.x, f.z),
             Shape::Trapdoor => {
                 let side = if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) ^ 2 } else { facing(-f.x, -f.z) };
@@ -2183,6 +2183,19 @@ impl Game {
         put(w, 2, 0, 9, "oak_trapdoor:6");
         put(w, 4, 0, 9, "oak_planks");
         put(w, 4, 1, 9, "oak_planks");
+        // Roofs: two little gables and one upside down, then a glass wall that joins up.
+        for z in 11..=12 {
+            put(w, -6, 0, z, "oak_roof:1");
+            put(w, -5, 0, z, "oak_roof:3");
+            put(w, -3, 0, z, "brick_roof:1");
+            put(w, -2, 0, z, "brick_roof:3");
+        }
+        put(w, 0, 0, 11, "spruce_roof:6");
+        for x in 2..=5 {
+            for y in 0..3 {
+                put(w, x, y, 11, "glass");
+            }
+        }
         // Look from above.
         self.body.pos.y += 3.5;
         self.body.flying = true;
