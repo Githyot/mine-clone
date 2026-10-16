@@ -106,6 +106,10 @@ pub enum Sfx {
     Thunder(f32),
     /// Two seconds of rain on the ground, played back to back while it rains.
     Rain,
+    /// A spell leaving a wand, staff or book; the value picks the school's voice.
+    Cast(u8),
+    /// A spell hitting something.
+    SpellHit(u8),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

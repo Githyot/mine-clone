@@ -113,6 +113,8 @@ pub fn synth(sfx: Sfx, seed: u32) -> Vec<f32> {
         Sfx::Fizz => fizz(&mut rng),
         Sfx::Thunder(c) => thunder(&mut rng, c.clamp(0.0, 1.0)),
         Sfx::Rain => rain(&mut rng),
+        Sfx::Cast(k) => cast(&mut rng, k, false),
+        Sfx::SpellHit(k) => cast(&mut rng, k, true),
     };
     out.into_iter().map(|s| s.clamp(-1.0, 1.0)).collect()
 }
@@ -378,6 +380,30 @@ fn fizz(rng: &mut Rng) -> Vec<f32> {
         .collect()
 }
 
+/// A spell: a low breathy whoosh over a soft hum whose note depends on the school; the hit is
+/// a shorter thump. Kept deep like the rest of the game's sounds.
+fn cast(rng: &mut Rng, school: u8, hit: bool) -> Vec<f32> {
+    let dur = if hit { 0.35 } else { 0.5 };
+    let n = (dur * RATE) as usize;
+    let note = [98.0, 130.8, 110.0, 146.8, 123.5, 82.4][school as usize % 6];
+    let mut lp = LowPass::new(if hit { 380.0 } else { 650.0 });
+    let mut low = LowPass::new(120.0);
+    let mut phase = 0.0f32;
+    (0..n)
+        .map(|i| {
+            let t = i as f32 / RATE;
+            let x = rng.noise();
+            let air = lp.run(x) - low.run(x);
+            // The hum bends down a little as the spell flies off.
+            let f = note * (1.0 + 0.25 * (1.0 - t / dur));
+            phase += f / RATE;
+            let hum = (phase * std::f32::consts::TAU).sin() + 0.3 * (phase * 2.0 * std::f32::consts::TAU).sin();
+            let env = (t * if hit { 200.0 } else { 25.0 }).min(1.0) * (1.0 - t / dur).powf(if hit { 2.5 } else { 1.6 });
+            (air * 1.4 + hum * 0.35) * env
+        })
+        .collect()
+}
+
 /// Rolling thunder: a crack when close, then a long low rumble that swells and fades.
 fn thunder(rng: &mut Rng, close: f32) -> Vec<f32> {
     let dur = 4.0;
@@ -517,6 +543,7 @@ mod tests {
             all.extend([Sfx::Break(m), Sfx::Place(m), Sfx::Hit(m), Sfx::Step(m)]);
         }
         all.extend([Sfx::Click, Sfx::Hurt, Sfx::Death, Sfx::Respawn, Sfx::MobHit, Sfx::Explode, Sfx::Splash(1.0), Sfx::Swim, Sfx::WaterExit, Sfx::Bubbles, Sfx::Pickup, Sfx::Xp, Sfx::Eat, Sfx::Fizz, Sfx::Thunder(1.0), Sfx::Thunder(0.2), Sfx::Rain]);
+        all.extend((0..6).flat_map(|k| [Sfx::Cast(k), Sfx::SpellHit(k)]));
         for sfx in all {
             let v = synth(sfx, 7);
             assert!(!v.is_empty() && v.iter().all(|x| x.is_finite()), "{sfx:?}");

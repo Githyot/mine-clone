@@ -7,6 +7,7 @@ mod audio;
 mod controller;
 mod creative;
 mod fishing;
+mod magic;
 mod fluids;
 mod weather;
 mod entity;
@@ -425,6 +426,7 @@ struct Game {
     health: f32,
     /// 20 at the start, up to 40 with life crystals.
     max_health: f32,
+    magic: magic::Magic,
     /// Seconds since the player was last hurt (red flash, invulnerability).
     hurt_age: f32,
     regen: f32,
@@ -617,7 +619,9 @@ impl Game {
         let mut survival = args.survival;
         let mut health = 20.0;
         let mut max_health = 20.0f32;
+        let mut max_mana = 20.0f32;
         if let Some(l) = &level {
+            max_mana = l.max_mana;
             survival = l.survival || args.survival;
             max_health = l.max_health.clamp(20.0, 40.0);
             health = if l.health > 0.0 { l.health.min(max_health) } else { max_health };
@@ -719,6 +723,7 @@ impl Game {
             survival,
             health,
             max_health,
+            magic: magic::Magic::new(max_mana),
             hurt_age: 100.0,
             regen: 0.0,
             fall_peak: f32::MIN,
@@ -918,6 +923,7 @@ impl Game {
             survival: self.survival,
             health: self.health,
             max_health: self.max_health,
+            max_mana: self.magic.max_mana,
             raining: self.weather.state.raining,
             thunder: self.weather.state.thunder,
             weather_timer: self.weather.state.timer,
@@ -1196,6 +1202,18 @@ impl Game {
                 if let Some(i) = self.args.slot {
                     self.selected = i;
                 }
+                if let Ok(spell) = std::env::var("MC_CAST") {
+                    // Test hook: a caster in hand, a few spells frozen in flight.
+                    if let Some(id) = self.items.id(&spell) {
+                        let sel = self.selected;
+                        self.surv.inv.slots[sel] = Some(voxel::item::ItemStack::new(id, 1));
+                        self.screen = Screen::Playing;
+                        for k in 0..12 {
+                            self.update_magic(0.03, k % 4 == 0);
+                            self.particles.update(&self.world, 0.03);
+                        }
+                    }
+                }
                 if self.args.particles {
                     // Frozen in mid-air for a test picture: a broken block and a splash.
                     let f = self.forward();
@@ -1251,6 +1269,7 @@ impl Game {
         if self.world_open && !paused && self.screen != Screen::Loading {
             let use_held = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
             self.surv_update(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
+            self.update_magic(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
         }
         if self.world_open && !matches!(self.screen, Screen::Loading | Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Shaders) {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
@@ -2610,6 +2629,7 @@ impl Game {
             self.draw_hotbar_items(hx, hy, cell);
             if self.survival {
                 self.draw_survival_hud(hx, hy, cell);
+                self.draw_mana(w);
             }
             let sx = hx + self.selected as f32 * cell;
             if !self.ui.sprite("sprites/hud/hotbar_selection", sx - 2.0 * s, hy - 2.0 * s, 24.0 * s, 23.0 * s) {

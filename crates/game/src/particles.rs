@@ -26,6 +26,8 @@ pub enum Kind {
     Drop,
     /// Rises under water, pops at the surface.
     Bubble,
+    /// Magic: drifts without falling and shines at full brightness.
+    Glow,
 }
 
 struct Particle {
@@ -97,6 +99,13 @@ impl Particles {
         }
     }
 
+    /// A glowing mote (spell trails and bursts).
+    pub fn glow(&mut self, at: Vec3, vel: Vec3, layer: u16, tint: [f32; 3], size: f32, life: f32) {
+        let jitter = Vec3::new(self.rand() - 0.5, self.rand() - 0.5, self.rand() - 0.5);
+        let p = Particle { pos: at + jitter * size, vel: vel + jitter * 0.6, life: life * (0.7 + self.rand() * 0.6), size, layer: layer as u32, uv: [0.4, 0.4], tint, kind: Kind::Glow };
+        self.push(p);
+    }
+
     pub fn bubbles(&mut self, at: Vec3, layer: u16, count: usize) {
         for _ in 0..count {
             let off = Vec3::new(self.rand() - 0.5, self.rand() * 0.3, self.rand() - 0.5) * 0.6;
@@ -118,6 +127,10 @@ impl Particles {
         for p in self.list.iter_mut() {
             p.life -= dt;
             match p.kind {
+                Kind::Glow => {
+                    p.vel *= 1.0 - dt * 2.5;
+                    p.pos += p.vel * dt;
+                }
                 Kind::Bubble => {
                     p.vel.x += ((p.pos.y * 9.0).sin()) * dt * 0.8;
                     p.pos += p.vel * dt;
@@ -153,7 +166,7 @@ impl Particles {
         self.list
             .iter()
             .map(|p| {
-                let l = world.light(p.pos.floor().as_ivec3());
+                let l = if p.kind == Kind::Glow { 0xff } else { world.light(p.pos.floor().as_ivec3()) };
                 // Shrink away at the end of life.
                 let s = p.size * (p.life / 0.25).clamp(0.0, 1.0);
                 GpuParticle {

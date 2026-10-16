@@ -434,6 +434,115 @@ def life_crystal_item():
     return outline(from_map(rows, pmap(p)))
 
 
+# --------------------------------------------------------------------------
+# Magic: wands, staffs, spell books, mana crystal
+# --------------------------------------------------------------------------
+
+WAND_GEMS = {
+    "ruby": GEMS["ruby"], "sapphire": GEMS["sapphire"], "topaz": GEMS["topaz"],
+    "amethyst": GEMS["amethyst"],
+    "emerald": pal("#06501c", "#0d7a2f", "#17b54a", "#5ae484", "#c8ffd8"),
+}
+
+
+def wand(gem):
+    """A thin wooden wand with a cut gem set at its tip."""
+    img = canvas()
+    m = (np.abs(V) <= 0.6) & (U >= 1.0) & (U <= 11.5)
+    img[m & (V > 0), :3] = HANDLE[3]
+    img[m & (V <= 0), :3] = HANDLE[1]
+    img[m & (U < 3.0), :3] = HANDLE[0]
+    img[m, 3] = 255
+    # gold band below the gem
+    band = (np.abs(V) <= 1.0) & (U > 10.0) & (U <= 11.5)
+    img[band, :3] = hexrgb("#d29a16")
+    img[band, 3] = 255
+    p = WAND_GEMS[gem]
+    rows = {(12, 2): 3, (13, 2): 4, (12, 3): 2, (13, 3): 3, (11, 3): 3, (12, 1): 4, (14, 2): 2, (13, 1): 5, (11, 2): 4}
+    for (x, y), k in rows.items():
+        put(img, x, y, p[k - 1] if k <= len(p) else p[-1])
+    return outline(img)
+
+
+def staff(gem, metal):
+    """A long metal-shod staff with prongs holding a large gem."""
+    img = canvas()
+    m = (np.abs(V) <= 0.7) & (U >= 0.5) & (U <= 12.5)
+    img[m & (V > 0), :3] = HANDLE[3]
+    img[m & (V <= 0), :3] = HANDLE[1]
+    img[m, 3] = 255
+    mp = MATERIALS[metal]
+    for u0 in (3.0, 9.5):
+        band = (np.abs(V) <= 1.0) & (U > u0) & (U <= u0 + 1.2)
+        img[band, :3] = mp[2]
+        img[band, 3] = 255
+    p = WAND_GEMS[gem]
+    head = [
+        (11, 1, 2), (12, 1, 3), (13, 1, 2),
+        (11, 2, 3), (12, 2, 5), (13, 2, 4), (14, 2, 2),
+        (11, 3, 2), (12, 3, 4), (13, 3, 3), (14, 3, 2),
+        (12, 4, 2), (13, 4, 2),
+    ]
+    for x, y, k in head:
+        put(img, x, y, p[k - 1])
+    # metal prongs around the gem
+    for x, y in ((10, 2), (10, 4), (11, 5), (14, 4), (15, 1), (14, 0)):
+        put(img, x, y, mp[1])
+    return outline(img)
+
+
+def tome(cover, emblem):
+    """A thick spell book seen from the front: coloured cover, gold corners, an emblem."""
+    rows = [
+        "................",
+        "................",
+        "...GCCCCCCCCG...",
+        "..GCCCCCCCCCCG..",
+        "..CCCCCCCCCCCP..",
+        "..CCCCEEECCCCP..",
+        "..CCCEEEEECCCP..",
+        "..CCCEEHEECCCP..",
+        "..CCCEEEEECCCP..",
+        "..CCCCEEECCCCP..",
+        "..CCCCCCCCCCCP..",
+        "..CCCCCCCCCCCP..",
+        "..GCCCCCCCCCGP..",
+        "...DDDDDDDDDDP..",
+        "................",
+        "................",
+    ]
+    cols = {"C": hexrgb(cover[1]), "G": hexrgb("#e8b923"), "P": hexrgb("#e8e0c8"),
+            "D": hexrgb(cover[0]), "E": hexrgb(emblem[0]), "H": hexrgb(emblem[1])}
+    img = from_map(rows, cols)
+    # light along the top edge of the cover
+    for x in range(4, 12):
+        put(img, x, 3, scale_rgb(img[3, x, :3], 1.25))
+    return outline(img)
+
+
+def mana_crystal():
+    rows = [
+        "................",
+        ".......5........",
+        "......545.......",
+        "......444.......",
+        ".....44443......",
+        "..5..44433..4...",
+        "..44.44333.43...",
+        "...443433343....",
+        "....44433333....",
+        "....44333332....",
+        ".....433332.....",
+        ".....333322.....",
+        "......3322......",
+        ".......21.......",
+        "................",
+        "................",
+    ]
+    p = pal("#0a1a5a", "#1c3aa8", "#2e62e0", "#6e9cff", "#e0ecff")
+    return outline(from_map(rows, pmap(p)))
+
+
 def emerald():
     rows = [
         "................",
@@ -1348,6 +1457,13 @@ def item_registry():
     for g in GEMS:
         reg[g] = lambda n=g: gem(n)
     reg["life_crystal"] = life_crystal_item
+    for g in WAND_GEMS:
+        reg[f"{g}_wand"] = lambda n=g: wand(n)
+    reg["fire_staff"] = lambda: staff("ruby", "golden")
+    reg["frost_staff"] = lambda: staff("sapphire", "silver")
+    reg["thunder_tome"] = lambda: tome(("#1c2a5a", "#2c4290"), ("#f2c22c", "#fff6c8"))
+    reg["flame_tome"] = lambda: tome(("#4a0c0c", "#8a1a14"), ("#f07a20", "#ffe080"))
+    reg["mana_crystal"] = mana_crystal
     reg.update({
         "diamond": diamond, "emerald": emerald, "lapis_lazuli": lapis,
         "redstone": redstone, "flint": flint, "string": string_item,

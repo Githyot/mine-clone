@@ -214,6 +214,10 @@ pub struct Mob {
     /// is hungry again after a catch.
     pub prey: Option<Vec3>,
     pub fed: f32,
+    /// Seconds left burning (fire spells) and slowed (frost spells).
+    pub on_fire: f32,
+    pub chill: f32,
+    fire_tick: f32,
     rng: Rng,
 }
 
@@ -250,6 +254,9 @@ impl Mob {
             sleep_t: 0.0,
             prey: None,
             fed: 20.0 + rng.f32() * 40.0,
+            on_fire: 0.0,
+            chill: 0.0,
+            fire_tick: 0.0,
             rng,
         }
     }
@@ -325,6 +332,23 @@ impl Mob {
         let mut run = false;
         let hostile = def.kind == Kind::Hostile && !player_creative;
 
+        // Set alight by a spell: a point of damage a second until it goes out (water puts it out).
+        if self.on_fire > 0.0 {
+            self.on_fire = if self.body.in_water { 0.0 } else { self.on_fire - dt };
+            self.fire_tick += dt;
+            if self.fire_tick > 1.0 {
+                self.fire_tick = 0.0;
+                self.health -= 1.0;
+                self.hurt_age = 0.0;
+                out.push(MobEvent::Burning);
+                if self.health <= 0.0 {
+                    out.push(MobEvent::Died { pos: self.body.center() });
+                    return;
+                }
+            }
+        }
+        self.chill = (self.chill - dt).max(0.0);
+        self.body.speed_override = Some(def.speed * if self.chill > 0.0 { 0.4 } else { 1.0 });
         if def.burns_in_daylight && daylight && sky_light_at_head >= 14 && !self.body.in_water {
             self.burn_tick += dt;
             if self.burn_tick > 1.0 {

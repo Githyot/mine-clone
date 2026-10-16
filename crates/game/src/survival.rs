@@ -838,6 +838,13 @@ impl Game {
         if item.name == "fishing_rod" {
             return self.use_rod();
         }
+        if crate::magic::is_caster(&item.name) {
+            // Casting happens while the button is held (update_magic).
+            return true;
+        }
+        if item.name == "mana_crystal" && self.survival {
+            return self.use_mana_crystal();
+        }
         if item.name == "life_crystal" && self.survival && self.max_health < 40.0 {
             // Crush it: two more hearts for good (Terraria's life crystal).
             self.max_health = (self.max_health + 4.0).min(40.0);
