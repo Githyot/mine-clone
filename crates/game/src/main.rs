@@ -7,6 +7,7 @@ mod audio;
 mod controller;
 mod entity;
 mod menus;
+mod monitor;
 mod lod;
 mod mobs;
 mod paintings;
@@ -80,6 +81,8 @@ struct Args {
     survival: bool,
     particles: bool,
     camera: u8,
+    perf: bool,
+    prone: bool,
     /// Show the title screen even with --world/--screenshot.
     title: bool,
     /// Shader pack to use ("off" turns shaders off).
@@ -123,6 +126,8 @@ fn parse_args() -> Args {
             "--debug" => a.debug = true,
             "--mobs" => a.mobs = true,
             "--particles" => a.particles = true,
+            "--perf" => a.perf = true,
+            "--prone" => a.prone = true,
             "--camera" => a.camera = it.next().and_then(|v| v.parse().ok()).unwrap_or(1),
             "--title" => a.title = true,
             "--survival" => a.survival = true,
@@ -329,6 +334,9 @@ struct Game {
     last_w: f32,
     /// 0..1 smoothed sneak (camera drop) and sprint (wider view).
     crouch: f32,
+    /// Lying down (Z): wanted, and 0..1 smoothed for the camera and the body.
+    prone: bool,
+    prone_t: f32,
     fov_kick: f32,
     was_in_water: bool,
     swim_dist: f32,
@@ -336,6 +344,9 @@ struct Game {
 
     ui: UiBatch,
     show_debug: bool,
+    show_perf: bool,
+    perf: monitor::FpsStats,
+    sysmon: monitor::SysMonitor,
     hide_hud: bool,
     toast: Option<Toast>,
     packs: Vec<String>,
@@ -367,6 +378,7 @@ impl Game {
         let base = base_dir();
         let settings_path = base.join("settings.ron");
         let mut settings = Settings::load(&settings_path);
+        settings.controller.fill_missing();
         if let Some(rd) = args.render_distance {
             settings.render_distance = rd;
         }
@@ -387,6 +399,8 @@ impl Game {
 
         // Without --world the game opens on the title screen, with the last played world behind it.
         let camera_mode = args.camera.min(2);
+        let show_perf = args.perf;
+        let start_prone = args.prone;
         let title_mode = args.title || (args.world.is_none() && args.screenshot.is_none());
         let world_name = args.world.clone().or_else(|| menus::list_worlds(&base).first().map(|w| w.name.clone())).unwrap_or_else(|| "Mundo 1".into());
         let save = Arc::new(WorldSave::new(level_path_hint(&base, &world_name)));
@@ -539,12 +553,17 @@ impl Game {
             sprinting: false,
             last_w: -10.0,
             crouch: 0.0,
+            prone: start_prone,
+            prone_t: 0.0,
             fov_kick: 0.0,
             was_in_water: false,
             swim_dist: 0.0,
             bubble_cd: 4.0,
             ui,
             show_debug,
+            show_perf,
+            perf: monitor::FpsStats::new(),
+            sysmon: monitor::SysMonitor::new(),
             hide_hud: false,
             toast: None,
             packs,
@@ -655,6 +674,10 @@ impl Game {
     }
 
     fn set_screen(&mut self, s: Screen) {
+        if self.screen == Screen::Loading && s != Screen::Loading {
+            // Loading frames say nothing about how the game runs.
+            self.perf.reset();
+        }
         self.screen = s;
         self.set_grab(s == Screen::Playing);
         self.mouse_held = [false; 3];
@@ -757,9 +780,15 @@ impl Game {
                 _ => {}
             },
             KeyCode::F3 => self.show_debug = !self.show_debug,
+            KeyCode::F9 => {
+                self.show_perf = !self.show_perf;
+                self.sysmon.set_active(self.show_perf);
+                self.perf.reset();
+            }
             KeyCode::F1 => self.hide_hud = !self.hide_hud,
             KeyCode::F2 => self.screenshot_request = true,
             KeyCode::F5 => self.camera_mode = (self.camera_mode + 1) % 3,
+            KeyCode::KeyZ if self.screen == Screen::Playing => self.prone = !self.prone,
             KeyCode::F11 => {
                 let fs = self.window.fullscreen().is_some();
                 self.window.set_fullscreen(if fs { None } else { Some(Fullscreen::Borderless(None)) });
@@ -1028,11 +1057,23 @@ impl Game {
             wish += fwd * self.pads.pad.ly + right * self.pads.pad.lx;
         }
         let held = |a: Action| playing && self.pad_held.contains(&a);
+        // Lying down: the box drops to 0.6 high so the player fits through one-block gaps. Getting
+        // up waits until there is room, so a tunnel keeps you crawling.
+        if self.body.flying {
+            self.prone = false;
+        }
+        if self.prone {
+            self.body.height = 0.6;
+        } else if self.body.height < voxel::physics::PLAYER_HEIGHT && self.body.fits(&self.world, voxel::physics::PLAYER_HEIGHT) {
+            self.body.height = voxel::physics::PLAYER_HEIGHT;
+        }
+        let crawling = self.body.height < 1.0;
         let input = Input {
             wish,
             jump: k(KeyCode::Space) || held(Action::Jump),
-            sneak: k(KeyCode::ShiftLeft) || k(KeyCode::ShiftRight) || held(Action::Sneak),
+            sneak: (k(KeyCode::ShiftLeft) || k(KeyCode::ShiftRight) || held(Action::Sneak)) && !crawling,
             sprint: false,
+            crawl: crawling,
         };
         // Sprint: Ctrl, double-tap W, or the pad button; it lasts while moving forward.
         let sneaking = input.sneak && !self.body.flying;
@@ -1040,12 +1081,13 @@ impl Game {
             self.sprinting = true;
         }
         let forward_amount = wish.dot(fwd);
-        if forward_amount < 0.3 || sneaking || (!k(KeyCode::KeyW) && !(playing && self.pads.pad.connected && self.pads.pad.ly > 0.3)) {
+        if forward_amount < 0.3 || sneaking || crawling || (!k(KeyCode::KeyW) && !(playing && self.pads.pad.connected && self.pads.pad.ly > 0.3)) {
             self.sprinting = false;
         }
         let input = Input { sprint: self.sprinting, ..input };
         let ease = (dt * 10.0).min(1.0);
         self.crouch += ((if sneaking { 1.0 } else { 0.0 }) - self.crouch) * ease;
+        self.prone_t += ((if crawling { 1.0 } else { 0.0 }) - self.prone_t) * (dt * 6.0).min(1.0);
         let moving = (self.body.vel * Vec3::new(1.0, 0.0, 1.0)).length() > 1.0;
         self.fov_kick += ((if self.sprinting && moving { 1.0 } else { 0.0 }) - self.fov_kick) * ease * 0.8;
         let before = self.body.pos;
@@ -1474,6 +1516,7 @@ impl Game {
             head_in_water: self.body.head_in_water,
             flying: self.body.flying,
             sneaking: self.crouch,
+            crawling: self.prone_t,
             sprinting: self.sprinting,
             burning,
             hurt: self.survival && self.hurt_age < 0.3,
@@ -1733,6 +1776,95 @@ impl Game {
         (top, horizon, daylight.max(0.16), sun)
     }
 
+    /// F9: frame rate and machine usage, top right.
+    fn draw_perf(&mut self) {
+        self.sysmon.set_active(true);
+        let w = self.renderer.config.width as f32;
+        // A size smaller than the HUD so the panel doesn't cover the game.
+        let gui = self.ui.scale;
+        let s = (gui - 1.0).max(1.0);
+        self.ui.scale = s;
+        let f = self.perf.summary();
+        let st = self.sysmon.stats();
+        const GOOD: [u8; 4] = [120, 230, 120, 255];
+        const MID: [u8; 4] = [240, 210, 90, 255];
+        const BAD: [u8; 4] = [240, 100, 90, 255];
+        const LABEL: [u8; 4] = [200, 200, 200, 255];
+        let fps_col = |v: f32| if v >= 55.0 { GOOD } else if v >= 30.0 { MID } else { BAD };
+        let pct_col = |v: f32| if v < 70.0 { GOOD } else if v < 90.0 { MID } else { BAD };
+        let temp_col = |v: f32| if v < 70.0 { GOOD } else if v < 85.0 { MID } else { BAD };
+        let nd = || "n/d".to_string();
+        let mut rows: Vec<(String, String, [u8; 4])> = vec![
+            ("FPS atual".into(), format!("{:.0} ({:.1} ms)", f.current, f.frame_ms), fps_col(f.current)),
+            ("FPS médio".into(), format!("{:.0}", f.average), fps_col(f.average)),
+            ("FPS alto".into(), format!("{:.0}", f.high), fps_col(f.high)),
+            ("FPS 1% mínimo".into(), format!("{:.0} (pior {:.1} ms)", f.low1, f.worst_ms), fps_col(f.low1)),
+        ];
+        if !st.ready {
+            rows.push(("Sistema".into(), "medindo...".into(), LABEL));
+        } else {
+            rows.push(("CPU total".into(), format!("{:.0}% ({} núcleos)", st.cpu_total, st.cores), pct_col(st.cpu_total)));
+            rows.push(("CPU do jogo".into(), format!("{:.0}%", st.cpu_game), pct_col(st.cpu_game)));
+            rows.push(("CPU temp.".into(), st.cpu_temp.map(|t| format!("{t:.0} °C")).unwrap_or_else(nd), st.cpu_temp.map(temp_col).unwrap_or(LABEL)));
+            let ram_pct = (st.ram_used_gb / st.ram_total_gb.max(0.001) * 100.0) as f32;
+            rows.push(("RAM do jogo".into(), format!("{:.2} GB", st.ram_game_gb), GOOD));
+            rows.push(("RAM do PC".into(), format!("{:.1} / {:.1} GB ({:.0}%)", st.ram_used_gb, st.ram_total_gb, ram_pct), pct_col(ram_pct)));
+            rows.push(("GPU uso".into(), st.gpu_usage.map(|u| format!("{u:.0}%")).unwrap_or_else(nd), st.gpu_usage.map(pct_col).unwrap_or(LABEL)));
+            rows.push(("GPU temp.".into(), st.gpu_temp.map(|t| format!("{t:.0} °C")).unwrap_or_else(nd), st.gpu_temp.map(temp_col).unwrap_or(LABEL)));
+            let vram = match (st.vram_used_gb, st.vram_total_gb) {
+                (Some(u), Some(t)) => format!("{u:.2} / {t:.1} GB"),
+                (Some(u), None) => format!("{u:.2} GB"),
+                _ => format!("{:.2} GB (só o jogo)", self.renderer.vram_bytes as f64 / 1e9),
+            };
+            rows.push(("VRAM".into(), vram, GOOD));
+            rows.push(("Disco do jogo".into(), format!("ler {:.1}  gravar {:.1} MB/s", st.game_read_mbs, st.game_write_mbs), GOOD));
+            let disk = match (st.disk_read_mbs, st.disk_write_mbs) {
+                (Some(r), Some(w)) => format!("ler {r:.1}  gravar {w:.1} MB/s"),
+                _ => nd(),
+            };
+            rows.push(("Disco do PC".into(), disk, if st.disk_read_mbs.is_some() { GOOD } else { LABEL }));
+        }
+        let gpu_name = self.renderer.adapter_info.name.clone();
+        let label_w = rows.iter().map(|r| self.ui.text_width(&r.0, s)).fold(0.0, f32::max) + 8.0 * s;
+        let value_w = rows.iter().map(|r| self.ui.text_width(&r.1, s)).fold(0.0, f32::max);
+        let graph_h = 30.0 * s;
+        let pw = (label_w + value_w).max(self.ui.text_width(&gpu_name, s)).max(150.0 * s) + 8.0 * s;
+        let ph = (rows.len() as f32 + 2.0) * 10.0 * s + graph_h + 12.0 * s;
+        let x = w - pw - 2.0 * s;
+        let mut y = 2.0 * s;
+        self.ui.rect(x, y, pw, ph, [0, 0, 0, 150]);
+        y += 3.0 * s;
+        self.ui.text(x + 4.0 * s, y, "Desempenho (F9)", [255, 255, 160, 255]);
+        y += 10.0 * s;
+        let sub = if st.cpu_name.is_empty() { gpu_name } else { format!("{} | {}", st.cpu_name, gpu_name) };
+        let sub_scale = if self.ui.text_width(&sub, s) > pw - 8.0 * s { (s / 2.0).max(1.0) } else { s };
+        self.ui.text_scaled(x + 4.0 * s, y, &sub, LABEL, sub_scale);
+        y += 10.0 * s;
+        for (l, v, c) in &rows {
+            self.ui.text(x + 4.0 * s, y, l, LABEL);
+            self.ui.text(x + 4.0 * s + label_w, y, v, *c);
+            y += 10.0 * s;
+        }
+        // Frame time graph: one bar per frame, the line marks 60 fps.
+        y += 2.0 * s;
+        let gx = x + 4.0 * s;
+        let gw = pw - 8.0 * s;
+        self.ui.rect(gx, y, gw, graph_h, [20, 20, 20, 180]);
+        let bars = (gw / s) as usize;
+        let times: Vec<f32> = self.perf.recent(bars).collect();
+        let full = 1.0 / 20.0; // a 50 ms frame fills the graph
+        let start = gx + gw - times.len() as f32 * s;
+        for (i, dt) in times.iter().enumerate() {
+            let hgt = (dt / full).min(1.0) * graph_h;
+            let fps = 1.0 / dt;
+            let c = fps_col(fps);
+            self.ui.rect(start + i as f32 * s, y + graph_h - hgt, s, hgt.max(s * 0.5), c);
+        }
+        let l60 = y + graph_h - (1.0 / 60.0) / full * graph_h;
+        self.ui.rect(gx, l60, gw, (s * 0.5).max(1.0), [255, 255, 255, 120]);
+        self.ui.scale = gui;
+    }
+
     fn draw_ui(&mut self, mut info_lines: Vec<String>) {
         let (w, h) = (self.renderer.config.width as f32, self.renderer.config.height as f32);
         self.ui.begin(w, h, self.settings.gui_scale);
@@ -1890,9 +2022,9 @@ impl Game {
                     }
                 }
                 let help = [
-                    "WASD andar  Espaço pular (2x = voar)  Shift descer  Ctrl correr",
+                    "WASD andar  Espaço pular (2x = voar)  Shift agachar  Ctrl correr  Z deitar",
                     "Esq. quebrar  Dir. colocar  Meio copiar bloco  E blocos  1-9/roda escolher",
-                    "F1 esconder HUD  F2 foto  F3 info  F3+T recarregar texturas  F11 tela cheia",
+                    "F1 esconder HUD  F2 foto  F3 info  F5 câmera  F9 desempenho  F11 tela cheia",
                     "Controle: analógicos andar e olhar, botões no menu Controle",
                 ];
                 y += 4.0 * s;
@@ -1989,6 +2121,9 @@ impl Game {
             self.ui.rect(mx + s, my + s, s, s, c);
             self.ui.rect(mx + 2.0 * s, my + 2.0 * s, s, s, c);
             self.ui.rect(mx + 3.0 * s, my + 3.0 * s, s, s, c);
+        }
+        if self.show_perf {
+            self.draw_perf();
         }
         self.clicked = false;
 
@@ -2126,6 +2261,7 @@ impl Game {
             Action::PickBlock => self.mouse_held[2] = true,
             Action::Inventory => self.set_screen(Screen::Inventory),
             Action::Paintings => self.open_paintings(),
+            Action::Crawl => self.prone = !self.prone,
             Action::Pause => self.set_screen(Screen::Paused),
             Action::HotbarPrev => self.scroll(1.0),
             Action::HotbarNext => self.scroll(-1.0),
@@ -2324,7 +2460,9 @@ impl Game {
 
     fn frame(&mut self) {
         let now = Instant::now();
-        let dt = (now - self.last).as_secs_f32().min(0.1);
+        let raw_dt = (now - self.last).as_secs_f32();
+        self.perf.push(raw_dt);
+        let dt = raw_dt.min(0.1);
         if self.args.screenshot.is_some() && self.screen == Screen::Loading && self.frame_times.len() == 29 {
             log::info!("loading: {:.1} fps, {} meshed, {} jobs", self.fps, self.world.meshed_count, self.world.pending_jobs());
         }
@@ -2336,7 +2474,9 @@ impl Game {
         }
         self.update(dt);
 
-        let head = self.body.eye() - Vec3::Y * (0.25 * self.crouch);
+        // Eye height eases between standing, sneaking and lying down instead of jumping.
+        let stand = if self.body.flying { voxel::physics::EYE_HEIGHT } else { voxel::physics::EYE_HEIGHT - 0.25 * self.crouch };
+        let head = self.body.pos + Vec3::Y * (stand + (0.42 - stand) * self.prone_t);
         let playing_view = self.world_open && !matches!(self.screen, Screen::Loading);
         let third = playing_view && self.camera_mode != 0;
         let mut view_fwd = self.forward();
@@ -2344,11 +2484,13 @@ impl Game {
             // Pull the camera back (or around to the front), stopping short of walls.
             let dir = if self.camera_mode == 1 { -view_fwd } else { view_fwd };
             let world = &self.world;
-            let dist = raycast(head, dir, 4.0, |p| world.block(p).is_some_and(|id| id != AIR && !world.is_liquid(id))).map(|h| (h.distance - 0.3).max(0.2)).unwrap_or(4.0);
+            // Lying down, the camera orbits a bit above the body so it clears the ground.
+            let pivot = head + Vec3::Y * 0.6 * self.prone_t;
+            let dist = raycast(pivot, dir, 4.0, |p| voxel::physics::Terrain::solid(world, p)).map(|h| (h.distance - 0.3).max(0.2)).unwrap_or(4.0);
             if self.camera_mode == 2 {
                 view_fwd = -view_fwd;
             }
-            head + dir * dist
+            pivot + dir * dist
         } else if playing_view && self.settings.view_bobbing {
             head + self.anim.view_bob(self.yaw, self.body.on_ground && !self.body.flying)
         } else {

@@ -115,10 +115,11 @@ pub enum Action {
     NextSong,
     HideHud,
     Paintings,
+    Crawl,
 }
 
 impl Action {
-    pub const ALL: [Action; 15] = [
+    pub const ALL: [Action; 16] = [
         Action::Jump,
         Action::Sneak,
         Action::Sprint,
@@ -134,6 +135,7 @@ impl Action {
         Action::NextSong,
         Action::HideHud,
         Action::Paintings,
+        Action::Crawl,
     ];
 
     pub fn label(self) -> &'static str {
@@ -153,6 +155,7 @@ impl Action {
             Action::NextSong => "Próxima música",
             Action::HideHud => "Esconder interface",
             Action::Paintings => "Pendurar pintura",
+            Action::Crawl => "Deitar / rastejar",
         }
     }
 }
@@ -216,10 +219,20 @@ pub fn default_bindings() -> Vec<(Action, Btn)> {
         (Action::NextSong, Btn::Right),
         (Action::HideHud, Btn::Down),
         (Action::Paintings, Btn::Left),
+        (Action::Crawl, Btn::R3),
     ]
 }
 
 impl ControllerSettings {
+    /// Actions added after the settings were saved get their default button.
+    pub fn fill_missing(&mut self) {
+        for (a, b) in default_bindings() {
+            if self.button_for(a).is_none() && !self.bindings.iter().any(|(_, x)| *x == b) {
+                self.bindings.push((a, b));
+            }
+        }
+    }
+
     pub fn button_for(&self, a: Action) -> Option<Btn> {
         self.bindings.iter().find(|(x, _)| *x == a).map(|(_, b)| *b)
     }

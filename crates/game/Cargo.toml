@@ -25,8 +25,11 @@ font8x8 = "0.3"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 env_logger = "0.11"
 gilrs = "0.11"
+sysinfo = { version = "0.39", default-features = false, features = ["system", "disk", "component"] }
+nvml-wrapper = "0.13"
 
 [target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Performance"] }
 hidapi = { version = "2", default-features = false, features = ["windows-native"] }
 
 [target.'cfg(not(windows))'.dependencies]

@@ -29,6 +29,8 @@ pub struct Input {
     pub jump: bool,
     pub sneak: bool,
     pub sprint: bool,
+    /// Lying down: slow, no jumping, but no edge guard either.
+    pub crawl: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -90,6 +92,23 @@ impl Body {
         self.vel += d * strength + Vec3::new(0.0, strength * 0.6, 0.0);
     }
 
+    /// True if a box of this body's width and the given height fits where the body stands.
+    pub fn fits(&self, world: &impl Terrain, height: f32) -> bool {
+        let h = self.half_width - 0.001;
+        let lo = (self.pos - Vec3::new(h, -0.001, h)).floor().as_ivec3();
+        let hi = (self.pos + Vec3::new(h, height - 0.001, h)).floor().as_ivec3();
+        for x in lo.x..=hi.x {
+            for y in lo.y..=hi.y {
+                for z in lo.z..=hi.z {
+                    if world.solid(IVec3::new(x, y, z)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+
     /// True if the player's box overlaps the given block cell.
     pub fn intersects_block(&self, b: IVec3) -> bool {
         let (lo, hi) = self.aabb();
@@ -128,14 +147,14 @@ impl Body {
             self.fall_distance = 0.0;
         } else {
             let base = self.speed_override.unwrap_or(WALK_SPEED);
-            let speed = if input.sneak { base * 0.3 } else if input.sprint { base * 1.3 } else { base };
+            let speed = if input.crawl { base * 0.28 } else if input.sneak { base * 0.3 } else if input.sprint { base * 1.3 } else { base };
             let target = wish * speed;
             // Quick acceleration on the ground, little control in the air.
             let k = if self.on_ground { (dt * 20.0).min(1.0) } else { (dt * 3.0).min(1.0) };
             self.vel.x += (target.x - self.vel.x) * k;
             self.vel.z += (target.z - self.vel.z) * k;
             self.vel.y = (self.vel.y - GRAVITY * dt).max(-TERMINAL_VELOCITY);
-            if input.jump && self.on_ground && !self.no_jump {
+            if input.jump && self.on_ground && !self.no_jump && !input.crawl {
                 self.vel.y = JUMP_SPEED;
                 if input.sprint {
                     self.vel += wish * 1.0;

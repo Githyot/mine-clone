@@ -25,6 +25,7 @@ CONTROLES
   Espaço          pular (aperte 2 vezes rápido para voar / parar de voar)
   Shift           agachar (a câmera abaixa e você não cai da beirada) / descer voando
   Ctrl ou W 2x    correr (a visão abre um pouco)
+  Z               deitar / levantar (deitado você rasteja e passa por buracos de 1 bloco)
   Mouse           olhar
   Botão esquerdo  quebrar bloco / atacar mob
   Botão direito   colocar bloco
@@ -38,6 +39,8 @@ CONTROLES
   F2              tirar foto
   F3              informações (FPS, posição, bioma, GPU)
   F3 + T          recarregar texturas
+  F9              painel de desempenho: FPS atual, médio, alto e 1% mínimo, CPU, RAM,
+                  temperatura, GPU, VRAM e disco (o que o PC não informar aparece como n/d)
   F5              câmera: primeira pessoa > atrás do personagem > de frente
   F11             tela cheia
 

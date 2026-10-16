@@ -31,6 +31,8 @@ pub struct Pose {
     pub head_in_water: bool,
     pub flying: bool,
     pub sneaking: f32,
+    /// 0..1 lying down.
+    pub crawling: f32,
     pub sprinting: bool,
     pub burning: bool,
     pub hurt: bool,
@@ -75,7 +77,7 @@ impl Animator {
         let speed = Vec3::new(p.vel.x, 0.0, p.vel.z).length();
         let target = (speed / 4.3).min(1.6);
         self.amount += (target - self.amount) * (dt * 8.0).min(1.0);
-        self.walk += speed * dt * if p.sprinting { 1.25 } else { 1.6 };
+        self.walk += speed * dt * if p.crawling > 0.5 { 4.0 } else if p.sprinting { 1.25 } else { 1.6 };
         // The facing direction in model space (+Z forward) for the camera yaw.
         let face = p.look_yaw + PI;
         // Moving: the body turns toward the movement; standing: it follows once the head
@@ -87,9 +89,11 @@ impl Animator {
             // Walking backwards keeps facing forward.
             want = if rel.abs() > FRAC_PI_2 { face + wrap(rel + PI) * 0.5 } else { face + rel * 0.5 };
         } else {
+            // Lying down the neck can't twist far, so the body follows sooner.
+            let slack = 0.9 - 0.6 * p.crawling;
             let d = wrap(face - self.body_yaw);
-            if d.abs() > 0.9 {
-                want = face - d.signum() * 0.9;
+            if d.abs() > slack {
+                want = face - d.signum() * slack;
             }
         }
         self.body_yaw += wrap(want - self.body_yaw) * (dt * 7.0).min(1.0);
@@ -127,8 +131,11 @@ impl Animator {
         let mut root = Mat4::from_translation(rel) * Mat4::from_rotation_y(self.body_yaw);
         let squash = self.land * 0.12;
         root = root * Mat4::from_translation(Vec3::new(0.0, -crouch * 0.18 - squash * 0.5, 0.0));
-        // Swimming and flying pitch the body around its middle.
-        let tilt = self.swim * 1.35 + self.lean * 0.9;
+        // Lying down: the body tips flat and sinks to the ground.
+        let prone = p.crawling * (1.0 - self.swim);
+        root = root * Mat4::from_translation(Vec3::new(0.0, -prone * 0.6, 0.0));
+        // Swimming, flying and crawling pitch the body around its middle.
+        let tilt = (self.swim * 1.35 + self.lean * 0.9 + prone * FRAC_PI_2).min(FRAC_PI_2);
         if tilt > 0.0 {
             root = root * Mat4::from_translation(Vec3::Y * 0.75) * Mat4::from_rotation_x(tilt) * Mat4::from_translation(-Vec3::Y * 0.75);
         }
@@ -201,6 +208,24 @@ impl Animator {
             shift[R_LEG] = Vec3::new(0.0, 0.0, -2.0) * crouch;
             shift[L_LEG] = Vec3::new(0.0, 0.0, -2.0) * crouch;
         }
+        if prone > 0.05 {
+            // Army crawl: the arms take turns reaching ahead and pulling, the legs push.
+            let c = t;
+            let move_k = a.min(1.0);
+            let reach = |ph: f32| -PI + 0.5 + (ph.sin() * 0.55) * move_k;
+            rot[R_ARM] = rot[R_ARM].slerp(Quat::from_rotation_x(reach(c)) * Quat::from_rotation_z(-0.25 - c.cos().max(0.0) * 0.3 * move_k), prone);
+            rot[L_ARM] = rot[L_ARM].slerp(Quat::from_rotation_x(reach(c + PI)) * Quat::from_rotation_z(0.25 + (-c.cos()).max(0.0) * 0.3 * move_k), prone);
+            let push = c.sin() * 0.35 * move_k;
+            rot[R_LEG] = rot[R_LEG].slerp(Quat::from_rotation_x(-push) * Quat::from_rotation_z(0.08 + push.max(0.0) * 0.5), prone);
+            rot[L_LEG] = rot[L_LEG].slerp(Quat::from_rotation_x(push) * Quat::from_rotation_z(-0.08 - (-push).max(0.0) * 0.5), prone);
+            // The body rolls a little with each pull.
+            rot[BODY] = rot[BODY] * Quat::from_rotation_y(c.sin() * 0.08 * move_k * prone);
+            if a < 0.05 {
+                // Still: chin on the arms, slow breathing.
+                rot[R_ARM] = rot[R_ARM].slerp(Quat::from_rotation_x(-PI + 0.9) * Quat::from_rotation_y(0.6), prone);
+                rot[L_ARM] = rot[L_ARM].slerp(Quat::from_rotation_x(-PI + 0.9) * Quat::from_rotation_y(-0.6), prone);
+            }
+        }
         if p.burning {
             let f = self.time * 18.0;
             rot[R_ARM] = Quat::from_rotation_x(-2.4 + f.sin() * 0.6);
@@ -214,7 +239,9 @@ impl Animator {
         }
         // Head follows the camera, relative to the body.
         let head_yaw = wrap(p.look_yaw + PI - self.body_yaw).clamp(-1.3, 1.3);
-        rot[HEAD] = Quat::from_rotation_y(head_yaw) * Quat::from_rotation_x(-p.look_pitch * (1.0 - self.swim * 0.6)) * rot[HEAD];
+        // Lying down the head lifts to look ahead instead of at the ground.
+        let head_lift = -prone * 1.25;
+        rot[HEAD] = Quat::from_rotation_y(head_yaw) * Quat::from_rotation_x(head_lift - p.look_pitch * (1.0 - self.swim * 0.6) * (1.0 - prone * 0.5)) * rot[HEAD];
 
         for (i, part) in def.parts.iter().enumerate().take(6) {
             let pivot = Vec3::new(part.pivot.0 as f32, part.pivot.1 as f32, part.pivot.2 as f32);

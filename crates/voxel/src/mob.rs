@@ -344,7 +344,7 @@ impl Mob {
         if self.body.in_water {
             jump = true;
         }
-        let input = Input { wish, jump, sneak: false, sprint: hostile && self.aggro };
+        let input = Input { wish, jump, sneak: false, sprint: hostile && self.aggro, crawl: false };
         self.body.step(world, &input, dt);
         let moved = (self.body.pos - before) * Vec3::new(1.0, 0.0, 1.0);
         let speed = moved.length() / dt.max(1e-4);
