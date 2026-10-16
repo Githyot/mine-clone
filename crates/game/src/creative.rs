@@ -124,7 +124,7 @@ impl Game {
         if !bl.in_inventory && !matches!(it.look, voxel::item::Look::Sprite(_)) {
             return None;
         }
-        if COLORS.iter().any(|c| name.starts_with(&format!("{c}_"))) && !name.ends_with("_bed") {
+        if COLORS.iter().any(|c| name.starts_with(&format!("{c}_"))) && !name.ends_with("_bed") && bl.shape != Shape::Cross && name != "red_sand" {
             return Some(Tab::Colored);
         }
         if matches!(bl.shape, Shape::Door | Shape::Trapdoor | Shape::Torch) || bl.light > 0 {
@@ -135,7 +135,7 @@ impl Game {
         }
         let natural = bl.shape == Shape::Cross
             || ["_ore", "_log", "_leaves", "_sapling"].iter().any(|s| name.ends_with(s))
-            || ["grass_block", "dirt", "stone", "sand", "gravel", "clay", "ice", "snow", "snow_block", "cactus", "pumpkin", "melon", "obsidian", "bedrock", "sandstone", "mossy_cobblestone", "podzol", "coarse_dirt"].contains(&name);
+            || ["grass_block", "dirt", "stone", "sand", "red_sand", "lily_pad", "gravel", "clay", "ice", "snow", "snow_block", "cactus", "pumpkin", "melon", "obsidian", "bedrock", "sandstone", "mossy_cobblestone", "podzol", "coarse_dirt"].contains(&name);
         Some(if natural { Tab::Natural } else { Tab::Building })
     }
 

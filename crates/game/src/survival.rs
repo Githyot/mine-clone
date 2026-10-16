@@ -11,6 +11,7 @@ use voxel::block::{Shape, ToolKind};
 use voxel::item::{FoodDef, Inventory, ItemId, ItemRegistry, ItemStack, Look, ToolDef};
 use voxel::physics::{Body, Input, Terrain};
 use voxel::rng::Rng;
+use voxel::trees::{self, TreeBlocks, TreeKind, TreeSpace};
 use voxel::{BlockId, BlockRegistry, AIR};
 
 use crate::audio::{Material, Sfx};
@@ -1095,35 +1096,23 @@ impl Game {
         for p in grow {
             let id = self.world.block_or_air(p);
             let name = self.reg.get(id).name.clone();
-            let Some(kind) = name.strip_suffix("_sapling") else { continue };
-            let log = self.reg.id_or_air(&format!("{kind}_log"));
-            let leaves = self.reg.id_or_air(&format!("{kind}_leaves"));
-            if log == AIR || leaves == AIR {
-                continue;
-            }
-            // Needs room to grow.
-            let h = 4 + (self.surv.rng.below(3) as i32);
-            if (1..=h + 1).any(|y| self.world.block_or_air(p + IVec3::Y * y) != AIR) {
+            let Some(kind) = TreeKind::from_sapling(&name) else { continue };
+            let blocks = TreeBlocks::new(&self.reg);
+            // Needs room to grow (the 2x2 trunks also need the three blocks beside the sapling).
+            let h = kind.min_height();
+            let cols: &[IVec3] = if kind.wide_trunk() { &[IVec3::ZERO, IVec3::X, IVec3::Z, IVec3::new(1, 0, 1)] } else { &[IVec3::ZERO] };
+            let blocked = cols.iter().any(|&c| (0..=h).any(|y| (c != IVec3::ZERO || y > 0) && !matches!(self.world.block(p + c + IVec3::Y * y), Some(AIR))));
+            if blocked {
                 self.surv.saplings.push((p, 30.0));
                 continue;
             }
-            for y in 0..h {
-                self.world.set_block(p + IVec3::Y * y, log);
-            }
-            let top = p + IVec3::Y * h;
-            for dy in -2i32..=1 {
-                let r: i32 = if dy >= 0 { 1 } else { 2 };
-                for dx in -r..=r {
-                    for dz in -r..=r {
-                        if dx.abs() == r && dz.abs() == r && (dy == 1 || self.surv.rng.below(2) == 0) {
-                            continue;
-                        }
-                        let q = top + IVec3::new(dx, dy, dz);
-                        if self.world.block_or_air(q) == AIR {
-                            self.world.set_block(q, leaves);
-                        }
-                    }
-                }
+            self.world.set_block(p, AIR);
+            let mut rng = Rng::new(self.surv.rng.next_u64());
+            let ground = p - IVec3::Y;
+            trees::grow(kind, &blocks, &mut WorldTrees(&mut self.world), &mut rng, ground.x, ground.y, ground.z);
+            if self.world.block_or_air(p) == AIR {
+                // Nothing took its place (a pack without that wood): give the sapling back.
+                self.world.set_block(p, id);
             }
         }
     }
@@ -2307,3 +2296,17 @@ impl Game {
 }
 
 const YELLOWISH: [u8; 4] = [255, 255, 160, 255];
+
+/// The live world as a place for a sapling to grow into a tree.
+struct WorldTrees<'a>(&'a mut crate::world::World);
+
+impl TreeSpace for WorldTrees<'_> {
+    fn get(&self, x: i32, y: i32, z: i32) -> voxel::BlockId {
+        // Unloaded places read as solid so nothing is written there.
+        self.0.block(IVec3::new(x, y, z)).unwrap_or(voxel::BlockId::MAX)
+    }
+
+    fn set(&mut self, x: i32, y: i32, z: i32, id: voxel::BlockId) {
+        self.0.set_block(IVec3::new(x, y, z), id);
+    }
+}

@@ -215,6 +215,42 @@ WOODS = {
         plank=pal("#4a3420", "#573e26", "#654a2d", "#725434", "#7f5e3a"),
         leaves=pal("#163a24", "#1e4a2d", "#285b37", "#336b41", "#40794c"),
     ),
+    "jungle": dict(
+        bark=pal("#3b2b12", "#4d3a1a", "#5f4a22", "#6f582a", "#7d6534"),
+        inner=pal("#a2703f", "#b5804b", "#c38f56", "#cf9c62"),
+        plank=pal("#7e5434", "#94633e", "#a5714a", "#b47e54", "#c08a5e"),
+        leaves=pal("#1f5a12", "#2a7018", "#378620", "#45992a", "#58ad38"),
+    ),
+    "acacia": dict(
+        bark=pal("#3e3a33", "#4f4a42", "#5f5950", "#6e685e", "#7b7569"),
+        inner=pal("#a5512a", "#b85e32", "#c96b3a", "#d67844"),
+        plank=pal("#8c4422", "#a3512a", "#b45d32", "#c2683a", "#cd7343"),
+        leaves=pal("#3b5a1a", "#4a6c20", "#5a7e28", "#6a8f30", "#7c9f3b"),
+    ),
+    "dark_oak": dict(
+        bark=pal("#1d140a", "#271b0e", "#322313", "#3d2b18", "#48331d"),
+        inner=pal("#4a3219", "#583c1f", "#664625", "#73502b"),
+        plank=pal("#2e1e0e", "#3a2713", "#463018", "#51381c", "#5b4021"),
+        leaves=pal("#173c10", "#204c16", "#2a5c1c", "#346b22", "#3f7a2a"),
+    ),
+    "cherry": dict(
+        bark=pal("#2a161c", "#361d24", "#43252c", "#502d34", "#5d363c"),
+        inner=pal("#c88d86", "#d79c94", "#e3aba2", "#edb9b0"),
+        plank=pal("#c08a80", "#cf998e", "#dba79b", "#e5b3a7", "#efc0b4"),
+        leaves=pal("#c25e8e", "#d673a2", "#e488b4", "#ef9fc5", "#f8bcd9"),
+    ),
+}
+
+NEW_WOODS = ("jungle", "acacia", "dark_oak", "cherry")
+RED_SAND = pal("#a3501e", "#b25a23", "#bf6529", "#cb7131", "#d67e3b")
+TERRACOTTA = {
+    "terracotta": "#985e44",
+    "white_terracotta": "#cdb1a2",
+    "orange_terracotta": "#a2552a",
+    "yellow_terracotta": "#b98428",
+    "red_terracotta": "#8e3c2d",
+    "brown_terracotta": "#4f3424",
+    "light_gray_terracotta": "#86695f",
 }
 
 ORES = {
@@ -593,6 +629,24 @@ def log_side(wood):
         y0 = rng.integers(0, N)
         for i in range(rng.integers(4, 10)):
             put(img, x, y0 + i, w["bark"][0])
+    if wood == "cherry":
+        # short horizontal lenticels, lighter than the bark
+        for _ in range(6):
+            x, y = rng.integers(0, N, 2)
+            for i in range(rng.integers(2, 4)):
+                put(img, x + i, y, w["bark"][4])
+    elif wood == "jungle":
+        # a few specks of moss
+        moss = pal("#3e5a1e", "#4d6d26")
+        for _ in range(7):
+            x, y = rng.integers(0, N, 2)
+            put(img, x, y, moss[rng.integers(0, 2)])
+    elif wood == "acacia":
+        # long pale streaks of weathered bark
+        for x in rng.choice(N, 3, replace=False):
+            y0 = rng.integers(0, N)
+            for i in range(rng.integers(3, 7)):
+                put(img, x, y0 + i, w["bark"][4])
     return img
 
 
@@ -657,6 +711,134 @@ def leaves(wood):
     holes |= rng.random((N, N)) < 0.05
     img[holes, 3] = 0
     img[holes, :3] = 0
+    if wood == "cherry":
+        # pale blossoms with a darker heart
+        for _ in range(9):
+            x, y = rng.integers(0, N, 2)
+            put(img, x, y, hexrgb("#fde4ef"))
+            put(img, x + 1, y + 1, hexrgb("#b04a7c"))
+    elif wood == "jungle":
+        # broad leaves: bright veins on some clusters
+        for _ in range(6):
+            x, y = rng.integers(0, N, 2)
+            line(img, x, y, x + 2, y + 2, p[4])
+    return img
+
+
+# --------------------------------------------------------------------------
+# Badlands and swamp blocks
+# --------------------------------------------------------------------------
+
+
+def red_sand():
+    rng = rng_for("red_sand")
+    f = 0.4 * fbm(rng, ((4, 0.4), (2, 0.6))) + 0.6 * rng.random((N, N))
+    img = from_rgb(shade(f, RED_SAND, 0.4))
+    for _ in range(5):  # a few dark grains
+        x, y = rng.integers(0, N, 2)
+        put(img, x, y, scale_rgb(RED_SAND[0], 0.85))
+    return img
+
+
+def terracotta(name):
+    """Fired clay: a smooth matte colour with faint mottling and a few specks."""
+    rng = rng_for(name)
+    base = np.array(hexrgb(TERRACOTTA[name]), dtype=np.float64)
+    p = np.array([scale_rgb(base, k) for k in (0.9, 0.95, 1.0, 1.04)])
+    f = fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.2)))
+    img = from_rgb(shade(0.2 + 0.6 * f, p, 0.5))
+    for _ in range(6):
+        x, y = rng.integers(0, N, 2)
+        put(img, x, y, scale_rgb(base, 0.84 if rng.random() < 0.6 else 1.1))
+    return img
+
+
+def mushroom(name, cap, spots, flat):
+    img = canvas()
+    stem = pal("#b9ad98", "#d6cdb9", "#ece6d6")
+    for y in range(9, 16):
+        put(img, 7, y, stem[1])
+        put(img, 8, y, stem[0] if y > 12 else stem[2])
+    if flat:  # wide flat cap
+        rows = ["..######..",
+                ".########.",
+                "##########"]
+        y0 = 7
+    else:     # round dome
+        rows = ["...####...",
+                ".########.",
+                "##########",
+                "##########"]
+        y0 = 5
+    for j, row in enumerate(rows):
+        for i, ch in enumerate(row):
+            if ch == "#":
+                k = 2 if j == 0 or i < 3 else (0 if j == len(rows) - 1 else 1)
+                put(img, 3 + i, y0 + j, cap[k])
+    for (x, y) in spots:
+        put(img, x, y, hexrgb("#f4efe6"))
+    return img
+
+
+def red_mushroom():
+    return mushroom("red_mushroom", pal("#8e1414", "#bd2222", "#de3a32"),
+                    ((5, 7), (9, 6), (11, 8), (7, 8)), False)
+
+
+def brown_mushroom():
+    return mushroom("brown_mushroom", pal("#7a5a40", "#957154", "#ad8a6a"),
+                    (), True)
+
+
+def vine():
+    """Hanging strands with small leaves (cross sprite, tinted by biome)."""
+    rng = rng_for("vine")
+    img = canvas()
+    p = pal("#2f6a1f", "#3e7f29", "#4f9434", "#62a841")
+    for x in (2, 6, 9, 13):
+        length = int(rng.integers(10, 17))
+        xx = x
+        for y in range(length):
+            if rng.random() < 0.2:
+                xx += int(rng.integers(-1, 2))
+            put(img, xx, y, p[1])
+            if rng.random() < 0.45:  # a leaf to one side
+                side = 1 if rng.random() < 0.5 else -1
+                put(img, xx + side, y, p[3] if side < 0 else p[2])
+                if rng.random() < 0.5:
+                    put(img, xx + side, y + 1, p[0])
+    return img
+
+
+def lily_pad():
+    """A round floating leaf seen from above, with a notch and radiating veins."""
+    rng = rng_for("lily_pad")
+    p = pal("#1f5a1c", "#2a6e24", "#36822c", "#459536")
+    img = canvas()
+    d = np.hypot(XX - 7.5, YY - 7.5)
+    ang = np.arctan2(YY - 7.5, XX - 7.5)
+    pad = (d < 7.2 + 0.4 * value_noise(rng, 4)) & ~((np.abs(ang - 0.5) < 0.28) & (d > 1.5))
+    f = fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.3)))
+    rgb = shade(0.3 + 0.5 * f, p, 0.6)
+    img[pad, :3] = rgb[pad]
+    img[pad, 3] = 255
+    # veins
+    for a in np.linspace(0, 2 * np.pi, 7, endpoint=False) + 1.2:
+        for r in range(2, 7):
+            x, y = int(round(7.5 + r * np.cos(a))), int(round(7.5 + r * np.sin(a)))
+            if pad[y % N, x % N]:
+                put(img, x, y, p[3])
+    rim = pad & (d > 6.2)
+    img[rim, :3] = p[0]
+    return img
+
+
+def lily_pad_side():
+    img = canvas()
+    p = pal("#1f5a1c", "#2a6e24")
+    for x in range(1, 15):
+        put(img, x, 14, p[1])
+        put(img, x, 15, p[0])
     return img
 
 
@@ -1133,7 +1315,7 @@ def build_registry():
         "sandstone_bottom": sandstone_bottom, "bedrock": bedrock,
         "water": water, "lava": lava,
     }
-    for wood in ("oak", "birch", "spruce"):
+    for wood in ("oak", "birch", "spruce") + NEW_WOODS:
         reg[f"{wood}_log"] = lambda w=wood: log_side(w)
         reg[f"{wood}_log_top"] = lambda w=wood: log_top(w)
         reg[f"{wood}_planks"] = lambda w=wood: planks(w)
@@ -1164,6 +1346,13 @@ def build_registry():
     })
     for color in WOOL:
         reg[f"{color}_wool"] = lambda c=color: wool(c)
+    reg.update({
+        "red_sand": red_sand, "red_mushroom": red_mushroom,
+        "brown_mushroom": brown_mushroom, "vine": vine,
+        "lily_pad": lily_pad, "lily_pad_side": lily_pad_side,
+    })
+    for name in TERRACOTTA:
+        reg[name] = lambda n=name: terracotta(n)
     return reg
 
 
