@@ -160,7 +160,16 @@ pub struct MobRegistry {
 
 impl MobRegistry {
     pub fn from_ron(text: &str) -> Result<Self, String> {
-        let f: MobFile = ron::from_str(text).map_err(|e| format!("mobs.ron: {e}"))?;
+        Self::from_ron_many(&[text])
+    }
+
+    /// Several mob files read as one list (the base game, then mod packs).
+    pub fn from_ron_many(texts: &[&str]) -> Result<Self, String> {
+        let mut f = MobFile { mobs: Vec::new() };
+        for text in texts {
+            let g: MobFile = ron::from_str(text).map_err(|e| format!("mobs.ron: {e}"))?;
+            f.mobs.extend(g.mobs);
+        }
         for m in &f.mobs {
             if m.parts.len() > 16 {
                 return Err(format!("mob '{}' has more than 16 parts", m.name));

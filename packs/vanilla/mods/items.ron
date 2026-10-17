@@ -1,0 +1,4 @@
+// Made by tools/gen_mod_data.py: edit that file and run it again.
+(items: [
+    (name: "calendar", display_name: Some("Calendário")),
+])

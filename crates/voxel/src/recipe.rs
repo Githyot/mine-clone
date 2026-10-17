@@ -77,7 +77,21 @@ pub struct Recipes {
 
 impl Recipes {
     pub fn from_ron(text: &str, items: &ItemRegistry) -> Result<Recipes, String> {
-        let f: RecipeFile = ron::from_str(text).map_err(|e| format!("recipes.ron: {e}"))?;
+        Self::from_ron_many(&[text], items)
+    }
+
+    /// Several recipe files read as one (the base game, then mod packs); tags merge by name.
+    pub fn from_ron_many(texts: &[&str], items: &ItemRegistry) -> Result<Recipes, String> {
+        let mut f = RecipeFile { tags: HashMap::new(), shaped: Vec::new(), shapeless: Vec::new(), smelting: Vec::new() };
+        for text in texts {
+            let g: RecipeFile = ron::from_str(text).map_err(|e| format!("recipes.ron: {e}"))?;
+            for (k, v) in g.tags {
+                f.tags.entry(k).or_default().extend(v);
+            }
+            f.shaped.extend(g.shaped);
+            f.shapeless.extend(g.shapeless);
+            f.smelting.extend(g.smelting);
+        }
         let ing = |name: &str| -> Result<Ingredient, String> {
             if let Some(tag) = name.strip_prefix('#') {
                 let list = f.tags.get(tag).ok_or_else(|| format!("unknown tag #{tag}"))?;

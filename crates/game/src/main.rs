@@ -27,6 +27,7 @@ mod entity;
 mod item_render;
 mod menus;
 mod monitor;
+mod mods;
 mod lod;
 mod mobs;
 mod paintings;
@@ -275,24 +276,38 @@ fn blurred_backdrop(w: usize, h: usize, px: &[u8]) -> (usize, usize, Vec<[u8; 4]
 
 /// Blocks, items and recipes from text.
 fn game_data(blocks: &str, items: &str, recipes: &str) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
-    let reg = BlockRegistry::from_ron(blocks)?;
-    let items = ItemRegistry::from_ron(items, &reg)?;
-    let recipes = Recipes::from_ron(recipes, &items)?;
+    game_data_with_mods([blocks, embedded::MODS_BLOCKS_RON], [items, embedded::MODS_ITEMS_RON], [recipes, embedded::MODS_RECIPES_RON])
+}
+
+/// Base game data followed by the mod content pack (`packs/vanilla/mods/`).
+fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
+    let reg = BlockRegistry::from_ron_many(&blocks)?;
+    let items = ItemRegistry::from_ron_many(&items, &reg)?;
+    let recipes = Recipes::from_ron_many(&recipes, &items)?;
     Ok((reg, items, recipes))
+}
+
+/// A data file of the base game and its counterpart in the mod content pack, each read from
+/// disk when it is there, else the built-in copy.
+fn read_pack_pair(base: &Path, name: &str, built_in: &str, mods_built_in: &str) -> [String; 2] {
+    let read = |p: PathBuf, b: &str| std::fs::read_to_string(p).unwrap_or_else(|_| b.to_string());
+    [read(base.join("packs/vanilla").join(name), built_in), read(base.join("packs/vanilla/mods").join(name), mods_built_in)]
 }
 
 /// The data files in `packs/vanilla/` when there are any, each falling back to the built-in copy.
 fn load_game_data(base: &Path) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
-    let read = |name: &str, built_in: &str| std::fs::read_to_string(base.join("packs/vanilla").join(name)).unwrap_or_else(|_| built_in.to_string());
-    game_data(&read("blocks.ron", embedded::BLOCKS_RON), &read("items.ron", embedded::ITEMS_RON), &read("recipes.ron", embedded::RECIPES_RON))
+    let [b, mb] = read_pack_pair(base, "blocks.ron", embedded::BLOCKS_RON, embedded::MODS_BLOCKS_RON);
+    let [i, mi] = read_pack_pair(base, "items.ron", embedded::ITEMS_RON, embedded::MODS_ITEMS_RON);
+    let [r, mr] = read_pack_pair(base, "recipes.ron", embedded::RECIPES_RON, embedded::MODS_RECIPES_RON);
+    game_data_with_mods([&b, &mb], [&i, &mi], [&r, &mr])
 }
 
-/// Buildings the generator scatters (`packs/vanilla/structures.ron`, else the built-in copy).
+/// Buildings the generator scatters (`packs/vanilla/structures.ron` and the mod pack's, else the built-in copies).
 fn load_structures(base: &Path, reg: &BlockRegistry) -> Arc<voxel::structures::Structures> {
-    let text = std::fs::read_to_string(base.join("packs/vanilla/structures.ron")).unwrap_or_else(|_| embedded::STRUCTURES_RON.to_string());
-    let parsed = voxel::structures::Structures::from_ron(&text, reg).or_else(|e| {
+    let [text, mods] = read_pack_pair(base, "structures.ron", embedded::STRUCTURES_RON, embedded::MODS_STRUCTURES_RON);
+    let parsed = voxel::structures::Structures::from_ron_many(&[&text, &mods], reg).or_else(|e| {
         log::error!("{e}; using the built-in structures");
-        voxel::structures::Structures::from_ron(embedded::STRUCTURES_RON, reg)
+        voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, embedded::MODS_STRUCTURES_RON], reg)
     });
     Arc::new(parsed.unwrap_or_else(|e| {
         log::error!("{e}");
@@ -498,6 +513,8 @@ struct Game {
     walker_t: f32,
     melody_cd: f32,
     wander: wanderers::Wanderers,
+    /// The mod content pack's state (mods/).
+    mods: mods::Mods,
     copper: copper::Copper,
     farm: farm::Farm,
     pots: pots::Pots,
@@ -646,10 +663,10 @@ impl Game {
         let audio = Audio::new(&settings, &base);
 
         // Mobs: a mobs.ron on disk wins, like blocks.
-        let mobs_text = std::fs::read_to_string(base.join("packs/vanilla/mobs.ron")).unwrap_or_else(|_| embedded::MOBS_RON.to_string());
-        let mob_reg = voxel::mob::MobRegistry::from_ron(&mobs_text).unwrap_or_else(|e| {
+        let [mobs_text, mods_mobs] = read_pack_pair(&base, "mobs.ron", embedded::MOBS_RON, embedded::MODS_MOBS_RON);
+        let mob_reg = voxel::mob::MobRegistry::from_ron_many(&[&mobs_text, &mods_mobs]).unwrap_or_else(|e| {
             log::error!("{e}; using built-in mobs");
-            voxel::mob::MobRegistry::from_ron(embedded::MOBS_RON).unwrap_or_default()
+            voxel::mob::MobRegistry::from_ron_many(&[embedded::MOBS_RON, embedded::MODS_MOBS_RON]).unwrap_or_default()
         });
         let painting_defs = paintings::load_defs(&base);
         let paintings = paintings::load(&save.dir, &painting_defs);
@@ -817,6 +834,7 @@ impl Game {
             walker_t: 0.0,
             melody_cd: 0.0,
             wander: Default::default(),
+            mods: Default::default(),
             copper: copper::Copper::new(&reg_for_fluids),
             farm: farm::Farm::new(&reg_for_fluids),
             pots: pots::Pots::new(&reg_for_fluids),
@@ -923,6 +941,7 @@ impl Game {
                 }
             }
         }
+        game.load_mods();
         game
     }
 
@@ -1068,6 +1087,7 @@ impl Game {
         self.world.save_all();
         paintings::save(&self.world.save.dir, &self.paintings);
         self.surv.save(&self.world.save.dir, &self.items);
+        self.save_mods();
         self.settings.save(&self.base.join("settings.ron"));
     }
 
@@ -1119,6 +1139,9 @@ impl Game {
             return;
         }
         if repeat {
+            return;
+        }
+        if self.mods_key(code) {
             return;
         }
         let f3 = self.keys.contains(&KeyCode::F3);
@@ -1458,6 +1481,7 @@ impl Game {
                         self.particles.update(&self.world, 0.03);
                     }
                 }
+                self.mods_test_hooks();
                 if let Some(m) = self.args.mouse {
                     self.mouse_pos = m;
                 }
@@ -1503,6 +1527,7 @@ impl Game {
                 self.update_npcs(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_raids(dt);
             }
+            self.update_mods(if self.args.screenshot.is_some() { 0.0 } else { dt });
         }
         if self.world_open && !matches!(self.screen, Screen::Loading | Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Shaders) {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
@@ -1873,7 +1898,9 @@ impl Game {
             }
         }
         if use_ && self.place_cd <= 0.0 {
-            if self.cart_use() || self.sit_use() {
+            if self.mods_use() {
+                self.place_cd = 0.3;
+            } else if self.cart_use() || self.sit_use() {
                 self.place_cd = 0.3;
             } else if self.crouch <= 0.5 && self.toggle_shaped() {
                 self.place_cd = 0.25;
@@ -3018,6 +3045,7 @@ impl Game {
             }
             self.draw_hotbar_items(hx, hy, cell);
             self.draw_boss_bar(w);
+            self.draw_mods_hud(w, h);
             if self.survival {
                 self.draw_survival_hud(hx, hy, cell);
                 self.draw_mana(w);
@@ -3089,6 +3117,7 @@ impl Game {
             }
             if self.show_debug {
                 info_lines.insert(0, format!("Mine Clone {} (F3)", env!("CARGO_PKG_VERSION")));
+                info_lines.extend(self.mods_info_lines());
                 for (i, l) in info_lines.iter().enumerate() {
                     let y = 2.0 * s + i as f32 * 10.0 * s;
                     let tw = self.ui.text_width(l, s);
@@ -3634,7 +3663,8 @@ impl Game {
             // The light a held torch gives comes from the player's hand, wherever the camera is.
             hand_light: [head.x - block.x as f32, head.y - 0.4 - block.y as f32, head.z - block.z as f32, self.hand_light_level()],
             // z: 1 Nether, 2 End (sky and ambient light in the shaders).
-            weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else if end { 2.0 } else { 0.0 }, 0.0],
+            // w: the year for the seasons (mods/seasons.rs), 0 when off.
+            weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else if end { 2.0 } else { 0.0 }, self.season_uniform()],
             dyn_lights: self.dynamic_lights(eye, block),
             ..Default::default()
         };

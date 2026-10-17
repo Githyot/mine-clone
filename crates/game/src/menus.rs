@@ -152,6 +152,7 @@ impl Game {
             self.load_dim(dim, false);
         }
         self.title_world = name.to_string();
+        self.load_mods();
     }
 
     /// Enter the world that is loaded behind the menus (or open a different one first).

@@ -46,6 +46,11 @@ pub struct Weather {
     /// Something heard this frame: (thunder closeness 0..1), rain loop.
     pub thunder_sound: Option<f32>,
     pub rain_sound: bool,
+    /// Seasons (mods/seasons.rs): how cold the season makes the land (0 summer .. 1 deep
+    /// winter), and how much likelier rain and storms are (1 = normal).
+    pub season_cold: f32,
+    pub rain_odds: f32,
+    pub storm_odds: f32,
     rng: Rng,
 }
 
@@ -62,6 +67,9 @@ impl Weather {
             snowing_here: false,
             thunder_sound: None,
             rain_sound: false,
+            season_cold: 0.0,
+            rain_odds: 1.0,
+            storm_odds: 1.0,
             rng: Rng::new(seed ^ 0x5eed_7a11),
         };
         if w.state.timer <= 0.0 {
@@ -72,7 +80,7 @@ impl Weather {
 
     /// 10 to 25 minutes of clear sky.
     fn clear_spell(&mut self) -> f32 {
-        600.0 + self.rng.f32() * 900.0
+        (600.0 + self.rng.f32() * 900.0) / self.rain_odds.max(0.1)
     }
 
     /// Start or stop rain by hand (commands and test screenshots).
@@ -91,7 +99,7 @@ impl Weather {
                 self.set(false, false);
             } else {
                 // A third of rains are storms.
-                let storm = self.rng.f32() < 0.33;
+                let storm = self.rng.f32() < 0.33 * self.storm_odds;
                 self.set(true, storm);
             }
         }
@@ -105,7 +113,7 @@ impl Weather {
         self.flash = (self.flash - dt * 2.5).max(0.0);
 
         let here = world.gen.biome_at(eye.x.floor() as i32, eye.z.floor() as i32);
-        self.snowing_here = cold(here);
+        self.snowing_here = self.cold(here);
         if self.rain <= 0.0 {
             self.columns.clear();
             return;
@@ -163,7 +171,7 @@ impl Weather {
                 let l = world.light(IVec3::new(x, y0 as i32, z));
                 self.columns.push(RainColumn {
                     col: [dx as f32, dz as f32, y0 - cb.y as f32, top - cb.y as f32],
-                    info: [if cold(biome) { 1.0 } else { 0.0 }, (l >> 4) as f32 / 15.0, x as f32, z as f32],
+                    info: [if self.cold(biome) { 1.0 } else { 0.0 }, (l >> 4) as f32 / 15.0, x as f32, z as f32],
                 });
             }
         }
@@ -175,6 +183,11 @@ impl Weather {
     }
 }
 
-fn cold(b: Biome) -> bool {
-    matches!(b, Biome::Snowy | Biome::Taiga)
+impl Weather {
+    /// Snow instead of rain: always in the cold biomes, and in winter in the temperate ones.
+    pub fn cold(&self, b: Biome) -> bool {
+        matches!(b, Biome::Snowy | Biome::Taiga)
+            || self.season_cold > 0.6 && !matches!(b, Biome::Desert | Biome::Badlands | Biome::Savanna | Biome::Jungle | Biome::Beach | Biome::Ocean | Biome::Swamp)
+            || self.season_cold > 0.9 && matches!(b, Biome::Swamp | Biome::Beach | Biome::Ocean)
+    }
 }

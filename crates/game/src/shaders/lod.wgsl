@@ -18,6 +18,10 @@ fn vs_lod(@location(0) pos: vec3<f32>, @location(1) color: vec4<f32>, @location(
     var o: LodOut;
     o.clip = g.view_proj * vec4<f32>(p, 1.0);
     o.color = color.rgb;
+    if (color.g > color.r * 1.05 && color.g > color.b * 1.05) {
+        // Grass and tree tops turn with the seasons, like the real chunks.
+        o.color *= season_tint(vec3<f32>(1.0, 1.0, 0.9));
+    }
     o.rel = p - g.cam_pos.xyz;
     return o;
 }

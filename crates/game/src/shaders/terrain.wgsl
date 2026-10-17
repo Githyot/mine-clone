@@ -61,6 +61,10 @@ fn vs_main(@location(0) w: vec3<u32>, @location(1) origin: vec3<f32>) -> VOut {
     out.layer = layer;
     let tint = vec3<f32>(f32((w.z >> 8u) & 255u), f32((w.z >> 16u) & 255u), f32((w.z >> 24u) & 255u)) / 200.0;
     out.color = tint * shades[face] * ao_curve[ao];
+    if (((w.z >> 8u) & 1u) == 1u) {
+        // Foliage (odd red tint): it turns with the seasons.
+        out.color *= season_tint(tint);
+    }
     out.light = vec2<f32>(f32(w.z & 15u), f32((w.z >> 4u) & 15u)) / 15.0;
     out.dist = length(p - g.cam_pos.xyz);
     out.kind = flags | (face << 8u);

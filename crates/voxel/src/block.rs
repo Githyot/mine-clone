@@ -271,8 +271,17 @@ pub struct BlockRegistry {
 
 impl BlockRegistry {
     pub fn from_ron(text: &str) -> Result<Self, String> {
-        let file: BlockFile = ron::from_str(text).map_err(|e| format!("blocks.ron: {e}"))?;
-        Self::from_defs(file.blocks)
+        Self::from_ron_many(&[text])
+    }
+
+    /// Several block files read as one list, in order (the base game, then mod packs).
+    pub fn from_ron_many(texts: &[&str]) -> Result<Self, String> {
+        let mut defs = Vec::new();
+        for text in texts {
+            let file: BlockFile = ron::from_str(text).map_err(|e| format!("blocks.ron: {e}"))?;
+            defs.extend(file.blocks);
+        }
+        Self::from_defs(defs)
     }
 
     pub fn from_defs(defs: Vec<BlockDef>) -> Result<Self, String> {

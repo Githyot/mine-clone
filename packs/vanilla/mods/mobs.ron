@@ -1,0 +1,3 @@
+// Mobs of the mod content pack. Read after packs/vanilla/mobs.ron, same format.
+(mobs: [
+])

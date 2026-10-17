@@ -1,0 +1,4 @@
+// Structures of the mod content pack (made by tools/gen_mod_structures.py). Read after
+// packs/vanilla/structures.ron, same format.
+(structures: [
+])

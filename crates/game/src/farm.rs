@@ -113,7 +113,7 @@ impl Game {
             return;
         }
         let next = self.farm.next[id as usize];
-        if next == AIR {
+        if next == AIR || !self.season_lets_grow(p, id, r) {
             return;
         }
         let wet = soil != self.farm.farmland || (-4..=4).any(|dx| (-4..=4).any(|dz| self.world.fluid(self.world.block_or_air(p + IVec3::new(dx, -1, dz))) == 1));

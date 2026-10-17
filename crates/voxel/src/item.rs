@@ -99,8 +99,17 @@ pub struct ItemRegistry {
 
 impl ItemRegistry {
     pub fn from_ron(text: &str, blocks: &BlockRegistry) -> Result<Self, String> {
-        let file: ItemFile = ron::from_str(text).map_err(|e| format!("items.ron: {e}"))?;
-        Self::from_defs(file.items, blocks)
+        Self::from_ron_many(&[text], blocks)
+    }
+
+    /// Several item files read as one list, in order (the base game, then mod packs).
+    pub fn from_ron_many(texts: &[&str], blocks: &BlockRegistry) -> Result<Self, String> {
+        let mut defs = Vec::new();
+        for text in texts {
+            let file: ItemFile = ron::from_str(text).map_err(|e| format!("items.ron: {e}"))?;
+            defs.extend(file.items);
+        }
+        Self::from_defs(defs, blocks)
     }
 
     pub fn from_defs(defs: Vec<ItemDef>, blocks: &BlockRegistry) -> Result<Self, String> {

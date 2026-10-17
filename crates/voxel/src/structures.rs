@@ -91,7 +91,16 @@ impl Structures {
     }
 
     pub fn from_ron(text: &str, reg: &BlockRegistry) -> Result<Structures, String> {
-        let file: StructureFile = ron::from_str(text).map_err(|e| format!("structures.ron: {e}"))?;
+        Self::from_ron_many(&[text], reg)
+    }
+
+    /// Several structure files read as one list (the base game, then mod packs).
+    pub fn from_ron_many(texts: &[&str], reg: &BlockRegistry) -> Result<Structures, String> {
+        let mut file = StructureFile { structures: Vec::new() };
+        for text in texts {
+            let f: StructureFile = ron::from_str(text).map_err(|e| format!("structures.ron: {e}"))?;
+            file.structures.extend(f.structures);
+        }
         let mut list = Vec::new();
         for def in file.structures {
             let sy = def.layers.len() as i32;

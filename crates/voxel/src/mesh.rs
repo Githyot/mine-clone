@@ -183,12 +183,14 @@ impl MeshTables {
             liquid_h: vec![],
             biome_tints: biome_tints
                 .iter()
-                .map(|c| [(c[0] * 200.0).min(255.0) as u8, (c[1] * 200.0).min(255.0) as u8, (c[2] * 200.0).min(255.0) as u8])
+                // The lowest bit of red marks foliage (odd), so the shader can turn it with the
+                // seasons; untinted faces and water keep it even.
+                .map(|c| [(c[0] * 200.0).min(255.0) as u8 | 1, (c[1] * 200.0).min(255.0) as u8, (c[2] * 200.0).min(255.0) as u8])
                 .collect(),
             water: vec![],
             rs: vec![],
             water_tints: (0..crate::worldgen::Biome::COUNT)
-                .map(|i| crate::worldgen::Biome::from_u8(i as u8).water_tint().map(|c| (c * 200.0).min(255.0) as u8))
+                .map(|i| crate::worldgen::Biome::from_u8(i as u8).water_tint().map(|c| (c * 200.0).min(255.0) as u8 & !1))
                 .collect(),
         };
         for (i, b) in reg.blocks.iter().enumerate() {
