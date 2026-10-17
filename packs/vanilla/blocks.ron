@@ -107,6 +107,12 @@
     (name: "raw_iron_block", display_name: Some("Bloco de Ferro Bruto"), hardness: 5.0, tool: Some(Pickaxe), tier: 2),
     (name: "raw_copper_block", display_name: Some("Bloco de Cobre Bruto"), hardness: 5.0, tool: Some(Pickaxe), tier: 2),
     (name: "raw_gold_block", display_name: Some("Bloco de Ouro Bruto"), hardness: 5.0, tool: Some(Pickaxe), tier: 3),
+    // Bees: wild nests on trees fill with honey; hives you build do too, with bees near.
+    (name: "bee_nest", display_name: Some("Ninho de Abelhas"), hardness: 0.3, tool: Some(Axe), textures: (top: Some("bee_nest_top"), side: Some("bee_nest_side"), front: Some("bee_nest_front"), bottom: Some("bee_nest_bottom"))),
+    (name: "bee_nest_honey", display_name: Some("Ninho de Abelhas"), hardness: 0.3, tool: Some(Axe), in_inventory: false, textures: (top: Some("bee_nest_top"), side: Some("bee_nest_side"), front: Some("bee_nest_front_honey"), bottom: Some("bee_nest_bottom")), drops: Some([(item: "bee_nest")])),
+    (name: "beehive", display_name: Some("Colmeia"), hardness: 0.6, tool: Some(Axe), textures: (top: Some("beehive_end"), side: Some("beehive_side"), front: Some("beehive_front"), bottom: Some("beehive_end"))),
+    (name: "beehive_honey", display_name: Some("Colmeia"), hardness: 0.6, tool: Some(Axe), in_inventory: false, textures: (top: Some("beehive_end"), side: Some("beehive_side"), front: Some("beehive_front_honey"), bottom: Some("beehive_end")), drops: Some([(item: "beehive")])),
+    (name: "honeycomb_block", display_name: Some("Bloco de Favo de Mel"), hardness: 0.6),
     (name: "obsidian", display_name: Some("Obsidiana"), hardness: 50.0, tool: Some(Pickaxe), tier: 4),
     (name: "glowstone", display_name: Some("Pedra Luminosa"), light: 15, hardness: 0.3, drops: Some([(item: "glowstone", min: 1, max: 1)])),
     (name: "crafting_table", display_name: Some("Bancada de Trabalho"), hardness: 2.5, textures: (top: Some("crafting_table_top"), side: Some("crafting_table_side"), front: Some("crafting_table_front"), bottom: Some("oak_planks")), tool: Some(Axe)),

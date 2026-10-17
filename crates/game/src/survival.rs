@@ -853,6 +853,7 @@ impl Game {
             if !sneaking || self.held_stack().is_none() {
                 match name.as_str() {
                     n if n.ends_with("_sign") => return self.edit_sign(hit.block),
+                    "bee_nest_honey" | "beehive_honey" => return self.hive_use(hit.block, &name),
                     "composter" | "composter_ready" => {
                         if self.use_composter(hit.block, name == "composter_ready") {
                             return true;

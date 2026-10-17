@@ -1462,6 +1462,28 @@ def boat_item(p):
     return outline(from_map(rows, pmap(pal("#1a120a", *p, "#3a2a1a"), "123456")))
 
 
+def ink_sac():
+    rows = [
+        "................",
+        "................",
+        "......1111......",
+        ".....122221.....",
+        "....12333221....",
+        "....12333321....",
+        "...1233443321...",
+        "...1234444321...",
+        "...1233443321...",
+        "....12333321....",
+        "....11222211....",
+        "...1.1.11.1.1...",
+        "..1..1.1..1..1..",
+        ".....1....1.....",
+        "................",
+        "................",
+    ]
+    return outline(from_map(rows, pmap(pal("#0a0a12", "#1a1a2a", "#2a2a40", "#4a4a6a"))))
+
+
 def bone_meal():
     rows = ["................"] * 3 + [
         "......5.........",
@@ -2365,7 +2387,7 @@ def item_registry():
         "flint_and_steel": flint_and_steel,
         "honeycomb": honeycomb, "minecart": minecart_item,
         "gold_nugget": gold_nugget, "quartz": quartz, "nether_brick": nether_brick_item,
-        "oak_boat": lambda: boat_item(('#4a3018', '#7a5430', '#a07848', '#c09a62')), "spruce_boat": lambda: boat_item(('#2e1e0e', '#4e3418', '#6e4c26', '#8a6436')), "birch_boat": lambda: boat_item(('#7a6c48', '#b4a46e', '#d0c28a', '#e6daa6')), "jungle_boat": lambda: boat_item(('#4a2c1a', '#7a4c30', '#9a6644', '#b6805a')), "acacia_boat": lambda: boat_item(('#6a2e14', '#a24a24', '#c46434', '#dc804a')), "dark_oak_boat": lambda: boat_item(('#1e140a', '#3a2612', '#52381e', '#6a4a2a')), "cherry_boat": lambda: boat_item(('#7a4a48', '#c8908a', '#e0aca4', '#f2c8c0')), "bone_meal": bone_meal, "compass": compass_item, "clock": clock_item, "spyglass": spyglass_item, "map": map_item, "nether_wart": nether_wart_item, "saddle": saddle, "pumpkin_seeds": pumpkin_seeds, "melon_seeds": melon_seeds, "melon_slice": melon_slice,
+        "oak_boat": lambda: boat_item(('#4a3018', '#7a5430', '#a07848', '#c09a62')), "spruce_boat": lambda: boat_item(('#2e1e0e', '#4e3418', '#6e4c26', '#8a6436')), "birch_boat": lambda: boat_item(('#7a6c48', '#b4a46e', '#d0c28a', '#e6daa6')), "jungle_boat": lambda: boat_item(('#4a2c1a', '#7a4c30', '#9a6644', '#b6805a')), "acacia_boat": lambda: boat_item(('#6a2e14', '#a24a24', '#c46434', '#dc804a')), "dark_oak_boat": lambda: boat_item(('#1e140a', '#3a2612', '#52381e', '#6a4a2a')), "cherry_boat": lambda: boat_item(('#7a4a48', '#c8908a', '#e0aca4', '#f2c8c0')), "ink_sac": ink_sac, "bone_meal": bone_meal, "compass": compass_item, "clock": clock_item, "spyglass": spyglass_item, "map": map_item, "nether_wart": nether_wart_item, "saddle": saddle, "pumpkin_seeds": pumpkin_seeds, "melon_seeds": melon_seeds, "melon_slice": melon_slice,
         "sugar_cane": sugar_cane_item, "sugar": sugar, "paper": paper,
         "slime_ball": lambda: lump("slime_ball", pal("#2a7a1e", "#3a9a2a", "#52b23a", "#6cc84e", "#8ade6a")),
         "turtle_scute": lambda: lump("turtle_scute", pal("#1e3a14", "#2a4e1c", "#3a6426", "#4a7a30", "#5e9040")),

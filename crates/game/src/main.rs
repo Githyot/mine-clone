@@ -18,6 +18,7 @@ mod bosses;
 mod npcs;
 mod pets;
 mod raids;
+mod bees;
 mod boats;
 mod villages;
 mod explore;

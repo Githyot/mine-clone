@@ -2779,6 +2779,77 @@ def raw_block(name, p):
     return img
 
 
+NEST = pal("#8a6a2a", "#a07c34", "#b88e40", "#cca24e", "#dcb45c")
+HONEY = pal("#c07010", "#dc8a18", "#f0a828", "#ffc84a")
+
+
+def bee_nest(face, honey=False):
+    """A wild bees' nest: layered wax-and-wood bands; the front has the hole (dripping honey
+    when full)."""
+    rng = rng_for("bee_nest_" + face)
+    img = from_rgb(shade(fbm(rng, ((4, 0.4), (2, 0.6))), NEST))
+    rgb = img[..., :3]
+    if face in ("side", "front"):
+        for y in (3, 7, 11, 15):
+            rgb[y, :] = NEST[0]
+    if face in ("top", "bottom"):
+        for r in (3, 6):
+            for k in range(32):
+                a = k / 32 * 2 * np.pi
+                put(img, int(round(7.5 + r * np.cos(a))), int(round(7.5 + r * np.sin(a))), NEST[1])
+    if face == "front":
+        for y in range(5, 10):
+            for x in range(5, 11):
+                rgb[y, x] = hexrgb("#1a1208")
+        if honey:
+            for x in range(4, 12):
+                rgb[4, x] = HONEY[2]
+            for (x, y0, n) in ((5, 10, 3), (8, 10, 4), (10, 10, 2)):
+                for k in range(n):
+                    rgb[y0 + k, x] = HONEY[1 + (k == 0)]
+    return img
+
+
+def beehive(face, honey=False):
+    """A beehive built of planks with a little landing board; full of honey it drips."""
+    img = planks("oak")
+    rgb = img[..., :3]
+    dark = WOODS["oak"]["plank"][0]
+    if face == "end":
+        for y in range(3, 13):
+            for x in range(3, 13):
+                rgb[y, x] = HONEY[1] if (x + y) % 3 else HONEY[0]
+        return img
+    rgb[0, :] = dark
+    rgb[15, :] = dark
+    rgb[:, 0] = dark
+    rgb[:, 15] = dark
+    for y in (5, 10):
+        rgb[y, 1:15] = scale_rgb(rgb[y, 1:15], 0.7)
+    if face == "front":
+        for y in range(8, 11):
+            for x in range(6, 10):
+                rgb[y, x] = hexrgb("#1a1208")
+        rgb[11, 4:12] = WOODS["oak"]["plank"][3]
+        if honey:
+            for x in range(2, 14):
+                rgb[2, x] = HONEY[2]
+            for (x, n) in ((3, 3), (7, 2), (12, 4)):
+                for k in range(n):
+                    rgb[3 + k, x] = HONEY[1]
+    return img
+
+
+def honeycomb_block():
+    img = canvas()
+    rng = rng_for("honeycomb_block")
+    for y in range(N):
+        for x in range(N):
+            cell = ((x + (y // 4 % 2) * 2) % 4 == 0) or y % 4 == 0
+            put(img, x, y, HONEY[0] if cell else HONEY[int(rng.integers(1, 4))])
+    return img
+
+
 def farming_registry():
     reg = {"farmland": farmland, "hay_block_side": hay_block_side, "hay_block_top": hay_block_top,
            "botany_pot_side": botany_pot_side, "botany_pot_top": botany_pot_top, "botany_pot_empty": botany_pot_empty,
@@ -2814,6 +2885,14 @@ def farming_registry():
     reg["raw_iron_block"] = lambda: raw_block("raw_iron_block", pal("#4a3a30", "#6a5446", "#8a7060", "#a48a78", "#c4a894", "#dcc4b0"))
     reg["raw_copper_block"] = lambda: raw_block("raw_copper_block", pal("#5a2a16", "#7a3c20", "#9a5030", "#b8663e", "#d4824e", "#eca068"))
     reg["raw_gold_block"] = lambda: raw_block("raw_gold_block", pal("#6a4a08", "#8a640e", "#aa8014", "#c89a1c", "#e2b830", "#f8dc6a"))
+    for f in ("top", "bottom", "side", "front"):
+        reg[f"bee_nest_{f}"] = lambda f=f: bee_nest(f)
+    reg["bee_nest_front_honey"] = lambda: bee_nest("front", True)
+    reg["beehive_end"] = lambda: beehive("end")
+    reg["beehive_side"] = lambda: beehive("side")
+    reg["beehive_front"] = lambda: beehive("front")
+    reg["beehive_front_honey"] = lambda: beehive("front", True)
+    reg["honeycomb_block"] = honeycomb_block
     reg["composter_side"] = composter_side
     reg["composter_top"] = composter_top
     reg["composter_ready"] = lambda: composter_top(True)

@@ -180,6 +180,7 @@
     (name: "flint_and_steel", display_name: Some("Isqueiro"), max_stack: Some(1)),
     // Wax for copper. Until there are bees, flowers drop it now and then.
     (name: "honeycomb", display_name: Some("Favo de Mel")),
+    (name: "ink_sac", display_name: Some("Bolsa de Tinta")),
     (name: "minecart", display_name: Some("Carrinho de Mina"), max_stack: Some(1)),
     (name: "oak_boat", display_name: Some("Barco de Carvalho"), max_stack: Some(1)),
     (name: "spruce_boat", display_name: Some("Barco de Pinheiro"), max_stack: Some(1)),

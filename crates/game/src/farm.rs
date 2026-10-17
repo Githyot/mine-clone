@@ -25,6 +25,8 @@ pub struct Farm {
     /// For a ripe pumpkin or melon stem: the fruit it sets beside itself (else AIR).
     fruit: Vec<BlockId>,
     pub cane: BlockId,
+    /// Bee nests and hives that fill with honey (empty ones).
+    pub hives: [BlockId; 2],
     /// Composters being filled: how many layers each has (7 makes bone meal).
     compost: std::collections::HashMap<IVec3, u8>,
     t: f32,
@@ -34,7 +36,7 @@ impl Farm {
     pub fn new(reg: &BlockRegistry) -> Farm {
         let n = reg.len();
         let farmland = reg.id_or_air("farmland");
-        let mut f = Farm { next: vec![AIR; n], first: vec![AIR; n], ripe: vec![false; n], farmland, soil: vec![farmland; n], fruit: vec![AIR; n], cane: reg.id_or_air("sugar_cane"), compost: Default::default(), t: 0.0 };
+        let mut f = Farm { next: vec![AIR; n], first: vec![AIR; n], ripe: vec![false; n], farmland, soil: vec![farmland; n], fruit: vec![AIR; n], cane: reg.id_or_air("sugar_cane"), hives: [reg.id_or_air("bee_nest"), reg.id_or_air("beehive")], compost: Default::default(), t: 0.0 };
         let soul = reg.id_or_air("soul_sand");
         for (kind, stages) in [("wheat", 8), ("carrots", 4), ("potatoes", 4), ("beetroots", 4), ("nether_wart", 4), ("pumpkin_stem", 8), ("melon_stem", 8)] {
             let ids: Vec<BlockId> = (0..stages).filter_map(|k| reg.id(&format!("{kind}_stage{k}"))).collect();

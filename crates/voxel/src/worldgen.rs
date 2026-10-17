@@ -228,6 +228,7 @@ struct Palette {
     geode: [BlockId; 5],
     granite: BlockId,
     tuff: BlockId,
+    bee_nest: BlockId,
     /// Big ore veins: (ore, raw block) for copper and iron.
     vein_copper: (BlockId, BlockId),
     vein_iron: (BlockId, BlockId),
@@ -330,6 +331,7 @@ impl Palette {
                 g("amethyst_cluster"),
             ],
             granite: g("granite"),
+            bee_nest: g("bee_nest"),
             tuff: g("tuff"),
             vein_copper: (g("copper_ore"), g("raw_copper_block")),
             vein_iron: (g("iron_ore"), g("raw_iron_block")),
@@ -1078,6 +1080,17 @@ impl Generator {
                 }
             }
             trees::grow(kind, &self.trees, &mut ChunkSpace(chunk), rng, tx, y, tz);
+            // Now and then a bees' nest hangs on the trunk of a broadleaf tree in open country.
+            let open = matches!(col.biome, Biome::Plains | Biome::Meadow | Biome::Forest | Biome::BirchForest | Biome::CherryGrove);
+            if open && p.bee_nest != AIR && matches!(kind, TreeKind::Round(_) | TreeKind::Cherry) {
+                let mut nr = Rng::for_pos(self.seed, pos.x * 16 + tx, pos.y * 16 + tz, 7400);
+                if nr.below(if col.biome == Biome::Meadow { 6 } else { 18 }) == 0 {
+                    let (nx, ny, nz) = (tx as usize, (y + 2) as usize, (tz + 1) as usize);
+                    if nz < 16 && chunk.get(nx, ny, nz) == AIR && chunk.get(tx as usize, ny, tz as usize) != AIR {
+                        chunk.set(nx, ny, nz, p.bee_nest);
+                    }
+                }
+            }
         }
 
         self.scatter(chunk, cols, pos);

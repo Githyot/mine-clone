@@ -108,6 +108,12 @@ pub struct MobDef {
     /// Moves in hops (rabbits).
     #[serde(default = "d_false")]
     pub hops: bool,
+    /// Flies a few blocks over the ground (bees).
+    #[serde(default = "d_false")]
+    pub flies: bool,
+    /// Lives under water: swims about below the surface and flops about on land (squid, dolphins, axolotls).
+    #[serde(default = "d_false")]
+    pub aquatic: bool,
     /// Naps on the ground in the daytime.
     #[serde(default = "d_false")]
     pub sleeps: bool,
@@ -360,6 +366,7 @@ impl Mob {
         let mut wish = Vec3::ZERO;
         let mut jump = false;
         let mut run = false;
+        let mut sneak = false;
         let hostile = def.kind == Kind::Hostile && !player_creative;
 
         // Set alight by a spell: a point of damage a second until it goes out (water puts it out).
@@ -540,7 +547,35 @@ impl Mob {
         if def.hops && wish != Vec3::ZERO && self.body.on_ground {
             jump = true;
         }
-        if self.body.in_water {
+        if def.flies {
+            // Hover two to four blocks over whatever is below, drifting up and down a little.
+            self.body.flying = true;
+            wish *= def.speed / crate::physics::FLY_SPEED;
+            let mut over = 0;
+            while over < 6 && !world.solid((self.body.pos - Vec3::Y * (over as f32 + 0.5)).floor().as_ivec3()) && !world.liquid((self.body.pos - Vec3::Y * (over as f32 + 0.5)).floor().as_ivec3()) {
+                over += 1;
+            }
+            let want = 2.0 + (self.age * 0.7 + self.phase).sin() * 1.0;
+            jump = (over as f32) < want;
+            sneak = (over as f32) > want + 1.0;
+        } else if def.aquatic {
+            if self.body.in_water {
+                // Stay under: dive when near the surface, rise from the bottom.
+                jump = false;
+                let near_top = !world.liquid((self.body.pos + Vec3::Y * (def.height + 0.4)).floor().as_ivec3());
+                let near_floor = world.solid((self.body.pos - Vec3::Y * 0.6).floor().as_ivec3());
+                let bob = (self.age * 0.5 + self.phase).sin();
+                self.body.vel.y = if near_top { -1.0 } else if near_floor { 1.0 } else { bob * 0.6 };
+                if wish == Vec3::ZERO {
+                    wish = Vec3::new((self.age * 0.3 + self.phase).cos(), 0.0, (self.age * 0.3 + self.phase).sin()) * 0.5;
+                    self.yaw = turn_towards(self.yaw, wish.x.atan2(wish.z), dt * 2.0);
+                }
+            } else {
+                // Out of the water: flop about.
+                jump = self.body.on_ground && self.rng.chance(0.05);
+                wish = Vec3::ZERO;
+            }
+        } else if self.body.in_water {
             if def.swims {
                 // Float: paddle up only while the waterline is above the belly.
                 if world.liquid((self.body.pos + Vec3::Y * 0.35).floor().as_ivec3()) {
@@ -550,7 +585,7 @@ impl Mob {
                 jump = true;
             }
         }
-        let input = Input { wish, jump, sneak: false, sprint: run, crawl: false };
+        let input = Input { wish, jump, sneak, sprint: run, crawl: false };
         self.body.step(world, &input, dt);
         let moved = (self.body.pos - before) * Vec3::new(1.0, 0.0, 1.0);
         let speed = moved.length() / dt.max(1e-4);
