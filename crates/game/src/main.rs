@@ -38,6 +38,9 @@ mod rails;
 mod renderer;
 mod settings;
 mod sfx;
+mod sfx_extra;
+mod soundscape;
+mod effects;
 mod shaderpack;
 mod survival;
 mod textures;
@@ -497,6 +500,8 @@ struct Game {
     room_t: f32,
     walker_t: f32,
     melody_cd: f32,
+    /// Sounds and effects of the immersion stage (soundscape.rs, effects.rs).
+    fx: soundscape::Immersion,
     wander: wanderers::Wanderers,
     copper: copper::Copper,
     farm: farm::Farm,
@@ -816,6 +821,7 @@ impl Game {
             room_t: 0.0,
             walker_t: 0.0,
             melody_cd: 0.0,
+            fx: soundscape::Immersion::new(),
             wander: Default::default(),
             copper: copper::Copper::new(&reg_for_fluids),
             farm: farm::Farm::new(&reg_for_fluids),
@@ -1296,6 +1302,7 @@ impl Game {
             if matches!(self.screen, Screen::Playing | Screen::Inventory) {
                 self.portal_step(dt);
                 self.update_ambient(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.update_immersion(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
             self.update_fishing(dt);
             self.update_redstone(dt);
@@ -1665,10 +1672,7 @@ impl Game {
                 self.rustle_dist += moved.length();
                 if self.rustle_dist > 1.1 {
                     self.rustle_dist = 0.0;
-                    let vol = self.settings.sound_volume * 0.8;
-                    if let Some(a) = self.audio.as_mut() {
-                        a.play(Sfx::Step(Material::Leaves), vol);
-                    }
+                    self.sfx_here(Sfx::Fx(sfx_extra::Fx::Brush), 0.55);
                 }
             } else {
                 self.rustle_dist = 0.9;
@@ -2352,6 +2356,7 @@ impl Game {
             }
         }
         self.sfx(Sfx::Explode);
+        self.explosion_fx(pos, power);
         self.pads.rumble(1.0, 1.0, 0.6);
     }
 
@@ -2977,6 +2982,7 @@ impl Game {
             let a = ((0.4 - self.hurt_age) / 0.4 * 90.0) as u8;
             self.ui.rect(0.0, 0.0, w, h, [200, 0, 0, a]);
         }
+        self.draw_immersion_overlay(w, h);
         let haze = self.portal_haze();
         if haze > 0.0 {
             // Standing in a portal: the view fills with purple until the trip starts.
@@ -3594,6 +3600,7 @@ impl Game {
         } else {
             head
         };
+        let eye = if playing_view { eye + self.shake_offset() } else { eye };
         let block = eye.floor().as_ivec3();
         let (top, horizon, daylight, sun) = self.sky();
         let underwater = self.body.head_in_water;
@@ -3617,6 +3624,7 @@ impl Game {
         } else {
             (horizon, rd * 0.55, rd - 2.0)
         };
+        let (fog_start, fog_end) = if underwater || nether || end { (fog_start, fog_end) } else { self.mist_fog(fog_start, fog_end) };
         // Real chunks surely cover this radius (see World::update); distant terrain starts here.
         let lod_inner = (self.settings.render_distance as f32 - 0.5) * 16.0;
         self.lod.update(&self.renderer.device, eye, lod_inner, if extra > 0.0 { view_end } else { 0.0 });
