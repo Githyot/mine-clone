@@ -1,4 +1,4 @@
-// Made by tools/gen_mod_data.py: edit that file and run it again.
+// Made by tools/gen_mod_data.py from tools/moddata/: edit those and run it again.
 (blocks: [
     (name: "season_sensor_spring", display_name: Some("Sensor de Estação (Primavera)"), hardness: 0.6, tool: Some(Axe), height: Some(6), shape: Slab, textures: (top: Some("season_sensor_spring"), side: Some("season_sensor_side"), bottom: Some("oak_planks")), drops: Some([(item: "season_sensor_spring")])),
     (name: "season_sensor_spring_on", display_name: Some("Sensor de Estação (Primavera)"), hardness: 0.6, tool: Some(Axe), height: Some(6), shape: Slab, textures: (top: Some("season_sensor_spring_on"), side: Some("season_sensor_side"), bottom: Some("oak_planks")), drops: Some([(item: "season_sensor_spring")]), in_inventory: false),

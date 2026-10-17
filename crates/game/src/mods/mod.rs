@@ -5,6 +5,7 @@
 //! The pack's data (blocks, items, recipes, mobs, structures) is in `packs/vanilla/mods/`,
 //! read after the base game's files.
 
+pub mod dwellers;
 pub mod seasons;
 
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,8 @@ pub struct ModSave {
     pub day: u32,
     /// Season sensors placed in this world.
     pub sensors: Vec<[i32; 3]>,
+    /// Buildings whose dwellers were already spawned: origin and dimension.
+    pub dwellers: Vec<[i32; 4]>,
 }
 
 #[derive(Default)]
@@ -28,6 +31,7 @@ pub struct Mods {
     /// Time of day last frame, to count days as midnight passes.
     last_time: f32,
     pub seasons: seasons::Seasons,
+    dwell_t: f32,
 }
 
 impl Game {
@@ -57,6 +61,9 @@ impl Game {
         }
         self.mods.last_time = self.time_of_day;
         self.update_seasons(dt);
+        if dt > 0.0 {
+            self.update_dwellers(dt);
+        }
     }
 
     /// Test hooks run once the world around the player has loaded (MC_* variables).

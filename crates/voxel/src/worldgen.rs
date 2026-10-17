@@ -674,7 +674,7 @@ impl Generator {
         self
     }
 
-    pub(crate) fn structures(&self) -> &crate::structures::Structures {
+    pub fn structures(&self) -> &crate::structures::Structures {
         &self.structures
     }
 

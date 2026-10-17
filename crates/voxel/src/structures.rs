@@ -28,6 +28,22 @@ pub struct LootDef {
     pub chance: f32,
 }
 
+/// How a structure finds its height.
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Place {
+    /// On fairly flat dry ground (or a cave floor in the Nether).
+    #[default]
+    Ground,
+    /// Floating on open sea (ships): the bottom `sink` layers under the water line.
+    Water,
+    /// High in the air at this height, whatever is below (airships, sky temples).
+    Sky(i32),
+}
+
+fn rough() -> i32 {
+    4
+}
+
 #[derive(Deserialize, Clone, Debug)]
 pub struct StructureDef {
     pub name: String,
@@ -49,6 +65,14 @@ pub struct StructureDef {
     pub foundation: Option<String>,
     #[serde(default)]
     pub loot: Vec<LootDef>,
+    #[serde(default)]
+    pub place: Place,
+    /// Most the ground may rise and fall under the footprint (blocks).
+    #[serde(default = "rough")]
+    pub rough: i32,
+    /// Mobs that live inside, spawned once when the player first comes near: (name, count).
+    #[serde(default)]
+    pub mobs: Vec<(String, u8)>,
 }
 
 #[derive(Deserialize)]
@@ -79,6 +103,8 @@ pub struct Placement {
 
 pub struct Structures {
     pub list: Vec<Structure>,
+    /// Longest footprint side of any structure: how far around a chunk to look for them.
+    max_side: i32,
     /// Blocks a foundation pushes through: air, water, plants, snow.
     soft: Vec<bool>,
     /// Trees and plants, cleared from around a building so they don't grow through it.
@@ -87,7 +113,7 @@ pub struct Structures {
 
 impl Structures {
     pub fn empty() -> Structures {
-        Structures { list: Vec::new(), soft: Vec::new(), plant: Vec::new() }
+        Structures { list: Vec::new(), max_side: MAX_SIDE, soft: Vec::new(), plant: Vec::new() }
     }
 
     pub fn from_ron(text: &str, reg: &BlockRegistry) -> Result<Structures, String> {
@@ -149,7 +175,8 @@ impl Structures {
         }
         let soft = reg.blocks.iter().map(|b| matches!(b.shape, Shape::Liquid | Shape::Cross | Shape::Layer | Shape::Invisible) || b.name == "air").collect();
         let plant = reg.blocks.iter().map(|b| b.shape == Shape::Cross || b.name.ends_with("_leaves") || b.name.ends_with("_log") || b.name == "vine").collect();
-        Ok(Structures { list, soft, plant })
+        let max_side = list.iter().map(|s| s.size.x.max(s.size.z)).max().unwrap_or(0).max(MAX_SIDE);
+        Ok(Structures { list, max_side, soft, plant })
     }
 }
 
@@ -182,19 +209,33 @@ impl Structure {
     }
 }
 
-/// Biggest footprint side we look around for (larger buildings would be cut off).
+/// Smallest distance we look around a chunk for buildings that cross it (bigger buildings
+/// raise it, see `Structures::max_side`).
 const MAX_SIDE: i32 = 32;
+
+impl Structure {
+    /// The size before turning (x, layers, z).
+    pub fn size(&self) -> IVec3 {
+        self.size
+    }
+
+    /// Footprint after `turns` quarter turns (x, z).
+    pub fn turned_footprint(&self, turns: u8) -> IVec2 {
+        self.footprint(turns)
+    }
+}
 
 impl Generator {
     /// Buildings whose footprint may cross this chunk.
     pub fn placements_near(&self, pos: ChunkPos) -> Vec<Placement> {
         let mut out = Vec::new();
         let structs = self.structures();
+        let side = structs.max_side;
         for (si, s) in structs.list.iter().enumerate() {
             let r = s.def.spacing.max(2) * 16 * self.spread / 100;
-            let x0 = (pos.x * 16 - MAX_SIDE).div_euclid(r);
+            let x0 = (pos.x * 16 - side).div_euclid(r);
             let x1 = (pos.x * 16 + 15).div_euclid(r);
-            let z0 = (pos.y * 16 - MAX_SIDE).div_euclid(r);
+            let z0 = (pos.y * 16 - side).div_euclid(r);
             let z1 = (pos.y * 16 + 15).div_euclid(r);
             for rz in z0..=z1 {
                 for rx in x0..=x1 {
@@ -225,6 +266,30 @@ impl Generator {
         if !s.def.biomes.iter().any(|b| b == biome.name()) {
             return None;
         }
+        if let Place::Sky(h) = s.def.place {
+            return Some(Placement { index: si, origin: IVec3::new(ox, h, oz), turns });
+        }
+        if s.def.place == Place::Water {
+            // Open sea under the whole hull.
+            let deep = [(ox, oz), (ox + f.x - 1, oz), (ox, oz + f.y - 1), (ox + f.x - 1, oz + f.y - 1), (cx, cz)].iter().all(|&(x, z)| self.height_at(x, z) < SEA_LEVEL - 3);
+            if !deep {
+                return None;
+            }
+            return Some(Placement { index: si, origin: IVec3::new(ox, SEA_LEVEL + 1 - s.def.sink, oz), turns });
+        }
+        if self.dim == crate::worldgen::Dim::End {
+            // On the outer islands, on fairly flat ground.
+            let corners = [(ox, oz), (ox + f.x - 1, oz), (ox, oz + f.y - 1), (ox + f.x - 1, oz + f.y - 1), (cx, cz)];
+            let mut hs = Vec::with_capacity(5);
+            for &(x, z) in &corners {
+                hs.push(self.end_land(x, z)?.0);
+            }
+            let (lo, hi) = (*hs.iter().min().unwrap(), *hs.iter().max().unwrap());
+            if hi - lo > s.def.rough || ((cx * cx + cz * cz) as f32) < 400.0 * 400.0 {
+                return None;
+            }
+            return Some(Placement { index: si, origin: IVec3::new(ox, hs[4] + 1 - s.def.sink, oz), turns });
+        }
         if self.dim == crate::worldgen::Dim::Nether {
             // On a cave floor above the lava sea, with room overhead.
             let tall = s.size.y + 2;
@@ -248,7 +313,7 @@ impl Generator {
         let hs = [self.height_at(ox, oz), self.height_at(ox + f.x - 1, oz), self.height_at(ox, oz + f.y - 1), self.height_at(ox + f.x - 1, oz + f.y - 1), self.height_at(cx, cz)];
         let lo = *hs.iter().min().unwrap();
         let hi = *hs.iter().max().unwrap();
-        if lo < SEA_LEVEL || hi - lo > 4 {
+        if lo < SEA_LEVEL || hi - lo > s.def.rough {
             return None;
         }
         let ground = hs[4];
@@ -267,7 +332,7 @@ impl Generator {
                     let (wx, wz) = (pos.x * 16 + lx, pos.y * 16 + lz);
                     let (x, z) = (wx - p.origin.x, wz - p.origin.z);
                     // A clearing one block wider than the building, free of trees.
-                    if x >= -1 && z >= -1 && x <= f.x && z <= f.y {
+                    if s.def.place == Place::Ground && x >= -1 && z >= -1 && x <= f.x && z <= f.y {
                         for y in p.origin.y.max(1)..(p.origin.y + s.size.y + 6).min(CHUNK_HEIGHT as i32) {
                             let cur = chunk.get(lx as usize, y as usize, lz as usize);
                             if structs.plant.get(cur as usize).copied().unwrap_or(false) {
