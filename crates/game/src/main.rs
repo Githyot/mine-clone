@@ -3649,7 +3649,7 @@ impl Game {
             ([0.2, 0.035, 0.025], rd * 0.15, rd * 0.85)
         } else if other {
             // A cold blue-black murk.
-            ([0.018, 0.04, 0.05], rd * 0.12, rd * 0.8)
+            ([0.03, 0.07, 0.08], rd * 0.3, rd - 2.0)
         } else if extra > 0.0 {
             (horizon, rd * 0.6, view_end - 8.0)
         } else {

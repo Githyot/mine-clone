@@ -34,7 +34,7 @@ fn dim_ambient() -> vec3<f32> {
         return vec3<f32>(0.5, 0.56, 0.64);
     }
     if (g.weather.z > 1.1 && g.weather.z < 1.5) {
-        return vec3<f32>(0.14, 0.2, 0.24);
+        return vec3<f32>(0.34, 0.42, 0.46);
     }
     if (g.weather.z > 1.5) {
         return vec3<f32>(0.62, 0.6, 0.68);

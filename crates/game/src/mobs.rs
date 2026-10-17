@@ -116,7 +116,7 @@ impl Mobs {
         let hostile = self.list.len() - passive;
         // The Nether: everything lives in its caves, in the dark, and only its own creatures.
         // The End: always dark, on the islands' tops. Overworld creatures stay home.
-        let nether = world.gen.dim == voxel::worldgen::Dim::Nether;
+        let nether = matches!(world.gen.dim, voxel::worldgen::Dim::Nether | voxel::worldgen::Dim::Otherside);
         let away = world.gen.dim != voxel::worldgen::Dim::Overworld;
         for _ in 0..4 {
             let a = self.rand_f32() * std::f32::consts::TAU;

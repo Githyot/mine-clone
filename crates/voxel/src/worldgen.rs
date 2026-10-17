@@ -13,9 +13,11 @@ mod aether;
 mod caves;
 mod end;
 mod nether;
+mod otherside;
 pub use caves::CaveBiome;
 pub use end::{end_pillars, EndPillar, END_EXIT_Y, END_PLATFORM};
 pub use aether::AETHER_ARRIVAL_Y;
+pub use otherside::OTHERSIDE_ROOF;
 pub use nether::{NETHER_LAVA, NETHER_ROOF};
 
 /// Which world a generator makes. Each dimension is saved in its own folder.
@@ -354,6 +356,7 @@ pub struct Generator {
     end: end::EndPalette,
     caves: caves::CavePalette,
     aether: aether::AetherPalette,
+    otherside: otherside::OthersidePalette,
 }
 
 const BANDS: usize = 48;
@@ -447,6 +450,7 @@ impl Generator {
             end: end::EndPalette::new(reg),
             caves: caves::CavePalette::new(reg),
             aether: aether::AetherPalette::new(reg),
+            otherside: otherside::OthersidePalette::new(reg),
         }
     }
 
@@ -456,6 +460,9 @@ impl Generator {
         }
         if self.dim == Dim::End {
             return Column { height: self.end_land(wx, wz).map(|l| l.0).unwrap_or(0), biome: Biome::TheEnd };
+        }
+        if self.dim == Dim::Otherside {
+            return Column { height: OTHERSIDE_ROOF, biome: self.otherside_biome(wx, wz) };
         }
         if self.dim == Dim::Aether {
             return Column { height: self.aether_land(wx, wz).map(|l| l.0).unwrap_or(0), biome: self.aether_biome(wx, wz) };
@@ -594,6 +601,9 @@ impl Generator {
         if self.dim == Dim::End {
             return Surface { height: col.height, biome: col.biome, top: self.end.end_stone, liquid: None, trees: None };
         }
+        if self.dim == Dim::Otherside {
+            return Surface { height: OTHERSIDE_ROOF, biome: col.biome, top: p.bedrock, liquid: None, trees: None };
+        }
         if self.dim == Dim::Aether {
             return Surface { height: col.height, biome: col.biome, top: self.aether.grass_id(), liquid: None, trees: None };
         }
@@ -651,6 +661,9 @@ impl Generator {
         }
         if self.dim == Dim::End {
             return self.generate_end(pos);
+        }
+        if self.dim == Dim::Otherside {
+            return self.generate_otherside(pos);
         }
         if self.dim == Dim::Aether {
             return self.generate_aether(pos);

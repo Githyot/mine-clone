@@ -263,14 +263,14 @@ mob("fire_minion", "Lacaio de Fogo",
 
 # ---------------------------------------------------------------- Otherside
 OTHER = ["Deeplands", "Echoing Forest", "Overcast Columns", "Blooming Caverns"]
-OTHER_GROUND = ["gloomslate", "sculk_grime", "echo_soil", "sculk"]
+OTHER_GROUND = ["gloomslate", "sculk_grime", "echo_soil", "blooming_moss", "sculk_stone"]
 sculk = ["#0b1e26", "#123341", "#1a4a5a", "#2a6a78"]
 bone = ["#a9a69a", "#c4c1b4", "#dcd9cc"]
 m = biped(look("shhead", ["#0c2028", "#143444"], eyes=((70, 230, 220), "glow"), pattern="sculk"),
           look("shbody", sculk, pattern="sculk"), look("sharm", sculk, pattern="sculk"),
           look("shleg", ["#091820", "#0f2a36"], pattern="sculk"), tall=16, slim=True)
 mob("shattered", "Estilhaçado", m, kind="Hostile", health=40, speed=2.6, size=(0.7, 2.6), spawn="Dark", attack=7,
-    biomes=OTHER, drops=[("echo_shard", 0, 1), ("bone", 0, 2)], xp=8)
+    biomes=OTHER, drops=[("echo_crystal", 0, 1), ("bone", 0, 2)], xp=8)
 mob("sculk_snapper", "Mordedor de Sculk",
     quadruped((8, 6, 12), (7, 6, 7), 5, 3, look("ssbody2", sculk, pattern="sculk"),
               look("sshead2", sculk, eyes=((70, 230, 220), "glow"), mouth=WHITE, pattern="sculk"),
@@ -307,7 +307,7 @@ m = biped(look("sthead", ["#0a1418", "#10222a"], eyes=((70, 230, 220), "glow"), 
           look("stbody", sculk, pattern="ribs"), look("starm", sculk, pattern="sculk"),
           look("stleg", ["#081216", "#0e1f26"], pattern="sculk"), tall=18, slim=True, arms_forward=True)
 mob("otherside_stalker", "Espreitador", m, kind="Hostile", health=300, speed=3.0, size=(0.8, 3.0), spawn="Never",
-    attack=14, boss=True, scale=1.2, drops=[("heart_of_the_deep", 1, 1), ("echo_shard", 3, 6)], xp=60)
+    attack=14, boss=True, scale=1.2, drops=[("heart_of_the_deep", 1, 1), ("echo_crystal", 3, 6)], xp=60)
 
 # Egg colours: (base, spots).
 EGGS = {

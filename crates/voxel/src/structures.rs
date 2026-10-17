@@ -293,12 +293,13 @@ impl Generator {
             }
             return Some(Placement { index: si, origin: IVec3::new(ox, hs[4] + 1 - s.def.sink, oz), turns });
         }
-        if self.dim == crate::worldgen::Dim::Nether {
-            // On a cave floor above the lava sea, with room overhead.
+        if matches!(self.dim, crate::worldgen::Dim::Nether | crate::worldgen::Dim::Otherside) {
+            // On a cave floor above the lava sea (or the Otherside's pools), with room overhead.
+            let solid = |x: i32, y: i32, z: i32| if self.dim == crate::worldgen::Dim::Nether { self.nether_solid(x, y, z) } else { self.otherside_solid(x, y, z) };
             let tall = s.size.y + 2;
             let mut ground = None;
             for y in crate::worldgen::NETHER_LAVA + 1..crate::worldgen::NETHER_ROOF - tall {
-                if self.nether_solid(cx, y, cz) && (1..=tall).all(|k| !self.nether_solid(cx, y + k, cz)) {
+                if solid(cx, y, cz) && (1..=tall).all(|k| !solid(cx, y + k, cz)) {
                     ground = Some(y);
                     break;
                 }
@@ -306,7 +307,7 @@ impl Generator {
             let ground = ground?;
             let flat = [(ox, oz), (ox + f.x - 1, oz), (ox, oz + f.y - 1), (ox + f.x - 1, oz + f.y - 1)]
                 .iter()
-                .all(|&(x, z)| !self.nether_solid(x, ground + 2, z) && !self.nether_solid(x, ground + s.size.y, z));
+                .all(|&(x, z)| !solid(x, ground + 2, z) && !solid(x, ground + s.size.y, z));
             if !flat {
                 return None;
             }
