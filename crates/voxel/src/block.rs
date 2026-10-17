@@ -82,6 +82,8 @@ pub enum Shape {
     Bench,
     /// A shelf board on a wall, with two brackets under it.
     Shelf,
+    /// A fence gate (Macaw's Fences idea): two posts and a swinging leaf; right click opens it.
+    FenceGate,
 }
 
 impl Shape {
@@ -118,6 +120,7 @@ impl Shape {
                 | Shape::Pot
                 | Shape::Bench
                 | Shape::Shelf
+                | Shape::FenceGate
         )
     }
 }

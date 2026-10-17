@@ -828,7 +828,7 @@ def village(name, biomes, st, seed, C=9, mobs=None, spacing=36, chance=0.5, roug
 
 VARIANTS = {"Slab": 3, "Stairs": 8, "Layer": 8, "Roof": 8, "Door": 16, "Trapdoor": 16, "Wire": 16, "Lever": 16, "Button": 16,
             "Repeater": 16, "Piston": 16, "PistonHead": 16, "Plate": 2, "Torch": 5, "Comparator": 128, "Oriented": 16,
-            "Hopper": 5, "Chair": 4, "Bench": 4, "Shelf": 4, "Lantern": 2, "Bridge": 2, "Portal": 3, "Rail": 16, "Liquid": 16}
+            "Hopper": 5, "Chair": 4, "Bench": 4, "Shelf": 4, "Lantern": 2, "Bridge": 2, "Portal": 3, "Rail": 16, "Liquid": 16, "FenceGate": 8}
 BIOMES = {"Plains", "Forest", "Desert", "Snowy Plains", "Ocean", "Beach", "Mountains", "Birch Forest", "Taiga", "Swamp", "Jungle",
           "Savanna", "Dark Forest", "Badlands", "Cherry Grove", "Nether Wastes", "Soul Sand Valley", "Crimson Forest", "The End",
           "Warped Forest"}

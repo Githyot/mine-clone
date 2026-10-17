@@ -8,6 +8,7 @@
 pub mod aether;
 pub mod combat;
 pub mod dwellers;
+pub mod macaws;
 pub mod mounts;
 pub mod portals;
 pub mod seasons;
@@ -41,6 +42,7 @@ pub struct Mods {
     /// How the player arrives in the dimension being loaded, when a mod portal sent them.
     pub arriving: Option<portals::Arrive>,
     pub combat: combat::Combat,
+    pub macaws: macaws::Macaws,
 }
 
 impl Game {
@@ -75,6 +77,7 @@ impl Game {
             self.update_dwellers(dt);
             self.update_mount(dt);
             self.update_combat();
+            self.update_macaws(dt);
         }
     }
 

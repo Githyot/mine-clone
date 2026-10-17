@@ -2478,6 +2478,7 @@ impl Game {
             Shape::Slab => upper as u8,
             Shape::Stairs | Shape::Roof => facing(f.x, f.z) | if upper { 4 } else { 0 },
             Shape::Door => facing(f.x, f.z),
+            Shape::FenceGate => facing(f.x, f.z),
             // A chair turns to face the player who puts it down.
             Shape::Chair => facing(-f.x, -f.z),
             // A bench runs across your view.
@@ -2611,7 +2612,7 @@ impl Game {
         }
         let id = self.world.block_or_air(hit.block);
         let b = self.reg.get(id);
-        if !matches!(b.shape, Shape::Door | Shape::Trapdoor) {
+        if !matches!(b.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate) {
             return false;
         }
         let (base, v, door) = (b.base, b.variant ^ 4, b.shape == Shape::Door);
