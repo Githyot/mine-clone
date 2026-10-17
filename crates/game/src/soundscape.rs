@@ -1,11 +1,11 @@
 //! The world's soundscape: sounds placed in 3D around the player (left/right, fading with
-//! distance and muffled behind walls), creatures' voices, and the ambience of each place: caves
-//! breathing and dripping, wind on the heights, waves on the shore, owls and frogs at night,
-//! lava bubbling, the Nether's moan and the End's hum. Body sounds (landing, jumping, a
-//! heartbeat at low health, gasping after a long dive) and interface sounds live here too.
+//! distance and muffled behind walls), creatures' recorded voices, and the ambience of each
+//! place: caves breathing and dripping, wind on the heights, waves on the shore, lava bubbling,
+//! the Nether's moan and the End's hum. Body sounds (landing, jumping, a heartbeat at low health,
+//! gasping after a long dive) and interface sounds live here too.
 //!
-//! Everything is synthesised (sfx_extra.rs) on a small worker thread so a long ambient sound
-//! never costs a frame.
+//! Everything except the creatures (recorded, mob_sounds.rs) is synthesised (sfx_extra.rs), and
+//! all of it is prepared on a small worker thread so a long ambient sound never costs a frame.
 
 use std::collections::HashMap;
 use std::sync::mpsc::{channel, Sender};
@@ -39,7 +39,6 @@ pub struct Immersion {
     voices: HashMap<u32, (f32, bool, f32)>,
     cave_t: f32,
     wind_t: f32,
-    animal_t: f32,
     water_t: f32,
     dim_t: f32,
     heart_t: f32,
@@ -79,7 +78,6 @@ impl Immersion {
             voices: HashMap::new(),
             cave_t: 40.0,
             wind_t: 6.0,
-            animal_t: 8.0,
             water_t: 3.0,
             dim_t: 4.0,
             heart_t: 0.0,
@@ -445,12 +443,16 @@ impl Game {
                 Some((ph, pa, _)) => {
                     if pa && !alive {
                         if near {
-                            calls.push((Fx::Voice(voice, Call::Death, depth), at, 0.9));
+                            if let Some(fx) = crate::mob_sounds::pick(&def.name, Call::Death, depth, self.fx.rand(), self.fx.rand()) {
+                                calls.push((fx, at, 0.9));
+                            }
                         }
                         hurt_fx.push((at, height, true));
                     } else if alive && hurt_age < ph {
                         if near {
-                            calls.push((Fx::Voice(voice, Call::Hurt, depth), at, 0.85));
+                            if let Some(fx) = crate::mob_sounds::pick(&def.name, Call::Hurt, depth, self.fx.rand(), self.fx.rand()) {
+                                calls.push((fx, at, 0.85));
+                            }
                         }
                         hurt_fx.push((at, height, false));
                     }
@@ -464,7 +466,9 @@ impl Game {
                 }
                 let chance = dt / voice.chattiness();
                 if self.fx.rand() < chance {
-                    calls.push((Fx::Voice(voice, Call::Idle, depth), at, 0.6));
+                    if let Some(fx) = crate::mob_sounds::pick(&def.name, Call::Idle, depth, self.fx.rand(), self.fx.rand()) {
+                        calls.push((fx, at, 0.6));
+                    }
                 }
             }
         }
@@ -574,15 +578,12 @@ impl Game {
             .push((t, sound, land, if lava { 0.3 } else { 0.4 }));
     }
 
-    /// The sounds of the place: caves, wind, water, animals, the Nether and the End.
+    /// The sounds of the place: caves, wind, water, the Nether and the End.
     fn ambience(&mut self, dt: f32) {
         let eye = self.body.eye();
         let head = eye.floor().as_ivec3();
         let sky = (self.world.light(head) >> 4) as f32;
         let biome = self.world.gen.biome_at(head.x, head.z);
-        let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
-        let night = (a.sin() * 2.2 + 0.45) < 0.25;
-        let raining = self.weather.rain > 0.3;
         match self.dim {
             Dim::Nether => {
                 self.fx.dim_t -= dt;
@@ -675,36 +676,6 @@ impl Game {
                 } else {
                     self.fx.water_t = self.fx.range(5.0, 10.0);
                     self.sfx_at(Sfx::Fx(Fx::Lapping), w, 0.45, 16.0);
-                }
-            }
-        }
-        // Animals heard but not seen: owls at night, frogs in swamps, doves in the woods.
-        if sky >= 10.0 && !raining {
-            self.fx.animal_t -= dt;
-            if self.fx.animal_t <= 0.0 {
-                self.fx.animal_t = self.fx.range(7.0, 16.0);
-                let woods = matches!(
-                    biome,
-                    Biome::Forest
-                        | Biome::BirchForest
-                        | Biome::DarkForest
-                        | Biome::Taiga
-                        | Biome::Jungle
-                        | Biome::CherryGrove
-                        | Biome::Plains
-                );
-                let call = if biome == Biome::Swamp && (night || self.fx.rand() < 0.4) {
-                    Some(Fx::Frog)
-                } else if night && woods && self.fx.rand() < 0.6 {
-                    Some(Fx::Owl)
-                } else if !night && woods && biome != Biome::Plains && self.fx.rand() < 0.5 {
-                    Some(Fx::Dove)
-                } else {
-                    None
-                };
-                if let Some(c) = call {
-                    let at = self.fx.around(eye, 10.0, 22.0);
-                    self.sfx_at(Sfx::Fx(c), at, 0.55, 30.0);
                 }
             }
         }

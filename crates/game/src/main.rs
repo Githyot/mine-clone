@@ -70,6 +70,7 @@ mod renderer;
 mod scenefx;
 mod settings;
 mod sfx;
+mod mob_sounds;
 mod sfx_extra;
 mod soundscape;
 mod fx;
