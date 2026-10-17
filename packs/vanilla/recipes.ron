@@ -387,7 +387,7 @@
         (pattern: ["I I", "III"], key: {'I': "iron_ingot"}, result: "minecart"),
         // Fase 5: Nether and End.
         (pattern: ["###", "###", "###"], key: {'#': "netherite_ingot"}, result: "netherite_block"),
-        (pattern: ["###", "#G#", "###"], key: {'#': "crying_obsidian", 'G': "glowstone"}, result: "respawn_anchor"),
+        (pattern: ["###", "GGG", "###"], key: {'#': "crying_obsidian", 'G': "glowstone"}, result: "respawn_anchor"),
         (pattern: ["##", "##"], key: {'#': "blackstone"}, result: "polished_blackstone", count: 4),
         (pattern: ["##", "##"], key: {'#': "polished_blackstone"}, result: "polished_blackstone_bricks", count: 4),
         (pattern: ["##", "##"], key: {'#': "basalt"}, result: "polished_basalt", count: 4),

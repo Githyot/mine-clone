@@ -195,24 +195,61 @@ ESTRUTURAS
 
 NETHER
   Monte uma moldura de obsidiana (pelo menos 4 de largura e 5 de altura, cantos opcionais)
-  e acenda com o isqueiro (ferro + pederneira). Fique dentro do portal por 4 segundos
-  (1 no criativo) para atravessar. Cada bloco andado no Nether vale 8 no mundo normal;
-  se não houver portal perto do destino, um novo é construído.
-  Lá: cavernas enormes, mar de lava, glowstone no teto, quartzo e ouro na rocha,
-  vale de areia das almas com colunas de basalto e floresta carmesim com fungos gigantes.
-  Moradores: zumbi do Nether (só ataca se provocado), esqueleto de cinzas, diabrete de fogo
-  (joga bolas de fogo) e javali carmesim. Água evapora no Nether. Se morrer lá, você
-  renasce no mundo normal. Receitas: tijolos do Nether, bloco de quartzo, tábuas carmesim.
+  e acenda com o isqueiro (ferro + pederneira) ou com uma carga de fogo. Fique dentro do
+  portal por 4 segundos (1 no criativo) para atravessar. Cada bloco andado no Nether vale 8
+  no mundo normal; se não houver portal perto do destino, um novo é construído.
+  Regiões: terras do Nether, vale de areia das almas, floresta carmesim, floresta distorcida
+  e deltas de basalto (colunas de basalto, pedra-negra e poças de lava).
+  Na rocha: quartzo, ouro e, bem fundo (alturas 8 a 22), detritos antigos.
+  Netherita: derreta detritos antigos na fornalha (fragmento de netherita); 4 fragmentos +
+  4 lingotes de ouro = 1 lingote de netherita. Junte uma ferramenta ou armadura de diamante
+  com um lingote de netherita na mesa e ela vira de netherita (mais forte, dura mais).
+  Criaturas:
+    Ghast: flutua no alto e cospe bolas de fogo que explodem. Bata na bola na hora certa
+      e ela volta (um ghast atingido pela própria bola morre). Solta lágrima de ghast.
+    Blaze: perto das fortalezas, solta 3 bolinhas de fogo que queimam. Solta vara de blaze
+      (vara = 2 pós de blaze; pó + pérola do Ender = olho do Ender).
+    Cubo de magma: pula e se divide em cubos pequenos ao morrer. Solta creme de magma.
+    Piglin: fica bravo se você não usar uma peça de armadura de ouro. Com um lingote de ouro
+      na mão, botão direito nele: ele pega o ouro e joga algo de volta (pérolas, obsidiana
+      chorona, cargas de fogo, quartzo, couro, linha...). Piglin bruto guarda os bastiões.
+    Hoglin: javali forte da floresta carmesim. Strider: anda na lava; botão direito para
+      montar, ande com as teclas de movimento, agache para descer.
+    Esqueleto Wither: nas fortalezas; às vezes solta um crânio de esqueleto Wither.
+  Bastiões: ruínas de pedra-negra com uma sala de ouro e baús (ouro, fragmentos de netherita).
+  Âncora de renascimento (6 obsidianas choronas + 3 pedras luminosas): carregue com pedra
+  luminosa (botão direito, até 4 cargas). Se morrer no Nether, você renasce ao lado dela,
+  gastando uma carga. Fora do Nether ela explode!
+  Água evapora no Nether. Sem âncora, se morrer lá você renasce no mundo normal.
+
+O WITHER
+  Monte um T de areia das almas (3 em cima, 1 embaixo no meio) e coloque 3 crânios de
+  esqueleto Wither em cima. O Wither nasce, cresce por 10 segundos sem poder ser ferido e
+  explode. Ele voa e atira crânios que explodem e dão a doença Wither (perde vida aos
+  poucos). Na metade da vida chama esqueletos Wither. Solta a estrela do Nether.
 
 O END
-  Olho do Ender = pérola do Ender (cai do andarilho do vazio, que aparece à noite) + quartzo.
+  Olho do Ender = pérola do Ender + pó de blaze (ou + quartzo).
   Ache uma ruína de pedra com 12 molduras em volta de um poço de lava, ou faça as molduras
   (6 obsidianas, 2 quartzos e 1 olho). Coloque um olho em cada moldura (botão direito) e o
-  portal se abre. No End, a ilha tem pilares de obsidiana com cristais que curam o
-  Guardião do Vazio. Quebre os cristais e derrote o guardião para abrir o portal de volta
-  no centro da ilha. Longe dali, depois do vazio, há ilhas com plantas de coro.
-  Pérola do Ender: botão direito para se teleportar até onde está olhando. Fruta do coro:
-  ao comer, você salta para um lugar perto. Cair no vazio machuca muito.
+  portal se abre.
+  Dragão do End: voa em círculos em volta dos pilares, mergulha em você, pousa sobre a fonte
+  do centro e cospe bolas de fogo que deixam uma nuvem roxa de bafo ácido. Os cristais nos
+  pilares o curam: quebre-os primeiro (flechas ou de perto). Quando ele morre, o portal de
+  volta se abre, o ovo do dragão aparece no topo da fonte e um portal (gateway) surge no céu
+  a uns 96 blocos do centro. Entre nele para ir às ilhas de fora (uns 1000 blocos longe);
+  ao lado de onde você chegar há outro para voltar.
+  Ilhas de fora: plantas de coro, cidades do End (torres de púrpura com baús e shulkers) e
+  navios do End flutuando, com a cabeça do dragão na proa e élitros no baú.
+  Shulker: fica parado como uma caixa e atira projéteis que te seguem e fazem flutuar.
+  Solta casca de shulker (2 cascas + baú = caixa de shulker).
+  Élitros: vista no lugar do peitoral. Pule de um lugar alto e aperte pular de novo no ar
+  para abrir as asas. Olhe para baixo para ganhar velocidade, para cima para subir.
+  Foguete (linha + pólvora) com botão direito enquanto plana dá um impulso. Quem não achar
+  um navio pode fazer élitros com 6 cascas de shulker, 1 olho do Ender e 1 estrela do Nether.
+  Pérola do Ender: botão direito para se teleportar até onde está olhando (às vezes aparece
+  um endermite). Fruta do coro: ao comer, você salta para um lugar perto. Cair no vazio
+  machuca muito.
 
 PINTURAS
   Mire numa parede e aperte P (no controle: seta para a esquerda). Passe o mouse sobre um nome

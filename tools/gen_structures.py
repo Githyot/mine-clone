@@ -927,7 +927,7 @@ def bastion():
     }
 
 
-def end_city():
+def _end_tower():
     """An End city tower: a purpur keep on an end stone brick base, three storeys joined by
     a ladder well, lit by end rods, with a loot room at the top under a crown of pillars."""
     W, H = 11, 26
@@ -982,7 +982,7 @@ def end_city():
     return {
         "name": "cidade_do_end",
         "biomes": ["End Highlands"],
-        "spacing": 10,
+        "spacing": 12,
         "chance": 0.5,
         "foundation": "end_stone_bricks",
         "palette": {"E": "end_stone_bricks", "Q": "purpur_block", "I": "purpur_pillar", "R": "end_rod", "c": "chest"},
@@ -992,6 +992,53 @@ def end_city():
                  ("", "diamond_pickaxe", 1, 1, 0.1), ("", "shulker_shell", 1, 2, 0.3), ("", "ender_pearl", 1, 3, 0.4),
                  ("", "chorus_fruit", 2, 6, 0.4)],
     }
+
+
+def end_city():
+    """An End city: the tall tower, a lower tower beside it and a purpur bridge between them."""
+    t = _end_tower()
+    tall = t["layers"]
+    W, D, H = 21, 21, len(tall)
+    layers = [grid(W, D, ".") for _ in range(H)]
+    for y, layer in enumerate(tall):
+        for z, row in enumerate(layer):
+            for x, ch in enumerate(row):
+                layers[y][z][x] = ch
+    # The lower tower in the far corner: 7x7, two storeys, a crown of rods.
+    x0, z0, top = 14, 14, 13
+    for y in range(0, top + 1):
+        for z in range(z0, z0 + 7):
+            for x in range(x0, x0 + 7):
+                edge = x in (x0, x0 + 6) or z in (z0, z0 + 6)
+                corner = x in (x0, x0 + 6) and z in (z0, z0 + 6)
+                if y < 2:
+                    layers[y][z][x] = "E"
+                elif corner:
+                    layers[y][z][x] = "I"
+                elif y in (2, 9, top) or edge:
+                    layers[y][z][x] = "Q"
+    for y in (3, 4):
+        layers[y][z0][x0 + 3] = "."
+    layers[10][z0 + 3][x0 + 3] = "c"
+    layers[3][z0 + 3][x0 + 3] = "R"
+    for (x, z) in ((x0, z0), (x0 + 6, z0), (x0, z0 + 6), (x0 + 6, z0 + 6)):
+        layers[top + 1][z][x] = "R"
+    # The bridge from the big tower's second floor to the small tower's upper floor.
+    for x in range(9, 18):
+        for z in (5, 6):
+            layers[9][z][x] = "Q"
+        layers[10][4][x] = "R" if x % 3 == 0 else "."
+    for z in range(5, z0 + 1):
+        for x in (16, 17):
+            layers[9][z][x] = "Q"
+    for y in (10, 11):
+        for z in (5, 6):
+            layers[y][z][9] = "."
+        for x in (16, 17):
+            layers[y][z0][x] = "."
+    t["layers"] = [rows(l) for l in layers]
+    t["foundation"] = "end_stone"
+    return t
 
 
 def end_ship():
