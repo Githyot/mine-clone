@@ -43,6 +43,7 @@ impl Game {
         self.renderer.clear_chunks();
         self.mobs.list.clear();
         self.mobs.arrows.clear();
+        self.nether_end_loaded();
         self.target = None;
         self.mining = None;
         self.paintings = paintings::load(&save.dir, &self.painting_defs);
@@ -251,7 +252,9 @@ impl Game {
             return;
         }
         let Some(at) = self.arrival.take() else { return };
-        let spot = if self.dim == Dim::End {
+        let spot = if std::mem::take(&mut self.ne.gateway_landing) {
+            self.finish_gateway(at)
+        } else if self.dim == Dim::End {
             self.arrive_in_end()
         } else if std::mem::take(&mut self.arrive_plain) {
             if let Some(b) = self.surv.spawn {
@@ -279,6 +282,10 @@ impl Game {
         if self.args.mobs && (std::env::var("MC_NETHER").is_ok() || std::env::var("MC_END").is_ok()) {
             // Test hook: the Nether's creatures lined up in front of the portal.
             self.spawn_demo_mobs();
+        }
+        if let Ok(what) = std::env::var("MC_NE") {
+            // Test hook: the Nether and End's fights, right after arriving.
+            self.nether_end_test(&what);
         }
     }
 

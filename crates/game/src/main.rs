@@ -29,6 +29,7 @@ mod menus;
 mod monitor;
 mod lod;
 mod mobs;
+mod nether_end;
 mod paintings;
 mod particles;
 mod player_model;
@@ -449,6 +450,7 @@ struct Game {
     max_health: f32,
     magic: magic::Magic,
     boss: bosses::BossState,
+    ne: nether_end::NetherEnd,
     town: npcs::Town,
     raid: raids::Raid,
     /// Seconds since the player was last hurt (red flash, invulnerability).
@@ -784,6 +786,7 @@ impl Game {
             max_health,
             magic: magic::Magic::new(max_mana),
             boss: bosses::BossState::new(bosses_beaten),
+            ne: nether_end::NetherEnd::default(),
             town: npcs::Town::new(town_npcs),
             raid: raids::Raid::default(),
             hurt_age: 100.0,
@@ -1431,6 +1434,10 @@ impl Game {
                         }
                     }
                 }
+                if let Ok(what) = std::env::var("MC_NE") {
+                    // Test hook: the Nether and End's fights (shots, wither, dragon, glide, gateway).
+                    self.nether_end_test(&what);
+                }
                 if let Ok(spell) = std::env::var("MC_CAST") {
                     // Test hook: a caster in hand, a few spells frozen in flight.
                     if let Some(id) = self.items.id(&spell) {
@@ -1515,6 +1522,7 @@ impl Game {
             }
             // Screenshots hold the world still so the picture is stable.
             let mdt = if self.args.screenshot.is_some() { 0.0 } else { dt };
+            self.before_mobs();
             let out = self.mobs.update(&self.world, self.body.pos, creative, daylight, mdt);
             for (dmg, from) in out.damage {
                 self.damage(dmg, from);
@@ -1526,6 +1534,7 @@ impl Game {
                 self.enemy_bolt(from, vel, school, dmg);
                 self.sfx(Sfx::Cast(school));
             }
+            self.update_nether_end(mdt, &out.special, &out.deaths);
             // A soft thrum when a bow is loosed, a wooden thunk when an arrow lands.
             if out.shots > 0 {
                 self.sfx(Sfx::Place(Material::Cloth));
@@ -1636,7 +1645,7 @@ impl Game {
         let was_ground = self.body.on_ground;
         // The camera pass for screenshots holds still.
         if self.args.screenshot.is_none() {
-            if !self.seat_step(input.sneak) && !self.ride_step(wish, input.sneak) {
+            if !self.seat_step(input.sneak) && !self.ride_step(wish, input.sneak) && !self.elytra_step(input.jump, dt) {
                 self.body.step(&self.world, &input, dt);
             }
         } else {
@@ -1762,6 +1771,9 @@ impl Game {
         }
         // Survival swings land when the weapon is ready again, or on a fresh click (weaker).
         let ready = !self.survival || self.attack_pressed || self.attack_charge() >= 1.0;
+        if attack && self.attack_cd <= 0.0 && ready && self.deflect_shot() {
+            self.attack_cd = 0.3;
+        }
         if attack && self.attack_cd <= 0.0 && ready {
             // Plants don't block a swing: the hit goes through grass and flowers to the mob.
             let world = &self.world;
@@ -2358,6 +2370,9 @@ impl Game {
     }
 
     fn respawn(&mut self) {
+        if self.respawn_at_anchor() {
+            return;
+        }
         if self.dim != voxel::worldgen::Dim::Overworld {
             // Death in the Nether sends you home: load the Overworld first.
             self.travel_home_after_death();
@@ -2378,6 +2393,10 @@ impl Game {
 
     /// Test scene: one of every mob in a row in front of the player.
     fn spawn_demo_mobs(&mut self) {
+        if let Ok(floor) = std::env::var("MC_ARENA") {
+            // Test hook: a flat floor for the line-up (the Nether's slopes hide the mobs).
+            self.test_arena(&floor);
+        }
         let f = self.forward();
         let fwd = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
         let side = Vec3::new(-fwd.z, 0.0, fwd.x);

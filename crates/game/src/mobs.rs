@@ -39,6 +39,8 @@ pub struct MobOutcome {
     pub fireballs: Vec<(Vec3, Vec3, f32, u8)>,
     /// Mobs that died this tick: (def index, where).
     pub deaths: Vec<(usize, Vec3)>,
+    /// Shots of the Nether and End creatures (ghast fireballs, wither skulls...): kind, from, at.
+    pub special: Vec<(crate::nether_end::ShotKind, Vec3, Vec3)>,
 }
 
 pub const ARROW_GRAVITY: f32 = 20.0;
@@ -162,7 +164,7 @@ impl Mobs {
                         && match d.spawn {
                             SpawnRule::Grass => animals && !water && self.ground[*i].contains(&below),
                             SpawnRule::Water => animals && water,
-                            SpawnRule::Dark => dark && !water && hostile < MAX_HOSTILE && !self.peaceful,
+                            SpawnRule::Dark => dark && !water && hostile < MAX_HOSTILE && !self.peaceful && (self.reg.defs[*i].ground.is_empty() || self.ground[*i].contains(&below)),
                             SpawnRule::Never => false,
                         }
                 })
@@ -274,6 +276,10 @@ impl Mobs {
                             target += Vec3::new(a.cos(), 0.4, a.sin()) * 1.6;
                         }
                         let d = target - from;
+                        if let Some(kind) = crate::nether_end::shot_kind(&def.name) {
+                            out.special.push((kind, from, target));
+                            continue;
+                        }
                         if let Some(school) = caster_school(&def.name) {
                             // Casters throw a straight bolt of their magic instead of an arrow.
                             out.fireballs.push((from, d.normalize_or_zero() * 14.0, damage, school));

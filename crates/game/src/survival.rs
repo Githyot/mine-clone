@@ -826,7 +826,7 @@ impl Game {
         if self.loot_corpse() {
             return true;
         }
-        if self.talk_to_npc() {
+        if self.talk_to_npc() || self.barter_with_piglin() {
             return true;
         }
         if let Some(st) = self.held_stack() {
@@ -843,6 +843,9 @@ impl Game {
             let name = self.reg.get(id).name.clone();
             let sneaking = self.crouch > 0.5;
             if !sneaking || self.held_stack().is_none() {
+                if self.nether_end_block_use(hit.block, &name) {
+                    return true;
+                }
                 match name.as_str() {
                     "crafting_table" => {
                         self.open_container(Open::Table);
@@ -882,6 +885,9 @@ impl Game {
         let item = self.items.get(stack.item).clone();
         if item.armor.is_some() {
             return self.equip_held();
+        }
+        if self.nether_end_use(&item.name) {
+            return true;
         }
         if self.pot_plant(item.places) {
             return true;
@@ -977,6 +983,7 @@ impl Game {
                 let sel = self.selected;
                 self.surv.inv.take(sel, 1);
             }
+            self.after_place(pos);
             if self.reg.get(block).name.ends_with("_sapling") {
                 let t = 60.0 + self.surv.rng.f32() * 120.0;
                 self.surv.saplings.push((pos, t));

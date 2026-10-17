@@ -47,13 +47,13 @@ impl Game {
                 }
             }
         }
-        if self.boss.defeated.iter().any(|d| d == GUARDIAN) {
+        // The dragon rules the End now; a world that beat the old guardian keeps its way home.
+        let cleared = self.boss.defeated.iter().any(|d| d == GUARDIAN || d == crate::nether_end::DRAGON);
+        if cleared {
             self.open_end_exit();
-        } else if !self.mobs.list.iter().any(|m| m.alive() && self.mobs.reg.defs[m.def].name == GUARDIAN) {
-            let y = self.world.surface_y(12, 12).unwrap_or(END_EXIT_Y) + 1;
-            self.mobs.spawn(GUARDIAN, Vec3::new(12.5, y as f32, 12.5));
-            self.boss.called_help = false;
-            self.toast("O Guardião do Vazio espera no centro da ilha", 4.0);
+            self.restore_gateways();
+        } else {
+            self.wake_dragon();
         }
         self.end_arrival()
     }
@@ -169,11 +169,16 @@ impl Game {
         if !free(at) || !free(at + IVec3::Y) {
             return false;
         }
+        let from = self.body.pos;
         self.teleport(at.as_vec3() + Vec3::new(0.5, 0.0, 0.5));
         if self.survival {
             let sel = self.selected;
             self.surv.inv.take(sel, 1);
             self.damage(2.5, None);
+            // Now and then a little endermite crawls out where the pearl took you from.
+            if self.surv.rng.f32() < 0.05 {
+                self.mobs.spawn("endermite", from);
+            }
         }
         self.anim.start_swing();
         true

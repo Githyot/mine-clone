@@ -135,6 +135,19 @@ pub struct MobDef {
     /// A town NPC: lives in a house, never despawns, talks and trades.
     #[serde(default = "d_false")]
     pub town: bool,
+    /// Flies instead of walking (ghasts, blazes, the Wither), keeping `hover` blocks above
+    /// the ground, or above the player while fighting.
+    #[serde(default = "d_false")]
+    pub flies: bool,
+    #[serde(default)]
+    pub hover: f32,
+    /// How far a ranged mob shoots from.
+    #[serde(default = "d_range")]
+    pub range: f32,
+}
+
+fn d_range() -> f32 {
+    15.0
 }
 
 fn d_scale() -> f32 {
@@ -427,12 +440,13 @@ impl Mob {
                 }
             } else if def.ranged {
                 // Keep some distance, shoot every couple of seconds.
-                if dist < 6.0 {
+                let (near, far) = (def.range * 0.4, def.range * 0.67);
+                if dist < near {
                     wish = -flat.normalize_or_zero();
-                } else if dist > 10.0 {
+                } else if dist > far {
                     wish = flat.normalize_or_zero();
                 }
-                if self.attack_cd <= 0.0 && dist < 15.0 {
+                if self.attack_cd <= 0.0 && dist < def.range {
                     self.attack_cd = 2.0 + self.rng.f32();
                     let hit = self.rng.chance((1.0 - dist / 22.0).clamp(0.2, 0.85));
                     let from = self.body.pos + Vec3::Y * (def.height * 0.75);
@@ -546,7 +560,11 @@ impl Mob {
             }
         }
         let input = Input { wish, jump, sneak: false, sprint: run, crawl: false };
-        self.body.step(world, &input, dt);
+        if def.flies {
+            self.fly_step(def, world, wish, if fights { Some(player) } else { None }, run, dt);
+        } else {
+            self.body.step(world, &input, dt);
+        }
         let moved = (self.body.pos - before) * Vec3::new(1.0, 0.0, 1.0);
         let speed = moved.length() / dt.max(1e-4);
         self.walk_speed += (speed - self.walk_speed) * (dt * 10.0).min(1.0);
@@ -561,6 +579,28 @@ impl Mob {
         } else {
             self.stuck = 0.0;
         }
+    }
+}
+
+impl Mob {
+    /// Flying: glide toward `wish` at the mob's speed and hold a height, `hover` blocks over the
+    /// ground below (or over the player it fights), bobbing a little.
+    fn fly_step(&mut self, def: &MobDef, world: &impl Terrain, wish: Vec3, target: Option<Vec3>, run: bool, dt: f32) {
+        let at = self.body.pos;
+        let ground = (0..40).map(|k| at.y.floor() as i32 - k).find(|&y| world.solid(glam::IVec3::new(at.x.floor() as i32, y, at.z.floor() as i32)));
+        let bob = (self.age * 1.3 + self.phase).sin() * 0.6;
+        let want_y = match (target, ground) {
+            (Some(p), _) => p.y + def.hover + bob,
+            (None, Some(g)) => g as f32 + 1.0 + def.hover + bob,
+            (None, None) => at.y - 1.0,
+        };
+        let speed = def.speed * if run { 1.3 } else { 1.0 } * if self.chill > 0.0 { 0.4 } else { 1.0 };
+        let mut v = Vec3::new(wish.x, 0.0, wish.z) * speed;
+        v.y = ((want_y - at.y) * 1.5).clamp(-speed, speed);
+        // Ease into the new speed so turns are smooth.
+        let k = (dt * 4.0).min(1.0);
+        let vel = self.body.vel + (v - self.body.vel) * k;
+        self.body.fly(world, vel, dt);
     }
 }
 

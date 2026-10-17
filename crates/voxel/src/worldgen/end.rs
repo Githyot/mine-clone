@@ -75,6 +75,11 @@ pub fn end_pillars(seed: u64) -> Vec<EndPillar> {
 }
 
 impl Generator {
+    /// The top block of the End's land in a column, if there is any (where to stand).
+    pub fn end_top(&self, wx: i32, wz: i32) -> Option<i32> {
+        self.end_land(wx, wz).map(|(top, _)| top)
+    }
+
     /// Top and bottom of the land in a column, if there is any.
     pub(super) fn end_land(&self, wx: i32, wz: i32) -> Option<(i32, i32)> {
         let (x, z) = (wx as f32, wz as f32);

@@ -82,6 +82,8 @@ pub enum Shape {
     Bench,
     /// A shelf board on a wall, with two brackets under it.
     Shelf,
+    /// A head or skull: an 8-pixel cube on the floor.
+    Skull,
 }
 
 impl Shape {
@@ -118,6 +120,7 @@ impl Shape {
                 | Shape::Pot
                 | Shape::Bench
                 | Shape::Shelf
+                | Shape::Skull
         )
     }
 }
