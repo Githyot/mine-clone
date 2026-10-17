@@ -193,6 +193,17 @@ ESTRUTURAS
   Torre do mago (estantes e baú com varinhas e cristais de mana) e moinho de vento.
   Na chuva, as gotas respingam no chão em volta de você.
 
+NETHER
+  Monte uma moldura de obsidiana (pelo menos 4 de largura e 5 de altura, cantos opcionais)
+  e acenda com o isqueiro (ferro + pederneira). Fique dentro do portal por 4 segundos
+  (1 no criativo) para atravessar. Cada bloco andado no Nether vale 8 no mundo normal;
+  se não houver portal perto do destino, um novo é construído.
+  Lá: cavernas enormes, mar de lava, glowstone no teto, quartzo e ouro na rocha,
+  vale de areia das almas com colunas de basalto e floresta carmesim com fungos gigantes.
+  Moradores: zumbi do Nether (só ataca se provocado), esqueleto de cinzas, diabrete de fogo
+  (joga bolas de fogo) e javali carmesim. Água evapora no Nether. Se morrer lá, você
+  renasce no mundo normal. Receitas: tijolos do Nether, bloco de quartzo, tábuas carmesim.
+
 PINTURAS
   Mire numa parede e aperte P (no controle: seta para a esquerda). Passe o mouse sobre um nome
   para ver a pintura na parede antes de escolher; "Aleatória" escolhe uma que cabe ali.
