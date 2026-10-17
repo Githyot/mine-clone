@@ -302,7 +302,7 @@ def cracked_dirt():
 @block("mud")
 def mud():
     rng = rng_for("mud")
-    p = pal("#2e261e", "#3a3026", "#463a2e", "#524436", "#5e4e3e")
+    p = pal("#4a3a2a", "#584634", "#66523e", "#745e48", "#806a52")
     img = from_rgb(shade(fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.3))), p, 0.7))
     for _ in range(6):
         x, y = rng.integers(0, N, 2)

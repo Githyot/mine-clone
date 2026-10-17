@@ -106,7 +106,7 @@ impl Generator {
             let (lo, hi) = (sea - 10.0, sea + 18.0);
             if *h > lo && *h < hi {
                 let edge = ((*h - lo) / 4.0).min((hi - *h) / 7.0).min(1.0);
-                let target = sea + 0.2 + detail * 2.4;
+                let target = sea + 0.1 + detail * 4.0;
                 *h += (target - *h) * w * edge;
             }
         }
@@ -138,10 +138,10 @@ impl Generator {
             // Red earth showing through the grass, red under it.
             Biome::Cerrado if n > 0.28 => (or(d.red_soil, p.grass), or(d.red_soil, p.dirt), 3),
             Biome::Cerrado => (p.grass, or(d.red_soil, p.dirt), 3),
-            Biome::Caatinga if n > 0.12 => (or(d.cracked_dirt, p.sand), p.dirt, 3),
+            Biome::Caatinga if n > -0.02 => (or(d.cracked_dirt, p.sand), p.dirt, 3),
             Biome::Caatinga if n < -0.3 => (p.sand, p.sandstone, 3),
             // Mud along the water's edge and on the bottom of the pools.
-            Biome::Pantanal if col.height <= SEA_LEVEL => (or(d.mud, p.dirt), p.dirt, 3),
+            Biome::Pantanal if col.height < SEA_LEVEL => (or(d.mud, p.dirt), p.dirt, 3),
             _ => (p.grass, p.dirt, 3),
         }
     }
@@ -175,7 +175,7 @@ impl Generator {
                 Biome::Cerrado => 5,
                 Biome::Pantanal => 3,
                 Biome::Araucaria => 6,
-                _ => 7,
+                _ => 5,
             };
             for _ in 0..attempts {
                 self.distant_tree(chunk, rng, cols, biome);
@@ -244,10 +244,10 @@ impl Generator {
                 }
             }
             _ => {
-                if r < 0.4 {
+                if r < 0.35 {
                     T::Cactus
-                } else if r < 0.75 {
-                    T::Twisted { leafy: 0.25 }
+                } else if r < 0.9 {
+                    T::Twisted { leafy: 0.1 }
                 } else {
                     T::Base(TreeKind::Bush(Wood::Acacia))
                 }

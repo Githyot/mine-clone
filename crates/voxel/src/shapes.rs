@@ -396,6 +396,18 @@ mod tests {
     }
 
     #[test]
+    fn hollow_logs_have_a_hole_along_their_axis() {
+        for (v, axis) in [(0u8, 1usize), (1, 0), (2, 2)] {
+            let mut b = Vec::new();
+            boxes(Shape::Hollow, v, 0, true, &mut b);
+            assert_eq!(b.len(), 4);
+            // The middle of the block is open, and every wall runs the whole length of the axis.
+            assert!(b.iter().all(|w| !(w[0] < 8 && w[3] > 8 && w[1] < 8 && w[4] > 8 && w[2] < 8 && w[5] > 8)));
+            assert!(b.iter().all(|w| w[axis] == 0 && w[axis + 3] == 16));
+        }
+    }
+
+    #[test]
     fn fences_collide_taller() {
         let mut v = Vec::new();
         boxes(Shape::Fence, 0, CONN_PX, true, &mut v);
