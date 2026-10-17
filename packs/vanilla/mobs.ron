@@ -834,6 +834,102 @@
         ],
         layers: [(part: 1, inflate: 0.5)],
     ),
+    // Enderman Overhaul idea: a void walker of soul lands.
+    (
+        name: "void_walker_soul", display_name: "Andarilho das Almas", kind: Neutral, health: 40, speed: 2.9,
+        drops: [(item: "ender_pearl", chance: 0.6)], xp: 5,
+        width: 0.6, height: 2.9, spawn: Dark, attack: 7, scale: 1.45, weight: 3,
+        biomes: ["Soul Sand Valley"],
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (2, 12, 2), origin: (-6, 12, -1), uv: (40, 16), anim: ArmForward(0), pivot: (-5, 22, 0)),
+            (size: (2, 12, 2), origin: (4, 12, -1), uv: (40, 16), anim: Arm(1), pivot: (5, 22, 0)),
+            (size: (2, 12, 2), origin: (-3, 0, -1), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (2, 12, 2), origin: (1, 0, -1), uv: (0, 16), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 1, inflate: 0.5)],
+    ),
+    // Enderman Overhaul idea: a void walker of crimson lands.
+    (
+        name: "void_walker_crimson", display_name: "Andarilho Carmesim", kind: Neutral, health: 40, speed: 2.9,
+        drops: [(item: "ender_pearl", chance: 0.6)], xp: 5,
+        width: 0.6, height: 2.9, spawn: Dark, attack: 7, scale: 1.45, weight: 3,
+        biomes: ["Crimson Forest"],
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (2, 12, 2), origin: (-6, 12, -1), uv: (40, 16), anim: ArmForward(0), pivot: (-5, 22, 0)),
+            (size: (2, 12, 2), origin: (4, 12, -1), uv: (40, 16), anim: Arm(1), pivot: (5, 22, 0)),
+            (size: (2, 12, 2), origin: (-3, 0, -1), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (2, 12, 2), origin: (1, 0, -1), uv: (0, 16), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 1, inflate: 0.5)],
+    ),
+    // Enderman Overhaul idea: a void walker of savanna lands.
+    (
+        name: "void_walker_savanna", display_name: "Andarilho da Savana", kind: Neutral, health: 40, speed: 2.9,
+        drops: [(item: "ender_pearl", chance: 0.6)], xp: 5,
+        width: 0.6, height: 2.9, spawn: Dark, attack: 7, scale: 1.45, weight: 3,
+        biomes: ["Savanna"],
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (2, 12, 2), origin: (-6, 12, -1), uv: (40, 16), anim: ArmForward(0), pivot: (-5, 22, 0)),
+            (size: (2, 12, 2), origin: (4, 12, -1), uv: (40, 16), anim: Arm(1), pivot: (5, 22, 0)),
+            (size: (2, 12, 2), origin: (-3, 0, -1), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (2, 12, 2), origin: (1, 0, -1), uv: (0, 16), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 1, inflate: 0.5)],
+    ),
+    // Enderman Overhaul idea: a void walker of swamp lands.
+    (
+        name: "void_walker_swamp", display_name: "Andarilho do Pântano", kind: Neutral, health: 40, speed: 2.9,
+        drops: [(item: "ender_pearl", chance: 0.6)], xp: 5,
+        width: 0.6, height: 2.9, spawn: Dark, attack: 7, scale: 1.45, weight: 3,
+        biomes: ["Swamp"],
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (2, 12, 2), origin: (-6, 12, -1), uv: (40, 16), anim: ArmForward(0), pivot: (-5, 22, 0)),
+            (size: (2, 12, 2), origin: (4, 12, -1), uv: (40, 16), anim: Arm(1), pivot: (5, 22, 0)),
+            (size: (2, 12, 2), origin: (-3, 0, -1), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (2, 12, 2), origin: (1, 0, -1), uv: (0, 16), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 1, inflate: 0.5)],
+    ),
+    // Enderman Overhaul idea: a void walker of snowy lands.
+    (
+        name: "void_walker_snowy", display_name: "Andarilho da Neve", kind: Neutral, health: 40, speed: 2.9,
+        drops: [(item: "ender_pearl", chance: 0.6)], xp: 5,
+        width: 0.6, height: 2.9, spawn: Dark, attack: 7, scale: 1.45, weight: 3,
+        biomes: ["Snowy Plains", "Taiga"],
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (2, 12, 2), origin: (-6, 12, -1), uv: (40, 16), anim: ArmForward(0), pivot: (-5, 22, 0)),
+            (size: (2, 12, 2), origin: (4, 12, -1), uv: (40, 16), anim: Arm(1), pivot: (5, 22, 0)),
+            (size: (2, 12, 2), origin: (-3, 0, -1), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (2, 12, 2), origin: (1, 0, -1), uv: (0, 16), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 1, inflate: 0.5)],
+    ),
+    // Enderman Overhaul idea: a void walker of desert lands.
+    (
+        name: "void_walker_desert", display_name: "Andarilho do Deserto", kind: Neutral, health: 40, speed: 2.9,
+        drops: [(item: "ender_pearl", chance: 0.6)], xp: 5,
+        width: 0.6, height: 2.9, spawn: Dark, attack: 7, scale: 1.45, weight: 3,
+        biomes: ["Desert", "Badlands"],
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (2, 12, 2), origin: (-6, 12, -1), uv: (40, 16), anim: ArmForward(0), pivot: (-5, 22, 0)),
+            (size: (2, 12, 2), origin: (4, 12, -1), uv: (40, 16), anim: Arm(1), pivot: (5, 22, 0)),
+            (size: (2, 12, 2), origin: (-3, 0, -1), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (2, 12, 2), origin: (1, 0, -1), uv: (0, 16), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 1, inflate: 0.5)],
+    ),
     (
         name: "void_guardian", display_name: "Guardião do Vazio", kind: Hostile, health: 400, speed: 2.2,
         drops: [(item: "diamond", min: 2, max: 5), (item: "ender_pearl", min: 4, max: 8), (item: "end_crystal", min: 1, max: 2), (item: "life_crystal", min: 1, max: 2)], xp: 150,

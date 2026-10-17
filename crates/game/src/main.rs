@@ -492,6 +492,7 @@ struct Game {
     /// Fractional count of ambient blocks still to look at (ambient.rs).
     ambient_t: f32,
     room_t: f32,
+    walker_t: f32,
     wander: wanderers::Wanderers,
     copper: copper::Copper,
     farm: farm::Farm,
@@ -808,6 +809,7 @@ impl Game {
             arrive_plain: false,
             ambient_t: 0.0,
             room_t: 0.0,
+            walker_t: 0.0,
             wander: Default::default(),
             copper: copper::Copper::new(&reg_for_fluids),
             farm: farm::Farm::new(&reg_for_fluids),
@@ -1275,6 +1277,7 @@ impl Game {
             self.update_carts(dt);
             self.update_random_ticks(dt);
             self.update_farmers(dt);
+            self.update_walkers(dt);
             let fe = self.fluids.update(&mut self.world, dt);
             if let Some(p) = fe.hardened.first() {
                 if p.as_vec3().distance(self.body.pos) < 24.0 {

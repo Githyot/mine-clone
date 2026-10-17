@@ -1637,6 +1637,12 @@ RECOLORED = {
         PIG_SNOUT=pal("#8a3a3a", "#9c4848", "#ae5656", "#c06464"),
         PIG_HOOF=pal("#1a0a0a", "#2a1210"))),
     # End creatures.
+    "void_walker_desert": ("skeleton", dict(BONE=pal("#4a3a22", "#5e4a2c", "#725a36", "#866a40", "#9a7a4a"))),
+    "void_walker_snowy": ("skeleton", dict(BONE=pal("#5a6878", "#6e7e90", "#8496a8", "#9aaec0", "#b4c6d6"))),
+    "void_walker_swamp": ("skeleton", dict(BONE=pal("#1a2614", "#22301a", "#2a3a20", "#344628", "#3e5230"))),
+    "void_walker_savanna": ("skeleton", dict(BONE=pal("#3a2a14", "#4a3418", "#5a3e1c", "#6a4a22", "#7a5628"))),
+    "void_walker_crimson": ("skeleton", dict(BONE=pal("#2a0a10", "#3a0e16", "#4a121c", "#5a1822", "#6a1e28"))),
+    "void_walker_soul": ("skeleton", dict(BONE=pal("#0e1a20", "#14262e", "#1a323c", "#20404a", "#2a5260"))),
     "void_walker": ("skeleton", dict(BONE=pal("#0c0a10", "#141018", "#1c1622", "#241c2c", "#2e2436"))),
     "void_guardian": ("forest_guardian", dict(
         GBARK=pal("#120e18", "#1c1624", "#261e30", "#30263c", "#3a2e48"),
@@ -2098,7 +2104,7 @@ def main():
              "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian",
              "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
              "goblin_trader", "mutant_zombie", "npc_guard", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton",
-             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay", "lich", "obsidilith", "void_blossom", "marauder", "invoker", "brute", "ember_wraith"]
+             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay", "lich", "obsidilith", "void_blossom", "marauder", "invoker", "brute", "ember_wraith", "void_walker_desert", "void_walker_snowy", "void_walker_swamp", "void_walker_savanna", "void_walker_crimson", "void_walker_soul"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols

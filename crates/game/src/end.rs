@@ -200,6 +200,62 @@ impl Game {
         }
     }
 
+    /// Void walkers blink about (Enderman Overhaul idea): an angry one far off jumps to a spot
+    /// beside the player, and one that was just hit may vanish to somewhere close by.
+    pub(crate) fn update_walkers(&mut self, dt: f32) {
+        if dt <= 0.0 {
+            return;
+        }
+        self.walker_t -= dt;
+        if self.walker_t > 0.0 {
+            return;
+        }
+        self.walker_t = 0.5;
+        let me = self.body.pos;
+        let glow = self.glow_layer();
+        for i in 0..self.mobs.list.len() {
+            let m = &self.mobs.list[i];
+            if !m.alive() || !self.mobs.reg.defs[m.def].name.starts_with("void_walker") {
+                continue;
+            }
+            let (pos, aggro, hit) = (m.body.pos, m.aggro, m.hurt_age < 0.5);
+            let far = pos.distance(me) > 7.0;
+            let roll = self.surv.rng.f32();
+            let to = if aggro && far && roll < 0.25 {
+                me
+            } else if hit && roll < 0.35 {
+                pos
+            } else {
+                continue;
+            };
+            for _ in 0..8 {
+                let a = self.surv.rng.f32() * std::f32::consts::TAU;
+                let r = 2.5 + self.surv.rng.f32() * 4.0;
+                let c = (to + Vec3::new(a.cos() * r, 0.0, a.sin() * r)).floor().as_ivec3();
+                let solid = |q: IVec3| self.reg.get(self.world.block_or_air(q)).solid;
+                let Some(y) = (-4..=4).rev().map(|dy| c.y + dy).find(|&y| {
+                    let p = IVec3::new(c.x, y, c.z);
+                    solid(p - IVec3::Y) && !solid(p) && !solid(p + IVec3::Y) && !solid(p + IVec3::Y * 2)
+                }) else {
+                    continue;
+                };
+                let dest = Vec3::new(c.x as f32 + 0.5, y as f32, c.z as f32 + 0.5);
+                for k in 0..10 {
+                    let v = Vec3::new((k as f32).cos(), 1.0, (k as f32).sin()) * 0.7;
+                    self.particles.glow(pos + Vec3::Y * 1.5, v, glow, [0.6, 0.3, 0.9], 0.12, 0.7);
+                    self.particles.glow(dest + Vec3::Y * 1.5, v, glow, [0.6, 0.3, 0.9], 0.12, 0.7);
+                }
+                let m = &mut self.mobs.list[i];
+                m.body.pos = dest;
+                m.body.vel = Vec3::ZERO;
+                if dest.distance(me) < 20.0 {
+                    self.sfx(Sfx::Portal);
+                }
+                break;
+            }
+        }
+    }
+
     /// Test scene: a ring of frames in front, eleven eyes in, the last one about to go.
     pub(crate) fn test_end_ring(&mut self) {
         let f = self.forward();
