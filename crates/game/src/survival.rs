@@ -920,7 +920,7 @@ impl Game {
                     return true;
                 }
             }
-            return false;
+            return self.eye_guide();
         }
         if item.name == "ender_pearl" {
             return self.throw_ender_pearl();

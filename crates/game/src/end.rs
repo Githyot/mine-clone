@@ -119,6 +119,38 @@ impl Game {
         true
     }
 
+    /// An eye of ender used in the air flies off toward the nearest buried stronghold
+    /// (YUNG's Better Strongholds idea), leaving a trail to follow; now and then it breaks.
+    pub(crate) fn eye_guide(&mut self) -> bool {
+        if self.dim != Dim::Overworld {
+            return false;
+        }
+        let (x, z) = (self.body.pos.x as i32, self.body.pos.z as i32);
+        let Some((o, size)) = self.world.gen.find_structure("fortaleza_subterranea", x, z, 8) else {
+            self.toast("O olho não encontra nada por perto", 3.0);
+            return true;
+        };
+        let target = Vec3::new(o.x as f32 + size.x as f32 / 2.0, self.body.pos.y, o.z as f32 + size.z as f32 / 2.0);
+        let dir = Vec3::new(target.x - self.body.pos.x, 0.0, target.z - self.body.pos.z).normalize_or_zero();
+        let glow = self.glow_layer();
+        let start = self.body.eye();
+        for k in 0..24 {
+            let t = k as f32 * 0.5;
+            let p = start + dir * t + Vec3::Y * (t * 0.25);
+            self.particles.glow(p, Vec3::Y * 0.2, glow, [0.5, 0.9, 0.6], 0.1, 2.5 + t * 0.1);
+        }
+        let dist = target.distance(self.body.pos) as i32;
+        self.toast(format!("O olho voa para lá ({dist} blocos)"), 3.0);
+        self.sfx(Sfx::Portal);
+        if self.survival && self.surv.rng.f32() < 0.2 {
+            let sel = self.selected;
+            self.surv.inv.take(sel, 1);
+            self.toast("O olho se quebrou", 2.0);
+        }
+        self.anim.start_swing();
+        true
+    }
+
     /// Right-click with an ender pearl: off it flies, and you land where it lands.
     pub(crate) fn throw_ender_pearl(&mut self) -> bool {
         let eye = self.body.eye();

@@ -403,7 +403,7 @@ def witch_hut():
     layers = []
     posts = {(1, 2), (7, 2), (1, 7), (7, 7), (4, 0)}
     for y in range(3):  # stilts
-        g = grid(W, D, ".")
+        g = grid(W, D)
         for (x, z) in posts:
             g[z][x] = "L"
         if y == 2:
@@ -678,6 +678,125 @@ def nether_fortress():
     }
 
 
+def stronghold():
+    """A buried stronghold (YUNG's Better Strongholds idea): a stair well down from a small
+    ruin to stone brick halls, a library, a store room and the portal room with its ring
+    of twelve empty frames over lava."""
+    W, D = 25, 25
+    H = 7
+    sink = 26
+    halls = [grid(W, D) for _ in range(H)]
+    def box(x0, z0, x1, z1, y0=0, y1=H - 1, wall="S", floor="S", ceil="S"):
+        for y in range(y0, y1 + 1):
+            for z in range(z0, z1 + 1):
+                for x in range(x0, x1 + 1):
+                    edge = x in (x0, x1) or z in (z0, z1)
+                    if y == y0:
+                        halls[y][z][x] = floor
+                    elif y == y1:
+                        halls[y][z][x] = ceil
+                    elif edge:
+                        halls[y][z][x] = "M" if (x * 7 + y * 3 + z) % 5 == 0 else ("K" if (x + y * 5 + z * 3) % 7 == 0 else wall)
+                    else:
+                        halls[y][z][x] = "."
+    def hole(x, z, w=1, axis="x"):
+        for y in (1, 2, 3):
+            for k in range(-w, w + 1):
+                if axis == "x":
+                    halls[y][z][x + k] = "."
+                else:
+                    halls[y][z + k][x] = "."
+    box(0, 0, 24, 24)           # outer shell
+    box(0, 0, 8, 8)             # stair room (north-west)
+    box(16, 0, 24, 10)          # library (north-east)
+    box(0, 14, 10, 24)          # store room (south-west)
+    box(12, 12, 24, 24)         # portal room (south-east)
+    for y in range(1, H - 1):   # the big cross hall in the middle
+        for z in range(9, 13):
+            for x in range(1, 24):
+                halls[y][z][x] = "."
+        for x in range(9, 13):
+            for z in range(1, 24):
+                halls[y][z][x] = "."
+    hole(8, 4, axis="z"); hole(4, 8); hole(16, 5, axis="z"); hole(20, 10)
+    hole(5, 14); hole(10, 19, axis="z"); hole(18, 12); hole(12, 18, axis="z")
+    for z in range(1, 10):      # library shelves
+        for x in (17, 19, 21, 23):
+            if z not in (5,):
+                for y in (1, 2, 3):
+                    halls[y][z][x] = "B"
+    halls[1][2][18] = "c"
+    for z in range(15, 24):     # store room: chests and barrels of supplies
+        halls[1][z][1] = "c" if z % 4 == 0 else "W"
+    halls[3][19][5] = "h"
+    halls[3][5][4] = "h"
+    halls[4][10][10] = "h"
+    halls[4][4][20] = "h"
+    # Portal room: a raised dais with twelve frames round a pool of lava.
+    cx, cz = 18, 18
+    for z in range(cz - 3, cz + 4):
+        for x in range(cx - 3, cx + 4):
+            halls[1][z][x] = "S"
+    for z in range(cz - 1, cz + 2):
+        for x in range(cx - 1, cx + 2):
+            halls[1][z][x] = "L"
+    for k in (-1, 0, 1):
+        for (x, z) in ((cx + k, cz - 2), (cx + k, cz + 2), (cx - 2, cz + k), (cx + 2, cz + k)):
+            halls[2][z][x] = "F"
+    halls[4][cz][cx] = "h"
+    halls[1][13][23] = "c"
+    # The stair well up to the surface: a spiral of steps round a pillar in the stair room.
+    ring = [(1, 0), (2, 0), (2, 1), (2, 2), (1, 2), (0, 2), (0, 1), (0, 0)]
+    shaft = []
+    sx, sz = 3, 3
+    for y in range(sink + 2):
+        g = grid(W, D)
+        for z in range(sz - 1, sz + 4):
+            for x in range(sx - 1, sx + 4):
+                g[z][x] = "S"
+        for z in range(sz, sz + 3):
+            for x in range(sx, sx + 3):
+                g[z][x] = "."
+        g[sz + 1][sx + 1] = "S"
+        dx, dz = ring[(y + H) % 8]
+        g[sz + dz][sx + dx] = "S"
+        shaft.append(g)
+    layers = [rows(l) for l in halls]
+    for k, g in enumerate(shaft):
+        if k + H < len(layers):
+            continue
+        layers.append(rows(g))
+    # The spiral carries on down through the stair room to its floor.
+    for y in range(1, H):
+        for z in range(sz, sz + 3):
+            for x in range(sx, sx + 3):
+                halls[y][z][x] = "."
+        halls[y][sz + 1][sx + 1] = "S"
+        dx, dz = ring[y % 8]
+        halls[y][sz + dz][sx + dx] = "S"
+    layers = [rows(l) for l in halls] + layers[H:]
+    # A small mossy ruin marks the top.
+    top = grid(W, D)
+    for z in range(sz - 1, sz + 4):
+        for x in range(sx - 1, sx + 4):
+            if (x + z) % 2 == 0 and x in (sx - 1, sx + 3) or z in (sz - 1, sz + 3) and x % 2:
+                top[z][x] = "M"
+    layers.append(rows(top))
+    return {
+        "name": "fortaleza_subterranea",
+        "biomes": ["Plains", "Forest", "Birch Forest", "Taiga", "Savanna", "Snowy Plains", "Dark Forest", "Mountains", "Desert"],
+        "spacing": 30,
+        "chance": 0.5,
+        "sink": H + sink - 1,
+        "palette": {"S": "stone_bricks", "M": "mossy_cobblestone", "K": "cobblestone", "B": "bookshelf", "c": "chest",
+                    "W": "oak_planks", "h": "lantern:1", "L": "lava", "F": "end_portal_frame"},
+        "layers": layers,
+        "loot": [("", "ender_pearl", 1, 3, 0.5), ("", "ender_eye", 1, 2, 0.25), ("", "iron_ingot", 2, 6, 0.6),
+                 ("", "bread", 1, 4, 0.5), ("", "diamond", 1, 2, 0.15), ("", "emerald", 1, 4, 0.4),
+                 ("", "flame_tome", 1, 1, 0.06), ("", "mana_crystal", 1, 1, 0.2)],
+    }
+
+
 def windmill():
     """A windmill (Towns and Towers idea): a cobblestone base, a plank cap and four sails of
     wool on fence arms over the north side."""
@@ -773,6 +892,7 @@ structs = [
     brick_shrine(),
     raider_outpost(),
     nether_fortress(),
+    stronghold(),
 ]
 OUT.write_text(ron(structs))
 print(f"wrote {OUT} ({len(structs)} structures)")

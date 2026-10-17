@@ -25,6 +25,9 @@ pub(super) struct EndPalette {
     crystal: BlockId,
     chorus: BlockId,
     flower: BlockId,
+    bars: BlockId,
+    bricks: BlockId,
+    purpur: BlockId,
 }
 
 impl EndPalette {
@@ -37,6 +40,9 @@ impl EndPalette {
             crystal: g("end_crystal"),
             chorus: g("chorus_plant"),
             flower: g("chorus_flower"),
+            bars: g("iron_bars"),
+            bricks: g("end_stone_bricks"),
+            purpur: g("purpur_block"),
         }
     }
 }
@@ -132,8 +138,10 @@ impl Generator {
                 chunk.set((wx - bx) as usize, y as usize, (wz - bz) as usize, id);
             }
         };
-        // Obsidian pillars, each with a bedrock cap and a crystal.
-        for pl in end_pillars(self.seed) {
+        // Obsidian pillars, each with a bedrock cap and a crystal; every third crystal sits in
+        // an iron cage, and each pillar stands on a stepped plinth of end stone bricks
+        // (YUNG's Better End Island idea).
+        for (k, pl) in end_pillars(self.seed).into_iter().enumerate() {
             if (pl.x - bx).abs() > 24 || (pl.z - bz).abs() > 24 {
                 continue;
             }
@@ -149,6 +157,34 @@ impl Generator {
             }
             set(&mut chunk, pl.x, pl.top + 1, pl.z, p.bedrock);
             set(&mut chunk, pl.x, pl.top + 2, pl.z, p.crystal);
+            if k % 3 == 0 {
+                for dz in -1..=1 {
+                    for dx in -1..=1 {
+                        for dy in 1..=3 {
+                            if dx != 0 || dz != 0 {
+                                set(&mut chunk, pl.x + dx, pl.top + dy, pl.z + dz, p.bars);
+                            }
+                        }
+                        set(&mut chunk, pl.x + dx, pl.top + 4, pl.z + dz, p.bars);
+                    }
+                }
+            }
+            if let Some((ground, _)) = self.end_land(pl.x, pl.z) {
+                for step in 1..=2 {
+                    let rr = pl.r + step;
+                    for dz in -rr..=rr {
+                        for dx in -rr..=rr {
+                            let d2 = dx * dx + dz * dz;
+                            if d2 > rr * rr + rr || d2 <= (rr - 1) * (rr - 1) + rr - 1 {
+                                continue;
+                            }
+                            for y in ground - 3..=ground + 3 - step {
+                                set(&mut chunk, pl.x + dx, y, pl.z + dz, p.bricks);
+                            }
+                        }
+                    }
+                }
+            }
         }
         // The exit fountain: a bedrock bowl around a pillar, empty until the guardian falls.
         if bx.abs() < 24 && bz.abs() < 24 {
@@ -172,6 +208,21 @@ impl Generator {
             }
             for k in 0..4 {
                 set(&mut chunk, 0, y + k, 0, p.bedrock);
+            }
+            // A brick rim round the fountain and four purpur posts at its corners.
+            for dz in -6i32..=6 {
+                for dx in -6i32..=6 {
+                    let d2 = dx * dx + dz * dz;
+                    if (19..=36).contains(&d2) {
+                        set(&mut chunk, dx, y, dz, p.bricks);
+                        set(&mut chunk, dx, y - 1, dz, p.bricks);
+                    }
+                }
+            }
+            for (dx, dz) in [(4, 4), (-4, 4), (4, -4), (-4, -4)] {
+                for k in 1..=3 {
+                    set(&mut chunk, dx, y + k, dz, p.purpur);
+                }
             }
         }
         // Chorus plants on the outer islands: a stalk that forks, a flower at each tip.

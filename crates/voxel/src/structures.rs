@@ -302,7 +302,7 @@ impl Generator {
     pub fn find_structure(&self, name: &str, x: i32, z: i32, regions: i32) -> Option<(IVec3, IVec3)> {
         let structs = self.structures();
         let (si, s) = structs.list.iter().enumerate().find(|(_, s)| s.def.name == name)?;
-        let r = s.def.spacing.max(2) * 16;
+        let r = s.def.spacing.max(2) * 16 * self.spread / 100;
         let (cx, cz) = (x.div_euclid(r), z.div_euclid(r));
         let mut best: Option<(i32, Placement)> = None;
         for rz in cz - regions..=cz + regions {
