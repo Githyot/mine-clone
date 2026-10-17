@@ -920,6 +920,7 @@ dependencies = [
  "hidapi",
  "image",
  "log",
+ "net",
  "nvml-wrapper",
  "pollster",
  "rodio",

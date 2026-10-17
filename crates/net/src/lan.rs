@@ -72,7 +72,9 @@ impl Listener {
                 if parts.next() != Some(TAG) {
                     continue;
                 }
-                let Some(port) = parts.next().and_then(|p| p.parse::<u16>().ok()) else { continue };
+                let Some(port) = parts.next().and_then(|p| p.parse::<u16>().ok()) else {
+                    continue;
+                };
                 let world = parts.next().unwrap_or("").chars().take(40).collect();
                 let host = parts.next().unwrap_or("").chars().take(24).collect();
                 let addr = SocketAddr::new(from.ip(), port);

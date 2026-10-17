@@ -31,10 +31,18 @@ pub enum ToHost {
     /// host is not in).
     Blocks(BlockChanges),
     /// The guest hurt a mob the host runs.
-    HurtMob { mob: u32, amount: f32, from: [f32; 3] },
+    HurtMob {
+        mob: u32,
+        amount: f32,
+        from: [f32; 3],
+    },
     /// A chest, furnace or other container the guest changed. `data` is the game's own text
     /// form (None = removed).
-    Container { dim: u8, pos: [i32; 3], data: Option<String> },
+    Container {
+        dim: u8,
+        pos: [i32; 3],
+        data: Option<String>,
+    },
     Chat(String),
     /// The guest's own things (inventory, health, where it stands) for the host to keep.
     SavePlayer(String),
@@ -48,23 +56,50 @@ pub enum ToGuest {
     Bye(String),
     /// A whole chunk the players changed since it was generated (`voxel::save::encode_chunk`).
     /// Untouched chunks are never sent: the guest generates them from the seed.
-    Chunk { dim: u8, pos: [i32; 2], data: Vec<u8> },
+    Chunk {
+        dim: u8,
+        pos: [i32; 2],
+        data: Vec<u8>,
+    },
     Blocks(BlockChanges),
     /// Everyone else who is connected (the host included).
     Players(Vec<RemotePlayer>),
     PlayerLeft(u32),
     /// The mobs near the guest, run by the host.
-    Mobs { dim: u8, list: Vec<MobState> },
+    Mobs {
+        dim: u8,
+        list: Vec<MobState>,
+    },
     /// Time of day and weather.
-    Sky { time: f32, raining: bool, thunder: bool },
+    Sky {
+        time: f32,
+        raining: bool,
+        thunder: bool,
+    },
     /// The guest was hurt (by a mob the host runs, or a blast).
-    Hurt { amount: f32, from: Option<[f32; 3]> },
+    Hurt {
+        amount: f32,
+        from: Option<[f32; 3]>,
+    },
     /// A blast went off near the guest.
-    Explosion { pos: [f32; 3], power: f32 },
+    Explosion {
+        pos: [f32; 3],
+        power: f32,
+    },
     /// The guest landed the killing blow: its loot is the guest's.
-    Killed { mob: u16, pos: [f32; 3] },
-    Container { dim: u8, pos: [i32; 3], data: Option<String> },
-    Chat { from: String, text: String },
+    Killed {
+        mob: u16,
+        pos: [f32; 3],
+    },
+    Container {
+        dim: u8,
+        pos: [i32; 3],
+        data: Option<String>,
+    },
+    Chat {
+        from: String,
+        text: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

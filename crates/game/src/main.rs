@@ -27,6 +27,7 @@ mod entity;
 mod item_render;
 mod menus;
 mod monitor;
+mod multiplayer;
 mod lod;
 mod mobs;
 mod paintings;
@@ -575,6 +576,8 @@ struct Game {
     loading_area: (ChunkPos, i32),
     screenshot_request: bool,
     grabbed: bool,
+    /// Multiplayer: hosting, or a guest in someone else's world.
+    net: multiplayer::Net,
 }
 
 fn level_path_hint(base: &Path, name: &str) -> PathBuf {
@@ -875,6 +878,7 @@ impl Game {
             loading_area: (ChunkPos::new(0, 0), 3),
             screenshot_request: false,
             grabbed: false,
+            net: Default::default(),
         };
         game.apply_shader();
         if start_dim != voxel::worldgen::Dim::Overworld {
@@ -1034,6 +1038,9 @@ impl Game {
     }
 
     fn save_all(&mut self) {
+        if self.world_open {
+            self.net_save();
+        }
         if !self.world_open {
             self.settings.save(&self.base.join("settings.ron"));
             return;
@@ -1109,6 +1116,9 @@ impl Game {
             self.keys.insert(code);
         } else {
             self.keys.remove(&code);
+            return;
+        }
+        if self.net_key(code, pressed) {
             return;
         }
         if self.screen == Screen::CreateWorld && code != KeyCode::Escape {
@@ -1267,6 +1277,9 @@ impl Game {
         self.world.update(center, rd);
         let events = std::mem::take(&mut self.world.events);
         self.renderer.apply_mesh_events(events);
+        self.net_update(dt);
+        // A guest in the host's dimension gets the world's own changes from the host.
+        let sim = self.net_simulates();
         if self.world_open && self.screen != Screen::Loading {
             let shot = self.args.screenshot.is_some();
             self.weather.update(&self.world, eye, dt, shot);
@@ -1292,22 +1305,28 @@ impl Game {
             } else if self.weather.rain > 0.3 {
                 self.rain_splashes(dt);
             }
-            self.update_leaf_decay(dt);
+            if sim {
+                self.update_leaf_decay(dt);
+            }
             if matches!(self.screen, Screen::Playing | Screen::Inventory) {
                 self.portal_step(dt);
                 self.update_ambient(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
             self.update_fishing(dt);
-            self.update_redstone(dt);
             self.update_carts(dt);
-            self.update_random_ticks(dt);
-            self.update_farmers(dt);
-            self.update_walkers(dt);
-            let fe = self.fluids.update(&mut self.world, dt);
-            if let Some(p) = fe.hardened.first() {
-                if p.as_vec3().distance(self.body.pos) < 24.0 {
-                    self.sfx(Sfx::Fizz);
+            if sim {
+                self.update_redstone(dt);
+                self.update_random_ticks(dt);
+                self.update_farmers(dt);
+                self.update_walkers(dt);
+                let fe = self.fluids.update(&mut self.world, dt);
+                if let Some(p) = fe.hardened.first() {
+                    if p.as_vec3().distance(self.body.pos) < 24.0 {
+                        self.sfx(Sfx::Fizz);
+                    }
                 }
+            } else {
+                self.world.changed.clear();
             }
         } else {
             self.world.changed.clear();
@@ -1475,7 +1494,8 @@ impl Game {
         }
 
         // Singleplayer: the pause menu (and the option screens opened from it) stop the world.
-        let paused = self.world_open && matches!(self.screen, Screen::Paused | Screen::Options | Screen::Controls | Screen::Packs | Screen::Shaders);
+        // With friends in it, it keeps going.
+        let paused = self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Options | Screen::Controls | Screen::Packs | Screen::Shaders);
         if !paused {
             self.time_of_day = (self.time_of_day + dt * 20.0) % 24000.0;
         }
@@ -1497,14 +1517,17 @@ impl Game {
             let use_held = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
             self.surv_update(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
             self.update_magic(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
-            self.update_boss(if self.args.screenshot.is_some() { 0.0 } else { dt });
-            if self.dim == voxel::worldgen::Dim::Overworld {
+            if sim {
+                self.update_boss(if self.args.screenshot.is_some() { 0.0 } else { dt });
+            }
+            if sim && self.dim == voxel::worldgen::Dim::Overworld {
                 // Townsfolk live at home.
                 self.update_npcs(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_raids(dt);
             }
         }
-        if self.world_open && !matches!(self.screen, Screen::Loading | Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Shaders) {
+        let menus_stop = !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Shaders);
+        if self.world_open && sim && self.screen != Screen::Loading && !menus_stop {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
             let creative = !self.survival || self.screen == Screen::Dead;
@@ -1517,6 +1540,7 @@ impl Game {
             for (dmg, from) in out.damage {
                 self.damage(dmg, from);
             }
+            self.net_remote_hits(&out.remote_hits);
             for (pos, power) in out.explosions {
                 self.explode(pos, power);
             }
@@ -1538,8 +1562,10 @@ impl Game {
                     self.boss_defeated(&n, &dn);
                 }
             }
+            // Mobs a friend finished off drop their loot for that friend.
+            let deaths = self.net_kill_credit(&out.deaths);
             if self.survival {
-                self.surv_mob_deaths(&out.deaths);
+                self.surv_mob_deaths(&deaths);
             }
             self.painting_check -= dt;
             if self.painting_check <= 0.0 {
@@ -2353,6 +2379,7 @@ impl Game {
         }
         self.sfx(Sfx::Explode);
         self.pads.rumble(1.0, 1.0, 0.6);
+        self.net_explosion(pos, power);
     }
 
     fn respawn(&mut self) {
@@ -3098,6 +3125,7 @@ impl Game {
             }
         }
 
+        self.draw_net_overlay(w, h);
         match self.screen {
             Screen::Paused => {
                 self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 140]);
@@ -3122,6 +3150,7 @@ impl Game {
                     format!("Shaders: {}", self.shader_name()),
                     format!("Volume da música: {}%", (self.settings.music_volume * 100.0).round() as i32),
                     format!("Dificuldade: {}", settings::DIFFICULTIES[self.settings.difficulty.min(3) as usize]),
+                    self.net_pause_label(),
                     "Salvar e sair".to_string(),
                 ];
                 // First and last buttons are wide; the options between them sit in two columns.
@@ -3548,6 +3577,7 @@ impl Game {
                 self.settings.difficulty = (self.settings.difficulty + 1) % 4;
                 self.mobs.peaceful = self.settings.difficulty == 0;
             }
+            13 => self.net_pause_button(),
             _ => {
                 self.quit_to_title();
                 return;
@@ -3731,6 +3761,8 @@ impl Game {
         let selection = if self.screen == Screen::Playing || self.args.screenshot.is_some() { self.target.map(|t| t.block) } else { None };
         let mut items = self.mobs.instances(&self.world, block, rd + 16.0);
         let mob_items = self.arrow_and_bow_instances(&items, block);
+        let (net_models, net_held) = self.net_instances(block);
+        items.extend(net_models);
         let mut held_third = None;
         if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
             let def = &self.mobs.reg.defs[pd];
@@ -3825,6 +3857,7 @@ impl Game {
         }
         drops.extend(held_third);
         drops.extend(mob_items);
+        drops.extend(net_held);
         if let (Some(k), Some(h)) = (self.args.mine, self.target) {
             let id = self.world.block_or_air(h.block);
             self.mining = Some((h.block, k * self.dig_time(id)));
@@ -3923,6 +3956,7 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => {
                 game.save_all();
+                game.net_stop();
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => game.renderer.resize(size.width, size.height),

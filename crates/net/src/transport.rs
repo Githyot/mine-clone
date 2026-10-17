@@ -110,7 +110,9 @@ impl Host {
                 let (tx, conns, next) = (tx.clone(), conns2.clone(), next.clone());
                 tokio::spawn(async move {
                     let Ok(conn) = incoming.await else { return };
-                    let Ok(Ok((send, mut recv))) = tokio::time::timeout(Duration::from_secs(10), conn.accept_bi()).await else { return };
+                    let Ok(Ok((send, mut recv))) = tokio::time::timeout(Duration::from_secs(10), conn.accept_bi()).await else {
+                        return;
+                    };
                     let id = next.fetch_add(1, Ordering::Relaxed);
                     let (wtx, wrx) = mpsc::unbounded_channel();
                     conns.lock().unwrap().insert(id, (wtx, conn.clone()));
@@ -214,7 +216,8 @@ impl Guest {
                 Ok(Err(e)) => return fail(e),
                 Err(e) => return fail(e.to_string()),
             };
-            let bind = if target.is_ipv6() { SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0) } else { SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0) };
+            let bind =
+                if target.is_ipv6() { SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0) } else { SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0) };
             let mut ep = match quinn::Endpoint::client(bind) {
                 Ok(e) => e,
                 Err(e) => return fail(e.to_string()),
@@ -311,12 +314,9 @@ pub fn resolve(text: &str) -> Result<SocketAddr, String> {
     if let Ok(ip) = t.trim_matches(|c| c == '[' || c == ']').parse::<IpAddr>() {
         return Ok(SocketAddr::new(ip, crate::protocol::DEFAULT_PORT));
     }
-    let with_port = if t.rsplit_once(':').is_some_and(|(_, p)| p.parse::<u16>().is_ok()) { t.to_string() } else { format!("{t}:{}", crate::protocol::DEFAULT_PORT) };
-    with_port
-        .to_socket_addrs()
-        .map_err(|e| format!("endereço desconhecido: {e}"))?
-        .next()
-        .ok_or_else(|| "endereço desconhecido".to_string())
+    let with_port =
+        if t.rsplit_once(':').is_some_and(|(_, p)| p.parse::<u16>().is_ok()) { t.to_string() } else { format!("{t}:{}", crate::protocol::DEFAULT_PORT) };
+    with_port.to_socket_addrs().map_err(|e| format!("endereço desconhecido: {e}"))?.next().ok_or_else(|| "endereço desconhecido".to_string())
 }
 
 /// Hosts make a new self-signed certificate each run, so there is no authority to check
@@ -413,10 +413,12 @@ mod tests {
         assert_eq!(msgs[0], ToGuest::Chunk { dim: 0, pos: [1, 2], data: big });
         assert_eq!(msgs[1], ToGuest::PlayerLeft(9));
         host.kick(id, "tchau");
-        wait(|| guest.poll().into_iter().find_map(|e| match e {
-            GuestEvent::Message(ToGuest::Bye(w)) => Some(w),
-            _ => None,
-        }));
+        wait(|| {
+            guest.poll().into_iter().find_map(|e| match e {
+                GuestEvent::Message(ToGuest::Bye(w)) => Some(w),
+                _ => None,
+            })
+        });
         drop(guest);
         wait(|| host.poll().into_iter().find(|e| matches!(e, HostEvent::Left(..))).map(|_| ()));
     }
@@ -424,10 +426,12 @@ mod tests {
     #[test]
     fn nobody_home() {
         let g = Guest::connect("127.0.0.1:1");
-        wait(|| g.poll().into_iter().find_map(|e| match e {
-            GuestEvent::Closed(w) => Some(w),
-            _ => None,
-        }));
+        wait(|| {
+            g.poll().into_iter().find_map(|e| match e {
+                GuestEvent::Closed(w) => Some(w),
+                _ => None,
+            })
+        });
     }
 
     #[test]

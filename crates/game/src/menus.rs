@@ -205,7 +205,6 @@ impl Game {
     }
 
     pub(crate) fn draw_title_menus(&mut self, w: f32, h: f32, mouse: (f32, f32)) {
-        let s = self.ui.scale;
         // Until the panorama is ready, plain dirt-brown; then a light veil over the world.
         let ready = self.world.meshed_count > 20;
         self.ui.rect(0.0, 0.0, w, h, if ready { [0, 0, 0, 70] } else { [44, 34, 26, 255] });
@@ -213,22 +212,7 @@ impl Game {
             Screen::Title => self.draw_title(w, h, mouse),
             Screen::Worlds => self.draw_worlds(w, h, mouse),
             Screen::CreateWorld => self.draw_create(w, h, mouse),
-            Screen::Multiplayer => {
-                self.ui.text_centered(w / 2.0, h / 2.0 - 50.0 * s, "Multijogador", WHITE);
-                let lines = [
-                    "Jogar com amigos chega na fase 7 do plano:",
-                    "servidor dedicado, LAN e convite por código.",
-                    "Por enquanto, jogue em Um jogador.",
-                ];
-                for (i, l) in lines.iter().enumerate() {
-                    self.ui.text_centered(w / 2.0, h / 2.0 - 30.0 * s + i as f32 * 11.0 * s, l, GRAY);
-                }
-                let bw = 200.0 * s;
-                if self.ui.button((w - bw) / 2.0, h / 2.0 + 20.0 * s, bw, 20.0 * s, "Voltar", mouse) && self.clicked {
-                    self.click_sound();
-                    self.set_screen(Screen::Title);
-                }
-            }
+            Screen::Multiplayer => self.draw_multiplayer_menu(w, h, mouse),
             _ => {}
         }
     }
@@ -434,6 +418,9 @@ impl Game {
 
     /// Typing into the new-world form.
     pub(crate) fn type_text(&mut self, text: &str) {
+        if self.net_text(text) {
+            return;
+        }
         self.creative_type(text);
         if self.screen != Screen::CreateWorld {
             return;
@@ -624,6 +611,7 @@ impl Game {
     /// Pause menu "save and quit": back to the title, keeping the world as the panorama.
     pub(crate) fn quit_to_title(&mut self) {
         self.save_all();
+        self.net_stop();
         self.world_open = false;
         self.title_world = self.world_name.clone();
         self.set_screen(Screen::Title);
