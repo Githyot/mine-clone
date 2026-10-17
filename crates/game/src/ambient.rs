@@ -1,6 +1,8 @@
 //! Small things in the air around the player (Subtle Effects idea): leaves drifting down
 //! under trees, fireflies over grass on warm nights, embers rising off lava, dust in caves,
-//! ash in the Nether and violet specks in the End. A few random blocks near the player are
+//! ash in the Nether and violet specks in the End, water dripping from wet ceilings, steam
+//! where water meets lava, sparks off lit furnaces and braziers, glints off glowing blocks and
+//! amethyst, and your breath fogging in the cold. A few random blocks near the player are
 //! looked at each tick; each kind of block has its own small chance to give off something.
 
 use glam::{IVec3, Vec3};
@@ -101,6 +103,18 @@ impl Game {
         let night = (a.sin() * 2.2 + 0.45) < 0.25;
         let me = self.body.pos.floor().as_ivec3();
         let glow = self.glow_layer();
+        // Breath in the cold: a little puff every second or two in snowy places and high up.
+        if self.dim == Dim::Overworld && !self.body.head_in_water && self.surv.rng.f32() < dt * 0.7 {
+            let biome = self.world.gen.biome_at(me.x, me.z);
+            if matches!(biome, Biome::Snowy | Biome::Taiga) || self.body.pos.y > 150.0 {
+                let f = self.forward();
+                let mouth = self.body.eye() + Vec3::new(f.x, 0.0, f.z).normalize_or_zero() * 0.45 - Vec3::Y * 0.15;
+                let (layer, _) = self.block_look(self.reg.id_or_air("white_wool"));
+                for _ in 0..3 {
+                    self.particles.mote(mouth, layer, [0.92, 0.94, 0.98], 0.035, -0.15, 0.9);
+                }
+            }
+        }
         for _ in 0..n.min(64) {
             let r = &mut self.surv.rng;
             let off = IVec3::new((r.f32() * (2 * RANGE + 1) as f32) as i32 - RANGE, (r.f32() * 13.0) as i32 - 5, (r.f32() * (2 * RANGE + 1) as f32) as i32 - RANGE);
@@ -138,6 +152,36 @@ impl Game {
                 continue;
             }
             let b = self.reg.get(id);
+            let fluid = self.world.fluid(id);
+            if fluid == 0 && below == AIR && b.solid && self.world.fluid(above) == 1 && roll < 0.08 {
+                // Water seeping through a ceiling drips off its underside.
+                let (layer, _) = self.block_look(above);
+                self.particles.drip(p.as_vec3() + Vec3::new(jit.x * 0.8 + 0.1, -0.02, jit.z * 0.8 + 0.1), layer);
+                continue;
+            }
+            if fluid == 1 && roll < 0.3 {
+                // Steam where water touches lava.
+                let lava = [IVec3::X, -IVec3::X, IVec3::Z, -IVec3::Z, -IVec3::Y].iter().any(|d| self.world.fluid(self.world.block_or_air(p + *d)) == 2);
+                if lava && above == AIR {
+                    let (layer, _) = self.block_look(self.reg.id_or_air("white_wool"));
+                    self.particles.mote(p.as_vec3() + Vec3::new(jit.x, 1.0, jit.z), layer, [0.9, 0.9, 0.92], 0.06, -0.9, 1.6);
+                    continue;
+                }
+            }
+            let hot = b.name == "brazier" || (b.name == "furnace" && matches!(self.surv.containers.get(&p), Some(crate::survival::Container::Furnace(f)) if f.burn > 0.0));
+            if hot && roll < 0.2 {
+                // Sparks jumping off a fire.
+                let v = Vec3::new(jit.x - 0.5, 1.2 + jit.y * 1.5, jit.z - 0.5);
+                let at = if b.name == "brazier" { p.as_vec3() + Vec3::new(0.5, 1.0, 0.5) } else { p.as_vec3() + Vec3::new(jit.x, 0.3, jit.z) };
+                self.particles.glow(at, v, glow, [1.0, 0.6, 0.2], 0.03, 0.9);
+                continue;
+            }
+            if roll < 0.03 && (b.name == "amethyst_block" || b.name == "budding_amethyst" || (b.shape == Shape::Cube && self.reg.light_of(id) >= 14 && fluid == 0)) && above == AIR {
+                // A glint over glowing blocks and amethyst.
+                let tint = if b.name.contains("amethyst") { [0.8, 0.55, 1.0] } else { [1.0, 0.92, 0.6] };
+                self.particles.glow(p.as_vec3() + Vec3::new(jit.x, 1.05, jit.z), Vec3::new(0.0, 0.25, 0.0), glow, tint, 0.025, 1.2);
+                continue;
+            }
             if b.name.ends_with("_leaves") && below == AIR && roll < 0.12 {
                 let (layer, tint) = self.block_look(id);
                 self.particles.mote(p.as_vec3() + Vec3::new(jit.x, -0.05, jit.z), layer, tint, 0.05, 0.9, 6.0);

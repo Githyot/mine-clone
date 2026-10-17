@@ -25,6 +25,7 @@ mod gear;
 mod weather;
 mod entity;
 mod item_render;
+mod juice;
 mod menus;
 mod monitor;
 mod mods;
@@ -2793,6 +2794,17 @@ impl Game {
             let y = self.world.surface_y(q.x, q.z).unwrap_or(q.y - 1) + 1;
             self.world.set_block(IVec3::new(q.x, y, q.z), g(n));
         }
+        // MC_CTM=1: a shelf wall and a row of ores in front, for connected and glowing textures.
+        if std::env::var("MC_CTM").is_ok() {
+            let ores = ["diamond_ore", "redstone_ore", "emerald_ore", "lapis_ore", "gold_ore", "iron_ore", "amethyst_block"];
+            for i in -3..=3 {
+                let q = base + side * i - dir * 2;
+                for h in 0..2 {
+                    self.world.set_block(q + IVec3::Y * h, g("bookshelf"));
+                }
+                self.world.set_block(q + IVec3::Y * 2, g(ores[(i + 3) as usize]));
+            }
+        }
     }
 
     /// Raindrops splashing on the ground and on water around the player.
@@ -3024,6 +3036,9 @@ impl Game {
         let s = self.ui.scale;
         let mouse = self.mouse_pos;
         let mut clicked_button: Option<usize> = None;
+        // Screenshots show things at rest.
+        let anim = juice::enabled(self.settings.ui_animations, self.args.screenshot.is_some());
+        self.surv.juice.tick(self.selected, anim);
 
         if self.screen == Screen::Loading {
             // The first loading frame shows the plain view so it can be captured as the backdrop.
@@ -3083,7 +3098,8 @@ impl Game {
                 self.draw_survival_hud(hx, hy, cell);
                 self.draw_mana(w);
             }
-            let sx = hx + self.selected as f32 * cell;
+            // The selector slides from slot to slot (Immersive UI idea).
+            let sx = (hx + self.surv.juice.selector() * cell).round();
             if !self.ui.sprite("sprites/hud/hotbar_selection", sx - 2.0 * s, hy - 2.0 * s, 24.0 * s, 23.0 * s) {
                 self.ui.frame(sx - s, hy - s, cell + 2.0 * s, cell + 2.0 * s, 2.0 * s, [255, 255, 255, 255]);
             }
