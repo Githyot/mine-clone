@@ -202,4 +202,7 @@
     (name: "snowy_dead_bush", display_name: Some("Arbusto Seco sob a Neve"), shape: Layer, hardness: 0.1, tool: Some(Shovel), in_inventory: false, textures: (all: Some("snow")), drops: Some([(item: "snow_layer")])),
     (name: "snowy_twig", display_name: Some("Gravetos sob a Neve"), shape: Layer, hardness: 0.1, tool: Some(Shovel), in_inventory: false, textures: (all: Some("snow")), drops: Some([(item: "snow_layer")])),
     (name: "snowy_pebble", display_name: Some("Pedrinhas sob a Neve"), shape: Layer, hardness: 0.1, tool: Some(Shovel), in_inventory: false, textures: (all: Some("snow")), drops: Some([(item: "snow_layer")])),
+    (name: "blue_ice", display_name: Some("Gelo Azul"), hardness: 2.8, tool: Some(Pickaxe), drops: Some([]), textures: (all: Some("blue_ice"))),
+    (name: "icicle", display_name: Some("Pingente de Gelo"), shape: Cross, transparency: Cutout, solid: false, hardness: 0.3, tool: Some(Pickaxe), drops: Some([]), textures: (all: Some("icicle"))),
+    (name: "moss_carpet", display_name: Some("Tapete de Musgo"), shape: Layer, hardness: 0.1, tool: Some(Hoe), textures: (all: Some("moss_block"))),
 ])

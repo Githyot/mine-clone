@@ -130,6 +130,8 @@
         (pattern: ["X X", "X X"], key: {'X': "resonarium"}, result: "resonarium_boots"),
         (pattern: ["PPP", "PRP", "PPP"], key: {'P': "#planks", 'R': "redstone"}, result: "calendar"),
         (pattern: ["GGG", "QCQ", "WWW"], key: {'G': "glass", 'Q': "quartz", 'C': "calendar", 'W': "oak_slab"}, result: "season_sensor_spring"),
+        (pattern: ["###", "###", "###"], key: {'#': "packed_ice"}, result: "blue_ice"),
+        (pattern: ["##"], key: {'#': "moss_block"}, result: "moss_carpet", count: 3),
     ],
     shapeless: [
         (ingredients: ["skyroot_log"], result: "skyroot_planks", count: 4),
