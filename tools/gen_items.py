@@ -543,6 +543,81 @@ def mana_crystal():
     return outline(from_map(rows, pmap(p)))
 
 
+def lich_phylactery():
+    """A small frosted bottle with a pale blue soul light inside."""
+    rows = [
+        "................",
+        "......cccc......",
+        "......cCCc......",
+        ".......gg.......",
+        "......g..g......",
+        ".....g.11.g.....",
+        "....g.1221.g....",
+        "....g12332.g....",
+        "....g12332.g....",
+        "....g.1221.g....",
+        ".....g.11.g.....",
+        "......gggg......",
+        "................",
+        "................",
+        "................",
+        "................",
+    ]
+    cols = {"c": hexrgb("#5a4a3a"), "C": hexrgb("#7a6650"), "g": hexrgb("#a8c4d8"), "1": hexrgb("#3e6e9a"),
+            "2": hexrgb("#6ea4d4"), "3": hexrgb("#d4f0ff")}
+    return outline(from_map(rows, cols))
+
+
+def obsidian_heart():
+    """A cut lump of obsidian with a purple fire burning in it."""
+    rows = [
+        "................",
+        "................",
+        ".....oo..oo.....",
+        "....oOOooOOo....",
+        "...oOOppppOOo...",
+        "...oOpPPPPpOo...",
+        "...oOpPWWPpOo...",
+        "....oOpPPpOo....",
+        ".....oOppOo.....",
+        "......oOOo......",
+        ".......oo.......",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+    ]
+    cols = {"o": hexrgb("#120c1a"), "O": hexrgb("#2a1e3a"), "p": hexrgb("#5a2a8a"), "P": hexrgb("#9a4ad4"),
+            "W": hexrgb("#e4b4ff")}
+    return outline(from_map(rows, cols))
+
+
+def void_seed():
+    """A dark pod split open on pink petals."""
+    rows = [
+        "................",
+        "................",
+        "......p..p......",
+        ".....pPppPp.....",
+        "....pP.dd.Pp....",
+        "....p.dDDd.p....",
+        "...pP.dDDd.Pp...",
+        "....p.dDDd.p....",
+        ".....p.dd.p.....",
+        "......gddg......",
+        ".......gg.......",
+        ".......g........",
+        "................",
+        "................",
+        "................",
+        "................",
+    ]
+    cols = {"p": hexrgb("#b0407a"), "P": hexrgb("#e478b0"), "d": hexrgb("#1a1424"), "D": hexrgb("#3a2a4e"),
+            "g": hexrgb("#2e5a2a")}
+    return outline(from_map(rows, cols))
+
+
 def ancient_seed():
     """A big dark acorn with a green glow sprouting from its cap."""
     rows = [
@@ -1862,6 +1937,9 @@ def item_registry():
     reg["flame_tome"] = lambda: tome(("#4a0c0c", "#8a1a14"), ("#f07a20", "#ffe080"))
     reg["mana_crystal"] = mana_crystal
     reg["ancient_seed"] = ancient_seed
+    reg["lich_phylactery"] = lich_phylactery
+    reg["obsidian_heart"] = obsidian_heart
+    reg["void_seed"] = void_seed
     reg["guardian_heart"] = guardian_heart
     reg["guardian_staff"] = lambda: staff("emerald", "golden")
     reg.update({

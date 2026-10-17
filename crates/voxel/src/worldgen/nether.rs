@@ -73,7 +73,7 @@ impl Generator {
 
     /// Rock or open space: wide caverns in the middle heights, closing in toward the floor
     /// and the roof, with pillars and shelves from a second, finer noise.
-    pub(super) fn nether_solid(&self, wx: i32, y: i32, wz: i32) -> bool {
+    pub(crate) fn nether_solid(&self, wx: i32, y: i32, wz: i32) -> bool {
         if y <= 0 || y >= NETHER_ROOF - 2 {
             return true;
         }
@@ -138,6 +138,7 @@ impl Generator {
             }
         }
         self.decorate_nether(&mut chunk, &mut rng);
+        self.place_structures(&mut chunk);
         chunk
     }
 

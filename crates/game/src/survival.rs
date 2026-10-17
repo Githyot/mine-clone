@@ -908,8 +908,8 @@ impl Game {
             // Casting happens while the button is held (update_magic).
             return true;
         }
-        if item.name == "ancient_seed" {
-            return self.use_ancient_seed();
+        if crate::bosses::is_summon(&item.name) {
+            return self.use_summon(&item.name);
         }
         if item.name == "ender_eye" {
             if let Some(hit) = self.target {

@@ -216,6 +216,25 @@ impl Generator {
         if !s.def.biomes.iter().any(|b| b == biome.name()) {
             return None;
         }
+        if self.dim == crate::worldgen::Dim::Nether {
+            // On a cave floor above the lava sea, with room overhead.
+            let tall = s.size.y + 2;
+            let mut ground = None;
+            for y in crate::worldgen::NETHER_LAVA + 1..crate::worldgen::NETHER_ROOF - tall {
+                if self.nether_solid(cx, y, cz) && (1..=tall).all(|k| !self.nether_solid(cx, y + k, cz)) {
+                    ground = Some(y);
+                    break;
+                }
+            }
+            let ground = ground?;
+            let flat = [(ox, oz), (ox + f.x - 1, oz), (ox, oz + f.y - 1), (ox + f.x - 1, oz + f.y - 1)]
+                .iter()
+                .all(|&(x, z)| !self.nether_solid(x, ground + 2, z) && !self.nether_solid(x, ground + s.size.y, z));
+            if !flat {
+                return None;
+            }
+            return Some(Placement { index: si, origin: IVec3::new(ox, ground + 1 - s.def.sink, oz), turns });
+        }
         // Fairly flat dry ground only.
         let hs = [self.height_at(ox, oz), self.height_at(ox + f.x - 1, oz), self.height_at(ox, oz + f.y - 1), self.height_at(ox + f.x - 1, oz + f.y - 1), self.height_at(cx, cz)];
         let lo = *hs.iter().min().unwrap();

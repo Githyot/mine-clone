@@ -884,6 +884,15 @@ impl Game {
             game.arrival = Some(Vec3::new(p.x / 8.0, 70.0, p.z / 8.0));
             game.body.pos = game.arrival.unwrap();
             game.needs_spawn = false;
+            if let Some(name) = game.args.find.clone() {
+                let (x, z) = (game.body.pos.x as i32, game.body.pos.z as i32);
+                if let Some((o, size)) = game.world.gen.find_structure(&name, x, z, 40) {
+                    game.arrival = None;
+                    game.body.pos = Vec3::new(o.x as f32 + size.x as f32 / 2.0, o.y as f32 + size.y as f32 * 0.6 + 2.0, o.z as f32 + size.z as f32 + 7.0);
+                    game.body.flying = true;
+                    log::info!("found {name} at {o}");
+                }
+            }
         }
         game
     }
@@ -1362,13 +1371,15 @@ impl Game {
                     // Test hook: two small houses in front; people move in; MC_SHOP opens a shop.
                     self.test_houses();
                 }
-                if std::env::var("MC_BOSS").is_ok() {
-                    // Test hook: the Forest Guardian in front, hurt to show its bar and angry volley.
+                if let Ok(boss) = std::env::var("MC_BOSS") {
+                    // Test hook: a boss in front (MC_BOSS=name, or 1 for the Forest Guardian), hurt
+                    // to show its bar and angry volley.
+                    let boss = if boss.len() > 1 { boss } else { "forest_guardian".to_string() };
                     let f = self.forward();
                     let flat = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
                     let at = self.body.pos + flat * 14.0;
                     let y = self.world.surface_y(at.x.floor() as i32, at.z.floor() as i32).map(|y| y as f32 + 1.0).unwrap_or(at.y);
-                    if self.mobs.spawn("forest_guardian", Vec3::new(at.x, y, at.z)) {
+                    if self.mobs.spawn(&boss, Vec3::new(at.x, y, at.z)) {
                         let m = self.mobs.list.last_mut().unwrap();
                         m.yaw = (-flat.x).atan2(-flat.z);
                         m.health = m.max_health * 0.4;

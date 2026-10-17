@@ -466,6 +466,100 @@ def witch_hut():
     }
 
 
+NETHER_BIOMES = ["Nether Wastes", "Soul Sand Valley", "Crimson Forest"]
+
+
+def nether_ruined_portal():
+    """A broken obsidian portal on a blackstone floor (Formations Nether idea), half its frame
+    gone, with a chest of gold beside it."""
+    floor = ["BBBBBBB", "BMBBBGB", "BBBBBBB", "BBBMBBB", "BBBBBBB"]
+    layers = [floor]
+    for y in range(5):
+        g = grid(7, 5, ".")
+        if y == 0:
+            g[2][1] = g[2][2] = g[2][3] = g[2][4] = "O"
+            g[3][5] = "c"
+        else:
+            g[2][1] = "O" if y < 4 else "."
+            g[2][4] = "O" if y < 3 else "."
+            if y == 4:
+                g[2][2] = "O"
+        layers.append(g)
+    return {
+        "name": "portal_em_ruinas",
+        "biomes": NETHER_BIOMES,
+        "spacing": 8,
+        "chance": 0.35,
+        "foundation": "blackstone",
+        "palette": {"B": "blackstone", "M": "magma_block", "G": "nether_gold_ore", "O": "obsidian", "c": "chest"},
+        "layers": [rows(l) for l in layers],
+        "loot": [("", "gold_ingot", 1, 4, 0.6), ("", "gold_nugget", 3, 9, 0.6), ("", "obsidian", 1, 3, 0.4),
+                 ("", "flint_and_steel", 1, 1, 0.3), ("", "quartz", 2, 6, 0.5)],
+    }
+
+
+def basalt_altar():
+    """A ring of basalt pillars around a magma altar topped by shroomlight."""
+    W = 7
+    layers = []
+    for y in range(6):
+        g = grid(W, W, ".")
+        for (x, z) in ((0, 3), (6, 3), (3, 0), (3, 6), (1, 1), (5, 1), (1, 5), (5, 5)):
+            tall = 5 if (x + z) % 2 == 0 else 3
+            if y < tall:
+                g[z][x] = "S"
+        if y == 0:
+            for z in range(2, 5):
+                for x in range(2, 5):
+                    g[z][x] = "B"
+            g[3][3] = "M"
+        if y == 1:
+            g[3][3] = "L"
+        layers.append(g)
+    return {
+        "name": "altar_de_basalto",
+        "biomes": ["Nether Wastes", "Soul Sand Valley"],
+        "spacing": 9,
+        "chance": 0.3,
+        "foundation": "basalt",
+        "palette": {"S": "basalt", "B": "blackstone", "M": "magma_block", "L": "shroomlight"},
+        "layers": [rows(l) for l in layers],
+        "loot": [],
+    }
+
+
+def brick_shrine():
+    """A small nether brick shrine with an arched door and a chest."""
+    W, D = 5, 5
+    layers = []
+    for y in range(5):
+        g = grid(W, D, ".")
+        for z in range(D):
+            for x in range(W):
+                edge = x in (0, W - 1) or z in (0, D - 1)
+                if y == 0 or (edge and y < 4) or y == 4:
+                    g[z][x] = "N"
+        if y in (1, 2):
+            g[0][2] = "."
+        if y == 1:
+            g[3][2] = "c"
+            g[2][0] = g[2][W - 1] = "F"
+        if y == 4:
+            g[2][2] = "L"
+        layers.append(g)
+    return {
+        "name": "santuario_de_tijolos",
+        "biomes": NETHER_BIOMES,
+        "spacing": 10,
+        "chance": 0.3,
+        "foundation": "nether_bricks",
+        "palette": {"N": "nether_bricks", "c": "chest", "F": "iron_bars", "L": "shroomlight"},
+        "layers": [rows(l) for l in layers],
+        "loot": [("", "gold_ingot", 1, 3, 0.5), ("", "quartz", 3, 8, 0.6), ("", "diamond", 1, 1, 0.12),
+                 ("", "fire_staff", 1, 1, 0.08), ("", "magma_block", 1, 4, 0.4)],
+    }
+
+
 def windmill():
     """A windmill (Towns and Towers idea): a cobblestone base, a plank cap and four sails of
     wool on fence arms over the north side."""
@@ -556,6 +650,9 @@ structs = [
     windmill(),
     end_ruin(),
     witch_hut(),
+    nether_ruined_portal(),
+    basalt_altar(),
+    brick_shrine(),
 ]
 OUT.write_text(ron(structs))
 print(f"wrote {OUT} ({len(structs)} structures)")

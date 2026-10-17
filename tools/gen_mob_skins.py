@@ -1586,6 +1586,22 @@ RECOLORED = {
         DUCK_GREEN=pal("#2a4a96", "#3256a8", "#3a62b8", "#446ec6", "#4e7ad2"),
         DUCK_BILL=pal("#1a1a1e", "#242428", "#2e2e32", "#38383c"),
         SPECULUM=pal("#101012", "#e8e8ec", "#101012"))),
+    # Bosses of Mass Destruction ideas.
+    "lich": ("skeleton", dict(BONE=pal("#5a7a9a", "#7898b6", "#98b6d0", "#b8d2e6", "#dceefa"))),
+    "obsidilith": ("forest_guardian", dict(
+        GBARK=pal("#08060c", "#100c16", "#181220", "#20182a", "#281e34"),
+        GLEAF=pal("#2a1240", "#3a1858", "#4a2070", "#5c2a88", "#6e34a0"),
+        MOSS=pal("#140e1c", "#1c1426", "#241a30", "#2c203a", "#342644", "#3c2c4e"),
+        ROOT_C=pal("#4a2070", "#5c2a88", "#6e34a0"),
+        GLOW=(200, 90, 255),
+        GLOW_DIM=(110, 40, 160))),
+    "void_blossom": ("forest_guardian", dict(
+        GBARK=pal("#1a1424", "#241c30", "#2e243c", "#382c48", "#423454"),
+        GLEAF=pal("#8a2a5a", "#a2346c", "#ba407e", "#d04e92", "#e462a6"),
+        MOSS=pal("#1e3a1e", "#264826", "#2e562e", "#386636", "#42743e", "#4c8448"),
+        ROOT_C=pal("#3a5a2a", "#4a6c34", "#5a7e3e"),
+        GLOW=(255, 120, 200),
+        GLOW_DIM=(160, 60, 120))),
     # Nether creatures.
     "nether_zombie": ("zombie", dict(
         ZSKIN=pal("#8a4a4a", "#9c5a56", "#ae6a62", "#be7a6e", "#cc8a7c"),
@@ -2059,7 +2075,7 @@ def main():
              "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian",
              "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
              "goblin_trader", "mutant_zombie", "npc_guard", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton",
-             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay"]
+             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay", "lich", "obsidilith", "void_blossom"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols
