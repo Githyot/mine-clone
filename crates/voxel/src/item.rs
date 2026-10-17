@@ -271,6 +271,54 @@ impl ItemRegistry {
     }
 }
 
+/// Extra data on a stack: up to eight (id, level) pairs, id 0 = empty. Ids 1..=99 are
+/// enchantments; the game also keeps an armor trim and the anvil's work count here (see
+/// `game/src/enchanting.rs`). Small and `Copy`, so stacks stay plain values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Hash, Serialize, Deserialize)]
+pub struct Ench(pub [u8; 16]);
+
+impl Ench {
+    pub const EMPTY: Ench = Ench([0; 16]);
+
+    pub fn is_empty(&self) -> bool {
+        self.0.iter().all(|&b| b == 0)
+    }
+
+    /// Level of `id`, 0 when absent.
+    pub fn get(&self, id: u8) -> u8 {
+        self.0.chunks(2).find(|p| p[0] == id).map(|p| p[1]).unwrap_or(0)
+    }
+
+    /// Set `id` to `level` (0 removes it). False when all eight pairs are taken.
+    pub fn set(&mut self, id: u8, level: u8) -> bool {
+        if let Some(i) = (0..8).find(|&i| self.0[i * 2] == id) {
+            if level == 0 {
+                self.0[i * 2] = 0;
+                self.0[i * 2 + 1] = 0;
+            } else {
+                self.0[i * 2 + 1] = level;
+            }
+            return true;
+        }
+        if level == 0 {
+            return true;
+        }
+        match (0..8).find(|&i| self.0[i * 2] == 0) {
+            Some(i) => {
+                self.0[i * 2] = id;
+                self.0[i * 2 + 1] = level;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The (id, level) pairs present, in slot order.
+    pub fn pairs(&self) -> impl Iterator<Item = (u8, u8)> + '_ {
+        self.0.chunks(2).filter(|p| p[0] != 0).map(|p| (p[0], p[1]))
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ItemStack {
     pub item: ItemId,
@@ -278,16 +326,19 @@ pub struct ItemStack {
     /// Wear on tools.
     #[serde(default)]
     pub damage: u16,
+    /// Enchantments and other extras.
+    #[serde(default)]
+    pub ench: Ench,
 }
 
 impl ItemStack {
     pub fn new(item: ItemId, count: u8) -> ItemStack {
-        ItemStack { item, count, damage: 0 }
+        ItemStack { item, count, damage: 0, ench: Ench::EMPTY }
     }
 
     /// Same item, so the two can sit in one stack.
     pub fn stacks_with(&self, o: &ItemStack) -> bool {
-        self.item == o.item && self.damage == 0 && o.damage == 0
+        self.item == o.item && self.damage == 0 && o.damage == 0 && self.ench == o.ench
     }
 }
 

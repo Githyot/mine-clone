@@ -1,7 +1,7 @@
 //! Tiny deterministic random number helpers (no external dependency).
 
 /// SplitMix64: fast, good-quality 64-bit generator, used for seeding.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Rng(u64);
 
 impl Rng {

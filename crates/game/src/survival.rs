@@ -83,6 +83,8 @@ pub enum Open {
     Chest(IVec3),
     /// A town NPC's shop (goods in `Survival::shop`).
     Shop,
+    /// A Phase 6 work block: enchanting table, anvil, brewing stand... (stations.rs).
+    Station(crate::stations::Station),
 }
 
 pub struct Survival {
@@ -278,15 +280,15 @@ struct Saved {
 }
 
 fn save_stacks(items: &ItemRegistry, inv: &Inventory) -> Vec<SavedStack> {
-    inv.slots.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect()
+    inv.slots.iter().map(|s| s.map(|s| (crate::enchanting::stack_key(items, &s), s.count, s.damage))).collect()
 }
 
 fn load_stacks(items: &ItemRegistry, v: &[SavedStack], n: usize) -> Inventory {
     let mut inv = Inventory::new(n);
     for (i, s) in v.iter().enumerate().take(n) {
         if let Some((name, count, damage)) = s {
-            if let Some(id) = items.id(name) {
-                inv.slots[i] = Some(ItemStack { item: id, count: *count, damage: *damage });
+            if let Some((id, ench)) = crate::enchanting::parse_key(items, name) {
+                inv.slots[i] = Some(ItemStack { item: id, count: *count, damage: *damage, ench });
             }
         }
     }
@@ -310,13 +312,13 @@ impl Survival {
             spawn: self.spawn.map(|p| p.to_array()),
             containers,
             saplings: self.saplings.iter().map(|(p, t)| (p.to_array(), *t)).collect(),
-            armor: self.armor.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect(),
-            offhand: self.offhand.map(|s| (items.get(s.item).name.clone(), s.count, s.damage)),
+            armor: self.armor.iter().map(|s| s.map(|s| (crate::enchanting::stack_key(items, &s), s.count, s.damage))).collect(),
+            offhand: self.offhand.map(|s| (crate::enchanting::stack_key(items, &s), s.count, s.damage)),
             carts: self.carts.iter().map(|c| (c.body.pos.to_array(), c.yaw)).collect(),
             corpses: self
                 .corpses
                 .iter()
-                .map(|c| (c.pos.to_array(), c.yaw, c.items.iter().map(|s| Some((items.get(s.item).name.clone(), s.count, s.damage))).collect()))
+                .map(|c| (c.pos.to_array(), c.yaw, c.items.iter().map(|s| Some((crate::enchanting::stack_key(items, &s), s.count, s.damage))).collect()))
                 .collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
@@ -374,6 +376,9 @@ pub fn item_icon(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRegistry,
             let full = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
             ui.quad([[x, y], [x + size, y], [x + size, y + size], [x, y + size]], full, WHITE, (item_base + l) as i32);
         }
+    }
+    if crate::enchanting::shimmers(items, stack) {
+        crate::enchanting::draw_glint(ui, x, y, size, crate::progression::clock_now());
     }
     let s = ui.scale;
     let durability = it.tool.as_ref().map(|t| t.durability).or(it.armor.map(|a| a.durability));
@@ -478,6 +483,9 @@ impl Game {
         for i in 0..4 {
             let Some(st) = self.surv.armor[i] else { continue };
             let Some(a) = self.items.get(st.item).armor else { continue };
+            if self.unbreaking_saves(&st, true) {
+                continue;
+            }
             let d = st.damage + (amount / 4.0).max(1.0) as u16;
             self.surv.armor[i] = if d >= a.durability { None } else { Some(ItemStack { damage: d, ..st }) };
             if d >= a.durability {
@@ -522,6 +530,9 @@ impl Game {
         let sel = self.selected;
         let Some(s) = self.surv.inv.slots[sel] else { return };
         let Some(t) = self.items.get(s.item).tool.clone() else { return };
+        if self.unbreaking_saves(&s, false) {
+            return;
+        }
         let d = s.damage + amount;
         if d >= t.durability {
             self.surv.inv.slots[sel] = None;
@@ -583,6 +594,8 @@ impl Game {
     pub(crate) fn surv_block_broken(&mut self, pos: IVec3, id: BlockId) {
         let tool = self.held_tool();
         let drops = self.items.drops(&self.reg, id, tool.as_ref(), &mut self.surv.rng);
+        let drops = self.ench_drops(id, drops);
+        self.fase6_block_broken(pos, id);
         let c = pos.as_vec3() + Vec3::splat(0.5);
         let harvested = self.items.can_harvest(&self.reg, id, tool.as_ref());
         for d in drops {
@@ -629,7 +642,11 @@ impl Game {
             // Scattered over the slots, like a chest someone filled by hand.
             let slot = self.surv.rng.below(CHEST_SIZE as u32) as usize;
             let order = (0..CHEST_SIZE).map(move |i| (i + slot) % CHEST_SIZE);
-            let _ = inv.add_in(&self.items, ItemStack::new(id, n.max(1)), order);
+            let mut st = ItemStack::new(id, n.max(1));
+            if l.item == "enchanted_book" {
+                st.ench = crate::enchanting::random_any(&self.items, id, &mut self.prog.rng);
+            }
+            let _ = inv.add_in(&self.items, st, order);
         }
         inv
     }
@@ -756,6 +773,9 @@ impl Game {
                 }
                 let Some(i) = self.items.id(&dd.item) else { continue };
                 let n = dd.min as i32 + self.surv.rng.below((dd.max.max(dd.min) - dd.min + 1) as u32) as i32;
+                // Looting: up to one more of each drop per level.
+                let looting = crate::enchanting::level(&self.held_stack(), crate::enchanting::LOOTING) as u32;
+                let n = n + if looting > 0 { self.surv.rng.below(looting + 1) as i32 } else { 0 };
                 if n > 0 {
                     self.pop_drop(pos + Vec3::Y * 0.5, ItemStack::new(i, n as u8));
                 }
@@ -786,6 +806,9 @@ impl Game {
         items.extend(self.surv.inv.slots.iter_mut().filter_map(|s| s.take()));
         items.extend(self.surv.cursor.take());
         items.extend(self.surv.craft.iter_mut().filter_map(|s| s.take()));
+        // Curse of vanishing: gone for good.
+        items.retain(|s| s.ench.get(crate::enchanting::VANISHING) == 0);
+        self.fase6_died();
         if !items.is_empty() {
             // Out of the void or lava, the body rests on the ground above.
             let mut pos = self.body.pos;
@@ -842,6 +865,9 @@ impl Game {
             let id = self.world.block_or_air(hit.block);
             let name = self.reg.get(id).name.clone();
             let sneaking = self.crouch > 0.5;
+            if (!sneaking || self.held_stack().is_none()) && self.fase6_block_use(&name, hit.block) {
+                return true;
+            }
             if !sneaking || self.held_stack().is_none() {
                 match name.as_str() {
                     "crafting_table" => {
@@ -896,6 +922,9 @@ impl Game {
             if self.plant_crop(b) {
                 return true;
             }
+        }
+        if self.fase6_item_use(&item.name) {
+            return true;
         }
         if item.food.is_some() {
             // Eating is handled while the button is held (update).
@@ -1037,6 +1066,9 @@ impl Game {
             if crate::backpacks::is_backpack(p) {
                 self.backpack_closed(p);
             }
+        }
+        if let Open::Station(st) = self.surv.open {
+            self.station_closed(st);
         }
         let mut back: Vec<ItemStack> = self.surv.craft.iter_mut().filter_map(|s| s.take()).collect();
         if let Some(c) = self.surv.cursor.take() {
@@ -1360,6 +1392,7 @@ impl Game {
         }
         self.surv.orbs.retain(|o| o.value > 0 && o.age < DESPAWN);
         if gained > 0 {
+            let gained = self.mend_with_xp(gained);
             let before = self.surv.level().0;
             self.surv.xp += gained;
             self.sfx(Sfx::Xp);
@@ -1615,6 +1648,14 @@ impl Game {
                 return;
             }
         }
+        if let Open::Station(st) = open {
+            if let Some(p) = st.keeps() {
+                if !self.surv.containers.contains_key(&p) {
+                    self.close_survival_screen();
+                    return;
+                }
+            }
+        }
         // The player figure is drawn in 3D behind the interface, seen through a hole in it.
         let hole = (open == Open::Craft).then_some((x0 + 27.0 * s, y0 + 9.0 * s, 50.0 * s, 60.0 * s));
         self.surv.figure_box = hole;
@@ -1684,6 +1725,7 @@ impl Game {
                     slots.push((Slot::Cont(i), x0 + (8 + (i % 9) * 18) as f32 * s, y0 + (18 + (i / 9) * 18) as f32 * s));
                 }
             }
+            Open::Station(st) => self.draw_station(st, x0, y0, &mut slots, mouse),
             Open::Chest(p) => {
                 let n = self.open_container_inv().map(|i| i.slots.len()).unwrap_or(CHEST_SIZE);
                 let id = self.world.block_or_air(p);
@@ -1706,7 +1748,7 @@ impl Game {
         let result = self.craft_result();
         let mut hovered: Option<Slot> = None;
         for &(slot, sx, sy) in &slots {
-            let big = slot == Slot::CraftOut || slot == Slot::Cont(2) && matches!(open, Open::Furnace(_));
+            let big = slot == Slot::CraftOut || slot == Slot::Cont(2) && matches!(open, Open::Furnace(_)) || self.is_station_output(slot);
             let pad = if big { 4.0 * s } else { 0.0 };
             self.ui.rect(sx - s - pad, sy - s - pad, cell + 2.0 * pad, cell + 2.0 * pad, [55, 55, 55, 255]);
             self.ui.rect(sx - pad, sy - pad, cell - s + 2.0 * pad, cell - s + 2.0 * pad, [255, 255, 255, 255]);
@@ -1763,7 +1805,7 @@ impl Game {
         // Right-drag (like Mouse Tweaks): one item into each slot the mouse passes over.
         if self.rdown && !self.rclicked && open != Open::Shop {
             if let (Some(slot), Some(c)) = (hovered, self.surv.cursor) {
-                let fresh = self.surv.drag_last != Some(slot) && !matches!(slot, Slot::CraftOut | Slot::Armor(_)) && !(slot == Slot::Cont(2) && matches!(open, Open::Furnace(_)));
+                let fresh = self.surv.drag_last != Some(slot) && !matches!(slot, Slot::CraftOut | Slot::Armor(_)) && !(slot == Slot::Cont(2) && matches!(open, Open::Furnace(_))) && !self.is_station_output(slot);
                 let fits = match self.slot_get(slot) {
                     None => true,
                     Some(st) => st.stacks_with(&c) && st.count < self.items.get(st.item).max_stack,
@@ -1776,7 +1818,7 @@ impl Game {
         self.surv.drag_last = if self.rdown { hovered.or(self.surv.drag_last) } else { None };
         // Number keys over a slot swap it with that hotbar slot.
         if let (Some(slot), Some(k)) = (hovered, self.inv_number_key.take()) {
-            if slot != Slot::CraftOut && !(open == Open::Shop && matches!(slot, Slot::Cont(_))) {
+            if slot != Slot::CraftOut && !(open == Open::Shop && matches!(slot, Slot::Cont(_))) && !self.is_station_output(slot) {
                 let a = self.slot_get(slot);
                 let b = self.surv.inv.slots[k];
                 self.slot_set(slot, b);
@@ -1812,7 +1854,8 @@ impl Game {
     pub(crate) fn item_details(&self, st: &ItemStack) -> Vec<(String, [u8; 4])> {
         const GRAY: [u8; 4] = [170, 170, 170, 255];
         let it = self.items.get(st.item);
-        let mut out = Vec::new();
+        let mut out = crate::enchanting::lines(st);
+        out.extend(self.fase6_details(st));
         let dur = it.tool.as_ref().map(|t| t.durability).or(it.armor.map(|a| a.durability));
         if let Some(d) = dur {
             let left = d.saturating_sub(st.damage);
@@ -1894,6 +1937,7 @@ impl Game {
                 Container::Furnace(f) => Some(&f.inv),
             },
             Open::Shop => Some(&self.surv.shop),
+            Open::Station(st) => self.station_inv(st),
             _ => None,
         }
     }
@@ -1904,6 +1948,7 @@ impl Game {
                 Container::Chest(i) => Some(i),
                 Container::Furnace(f) => Some(&mut f.inv),
             },
+            Open::Station(st) => self.station_inv_mut(st),
             _ => None,
         }
     }
@@ -1923,6 +1968,16 @@ impl Game {
         if let (Slot::Cont(i), Open::Shop) = (slot, self.surv.open) {
             self.buy(i);
             return;
+        }
+        if self.station_click(slot, shift) {
+            return;
+        }
+        // Curse of binding: worn armor stays on.
+        if let (Slot::Armor(i), true) = (slot, self.survival) {
+            if self.surv.armor[i].is_some_and(|a| a.ench.get(crate::enchanting::BINDING) > 0) {
+                self.toast("Maldição do Vínculo: não sai", 2.0);
+                return;
+            }
         }
         let furnace_out = slot == Slot::Cont(2) && matches!(self.surv.open, Open::Furnace(_));
         if slot == Slot::CraftOut {
@@ -2015,6 +2070,7 @@ impl Game {
                         }
                         Some(st)
                     }
+                    Open::Station(stn) => self.station_quick_move(stn, st),
                     Open::Furnace(p) => {
                         let smeltable = self.recipes.smelt(st.item).is_some();
                         let fuel = items.get(st.item).fuel > 0.0;
@@ -2047,10 +2103,10 @@ impl Game {
     pub(crate) fn wheel_move(&mut self, up: bool) -> bool {
         let Some(slot) = self.surv.hover_slot else { return false };
         let Some(st) = self.slot_get(slot) else { return false };
-        if self.surv.cursor.is_some() || matches!(slot, Slot::CraftOut | Slot::Armor(_)) || self.surv.open == Open::Shop {
+        if self.surv.cursor.is_some() || matches!(slot, Slot::CraftOut | Slot::Armor(_)) || self.surv.open == Open::Shop || self.is_station_output(slot) {
             return false;
         }
-        let container = matches!(self.surv.open, Open::Chest(_) | Open::Furnace(_));
+        let container = matches!(self.surv.open, Open::Chest(_) | Open::Furnace(_) | Open::Station(_));
         // Slots on the other side, in the order they fill.
         let other: Vec<Slot> = match slot {
             Slot::Inv(_) if container => (0..self.open_container_inv().map(|c| c.slots.len()).unwrap_or(0)).map(Slot::Cont).collect(),
@@ -2142,7 +2198,7 @@ impl Game {
     pub(crate) fn test_kit(&mut self) {
         let give = |g: &mut Game, slot: usize, name: &str, count: u8, damage: u16| {
             if let Some(id) = g.items.id(name) {
-                g.surv.inv.slots[slot] = Some(ItemStack { item: id, count, damage });
+                g.surv.inv.slots[slot] = Some(ItemStack { item: id, count, damage, ench: Default::default() });
             }
         };
         give(self, 0, "iron_pickaxe", 1, 60);
@@ -2320,6 +2376,7 @@ impl Game {
             }
         }
         out.extend(self.bobber_instance(cam_block));
+        out.extend(self.shot_instances(cam_block));
         if let Some(arrow) = sprite("arrow") {
             let c = cam_block.as_vec3();
             for a in &self.mobs.arrows {

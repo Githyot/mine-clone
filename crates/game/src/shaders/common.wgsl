@@ -18,7 +18,8 @@ struct Globals {
     effects: vec4<f32>,
     // A torch in the hand: xyz relative to the camera's block, w: light level 0..1.
     hand_light: vec4<f32>,
-    // x: rain 0..1, y: lightning flash 0..1, z: dimension (0 Overworld, 1 Nether, 2 End).
+    // x: rain 0..1, y: lightning flash 0..1, z: dimension (0 Overworld, 1 Nether, 2 End),
+    // w: night vision 0..1.
     weather: vec4<f32>,
     // Moving lights: dropped torches, burning mobs. xyz like hand_light, w: level (0 = unused).
     dyn_lights: array<vec4<f32>, 8>,
@@ -27,9 +28,10 @@ struct Globals {
 @group(0) @binding(0) var<uniform> g: Globals;
 
 // The Nether and the End are never pitch dark: a dim warm glow, or a pale violet one.
+// Night vision (weather.w) lifts every dark corner the same way.
 fn dim_ambient() -> vec3<f32> {
     if (g.weather.z > 1.5) {
-        return vec3<f32>(0.62, 0.6, 0.68);
+        return max(vec3<f32>(0.62, 0.6, 0.68), vec3<f32>(g.weather.w));
     }
-    return vec3<f32>(0.34, 0.24, 0.2) * g.weather.z;
+    return max(vec3<f32>(0.34, 0.24, 0.2) * g.weather.z, vec3<f32>(g.weather.w));
 }

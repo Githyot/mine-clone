@@ -46,7 +46,7 @@ fn main() {
         }
         code.push_str("];\n");
     }
-    for (var, file) in [("MOBS_RON", "packs/vanilla/mobs.ron"), ("PAINTINGS_RON", "packs/vanilla/paintings.ron"), ("ITEMS_RON", "packs/vanilla/items.ron"), ("RECIPES_RON", "packs/vanilla/recipes.ron"), ("STRUCTURES_RON", "packs/vanilla/structures.ron")] {
+    for (var, file) in [("MOBS_RON", "packs/vanilla/mobs.ron"), ("PAINTINGS_RON", "packs/vanilla/paintings.ron"), ("ITEMS_RON", "packs/vanilla/items.ron"), ("RECIPES_RON", "packs/vanilla/recipes.ron"), ("STRUCTURES_RON", "packs/vanilla/structures.ron"), ("FASE6_BLOCKS_RON", "packs/vanilla/fase6/blocks.ron"), ("FASE6_ITEMS_RON", "packs/vanilla/fase6/items.ron"), ("FASE6_RECIPES_RON", "packs/vanilla/fase6/recipes.ron"), ("FASE6_STRUCTURES_RON", "packs/vanilla/fase6/structures.ron"), ("FASE6_MOBS_RON", "packs/vanilla/fase6/mobs.ron")] {
         let p = root.join(file);
         println!("cargo:rerun-if-changed={}", p.display());
         if p.exists() {

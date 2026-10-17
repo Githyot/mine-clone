@@ -31,7 +31,7 @@ impl Farm {
         let farmland = reg.id_or_air("farmland");
         let mut f = Farm { next: vec![AIR; n], first: vec![AIR; n], ripe: vec![false; n], farmland, soil: vec![farmland; n], t: 0.0 };
         let soul = reg.id_or_air("soul_sand");
-        for (kind, stages) in [("wheat", 8), ("carrots", 4), ("potatoes", 4), ("beetroots", 4), ("nether_wart", 4)] {
+        for (kind, stages) in [("wheat", 8), ("carrots", 4), ("potatoes", 4), ("beetroots", 4), ("nether_wart", 4), ("torchflower", 3), ("pitcher", 5)] {
             let ids: Vec<BlockId> = (0..stages).filter_map(|k| reg.id(&format!("{kind}_stage{k}"))).collect();
             if ids.len() != stages {
                 continue;

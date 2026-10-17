@@ -7,6 +7,16 @@ mod ambient;
 mod audio;
 mod backpacks;
 mod controller;
+mod enchanting;
+mod effects;
+mod progression;
+mod stations;
+mod smithing;
+mod weapons;
+mod advancements;
+mod trials;
+mod deepdark;
+mod archaeology;
 mod copper;
 mod creative;
 mod dimension;
@@ -275,10 +285,49 @@ fn blurred_backdrop(w: usize, h: usize, px: &[u8]) -> (usize, usize, Vec<[u8; 4]
 
 /// Blocks, items and recipes from text.
 fn game_data(blocks: &str, items: &str, recipes: &str) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
-    let reg = BlockRegistry::from_ron(blocks)?;
-    let items = ItemRegistry::from_ron(items, &reg)?;
-    let recipes = Recipes::from_ron(recipes, &items)?;
+    let reg = BlockRegistry::from_ron(&merge_list(blocks, &fase6_text(None, "blocks.ron")))?;
+    let items = ItemRegistry::from_ron(&merge_list(items, &fase6_text(None, "items.ron")), &reg)?;
+    let mut recipes = Recipes::from_ron(recipes, &items)?;
+    let extra = fase6_text(None, "recipes.ron");
+    if !extra.trim().is_empty() {
+        let more = Recipes::from_ron(&extra, &items)?;
+        recipes.shaped.extend(more.shaped);
+        recipes.shapeless.extend(more.shapeless);
+        recipes.smelting.extend(more.smelting);
+    }
     Ok((reg, items, recipes))
+}
+
+/// A data file of the Phase 6 content (`packs/vanilla/fase6/`): on disk when there is one,
+/// else the built-in copy.
+fn fase6_text(base: Option<&Path>, name: &str) -> String {
+    let built_in = match name {
+        "blocks.ron" => embedded::FASE6_BLOCKS_RON,
+        "items.ron" => embedded::FASE6_ITEMS_RON,
+        "recipes.ron" => embedded::FASE6_RECIPES_RON,
+        "structures.ron" => embedded::FASE6_STRUCTURES_RON,
+        "mobs.ron" => embedded::FASE6_MOBS_RON,
+        _ => "",
+    };
+    base.and_then(|b| std::fs::read_to_string(b.join("packs/vanilla/fase6").join(name)).ok()).unwrap_or_else(|| built_in.to_string())
+}
+
+/// `main` with the entries of `extra`'s list added to its list (both written as `(key: [...])`),
+/// so a stage of the game can keep its blocks, items, mobs and buildings in a file of its own.
+fn merge_list(main: &str, extra: &str) -> String {
+    let body = |t: &str| -> Option<(usize, usize)> {
+        let a = t.find('[')?;
+        let b = t.rfind(']')?;
+        (b > a).then_some((a, b))
+    };
+    let (Some((_, me)), Some((xa, xe))) = (body(main), body(extra)) else { return main.to_string() };
+    let inner = extra[xa + 1..xe].trim();
+    if inner.is_empty() {
+        return main.to_string();
+    }
+    let head = main[..me].trim_end();
+    let sep = if head.ends_with(',') || head.ends_with('[') { "" } else { "," };
+    format!("{head}{sep}\n{inner}\n{}", &main[me..])
 }
 
 /// The data files in `packs/vanilla/` when there are any, each falling back to the built-in copy.
@@ -290,6 +339,7 @@ fn load_game_data(base: &Path) -> Result<(BlockRegistry, ItemRegistry, Recipes),
 /// Buildings the generator scatters (`packs/vanilla/structures.ron`, else the built-in copy).
 fn load_structures(base: &Path, reg: &BlockRegistry) -> Arc<voxel::structures::Structures> {
     let text = std::fs::read_to_string(base.join("packs/vanilla/structures.ron")).unwrap_or_else(|_| embedded::STRUCTURES_RON.to_string());
+    let text = merge_list(&text, &fase6_text(Some(base), "structures.ron"));
     let parsed = voxel::structures::Structures::from_ron(&text, reg).or_else(|e| {
         log::error!("{e}; using the built-in structures");
         voxel::structures::Structures::from_ron(embedded::STRUCTURES_RON, reg)
@@ -534,6 +584,8 @@ struct Game {
     /// First texture layer of the item sprites (they come after the block textures).
     item_base: u16,
     surv: survival::Survival,
+    /// Phase 6: effects, stations, enchantment play, statistics and advancements.
+    prog: progression::Prog,
     rclicked: bool,
     /// Middle click in a menu this frame.
     mclicked: bool,
@@ -647,6 +699,7 @@ impl Game {
 
         // Mobs: a mobs.ron on disk wins, like blocks.
         let mobs_text = std::fs::read_to_string(base.join("packs/vanilla/mobs.ron")).unwrap_or_else(|_| embedded::MOBS_RON.to_string());
+        let mobs_text = merge_list(&mobs_text, &fase6_text(Some(&base), "mobs.ron"));
         let mob_reg = voxel::mob::MobRegistry::from_ron(&mobs_text).unwrap_or_else(|e| {
             log::error!("{e}; using built-in mobs");
             voxel::mob::MobRegistry::from_ron(embedded::MOBS_RON).unwrap_or_default()
@@ -654,6 +707,7 @@ impl Game {
         let painting_defs = paintings::load_defs(&base);
         let paintings = paintings::load(&save.dir, &painting_defs);
         let surv = survival::Survival::load(&save.dir, &items);
+        let prog = progression::Prog::load(&save.dir);
         let entities = entity::EntityRenderer::new(&renderer, &mob_reg, &painting_defs, &base);
         let mut mobs = mobs::Mobs::new(mob_reg, reg.id_or_air("grass_block"), seed);
         mobs.enabled = settings.mobs;
@@ -844,6 +898,7 @@ impl Game {
             structures,
             item_base,
             surv,
+            prog,
             rclicked: false,
             mclicked: false,
             rdown: false,
@@ -1068,6 +1123,7 @@ impl Game {
         self.world.save_all();
         paintings::save(&self.world.save.dir, &self.paintings);
         self.surv.save(&self.world.save.dir, &self.items);
+        self.prog.save(&level_path_hint(&self.base, &self.world_name), &self.items);
         self.settings.save(&self.base.join("settings.ron"));
     }
 
@@ -1119,6 +1175,9 @@ impl Game {
             return;
         }
         if repeat {
+            return;
+        }
+        if self.advancements_key(code) {
             return;
         }
         let f3 = self.keys.contains(&KeyCode::F3);
@@ -1497,6 +1556,7 @@ impl Game {
             let use_held = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
             self.surv_update(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
             self.update_magic(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
+            self.update_fase6(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
             self.update_boss(if self.args.screenshot.is_some() { 0.0 } else { dt });
             if self.dim == voxel::worldgen::Dim::Overworld {
                 // Townsfolk live at home.
@@ -1507,7 +1567,7 @@ impl Game {
         if self.world_open && !matches!(self.screen, Screen::Loading | Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Shaders) {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
-            let creative = !self.survival || self.screen == Screen::Dead;
+            let creative = !self.survival || self.screen == Screen::Dead || self.has_effect(effects::INVISIBILITY);
             if self.screen == Screen::Playing && self.dim == voxel::worldgen::Dim::Overworld {
                 self.update_wanderers(if self.args.screenshot.is_some() { 0.0 } else { dt }, daylight);
             }
@@ -1541,6 +1601,7 @@ impl Game {
             if self.survival {
                 self.surv_mob_deaths(&out.deaths);
             }
+            self.fase6_mob_deaths(&out.deaths);
             self.painting_check -= dt;
             if self.painting_check <= 0.0 {
                 self.painting_check = 0.5;
@@ -1635,7 +1696,9 @@ impl Game {
         // The camera pass for screenshots holds still.
         if self.args.screenshot.is_none() {
             if !self.seat_step(input.sneak) && !self.ride_step(wish, input.sneak) {
+                self.pre_step(input.sneak);
                 self.body.step(&self.world, &input, dt);
+                self.post_step(dt);
             }
         } else {
             // Held still, but still know about water for the picture.
@@ -1770,7 +1833,7 @@ impl Game {
             })
             .map(|t| t.distance)
             .unwrap_or(f32::MAX);
-            if let Some((i, t)) = self.mobs.pick(self.body.eye(), self.forward(), 3.5) {
+            if let Some((i, t)) = self.mobs.pick(self.body.eye(), self.forward(), self.weapon_reach()) {
                 if t < block_dist {
                     self.attack_cd = if self.survival { 0.1 } else { 0.45 };
                     self.break_cd = 0.3;
@@ -1780,6 +1843,8 @@ impl Game {
                     // Falling onto a mob with a ready weapon is a critical hit.
                     let crit = self.body.vel.y < -0.5 && !self.body.on_ground && !self.body.in_water && charge > 0.9;
                     let dmg = if crit { base * 1.5 } else { base };
+                    self.prog.was_full = charge > 0.9;
+                    let dmg = if self.survival { self.melee_bonus(i, dmg) } else { dmg };
                     let sprint_hit = self.sprinting && charge > 0.9;
                     if crit || sprint_hit {
                         let at = self.mobs.list[i].body.pos + Vec3::Y * 0.9;
@@ -1801,6 +1866,9 @@ impl Game {
                     self.sfx(Sfx::MobHit);
                     self.anim.start_swing();
                     self.pads.rumble(0.3, 0.6, 0.1);
+                    if self.survival {
+                        self.after_melee(i, dmg);
+                    }
                     if sprint_hit {
                         self.sprinting = false;
                     }
@@ -1981,7 +2049,7 @@ impl Game {
     /// Seconds to dig a block by hand in survival (no tools yet).
     fn dig_time(&self, id: BlockId) -> f32 {
         if self.survival {
-            return self.items.dig_time(&self.reg, id, self.held_tool().as_ref());
+            return self.items.dig_time(&self.reg, id, self.held_tool().as_ref()) / self.dig_speed_bonus(id);
         }
         let h = self.reg.get(id).hardness.max(0.0);
         if h == 0.0 {
@@ -2168,16 +2236,23 @@ impl Game {
     /// Hurt the player (survival only). `from` pushes the player away.
     fn damage(&mut self, amount: f32, from: Option<Vec3>) {
         if !self.survival || self.screen == Screen::Dead || self.hurt_age < 0.5 || amount <= 0.0 {
+            self.prog.next_kind = Default::default();
             return;
         }
         // Monsters and blasts hit harder on harder difficulties.
         let amount = if from.is_some() { amount * [0.0, 0.5, 1.0, 1.5][self.settings.difficulty.min(3) as usize] } else { amount };
         if amount <= 0.0 {
+            self.prog.next_kind = Default::default();
             return;
         }
         // Armor softens hits from something (mobs, blasts), not falls, drowning or hunger.
         let amount = if from.is_some() { self.armor_absorb(amount) } else { amount };
+        let amount = self.protect(amount, from);
+        if amount <= 0.0 {
+            return;
+        }
         self.health -= amount;
+        self.prog.stats.add("damage_taken", (amount * 10.0) as u64);
         self.hurt_age = 0.0;
         self.regen = 0.0;
         if let Some(f) = from {
@@ -2205,6 +2280,7 @@ impl Game {
         if self.body.on_ground || self.body.in_water {
             let fall = self.fall_peak - self.body.pos.y;
             if fall > 3.5 && !self.body.in_water {
+                self.prog.next_kind = progression::DamageKind::Fall;
                 self.damage((fall - 3.0).floor(), None);
             }
             self.fall_peak = self.body.pos.y;
@@ -2212,10 +2288,12 @@ impl Game {
             self.fall_peak = self.fall_peak.max(self.body.pos.y);
         }
         // Breath under water.
-        if self.body.head_in_water {
-            self.air -= dt;
+        if self.body.head_in_water && !self.has_effect(effects::WATER_BREATHING) && !self.has_effect(effects::CONDUIT_POWER) {
+            // Respiration: each level makes a breath last that much longer.
+            self.air -= dt / (1.0 + self.armor_ench(enchanting::RESPIRATION) as f32);
             if self.air < -1.0 {
                 self.air = 0.0;
+                self.prog.next_kind = progression::DamageKind::Drown;
                 self.damage(2.0, None);
             }
         } else {
@@ -2224,6 +2302,7 @@ impl Game {
         // Lava burns.
         let feet = self.body.pos.floor().as_ivec3();
         if self.world.fluid(self.world.block_or_air(feet)) == 2 || self.world.fluid(self.world.block_or_air(feet + IVec3::Y)) == 2 {
+            self.prog.next_kind = progression::DamageKind::Fire;
             self.damage(4.0, None);
         }
         // Healing comes from a full stomach (survival.rs).
@@ -2342,6 +2421,7 @@ impl Game {
         let d = (self.body.center() - pos).length();
         if d < reach {
             let k = 1.0 - d / reach;
+            self.prog.next_kind = progression::DamageKind::Explosion;
             self.damage((k * power * 7.0).round(), Some(pos));
             self.body.knockback(self.body.center() - pos, k * 12.0);
         }
@@ -3003,6 +3083,7 @@ impl Game {
                     }
                 }
             }
+            self.draw_effect_overlays(w, h);
             self.draw_mob_health_bars(w, h);
             // Hotbar.
             let cell = 20.0 * s;
@@ -3022,6 +3103,7 @@ impl Game {
                 self.draw_survival_hud(hx, hy, cell);
                 self.draw_mana(w);
             }
+            self.draw_fase6_hud(w, h, hx, hy, cell);
             let sx = hx + self.selected as f32 * cell;
             if !self.ui.sprite("sprites/hud/hotbar_selection", sx - 2.0 * s, hy - 2.0 * s, 24.0 * s, 23.0 * s) {
                 self.ui.frame(sx - s, hy - s, cell + 2.0 * s, cell + 2.0 * s, 2.0 * s, [255, 255, 255, 255]);
@@ -3617,6 +3699,7 @@ impl Game {
         } else {
             (horizon, rd * 0.55, rd - 2.0)
         };
+        let (fog_color, fog_start, fog_end) = self.effect_fog(fog_color, fog_start, fog_end);
         // Real chunks surely cover this radius (see World::update); distant terrain starts here.
         let lod_inner = (self.settings.render_distance as f32 - 0.5) * 16.0;
         self.lod.update(&self.renderer.device, eye, lod_inner, if extra > 0.0 { view_end } else { 0.0 });
@@ -3634,7 +3717,7 @@ impl Game {
             // The light a held torch gives comes from the player's hand, wherever the camera is.
             hand_light: [head.x - block.x as f32, head.y - 0.4 - block.y as f32, head.z - block.z as f32, self.hand_light_level()],
             // z: 1 Nether, 2 End (sky and ambient light in the shaders).
-            weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else if end { 2.0 } else { 0.0 }, 0.0],
+            weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else if end { 2.0 } else { 0.0 }, self.night_vision()],
             dyn_lights: self.dynamic_lights(eye, block),
             ..Default::default()
         };
