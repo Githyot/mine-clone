@@ -2236,7 +2236,7 @@ impl Game {
         if self.body.on_ground || self.body.in_water {
             let fall = self.fall_peak - self.body.pos.y;
             if fall > 3.5 && !self.body.in_water {
-                self.damage((fall - 3.0).floor(), None);
+                self.damage(((fall - 3.0) * self.snow_fall_factor()).floor(), None);
             }
             self.fall_peak = self.body.pos.y;
         } else {
@@ -2460,9 +2460,9 @@ impl Game {
             return self.placed(hit.block, id);
         }
         // Plants are replaced instead of placed against.
-        let pos = if cb.shape == Shape::Cross && clicked != id { hit.block } else { hit.block + hit.normal };
+        let pos = if (cb.shape == Shape::Cross || self.snow_replaceable(clicked)) && clicked != id { hit.block } else { hit.block + hit.normal };
         let cur = self.world.block_or_air(pos);
-        if cur != AIR && !self.world.is_liquid(cur) && self.reg.get(cur).shape != Shape::Cross {
+        if cur != AIR && !self.world.is_liquid(cur) && self.reg.get(cur).shape != Shape::Cross && !self.snow_replaceable(cur) {
             return None;
         }
         let b = self.reg.get(id);
@@ -2797,6 +2797,9 @@ impl Game {
             let z = c.z + self.surv.rng.range(-24, 25);
             let Some(y) = self.world.surface_y(x, z) else { continue };
             let p = IVec3::new(x, y, z);
+            if self.snow_settle_extra(p) {
+                continue;
+            }
             let id = self.world.block_or_air(p);
             let b = self.reg.get(id);
             if b.base == layer {

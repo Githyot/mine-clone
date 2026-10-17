@@ -14,6 +14,7 @@ pub mod macaws;
 pub mod mounts;
 pub mod portals;
 pub mod seasons;
+pub mod snow;
 
 use serde::{Deserialize, Serialize};
 use winit::keyboard::KeyCode;
@@ -48,6 +49,7 @@ pub struct Mods {
     pub combat: combat::Combat,
     pub macaws: macaws::Macaws,
     pub ecologics: ecologics::Ecologics,
+    pub snow: snow::Snow,
 }
 
 impl Game {
@@ -84,6 +86,7 @@ impl Game {
             self.update_combat();
             self.update_macaws(dt);
             self.update_ecologics(dt);
+            self.update_snow(dt);
         }
     }
 
@@ -94,7 +97,7 @@ impl Game {
 
     /// Right click: a mod block or item that does something. True when it was used.
     pub(crate) fn mods_use(&mut self) -> bool {
-        self.aether_use() || self.seasons_use() || self.aquaculture_use()
+        self.aether_use() || self.seasons_use() || self.aquaculture_use() || self.snow_use()
     }
 
     /// A key went down. True when a mod used it.
