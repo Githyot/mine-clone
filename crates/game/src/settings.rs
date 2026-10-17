@@ -97,6 +97,8 @@ pub struct Settings {
     /// Buildings farther apart in new chunks (Sparse Structures idea).
     pub sparse_structures: bool,
     /// Several cloud layers drifting with the wind (Better Clouds idea); off = one classic layer.
+    /// Off by default: on slow (software) renderers it costs a fifth or more of the frame rate
+    /// when looking at the sky.
     pub layered_clouds: bool,
     /// Sun and moon shadows (Sildur's idea): 0 off, 1 fast (small map, near), 2 fancy.
     pub shadows: u8,
@@ -140,7 +142,7 @@ impl Default for Settings {
             shader_quality: ShaderQuality::Fancy,
             lod_distance: 0,
             sparse_structures: false,
-            layered_clouds: true,
+            layered_clouds: false,
             shadows: 0,
             water_reflections: true,
             taa: false,

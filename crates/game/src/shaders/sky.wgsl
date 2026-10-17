@@ -113,9 +113,9 @@ fn cloud_at(c: vec2<f32>) -> bool {
 // Layered style: how thick the cloud in cell `c` of a layer is (0 = clear sky).
 fn cloud_density(c: vec2<f32>, seed: f32, cover: f32) -> f32 {
     let t = g.cam_pos.w;
-    var n = vnoise(c * 0.11 + vec2<f32>(seed, seed * 0.7)) * 0.55 + vnoise(c * 0.31 + vec2<f32>(17.0 + seed, 3.0)) * 0.3 + hash2(c + seed) * 0.15;
-    // Slow change of shape: a broad noise drifting against the wind grows and shrinks clouds.
-    n += (vnoise(c * 0.045 + vec2<f32>(t * 0.004, -t * 0.003) + seed) - 0.5) * 0.16;
+    // Slow change of shape: the broad noise drifts a little against the wind, so clouds grow,
+    // shrink and split as they travel.
+    let n = vnoise(c * 0.11 + vec2<f32>(seed + t * 0.004, seed * 0.7 - t * 0.003)) * 0.55 + vnoise(c * 0.31 + vec2<f32>(17.0 + seed, 3.0)) * 0.3 + hash2(c + seed) * 0.15;
     let thr = 0.55 - g.weather.x * 0.22 + cover;
     return smoothstep(thr, thr + 0.07, n);
 }
@@ -216,7 +216,7 @@ fn march_layer(ro: vec3<f32>, dir: vec3<f32>, y0: f32, thick: f32, cell_size: f3
             let aa = a * fade;
             res.rgba += vec4<f32>(c * aa, aa) * (1.0 - res.rgba.a);
             res.t = min(res.t, t);
-            if (!soft || res.rgba.a > 0.96) {
+            if (!soft || res.rgba.a > 0.85) {
                 break;
             }
         }
@@ -243,7 +243,7 @@ fn high_sheet(ro: vec3<f32>, dir: vec3<f32>, y: f32) -> CloudHit {
     var res: CloudHit;
     res.rgba = vec4<f32>(0.0);
     res.t = CLOUD_MAX;
-    if (abs(dir.y) < 1e-4) {
+    if (abs(dir.y) < 0.03) {
         return res;
     }
     let t = (y - ro.y) / dir.y;
@@ -251,7 +251,7 @@ fn high_sheet(ro: vec3<f32>, dir: vec3<f32>, y: f32) -> CloudHit {
         return res;
     }
     let q = (ro.xz + dir.xz * t) * vec2<f32>(0.004, 0.012);
-    var n = vnoise(q) * 0.6 + vnoise(q * 2.7 + vec2<f32>(5.0, 1.0)) * 0.3 + vnoise(q * 7.1) * 0.1;
+    let n = vnoise(q) * 0.65 + vnoise(q * 2.7 + vec2<f32>(5.0, 1.0)) * 0.35;
     let a = smoothstep(0.52 - g.weather.x * 0.2, 0.8, n) * 0.4 * (1.0 - smoothstep(CLOUD_MAX * 0.6, CLOUD_MAX * 1.6, t));
     let c = cloud_light(0.95);
     res.rgba = vec4<f32>(c * a, a);
@@ -287,15 +287,15 @@ fn fs_clouds(in: SkyOut) -> CloudFrag {
             order = vec3<i32>(2, 1, 0);
         }
         for (var k = 0; k < 3; k = k + 1) {
-            if (acc.a > 0.96) {
+            if (acc.a > 0.85) {
                 break;
             }
             let li = order[k];
             var h: CloudHit;
             if (li == 0) {
-                h = march_layer(g.cam_world.xyz + wind(0.8), dir, ys.x, THICK, CELL, 0.0, 0.0, true, 96);
+                h = march_layer(g.cam_world.xyz + wind(0.8), dir, ys.x, THICK, CELL, 0.0, 0.0, true, 72);
             } else if (li == 1) {
-                h = march_layer(g.cam_world.xyz + wind(1.5), dir, ys.y, 7.0, 22.0, 41.0, 0.07, true, 48);
+                h = march_layer(g.cam_world.xyz + wind(1.5), dir, ys.y, 7.0, 22.0, 41.0, 0.07, true, 32);
             } else {
                 h = high_sheet(g.cam_world.xyz + wind(3.0), dir, ys.z);
             }
@@ -309,7 +309,7 @@ fn fs_clouds(in: SkyOut) -> CloudFrag {
     let rel = g.cam_pos.xyz + dir * min(tn, CLOUD_MAX);
     let clip = g.view_proj * vec4<f32>(rel, 1.0);
     var out: CloudFrag;
-    out.color = vec4<f32>(acc.rgb / acc.a, acc.a * 0.88);
+    out.color = vec4<f32>(acc.rgb / acc.a, min(acc.a / select(1.0, 0.85, g.extra.x > 0.5), 1.0) * 0.88);
     out.depth = clamp(clip.z / clip.w, 0.0, 0.999999);
     return out;
 }
