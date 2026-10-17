@@ -375,9 +375,9 @@ def cell_stones(name, base, count, min_d, mortar_level=0.08, gap=1.0, tones=0.35
 def add_moss(img, rng, edge=None, gap=1.0, amount=0.4):
     m = fbm(rng, ((32, 0.4), (16, 0.35), (8, 0.25)))
     if edge is not None:
-        m = m + np.clip(1.6 - edge / 3, 0, 1) * 0.35
-    mask = m > (1 - amount * 0.75)
-    mp = ramp("#5c8236", 8, 0.28, 0.14)
+        m = m + np.clip(1.6 - edge / 3, 0, 1) * 0.2
+    mask = m > (1 - amount * 0.55)
+    mp = ramp("#527a32", 8, 0.28, 0.14)
     c = clusters(rng, 2)
     h = c * 2
     t = 0.45 + (c - 0.5) * 0.5 + light(h) * 0.8 + (m - 0.6) * 0.5
@@ -450,7 +450,7 @@ def stone_bricks(name="stone_bricks", base="#7a7a7a", moss=False, cracked=False)
     t = np.where(is_m, 0.12, t)
     img = rgba(quantize(np.clip(t, 0, 1), pal, 0.3, rng))
     if moss:
-        add_moss(img, rng, np.where(is_m, 0, inside + 1), 1.0, 0.5)
+        add_moss(img, rng, np.where(is_m, 0, inside + 1), 1.0, 0.42)
     return soften(img, "built")
 
 
@@ -473,11 +473,11 @@ def smooth_stone():
 ORE_LAYOUT = [(10, 10), (40, 8), (26, 30), (52, 36), (10, 46), (36, 52), (56, 58)]
 
 
-def ore(kind, bg_fn=None, name=None, size=1.25):
+def ore(kind, bg_fn=None, name=None, size=1.25, color=None):
     name = name or f"{kind}_ore"
     rng = rng_for(name)
     img = bg_fn() if bg_fn else stone(name + "_bg", kind="rough")
-    p = g16.ORES[kind]
+    p = g16.ORES[kind] if color is None else [hexrgb(color)] * 3
     mid = p[1]
     gem = ramp(mid, 9, 0.5, 0.1, sat=1.15)
     accent = p[3] if len(p) > 3 else None
@@ -593,11 +593,11 @@ def log_side(wood, name=None):
     return soften(img, "rough")
 
 
-def log_top(wood, name=None):
+def log_top(wood, name=None, inner_base=None, bark_base=None):
     name = name or f"{wood}_log_top"
     rng = rng_for(name)
-    w = g16.WOODS[wood]
-    inner = ramp(w["inner"][2], 10, 0.28, 0.12)
+    w = g16.WOODS.get(wood, g16.WOODS["oak"])
+    inner = ramp(w["inner"][2] if inner_base is None else inner_base, 10, 0.28, 0.12)
     cx = cy = 31.5
     euc = np.hypot(XX - cx, YY - cy)
     cheb = np.maximum(np.abs(XX - cx), np.abs(YY - cy))
@@ -606,7 +606,7 @@ def log_top(wood, name=None):
     t = 0.45 + rings * 0.25 + (clusters(rng, 2) - 0.5) * 0.1 - np.clip(1 - euc / 4, 0, 1) * 0.2
     img = rgba(quantize(np.clip(t, 0, 1), inner, 0.3, rng))
     # Bark rim, 4 pixels, with depth.
-    bark = ramp(w["bark"][2] if wood != "birch" else "#d8d6cf", 8, 0.36, 0.1)
+    bark = ramp(bark_base if bark_base is not None else (w["bark"][2] if wood != "birch" else "#d8d6cf"), 8, 0.36, 0.1)
     rim = cheb >= 27.5
     bt = 0.45 + (stretched_noise(rng, 2, 2) - 0.5) * 0.5 + np.where(cheb >= 30.5, -0.15, 0.05)
     img[rim, :3] = quantize(np.clip(bt, 0, 1), bark)[rim]
@@ -1214,3 +1214,141 @@ for _n in ("iron_block", "gold_block", "copper_block", "tin_block", "silver_bloc
     REGISTRY[_n] = metal(_n)
 for _n in ("diamond_block", "ruby_block", "sapphire_block", "topaz_block", "amethyst_block"):
     REGISTRY[_n] = metal(_n, gem=True)
+
+
+# ================================================================ batch 3: crafted and farm blocks
+
+
+def gourd_side(name, base, stripes=None):
+    rng = rng_for(name)
+    pal = ramp(base, 10, 0.36, 0.14)
+    ribs = (np.cos(XX * 2 * np.pi / 16) + 1) / 2
+    f = fbm(rng, ((16, 0.5), (8, 0.3), (4, 0.2)))
+    h = ribs * 2.5 + f
+    t = 0.5 + (ribs - 0.5) * 0.25 + (f - 0.5) * 0.2 + light(h) * 0.9
+    if stripes:
+        st = (np.abs(((XX + value_noise(rng, 16) * 4) % 16) - 8) < 2.5)
+        t = t - st * 0.22
+    img = rgba(quantize(np.clip(t, 0, 1), pal, 0.3, rng))
+    return soften(img, "built")
+
+
+def gourd_top(name, base, stem_col):
+    rng = rng_for(name)
+    pal = ramp(base, 10, 0.36, 0.14)
+    ang = np.arctan2(YY - 31.5, XX - 31.5)
+    r = np.hypot(XX - 31.5, YY - 31.5)
+    ribs = (np.cos(ang * 8) + 1) / 2
+    f = fbm(rng, ((16, 0.5), (8, 0.5)))
+    h = ribs * 2 * np.clip(r / 20, 0, 1) - np.clip(1 - r / 30, 0, 1) * 2 + f
+    t = 0.5 + (ribs - 0.5) * 0.2 + light(h, wrap=False) * 1.0
+    img = rgba(quantize(np.clip(t, 0, 1), pal, 0.3, rng))
+    sp = ramp(stem_col, 6, 0.35, 0.1)
+    stem_m = (np.abs(XX - 31.5) < 3.5) & (np.abs(YY - 31.5) < 3.5)
+    img[stem_m, :3] = sp[3]
+    img[stem_m & ((XX < 30) | (YY < 30)), :3] = sp[5]
+    img[stem_m & ((XX > 33) | (YY > 33)), :3] = sp[1]
+    return img
+
+
+def melon_side():
+    return gourd_side("melon_side", "#6fa82e", stripes=True)
+
+
+def melon_top():
+    return gourd_top("melon_top", "#6fa82e", "#8a7a3a")
+
+
+def pumpkin_side():
+    return gourd_side("pumpkin_side", src_mean("pumpkin_side", "#d07a18"))
+
+
+def pumpkin_top():
+    return gourd_top("pumpkin_top", src_mean("pumpkin_top", "#d07a18"), "#5a6a2a")
+
+
+def cactus_top():
+    rng = rng_for("cactus_top")
+    pal = ramp("#4c8a2e", 10, 0.38, 0.14)
+    r = np.hypot(XX - 31.5, YY - 31.5)
+    ang = np.arctan2(YY - 31.5, XX - 31.5)
+    ribs = (np.cos(ang * 8) + 1) / 2
+    t = 0.55 + ribs * 0.12 - np.clip(1 - r / 10, 0, 1) * 0.2
+    img = rgba(quantize(np.clip(t, 0, 1), pal, 0.3, rng))
+    d = np.minimum(np.minimum(XX, YY), np.minimum(N - 1 - XX, N - 1 - YY))
+    img[d < 2, :3] = pal[1]
+    return img
+
+
+def sponge():
+    rng = rng_for("sponge")
+    pal = ramp(src_mean("sponge", "#c8c040"), 10, 0.36, 0.12)
+    img = lumpy("sponge_body", src_mean("sponge", "#c8c040"), 30, 8, spread=0.3)
+    for _ in range(26):
+        cx, cy = rng.random(2) * N
+        dx, dy = torus_d(cx, cy)
+        r = rng.uniform(1.2, 2.6)
+        dd = np.hypot(dx, dy * 1.2)
+        img[dd < r, :3] = pal[1]
+        rim = (dd >= r) & (dd < r + 1) & (dx + dy > 0)
+        img[rim, :3] = pal[7]
+    return img
+
+
+def shroomlight():
+    rng = rng_for("shroomlight")
+    pal = np.array([hexrgb(c) for c in ("#9a3a12", "#c25a1a", "#de7a24", "#f09a34", "#f8b84a", "#fcd27a", "#fee8b0")])
+    ids, d1, d2, pts = worley(rng, 26, 8, jitter_shape=0.5)
+    dome = np.clip((d2 - d1) / 3, 0, 1)
+    t = 0.3 + dome * 0.5 + (rng.random(len(pts))[ids] - 0.5) * 0.25
+    t = np.where(d2 - d1 < 1.0, 0.05, t)
+    return rgba(quantize(np.clip(t, 0, 1), pal, 0.3, rng))
+
+
+def thatch():
+    rng = rng_for("thatch")
+    pal = ramp(src_mean("thatch", "#b89a4a"), 10, 0.38, 0.14)
+    tt = np.full((N, N), 0.35)
+    for _ in range(420):
+        x0, y0 = rng.random(2) * N
+        ln = rng.uniform(6, 14)
+        ang = np.pi / 2 + rng.uniform(-0.25, 0.25)
+        for oy in (0, -N, N):
+            d = segment_dist(x0, y0 + oy, x0 + np.cos(ang) * ln, y0 + oy + np.sin(ang) * ln)
+            tt[d < 0.7] = rng.uniform(0.35, 0.95)
+    for y0 in range(0, N, 16):
+        tt[y0:y0 + 2] *= 0.6
+    return soften(rgba(quantize(np.clip(tt, 0, 1), pal, 0.2, rng)), "built")
+
+
+def furnace_side():
+    return furnace_like("furnace_side")
+
+
+def furnace_top():
+    return furnace_like("furnace_top")
+
+
+def furnace_front():
+    return furnace_like("furnace_front", "furnace")
+
+
+REGISTRY.update({
+    "melon_side": melon_side,
+    "melon_top": melon_top,
+    "pumpkin_side": pumpkin_side,
+    "pumpkin_top": pumpkin_top,
+    "cactus_top": cactus_top,
+    "sponge": sponge,
+    "shroomlight": shroomlight,
+    "thatch": thatch,
+    "furnace_side": furnace_side,
+    "furnace_top": furnace_top,
+    "furnace_front": furnace_front,
+    "mossy_cobblestone_bricks": lambda: stone_bricks("mossy_cobblestone_bricks", "#7a7a7a", moss=True),
+    "nether_gold_ore": lambda: ore("gold", netherrack, "nether_gold_ore", 1.0),
+    "nether_quartz_ore": lambda: ore("quartz", netherrack, "nether_quartz_ore", 1.0, color="#ece4d8"),
+    "redstone_block": metal("redstone_block"),
+    "crimson_stem_top": lambda: log_top("oak", "crimson_stem_top", src_mean("crimson_planks", "#6a3048"), src_mean("crimson_stem", "#5a1c2a")),
+    "warped_stem_top": lambda: log_top("oak", "warped_stem_top", src_mean("warped_planks", "#2b6b62"), src_mean("warped_stem", "#2a4a4a")),
+})
