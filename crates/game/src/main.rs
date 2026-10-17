@@ -491,6 +491,7 @@ struct Game {
     arrive_plain: bool,
     /// Fractional count of ambient blocks still to look at (ambient.rs).
     ambient_t: f32,
+    room_t: f32,
     wander: wanderers::Wanderers,
     copper: copper::Copper,
     farm: farm::Farm,
@@ -806,6 +807,7 @@ impl Game {
             respawn_home: false,
             arrive_plain: false,
             ambient_t: 0.0,
+            room_t: 0.0,
             wander: Default::default(),
             copper: copper::Copper::new(&reg_for_fluids),
             farm: farm::Farm::new(&reg_for_fluids),

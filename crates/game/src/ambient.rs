@@ -48,9 +48,50 @@ impl Game {
         log::warn!("no {kind} cave found");
     }
 
+    /// Listen to the space around the player: how many directions hit stone close by, how
+    /// far, and whether sky light reaches here (Sound Physics idea).
+    fn measure_room(&mut self) {
+        let eye = self.body.eye();
+        let head = eye.floor().as_ivec3();
+        let underwater = self.world.is_liquid(self.world.block_or_air(head));
+        let mut hits = 0;
+        let mut dist = 0.0;
+        let dirs = [
+            Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y, Vec3::Z, -Vec3::Z,
+            Vec3::new(1.0, 1.0, 1.0), Vec3::new(-1.0, 1.0, 1.0), Vec3::new(1.0, 1.0, -1.0), Vec3::new(-1.0, 1.0, -1.0),
+            Vec3::new(1.0, -0.3, 1.0), Vec3::new(-1.0, -0.3, -1.0),
+        ];
+        for d in dirs {
+            let d = d.normalize();
+            let mut t = 1.0;
+            while t < 24.0 {
+                let p = (eye + d * t).floor().as_ivec3();
+                let b = self.world.block_or_air(p);
+                if b != AIR && self.reg.get(b).solid {
+                    hits += 1;
+                    dist += t;
+                    break;
+                }
+                t += 1.0;
+            }
+        }
+        let frac = hits as f32 / dirs.len() as f32;
+        let sky = (self.world.light(head) >> 4) as f32 / 15.0;
+        let echo = if self.dim == Dim::Overworld { frac * frac * (1.0 - sky * 0.8) } else { frac * frac * 0.8 };
+        let delay = if hits > 0 { dist / hits as f32 * 2.0 / 343.0 } else { 0.0 };
+        if let Some(a) = self.audio.as_mut() {
+            a.room = crate::audio::Room { echo, delay: delay.max(0.04), underwater };
+        }
+    }
+
     pub(crate) fn update_ambient(&mut self, dt: f32) {
         if dt <= 0.0 {
             return;
+        }
+        self.room_t -= dt;
+        if self.room_t <= 0.0 {
+            self.room_t = 0.4;
+            self.measure_room();
         }
         self.ambient_t += dt * SAMPLES;
         let n = self.ambient_t as usize;

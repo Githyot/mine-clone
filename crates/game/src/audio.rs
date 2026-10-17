@@ -192,6 +192,17 @@ pub struct Audio {
     pub now_playing: Option<String>,
     rng: u64,
     music_folder: PathBuf,
+    /// How the space around the player colours sound effects (Sound Physics idea).
+    pub room: Room,
+}
+
+/// The space around the listener: how much echo comes back, after how long, and whether
+/// the ears are under water.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct Room {
+    pub echo: f32,
+    pub delay: f32,
+    pub underwater: bool,
 }
 
 impl Audio {
@@ -213,6 +224,7 @@ impl Audio {
             now_playing: None,
             rng: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7) | 1,
             music_folder: base.join(&settings.music_folder),
+            room: Room::default(),
         };
         a.reload_tracks();
         // The first song comes fairly soon after joining, the rest after long silences.
@@ -322,7 +334,7 @@ impl Audio {
             return;
         }
         let seed = (self.rand() * 1e6) as u32;
-        let samples = crate::sfx::synth(sfx, seed);
+        let samples = room_sound(crate::sfx::synth(sfx, seed), self.room);
         let src = rodio::buffer::SamplesBuffer::new(1, 44100, samples).amplify(volume);
         let _ = self.handle.play_raw(src);
     }
@@ -365,4 +377,50 @@ fn serde_json_lite(json: &str) -> Vec<TrackInfo> {
             Some(TrackInfo { id: s("id")?, title: s("title")?, situation: s("situation")? })
         })
         .collect()
+}
+
+/// Echo off the walls of a cave or a closed room, and the dull muffle of being under water.
+/// The echoes are filtered darker than the sound itself, so nothing gets brighter.
+fn room_sound(mut s: Vec<f32>, room: Room) -> Vec<f32> {
+    const RATE: f32 = 44100.0;
+    if room.underwater {
+        let mut lp = 0.0;
+        for v in s.iter_mut() {
+            lp += (*v - lp) * 0.06;
+            *v = lp * 1.4;
+        }
+    }
+    if room.echo < 0.05 || s.is_empty() {
+        return s;
+    }
+    let d = ((room.delay.clamp(0.03, 0.3)) * RATE) as usize;
+    let fb = (room.echo * 0.55).min(0.6);
+    let tail = d * 6;
+    s.resize(s.len() + tail, 0.0);
+    let mut lp = 0.0;
+    for i in d..s.len() {
+        lp += (s[i - d] - lp) * 0.35;
+        s[i] += lp * fb;
+    }
+    // Fade the very end so the tail never clicks off.
+    let n = s.len();
+    let fade = (RATE * 0.05) as usize;
+    for k in 0..fade.min(n) {
+        s[n - 1 - k] *= k as f32 / fade as f32;
+    }
+    s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cave_echo_adds_a_tail_and_stays_quiet() {
+        let dry: Vec<f32> = (0..4410).map(|i| (i as f32 * 0.05).sin() * 0.5).collect();
+        let wet = room_sound(dry.clone(), Room { echo: 1.0, delay: 0.1, underwater: false });
+        assert!(wet.len() > dry.len());
+        assert!(wet.iter().all(|v| v.abs() < 1.5));
+        assert_eq!(room_sound(dry.clone(), Room::default()).len(), dry.len());
+    }
 }
