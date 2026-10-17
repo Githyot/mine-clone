@@ -891,6 +891,25 @@ impl Game {
             game.arrival = Some(Vec3::new(p.x / 8.0, 70.0, p.z / 8.0));
             game.body.pos = game.arrival.unwrap();
             game.needs_spawn = false;
+            if std::env::var("MC_NETHER").as_deref() == Ok("warped") {
+                // Test hook: stand on a floor in the nearest warped forest.
+                let (x0, z0) = (game.body.pos.x as i32, game.body.pos.z as i32);
+                'search: for r in (0..2000).step_by(16) {
+                    for k in 0..(r / 8).max(1) {
+                        let a = k as f32 / (r / 8).max(1) as f32 * std::f32::consts::TAU;
+                        let (x, z) = (x0 + (a.cos() * r as f32) as i32, z0 + (a.sin() * r as f32) as i32);
+                        if game.world.gen.biome_at(x, z) != voxel::worldgen::Biome::WarpedForest {
+                            continue;
+                        }
+                        if let Some(y) = game.world.gen.nether_floor_near(x, 40, z) {
+                            game.arrival = None;
+                            game.body.pos = Vec3::new(x as f32 + 0.5, y as f32 + 1.0, z as f32 + 0.5);
+                            log::info!("warped forest at {x},{y},{z}");
+                            break 'search;
+                        }
+                    }
+                }
+            }
             if let Some(name) = game.args.find.clone() {
                 let (x, z) = (game.body.pos.x as i32, game.body.pos.z as i32);
                 if let Some((o, size)) = game.world.gen.find_structure(&name, x, z, 40) {
@@ -2426,6 +2445,10 @@ impl Game {
             Shape::Door => facing(f.x, f.z),
             // A chair turns to face the player who puts it down.
             Shape::Chair => facing(-f.x, -f.z),
+            // A bench runs across your view.
+            Shape::Bench => facing(f.x, f.z) ^ 1,
+            // A shelf goes on the wall you clicked.
+            Shape::Shelf => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) } else { facing(f.x, f.z) },
             // Under a block it hangs on a chain.
             Shape::Lantern => (hit.normal.y < 0) as u8,
             // Runs the way you look.
@@ -2472,7 +2495,9 @@ impl Game {
             Shape::Oriented => {
                 let toward = self.reg.get(id).name == "observer";
                 let k = if toward { 1.0 } else { -1.0 };
-                if f.y * k > 0.75 {
+                if self.reg.get(id).name.ends_with("_drawer") {
+                    facing(-f.x, -f.z)
+                } else if f.y * k > 0.75 {
                     4
                 } else if f.y * k < -0.75 {
                     5

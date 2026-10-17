@@ -651,6 +651,9 @@ def nether_fortress():
         layers[y][0][14] = "B"
         layers[y][D - 1][14] = "B"
     layers[deck + 1][2][11] = "c"
+    for x in range(11, 14):  # a bed of nether wart on soul sand
+        layers[deck][8][x] = "Z"
+        layers[deck + 1][8][x] = "w"
     layers[deck + 3][5][14] = "L"
     layers[deck + 7][5][14] = "L"
     layers[deck + 5][8][17] = "c"
@@ -670,7 +673,8 @@ def nether_fortress():
         "spacing": 14,
         "chance": 0.55,
         "foundation": "nether_bricks",
-        "palette": {"N": "nether_bricks", "f": "nether_brick_fence", "B": "iron_bars", "c": "chest", "L": "shroomlight"},
+        "palette": {"N": "nether_bricks", "f": "nether_brick_fence", "B": "iron_bars", "c": "chest", "L": "shroomlight",
+                    "Z": "soul_sand", "w": "nether_wart_stage3"},
         "layers": [rows(l) for l in layers],
         "loot": [("", "gold_ingot", 2, 6, 0.6), ("", "diamond", 1, 2, 0.25), ("", "iron_ingot", 2, 5, 0.5),
                  ("", "blaze_rod", 1, 3, 0.4), ("", "obsidian", 2, 5, 0.3), ("", "fire_staff", 1, 1, 0.08),

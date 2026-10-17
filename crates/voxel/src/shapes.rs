@@ -28,7 +28,7 @@ pub fn variant_count(shape: Shape) -> u8 {
         // Spout: 0 down, 1..4 north, east, south, west.
         Shape::Hopper => 5,
         // Chairs: the way you look when sitting.
-        Shape::Chair => 4,
+        Shape::Chair | Shape::Bench | Shape::Shelf => 4,
         Shape::Lantern | Shape::Bridge => 2,
         Shape::Portal => 3,
         // Rails: shape 0..9 (see `RAIL_ENDS`); powered, detector and activator rails only
@@ -254,6 +254,18 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
         }
         Shape::Chain => out.push([7, 0, 7, 9, 16, 9]),
         Shape::Pot => out.push([3, 0, 3, 13, 6, 13]),
+        Shape::Bench => {
+            // Drawn running east-west: the seat and a leg at each end.
+            for b in [[0, 7, 3, 16, 9, 13], [1, 0, 4, 3, 7, 12], [13, 0, 4, 15, 7, 12]] {
+                out.push(rotate(b, f));
+            }
+        }
+        Shape::Shelf => {
+            // Drawn against a wall to the north.
+            for b in [[0, 8, 0, 16, 10, 7], [2, 4, 0, 4, 8, 2], [12, 4, 0, 14, 8, 2]] {
+                out.push(rotate(b, f));
+            }
+        }
         Shape::Portal => out.push(match variant {
             // Upright across x or z (nether portal), or lying flat (end portal).
             0 => [0, 0, 6, 16, 16, 10],

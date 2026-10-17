@@ -855,8 +855,8 @@ impl Game {
                         self.open_container(Open::Furnace(hit.block));
                         return true;
                     }
-                    "hopper" | "dropper" | "dispenser" | "crafter" => {
-                        let n = if name == "hopper" { 5 } else { 9 };
+                    n if n == "hopper" || n == "dropper" || n == "dispenser" || n == "crafter" || n.ends_with("_drawer") => {
+                        let n = if n == "hopper" { 5 } else if n.ends_with("_drawer") { 18 } else { 9 };
                         self.surv.containers.entry(hit.block).or_insert_with(|| Container::Chest(Inventory::new(n)));
                         self.open_container(Open::Chest(hit.block));
                         return true;

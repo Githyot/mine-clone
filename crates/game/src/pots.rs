@@ -166,6 +166,21 @@ impl Game {
                 self.world.set_block(c + IVec3::new(k as i32 - 4, r as i32, 0), id);
             }
         }
+        // Another Furniture: benches and drawers turned to the viewer, shelves on the wall.
+        for (k, (n, v)) in [("oak_bench", 0), ("cherry_bench", 0), ("oak_drawer", 2), ("spruce_drawer", 2), ("cherry_drawer", 2), ("dark_oak_bench", 1)].iter().enumerate() {
+            let id = self.reg.id_or_air(n);
+            self.world.set_block(c + IVec3::new(k as i32 - 4, 0, 3), self.reg.variant(id, *v));
+        }
+        let stone = self.reg.id_or_air("cobblestone_bricks");
+        for dx in 3..7 {
+            for y in 0..3 {
+                self.world.set_block(c + IVec3::new(dx, y, 2), stone);
+            }
+        }
+        for (dx, n) in [(3, "oak_shelf"), (4, "birch_shelf"), (5, "spruce_shelf"), (6, "cherry_shelf")] {
+            let id = self.reg.id_or_air(n);
+            self.world.set_block(c + IVec3::new(dx, 1, 3), self.reg.variant(id, 0));
+        }
         self.body.pos = c.as_vec3() + Vec3::new(0.5, 0.0, 7.5);
         if let Some(top) = self.reg.id("acacia_door") {
             self.world.set_block(c + IVec3::new(-1, 1, 0), self.reg.variant(top, 8));

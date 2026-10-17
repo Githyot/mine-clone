@@ -70,10 +70,11 @@ pub enum Biome {
     SoulSandValley = 16,
     CrimsonForest = 17,
     TheEnd = 18,
+    WarpedForest = 19,
 }
 
 impl Biome {
-    pub const COUNT: usize = 19;
+    pub const COUNT: usize = 20;
 
     pub fn from_u8(v: u8) -> Biome {
         match v {
@@ -95,6 +96,7 @@ impl Biome {
             16 => Biome::SoulSandValley,
             17 => Biome::CrimsonForest,
             18 => Biome::TheEnd,
+            19 => Biome::WarpedForest,
             _ => Biome::Plains,
         }
     }
@@ -120,6 +122,7 @@ impl Biome {
             Biome::SoulSandValley => "Soul Sand Valley",
             Biome::CrimsonForest => "Crimson Forest",
             Biome::TheEnd => "The End",
+            Biome::WarpedForest => "Warped Forest",
         }
     }
 
@@ -140,7 +143,7 @@ impl Biome {
             Biome::DarkForest => [0.72, 0.86, 0.72],
             Biome::Badlands => [1.14, 0.94, 0.62],
             Biome::CherryGrove => [1.02, 1.08, 0.9],
-            Biome::NetherWastes | Biome::SoulSandValley | Biome::CrimsonForest | Biome::TheEnd => [1.0, 1.0, 1.0],
+            Biome::NetherWastes | Biome::SoulSandValley | Biome::CrimsonForest | Biome::WarpedForest | Biome::TheEnd => [1.0, 1.0, 1.0],
         }
     }
 

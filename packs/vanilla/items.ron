@@ -153,6 +153,7 @@
     (name: "lute", display_name: Some("Alaúde"), max_stack: Some(1)),
     (name: "flute", display_name: Some("Flauta"), max_stack: Some(1)),
     (name: "cello", display_name: Some("Violoncelo"), max_stack: Some(1)),
+    (name: "nether_wart", display_name: Some("Fungo do Nether"), places: Some("nether_wart_stage0")),
     (name: "blaze_rod", display_name: Some("Vara de Brasa"), fuel: 120.0),
     (name: "glow_berries", display_name: Some("Bagas Brilhantes"), food: Some((hunger: 2, saturation: 1.2)), places: Some("cave_vines")),
     (name: "lich_phylactery", display_name: Some("Filactério do Lich")),

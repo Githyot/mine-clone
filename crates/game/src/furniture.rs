@@ -13,7 +13,7 @@ impl Game {
         }
         let Some(hit) = self.target else { return false };
         let id = self.world.block_or_air(hit.block);
-        if self.reg.get(id).shape != Shape::Chair {
+        if !matches!(self.reg.get(id).shape, Shape::Chair | Shape::Bench) {
             return false;
         }
         // No room to sit with a block right over the seat.
@@ -31,7 +31,7 @@ impl Game {
     pub(crate) fn seat_step(&mut self, sneak: bool) -> bool {
         let Some(p) = self.seat else { return false };
         let id = self.world.block_or_air(p);
-        if self.reg.get(id).shape != Shape::Chair || sneak {
+        if !matches!(self.reg.get(id).shape, Shape::Chair | Shape::Bench) || sneak {
             self.seat = None;
             self.body.pos = p.as_vec3() + Vec3::new(0.5, 0.63, 0.5);
             self.body.vel = Vec3::ZERO;

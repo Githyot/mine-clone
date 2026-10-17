@@ -2257,6 +2257,28 @@ def quartz_block():
     return img
 
 
+def warped(img):
+    """Turn a crimson texture teal: the red becomes green-blue, the dark stays dark."""
+    out = img.copy()
+    rgb = img[..., :3].astype(np.float32)
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    out[..., 0] = np.clip(g * 0.6 + b * 0.2, 0, 255)
+    out[..., 1] = np.clip(r * 0.8 + 6, 0, 255)
+    out[..., 2] = np.clip(r * 0.7 + b * 0.25, 0, 255)
+    return out
+
+
+def warped_nylium_side():
+    img = netherrack("warped_nylium_side")
+    top = warped(crimson_nylium_top())
+    rng = rng_for("crimson_nylium_side_fringe")
+    for x in range(N):
+        d = 3 + int(rng.integers(0, 3))
+        for y in range(d):
+            img[y, x] = top[y, x]
+    return img
+
+
 def nether_registry():
     quartz = pal("#bdb2a6", "#e2dbd2", "#fffaf2")
     gold = pal("#b07a10", "#e0b830", "#fff080")
@@ -2274,6 +2296,12 @@ def nether_registry():
         "crimson_stem_top": crimson_stem_top,
         "crimson_planks": crimson_planks,
         "nether_wart_block": nether_wart_block,
+        "warped_nylium": lambda: warped(crimson_nylium_top()),
+        "warped_nylium_side": warped_nylium_side,
+        "warped_stem": lambda: warped(crimson_stem()),
+        "warped_stem_top": lambda: warped(crimson_stem_top()),
+        "warped_planks": lambda: warped(crimson_planks()),
+        "warped_wart_block": lambda: warped(nether_wart_block()),
         "shroomlight": shroomlight,
         "basalt_side": basalt_side,
         "basalt_top": basalt_top,
@@ -2488,6 +2516,43 @@ def crop(kind, stage, stages):
     return img
 
 
+def nether_wart(stage):
+    """Knobbly red nether wart, taller and redder each stage."""
+    rng = rng_for(f"nether_wart{stage}")
+    img = canvas()
+    red = pal("#3a0a0e", "#5a1218", "#7a1c22", "#9a2a2e", "#b83a3a")
+    h = 3 + stage * 3
+    for c in (2, 6, 10, 13):
+        x0 = c + int(rng.integers(-1, 2))
+        hh = max(2, h - int(rng.integers(0, 3)))
+        for k in range(hh):
+            y = 15 - k
+            x = int(np.clip(x0 + (1 if (k // 2) % 2 else 0), 0, 15))
+            put(img, x, y, red[int(np.clip(k / hh * 3 + rng.normal(0, 0.5), 0, 4))])
+            if k > hh - 3 or rng.random() < 0.3:
+                put(img, int(np.clip(x + 1, 0, 15)), y, red[int(np.clip(2 + stage * 0.6, 0, 4))])
+    return img
+
+
+def drawer_front(wood):
+    """Planks behind a darker frame, with two drawers and their handles."""
+    img = planks(wood)
+    rgb = img[..., :3]
+    dark = WOODS[wood]["plank"][0]
+    rgb[0, :] = dark
+    rgb[15, :] = dark
+    rgb[:, 0] = dark
+    rgb[:, 15] = dark
+    rgb[7:9, :] = dark
+    for y0 in (1, 9):
+        rgb[y0:y0 + 6, 1] = scale_rgb(rgb[y0:y0 + 6, 1], 0.85)
+        rgb[y0 + 5, 1:15] = scale_rgb(rgb[y0 + 5, 1:15], 0.8)
+        hy = y0 + 2
+        rgb[hy:hy + 2, 6:10] = pal("#3a3a3e", "#5c5c62", "#7a7a80", "#909096")[1]
+        rgb[hy, 6:10] = pal("#3a3a3e", "#5c5c62", "#7a7a80", "#909096")[3]
+    return img
+
+
 def farming_registry():
     reg = {"farmland": farmland, "hay_block_side": hay_block_side, "hay_block_top": hay_block_top,
            "botany_pot_side": botany_pot_side, "botany_pot_top": botany_pot_top, "botany_pot_empty": botany_pot_empty,
@@ -2501,6 +2566,10 @@ def farming_registry():
            "red_curtain": lambda: curtain(pal("#5a1010", "#7a1818", "#962222", "#ae2c2c")),
            "white_curtain": lambda: curtain(pal("#a8a49a", "#c4c0b6", "#d8d4ca", "#e8e4da")),
            "green_curtain": lambda: curtain(pal("#1e3a14", "#2a4e1c", "#386226", "#467630"))}
+    for wood in ("oak", "birch", "spruce") + NEW_WOODS:
+        reg[f"{wood}_drawer_front"] = lambda w=wood: drawer_front(w)
+    for k in range(4):
+        reg[f"nether_wart_stage{k}"] = lambda k=k: nether_wart(k)
     for kind, n in (("wheat", 8), ("carrots", 4), ("potatoes", 4), ("beetroots", 4)):
         for k in range(n):
             reg[f"{kind}_stage{k}"] = lambda kind=kind, k=k, n=n: crop(kind, k, n)

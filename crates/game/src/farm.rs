@@ -20,20 +20,27 @@ pub struct Farm {
     /// True for the last (ripe) stage.
     ripe: Vec<bool>,
     farmland: BlockId,
+    /// The block each crop must stand on (farmland, or soul sand for nether wart).
+    soil: Vec<BlockId>,
     t: f32,
 }
 
 impl Farm {
     pub fn new(reg: &BlockRegistry) -> Farm {
         let n = reg.len();
-        let mut f = Farm { next: vec![AIR; n], first: vec![AIR; n], ripe: vec![false; n], farmland: reg.id_or_air("farmland"), t: 0.0 };
-        for (kind, stages) in [("wheat", 8), ("carrots", 4), ("potatoes", 4), ("beetroots", 4)] {
+        let farmland = reg.id_or_air("farmland");
+        let mut f = Farm { next: vec![AIR; n], first: vec![AIR; n], ripe: vec![false; n], farmland, soil: vec![farmland; n], t: 0.0 };
+        let soul = reg.id_or_air("soul_sand");
+        for (kind, stages) in [("wheat", 8), ("carrots", 4), ("potatoes", 4), ("beetroots", 4), ("nether_wart", 4)] {
             let ids: Vec<BlockId> = (0..stages).filter_map(|k| reg.id(&format!("{kind}_stage{k}"))).collect();
             if ids.len() != stages {
                 continue;
             }
             for (k, &id) in ids.iter().enumerate() {
                 f.first[id as usize] = ids[0];
+                if kind == "nether_wart" {
+                    f.soil[id as usize] = soul;
+                }
                 if k + 1 < ids.len() {
                     f.next[id as usize] = ids[k + 1];
                 } else {
@@ -80,7 +87,7 @@ impl Game {
     /// Plant a seed or root on the farmland you're looking at.
     pub(crate) fn plant_crop(&mut self, crop: BlockId) -> bool {
         let Some(hit) = self.target else { return false };
-        if self.world.block_or_air(hit.block) != self.farm.farmland || hit.normal != IVec3::Y {
+        if self.world.block_or_air(hit.block) != self.farm.soil[crop as usize] || hit.normal != IVec3::Y {
             return false;
         }
         let at = hit.block + IVec3::Y;
@@ -100,7 +107,8 @@ impl Game {
     /// A random tick on a crop: it grows a stage (more often with water close by), or breaks
     /// off if its farmland is gone.
     pub(crate) fn crop_tick(&mut self, p: IVec3, id: BlockId, r: u32) {
-        if self.world.block_or_air(p - IVec3::Y) != self.farm.farmland {
+        let soil = self.farm.soil[id as usize];
+        if self.world.block_or_air(p - IVec3::Y) != soil {
             self.world.set_block(p, AIR);
             return;
         }
@@ -108,7 +116,7 @@ impl Game {
         if next == AIR {
             return;
         }
-        let wet = (-4..=4).any(|dx| (-4..=4).any(|dz| self.world.fluid(self.world.block_or_air(p + IVec3::new(dx, -1, dz))) == 1));
+        let wet = soil != self.farm.farmland || (-4..=4).any(|dx| (-4..=4).any(|dz| self.world.fluid(self.world.block_or_air(p + IVec3::new(dx, -1, dz))) == 1));
         // About one stage every 2 to 4 minutes.
         if r % if wet { 3 } else { 6 } == 0 {
             self.world.set_block(p, next);

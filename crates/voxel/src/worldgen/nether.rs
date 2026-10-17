@@ -28,6 +28,9 @@ pub(super) struct NetherPalette {
     nylium: BlockId,
     stem: BlockId,
     wart_block: BlockId,
+    warped_nylium: BlockId,
+    warped_stem: BlockId,
+    warped_wart: BlockId,
     shroomlight: BlockId,
     basalt: BlockId,
     blackstone: BlockId,
@@ -50,6 +53,9 @@ impl NetherPalette {
             nylium: g("crimson_nylium"),
             stem: g("crimson_stem"),
             wart_block: g("nether_wart_block"),
+            warped_nylium: g("warped_nylium"),
+            warped_stem: g("warped_stem"),
+            warped_wart: g("warped_wart_block"),
             shroomlight: g("shroomlight"),
             basalt: g("basalt"),
             blackstone: g("blackstone"),
@@ -66,6 +72,8 @@ impl Generator {
             Biome::SoulSandValley
         } else if warm > 0.14 {
             Biome::CrimsonForest
+        } else if warm < -0.14 {
+            Biome::WarpedForest
         } else {
             Biome::NetherWastes
         }
@@ -122,6 +130,7 @@ impl Generator {
                                     }
                                 }
                                 Biome::CrimsonForest if open_above && yi > NETHER_LAVA => p.nylium,
+                                Biome::WarpedForest if open_above && yi > NETHER_LAVA => p.warped_nylium,
                                 Biome::NetherWastes if open_above && (NETHER_LAVA - 2..=NETHER_LAVA + 3).contains(&yi) && rng.chance(0.3) => p.gravel,
                                 _ => p.netherrack,
                             }
@@ -207,13 +216,15 @@ impl Generator {
                 .unwrap_or(fy);
             let ground = chunk.get(x as usize, fy as usize, z as usize);
             match biome {
-                Biome::CrimsonForest if ground == p.nylium => {
+                Biome::CrimsonForest | Biome::WarpedForest if ground == p.nylium || ground == p.warped_nylium => {
+                    let warped = ground == p.warped_nylium;
+                    let (stem, cap) = if warped { (p.warped_stem, p.warped_wart) } else { (p.stem, p.wart_block) };
                     let h = rng.range(4, 8);
                     if (1..=h + 2).any(|k| chunk.get(x as usize, (fy + k) as usize, z as usize) != AIR) {
                         continue;
                     }
                     for k in 1..=h {
-                        chunk.set(x as usize, (fy + k) as usize, z as usize, p.stem);
+                        chunk.set(x as usize, (fy + k) as usize, z as usize, stem);
                     }
                     let top = fy + h;
                     for dy in -1..=1 {
@@ -225,7 +236,7 @@ impl Generator {
                                 }
                                 let (cx, cy, cz) = (x + dx, top + dy, z + dz);
                                 if chunk.get(cx as usize, cy as usize, cz as usize) == AIR {
-                                    let b = if rng.chance(0.1) { p.shroomlight } else { p.wart_block };
+                                    let b = if rng.chance(0.1) { p.shroomlight } else { cap };
                                     chunk.set(cx as usize, cy as usize, cz as usize, b);
                                 }
                             }

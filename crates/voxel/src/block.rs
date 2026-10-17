@@ -78,6 +78,10 @@ pub enum Shape {
     /// A small pot (Botany Pots idea) with a plant standing in it, crossed like a flower: the
     /// pot takes the side and top pictures, the plant the bottom one.
     Pot,
+    /// A bench to sit on (Another Furniture idea): a long seat on two legs, no back.
+    Bench,
+    /// A shelf board on a wall, with two brackets under it.
+    Shelf,
 }
 
 impl Shape {
@@ -112,6 +116,8 @@ impl Shape {
                 | Shape::Bridge
                 | Shape::Portal
                 | Shape::Pot
+                | Shape::Bench
+                | Shape::Shelf
         )
     }
 }
