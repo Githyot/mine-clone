@@ -7,7 +7,8 @@ No Mac, na primeira vez: clique com o botão direito > Abrir (o app não é assi
 O jogo abre no menu principal (com o último mundo girando ao fundo):
   Um jogador     escolha um mundo (clique duas vezes para entrar) ou crie um novo
                  com nome, semente e modo (Sobrevivência ou Criativo)
-  Multijogador   ainda não (fase 7 do plano)
+  Multijogador   jogar com amigos: entrar no mundo de alguém ou hospedar o seu
+                 (veja JOGAR COM AMIGOS mais abaixo)
   Pacotes de textura, Opções (campo de visão, volumes, sensibilidade, controle...)
 Os mundos se salvam sozinhos a cada minuto e ao sair. "Salvar e sair" volta ao menu.
 Tudo fica na mesma pasta do jogo:
@@ -19,6 +20,24 @@ Tudo fica na mesma pasta do jogo:
   shaderpacks/     pacotes de shader (efeitos de luz e cor); veja shaderpacks/LEIA-ME.txt
   screenshots/     fotos tiradas com F2
   crash.txt        aparece só se o jogo fechar com erro (me mande esse arquivo)
+
+JOGAR COM AMIGOS
+  Hospedar: abra seu mundo e, no menu Esc, clique em "Abrir para amigos"
+    (ou Multijogador > Hospedar mundo...). O jogo mostra um código de convite
+    (ex.: K3F9Q-2ZB7M) no chat e no menu Esc. Mande o código para seus amigos.
+  Entrar: Multijogador > digite o código (ou IP:porta) > Entrar. Mundos abertos
+    na mesma rede (Wi-Fi/cabo) aparecem sozinhos na lista "Na sua rede".
+  Pela internet: o jogo tenta abrir a porta UDP 24454 no roteador (UPnP). Se o
+    roteador não deixar, abra essa porta (UDP) no roteador à mão, ou use um
+    programa de rede virtual (Radmin VPN, ZeroTier, Tailscale) e entre pelo IP dele.
+  Senha (opcional): quem hospeda e quem entra preenchem o campo Senha.
+  Todos precisam da mesma versão do jogo.
+  T ou Enter = chat   / = comando   Tab = quem está jogando e o código
+  Comandos: /lista  /tp <nome>  (quem hospeda: /kick <nome>  /ban <nome>
+            /desbanir <nome>)
+  O mundo não pausa no menu Esc enquanto há amigos. As coisas de cada amigo
+  (inventário, vida, onde parou) ficam salvas no mundo de quem hospeda
+  (saves/<mundo>/players/).
 
 CONTROLES
   W A S D         andar

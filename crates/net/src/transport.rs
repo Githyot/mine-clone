@@ -24,6 +24,8 @@ const MAX_FRAME: usize = 32 << 20;
 
 pub type ConnId = u32;
 
+type Conns = Arc<Mutex<HashMap<ConnId, (mpsc::UnboundedSender<Vec<u8>>, quinn::Connection)>>>;
+
 pub enum HostEvent {
     Joined(ConnId, SocketAddr),
     Message(ConnId, ToHost),
@@ -73,7 +75,7 @@ async fn write_loop(mut w: quinn::SendStream, mut rx: mpsc::UnboundedReceiver<Ve
 pub struct Host {
     pub port: u16,
     events: Receiver<HostEvent>,
-    conns: Arc<Mutex<HashMap<ConnId, (mpsc::UnboundedSender<Vec<u8>>, quinn::Connection)>>>,
+    conns: Conns,
     endpoint: quinn::Endpoint,
     rt: Option<tokio::runtime::Runtime>,
 }

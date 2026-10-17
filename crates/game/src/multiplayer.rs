@@ -197,6 +197,8 @@ struct GuestState {
     mob_target: HashMap<u32, (Vec3, f32)>,
     containers: HashMap<IVec3, u64>,
     addr: String,
+    /// Our own difficulty, back when we leave (the host's applies while we visit).
+    own_difficulty: u8,
 }
 
 fn hash_text(s: &str) -> u64 {
@@ -504,6 +506,20 @@ impl Game {
             let mut d = r.state.yaw - r.shown_yaw;
             d = (d + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
             r.shown_yaw += d * k;
+        }
+    }
+
+    /// Send block changes not yet sent (the world is about to be swapped for another dimension).
+    pub(crate) fn net_flush_log(&mut self) {
+        let log = self.world.net_log.as_mut().map(std::mem::take).unwrap_or_default();
+        if log.is_empty() {
+            return;
+        }
+        let dim = self.dim.as_u8();
+        match &self.net.mode {
+            Mode::Host(_) => self.host_send_blocks(dim, &log, None),
+            Mode::Guest(g) if g.joined => g.guest.send(&ToHost::Blocks(self.block_changes(dim, &log))),
+            _ => {}
         }
     }
 
@@ -951,12 +967,12 @@ impl Game {
             if !g.welcomed {
                 continue;
             }
-            let view = g.view;
+            let view: i32 = g.view;
             let c = ChunkPos::new((s.pos[0].floor() as i32) >> 4, (s.pos[2].floor() as i32) >> 4);
             let mut budget = 24;
             let mut out = Vec::new();
             let mut checked = Vec::new();
-            'scan: for r in 0..=view as i32 {
+            'scan: for r in 0..=view {
                 for dz in -r..=r {
                     for dx in -r..=r {
                         if dx.abs().max(dz.abs()) != r || dx * dx + dz * dz > (view + 1) * (view + 1) {
@@ -1187,6 +1203,7 @@ impl Game {
             mob_target: HashMap::new(),
             containers: HashMap::new(),
             addr,
+            own_difficulty: self.settings.difficulty,
         }));
     }
 
@@ -1527,6 +1544,10 @@ impl Game {
     fn guest_left(&mut self, why: &str) {
         let joined = matches!(&self.net.mode, Mode::Guest(g) if g.joined);
         let addr = matches!(&self.net.mode, Mode::Guest(_)).then(|| self.guest_ref().addr.clone()).unwrap_or_default();
+        if let Mode::Guest(g) = &self.net.mode {
+            self.settings.difficulty = g.own_difficulty;
+            self.mobs.peaceful = g.own_difficulty == 0;
+        }
         self.net.mode = Mode::Off;
         self.net.remotes.clear();
         self.settings.spread_override = None;
@@ -1535,7 +1556,7 @@ impl Game {
         if joined && self.world_open {
             self.quit_to_title();
         }
-        self.net.status = format!("Desconectado de {addr}: {why}");
+        self.net.status = if joined { format!("Desconectado de {addr}: {why}") } else { format!("Não deu para entrar em {addr}: {why}") };
         self.set_screen(Screen::Multiplayer);
     }
 
@@ -1562,6 +1583,8 @@ impl Game {
                 self.world.extra_centers.clear();
             }
             Mode::Guest(g) => {
+                self.settings.difficulty = g.own_difficulty;
+                self.mobs.peaceful = g.own_difficulty == 0;
                 if g.joined && self.world_open {
                     g.guest.send(&ToHost::SavePlayer(self.player_save()));
                     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1926,6 +1949,7 @@ impl Game {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn text_field(&mut self, x: f32, y: f32, w: f32, label: &str, value: &str, field: Field, hidden: bool, mouse: (f32, f32)) {
         let s = self.ui.scale;
         let hh = 16.0 * s;
@@ -1950,6 +1974,8 @@ impl Game {
         let x = (w - bw) / 2.0;
         let bh = 20.0 * s;
         let mut y = 10.0 * s;
+        // A dark panel so the grey labels read over a bright sky.
+        self.ui.rect(x - 8.0 * s, 4.0 * s, bw + 16.0 * s, h - 8.0 * s, [0, 0, 0, 120]);
         self.ui.text_centered(w / 2.0, y, "Multijogador", WHITE);
         y += 22.0 * s;
         if self.clicked {
@@ -2043,7 +2069,7 @@ impl Game {
             self.join(&a);
         }
         y = y.max(h - 52.0 * s);
-        let upnp = format!("Abrir porta no roteador: {}", if self.net.cfg.upnp { "Sim" } else { "Não" });
+        let upnp = format!("Abrir no roteador: {}", if self.net.cfg.upnp { "Sim" } else { "Não" });
         if self.ui.button(x, y, half, bh, "Hospedar mundo...", mouse) && self.clicked {
             self.sfx(Sfx::Click);
             self.worlds = crate::menus::list_worlds(&self.base);
@@ -2063,7 +2089,8 @@ impl Game {
     }
 
     /// Test hooks: MC_HOST=1 hosts the world being opened, MC_JOIN=address joins at start
-    /// (MC_NAME sets the name).
+    /// (MC_NAME sets the name), MC_MP_MENU=1 opens the multiplayer screen, MC_NET_BUILD=1 has a guest
+    /// build a pillar once in.
     pub(crate) fn net_test_hooks(&mut self) {
         self.net.load_config(&self.base.clone());
         if let Ok(n) = std::env::var("MC_NAME") {
@@ -2073,6 +2100,10 @@ impl Game {
             self.net.host_when_ready = true;
         }
         self.net.test_build = std::env::var("MC_NET_BUILD").is_ok();
+        if std::env::var("MC_MP_MENU").is_ok() {
+            // Test hook: open the multiplayer screen (with --title).
+            self.set_screen(Screen::Multiplayer);
+        }
         if let Ok(a) = std::env::var("MC_JOIN") {
             self.join(&a);
         }
