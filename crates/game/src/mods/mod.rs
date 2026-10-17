@@ -10,6 +10,7 @@ pub mod aquaculture;
 pub mod combat;
 pub mod dwellers;
 pub mod ecologics;
+pub mod farmers;
 pub mod macaws;
 pub mod melodies;
 pub mod mounts;
@@ -51,6 +52,7 @@ pub struct Mods {
     pub combat: combat::Combat,
     pub macaws: macaws::Macaws,
     pub ecologics: ecologics::Ecologics,
+    pub farmers: farmers::Farmers,
     pub snow: snow::Snow,
     pub melodies: melodies::Melodies,
 }
@@ -89,6 +91,7 @@ impl Game {
             self.update_combat();
             self.update_macaws(dt);
             self.update_ecologics(dt);
+            self.update_smarter_farmers(dt);
             self.update_snow(dt);
         }
     }

@@ -55,6 +55,11 @@ impl Farm {
         self.first.get(id as usize).is_some_and(|&b| b != AIR)
     }
 
+    /// First stage of a crop that grows on farmland (what a seed plants).
+    pub fn sows_on_farmland(&self, id: BlockId) -> bool {
+        self.first.get(id as usize) == Some(&id) && id != AIR && self.soil[id as usize] == self.farmland
+    }
+
     fn ripe(&self, id: BlockId) -> bool {
         self.ripe.get(id as usize).copied().unwrap_or(false)
     }
@@ -131,6 +136,9 @@ impl Game {
             return;
         }
         self.farm.t = 1.0;
+        if self.farmers_resting() {
+            return;
+        }
         let farmers: Vec<usize> =
             self.mobs.list.iter().enumerate().filter(|(_, m)| m.alive() && self.mobs.reg.defs[m.def].name == FARMER).map(|(i, _)| i).collect();
         for i in farmers {
