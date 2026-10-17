@@ -25,6 +25,7 @@ pub mod saplings;
 pub mod seasons;
 pub mod social;
 pub mod snow;
+pub mod spellbooks;
 
 use serde::{Deserialize, Serialize};
 use winit::keyboard::KeyCode;
@@ -50,6 +51,8 @@ pub struct ModSave {
     pub gem_health: f32,
     /// The parts fitted to the player's modular fishing rod (Aquaculture).
     pub rig: aquaculture::Rig,
+    /// What is written in each spellbook (by the number its stack carries).
+    pub spellbooks: Vec<spellbooks::Book>,
 }
 
 #[derive(Default)]
@@ -64,6 +67,7 @@ pub struct Mods {
     pub mount: mounts::Mount,
     pub aircraft: aircraft::Aircraft,
     pub social: social::Social,
+    pub spellbooks: spellbooks::Spellbooks,
     /// How the player arrives in the dimension being loaded, when a mod portal sent them.
     pub arriving: Option<portals::Arrive>,
     /// What the carpenter table makes (Distant Lands), an index into its list.
@@ -83,6 +87,8 @@ impl Game {
 
     /// Read the open world's mod state (a fresh one for a new world).
     pub(crate) fn load_mods(&mut self) {
+        // The robes' extra mana belongs to the world being left.
+        self.magic.max_mana -= self.mods.spellbooks.mana_bonus;
         let save = std::fs::read_to_string(self.mods_file()).ok().and_then(|t| ron::from_str::<ModSave>(&t).ok()).unwrap_or_default();
         self.mods = Mods { save, last_time: self.time_of_day, ..Default::default() };
     }
@@ -106,6 +112,7 @@ impl Game {
         self.update_seasons(dt);
         self.update_aether(dt);
         self.update_apotheosis(dt);
+        self.update_spellbooks(dt);
         if dt > 0.0 {
             self.update_dwellers(dt);
             self.update_mount(dt);
@@ -125,6 +132,7 @@ impl Game {
         self.aircraft_test_hook();
         self.apoth_test_hook();
         self.gameplay_test_hook();
+        self.spellbooks_test_hook();
     }
 
     /// Right click: a mod block or item that does something. True when it was used.
@@ -137,16 +145,17 @@ impl Game {
             || self.melodies_use()
             || self.aquaculture_use()
             || self.snow_use()
+            || self.spellbooks_use()
     }
 
     /// A key went down. True when a mod used it.
     pub(crate) fn mods_key(&mut self, code: KeyCode) -> bool {
-        self.apoth_key(code)
+        self.apoth_key(code) || self.spellbooks_key(code)
     }
 
     /// Lines for the F3 screen.
     pub(crate) fn mods_info_lines(&self) -> Vec<String> {
-        let mut v = vec![self.season_line(), self.apoth_info_line()];
+        let mut v = vec![self.season_line(), self.apoth_info_line(), self.spellbooks_info_line()];
         v.extend(self.combat_line());
         v
     }
@@ -157,5 +166,6 @@ impl Game {
         self.draw_aircraft_hud(w, h);
         self.draw_apoth_hud(w, h);
         self.draw_rod_hud(w, h);
+        self.draw_spellbooks_hud(w, h);
     }
 }

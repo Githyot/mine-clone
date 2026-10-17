@@ -377,7 +377,7 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
 }
 
 /// Armour materials, by the item-name prefix, with their colour.
-pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 17] = [
+pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 25] = [
     ("leather", [134, 82, 46]),
     ("chainmail", [150, 150, 156]),
     ("iron", [206, 206, 206]),
@@ -396,6 +396,15 @@ pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 17] = [
     ("valkyrie", [208, 210, 216]),
     ("phoenix", [232, 100, 26]),
     ("resonarium", [30, 138, 154]),
+    // Wizard robes, one set per school (tools/moddata/spellbooks.py).
+    ("pyromancer", [176, 52, 22]),
+    ("cryomancer", [92, 160, 214]),
+    ("electromancer", [214, 184, 50]),
+    ("priest", [228, 214, 160]),
+    ("voidwalker", [120, 46, 168]),
+    ("bloodmage", [130, 18, 30]),
+    ("cultist", [18, 110, 116]),
+    ("archevoker", [140, 120, 72]),
 ];
 
 /// The boxes of one armour piece (helmet, chestplate, leggings, boots) on the player model:

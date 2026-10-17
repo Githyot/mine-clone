@@ -93,7 +93,7 @@ impl Magic {
 
 /// Is this item a spell caster?
 pub fn is_caster(name: &str) -> bool {
-    SPELLS.iter().any(|s| s.item == name)
+    SPELLS.iter().any(|s| s.item == name) || crate::mods::spellbooks::is_book(name)
 }
 
 impl Game {

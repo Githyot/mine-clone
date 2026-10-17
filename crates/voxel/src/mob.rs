@@ -255,6 +255,8 @@ pub struct Mob {
     /// harder this mob hits than its kind (world tier, elites).
     pub elite: u8,
     pub power: f32,
+    /// Its death was handed to the game (drops, bosses); set once.
+    pub counted: bool,
     fire_tick: f32,
     rng: Rng,
 }
@@ -304,6 +306,7 @@ impl Mob {
             home: None,
             elite: 0,
             power: 1.0,
+            counted: false,
             fire_tick: 0.0,
             rng,
         }

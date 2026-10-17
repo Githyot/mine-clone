@@ -147,7 +147,7 @@ def ron(m):
               f"spawn: {m['spawn']}"]
     for k, v in kw.items():
         if k == "drops":
-            v = "[" + ", ".join(f"(item: {q(n)}, min: {a}, max: {b})" for n, a, b in v) + "]"
+            v = "[" + ", ".join(f"(item: {q(n)}, min: {a}, max: {b}" + (f", chance: {c[0]})" if c else ")") for n, a, b, *c in v) + "]"
         elif isinstance(v, bool):
             v = "true" if v else "false"
         elif isinstance(v, list):

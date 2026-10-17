@@ -259,9 +259,6 @@ impl Mobs {
             }
             let head = (m.body.pos + Vec3::Y * def.height).floor().as_ivec3();
             let sky = world.light(head) >> 4;
-            // A mob killed outside this loop (the player's hit, a spell) still counts once:
-            // dead with its death clock not started.
-            let was_alive = m.alive() || m.dead_age == 0.0;
             events.clear();
             m.tick(def, world, player, creative, sky, day, dt, &mut events);
             for e in &events {
@@ -298,16 +295,18 @@ impl Mobs {
                     MobEvent::Burning | MobEvent::Died { .. } => {}
                 }
             }
-            if was_alive && !m.alive() {
+            // Every death counts once, however it came (a hit from the player or a spell lands
+            // between ticks, fire and falls inside one).
+            if !m.alive() && !m.counted {
+                m.counted = true;
                 out.deaths.push((m.def, m.body.pos));
-                m.dead_age = m.dead_age.max(1e-6);
             }
         }
         for (i, j, damage) in bites {
             let from = self.list[i].body.center();
-            if self.list[j].hurt(damage, from) {
+            if self.list[j].hurt(damage, from) && !self.list[j].counted {
+                self.list[j].counted = true;
                 out.deaths.push((self.list[j].def, self.list[j].body.pos));
-                self.list[j].dead_age = 1e-6;
                 // A full hunter naps rather than hunting again soon; a town guard keeps watch.
                 self.list[i].fed = if self.reg.defs[self.list[i].def].town { 1.0 } else { 90.0 + (self.next_rand() % 60) as f32 };
             }
@@ -376,6 +375,10 @@ pub fn caster_school(name: &str) -> Option<u8> {
         "swamp_witch" => Some(4),
         "invoker" => Some(3),
         "ember_wraith" => Some(0),
+        // The wizards of the spellbooks mod (mods/spellbooks.rs casts their bigger spells).
+        "pyromancer" => Some(0),
+        "cryomancer" => Some(1),
+        "necromancer" => Some(3),
         _ => None,
     }
 }

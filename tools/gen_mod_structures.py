@@ -851,7 +851,7 @@ def pack_names():
             if m and "in_inventory: false" not in line:
                 items.add(m.group(1))
     mobs = set()
-    for f in (PACK / "mobs.ron", PACK / "mods" / "mobs.ron"):
+    for f in (PACK / "mobs.ron", PACK / "mods" / "mobs.ron", PACK / "mods" / "dims_mobs.ron"):
         mobs |= set(re.findall(r'^\s*name: "([^"]+)"', f.read_text(), re.M))
         mobs |= set(re.findall(r'\(name: "([^"]+)"', f.read_text()))
     return blocks, items, mobs
@@ -4551,6 +4551,100 @@ def towers():
                    ["sand", "sandstone", "smooth_stone"], 142, top_kind="flat"),
         tall_tower("torre_nevada", ["Snowy Plains", "Taiga"], "cobblestone_bricks", "spruce_planks", "light_blue_wool", "spruce",
                    ["snow", "snowy_grass_block", "gravel"], 143),
+    ]
+
+
+def wizard_tower(name, biomes, wall, accent, roof, ground, mobs, seed):
+    """Iron's Spells 'n Spellbooks' idea: a wizard's tower. A round stone tower banded with
+    amethyst under a tall crooked hat of a roof; a library on the first floor, the inscription
+    table on the second, a study at the top. Chests hold scrolls, ink and sometimes the seal
+    that calls the Corrupted Archmage; wizards keep watch."""
+    rng = random.Random(seed)
+    wd = wood_set("dark_oak")
+    c = Canvas(17, 48, 17)
+    patch(c, rng, ground, clear=46)
+    cx = cz = 8
+    H = 27
+    r = 5.6
+    round_tower(c, cx, cz, r, 0, H, wall, floor=wall, windows="glass_pane", every=4)
+    for y in (1, 9, 18, H):
+        c.disc(cx, cz, r, y, accent, hollow=True, thick=1.2)
+    ring = circle_ring(cx, cz, 3.6)
+    spiral_stairs(c, ring, 1, H - 1, wd["stairs"])
+    c.column(cx, cz, 1, H, "bookshelf")
+    floors = (9, 18)
+    for y in floors + (H,):
+        c.disc(cx, cz, r - 1.2, y, wd["planks"])
+        c.disc(cx, cz, 2.6, y, wd["planks"])
+        k = (y - 2) % len(ring)
+        for j in range(3):
+            x, z = ring[(k - j) % len(ring)]
+            c.set(x, y, z, AIR)
+    # Ground floor: a hall lined with shelves.
+    for (x, z) in circle_ring(cx, cz, r - 1.1)[::3]:
+        if abs(z - cz) > 1 or x < cx:
+            c.set(x, 1, z, "bookshelf")
+            c.set(x, 2, z, "bookshelf")
+    c.set(cx, 3, cz + 2, HANG)
+    # First floor: the library.
+    y = floors[0] + 1
+    for (x, z) in circle_ring(cx, cz, r - 1.1)[::2]:
+        c.set(x, y, z, "bookshelf")
+        c.set(x, y + 1, z, "bookshelf")
+    c.set(cx + 2, y, cz - 2, "chest")
+    c.set(cx - 2, y + 3, cz, HANG)
+    # Second floor: the inscription table, a desk and the ink.
+    y = floors[1] + 1
+    c.set(cx + 2, y, cz + 1, "inscription_table")
+    c.set(cx - 2, y, cz + 1, wd["table"])
+    c.set(cx - 2, y + 1, cz + 1, "lantern")
+    c.set(cx + 2, y, cz - 2, "chest")
+    for (x, z) in circle_ring(cx, cz, r - 1.1)[1::4]:
+        c.setif(x, y, z, "bookshelf")
+    # Top: the study under the roof, with the best chest and amethyst.
+    y = H + 1
+    for k in range(4):
+        c.disc(cx, cz, r, y + k, wall, hollow=True, thick=1.2)
+    for (dx, dz) in ((0, -1), (0, 1), (-1, 0), (1, 0)):
+        c.set(round(cx + dx * r), y + 1, round(cz + dz * r), "glass_pane")
+    c.set(cx, y, cz, "chest")
+    c.set(cx + 2, y, cz + 2, "amethyst_block")
+    c.set(cx - 2, y, cz - 2, "amethyst_block")
+    c.set(cx + 2, y, cz - 2, "inscription_table")
+    c.set(cx, y + 3, cz, HANG)
+    # The roof: a tall pointed hat whose tip leans to one side.
+    base = y + 4
+    c.disc(cx, cz, r + 1.6, base, roof)
+    c.disc(cx, cz, r + 0.2, base + 1, accent, hollow=True, thick=1.0)
+    n = 16
+    for k in range(1, n):
+        t = k / n
+        rr = (r + 0.2) * (1 - t) ** 1.25
+        lean = round(t ** 2.2 * 3.5)
+        c.disc(cx + lean, cz, max(rr, 0.45), base + 1 + k, roof)
+    # Door.
+    c.box(cx - 1, 1, cz + 5, cx + 1, 3, cz + 6, AIR)
+    c.set(cx, 1, cz + 5, door(wd["door"], S)[0])
+    c.set(cx, 2, cz + 5, door(wd["door"], S)[1])
+    c.weather(rng, {wall: [wall, "mossy_cobblestone"] if wall == "stone_bricks" else [wall]}, 0.08)
+    loot = [("arcane_ink", 2, 6, 0.85), ("blank_scroll", 2, 6, 0.7), ("spellbook_apprentice", 1, 1, 0.25), ("mana_crystal", 1, 2, 0.3),
+            ("corrupted_seal", 1, 1, 0.12), ("arcane_essence", 1, 1, 0.06), ("lapis_lazuli", 2, 6, 0.4)]
+    for s in ("fireball", "ice_spike", "magic_missile", "heal", "teleport", "fortitude", "arcane_barrier", "lightning_lance",
+              "thorn_roots", "gust", "life_drain", "fangs", "summon_wolves", "haste", "void_rift", "storm_call"):
+        loot.append((f"scroll_{s}", 1, 2, 0.1))
+    loot.append(("scroll_abyss_ray", 1, 1, 0.03))
+    for p in ("pyromancer", "cryomancer", "priest", "voidwalker", "archevoker"):
+        loot.append((f"{p}_{rng.choice(['helmet', 'chestplate', 'leggings', 'boots'])}", 1, 1, 0.05))
+    return struct(name, biomes, c, 40, 0.3, loot=loot, sink=1, foundation=wall, rough=5, mobs=mobs)
+
+
+@group("spellbooks")
+def wizard_towers():
+    return [
+        wizard_tower("torre_arcana", ["Plains", "Forest", "Birch Forest", "Dark Forest", "Swamp"], "stone_bricks", "amethyst_block",
+                     "purple_wool", ["grass_block", "gravel", "cobblestone", "grass_block"], [("pyromancer", 1), ("necromancer", 1)], 171),
+        wizard_tower("torre_arcana_nevada", ["Snowy Plains", "Taiga", "Mountains"], "cobblestone_bricks", "amethyst_block",
+                     "blue_wool", ["snow", "snowy_grass_block", "gravel"], [("cryomancer", 2)], 172),
     ]
 
 
