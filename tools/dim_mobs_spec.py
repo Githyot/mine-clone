@@ -435,3 +435,71 @@ EGGS = {
     "shriek_worm": ((22, 48, 60), (240, 240, 236)), "sculk_centipede": ((18, 51, 65), (217, 214, 200)),
     "sludge": ((37, 64, 61), (70, 230, 220)), "glare": ((63, 122, 58), (207, 232, 106)),
 }
+
+# ---------------------------------------------------------------- Iron's Spells 'n Spellbooks' idea
+# Wizards in robes and pointed hats (their spells are in crates/game/src/mods/spellbooks.rs), the
+# Corrupted Archmage, and the two kinds of allies the summoning spells call.
+
+
+def wizard(robe, trim, skin, hat_look, eyes=(EYE, None), tall=12, staff=None):
+    """A biped in a robe that falls over the legs, with a pointed hat on the head."""
+    m = biped(look(robe["key"] + "h", skin, eyes=eyes), robe, robe, robe, tall=tall)
+    head_pivot = (0, 2 * tall, 0)
+    top = 2 * tall + 8
+    m.box((10, 1, 10), (-5, top, -5), hat_look, "Head", head_pivot)
+    m.box((6, 4, 6), (-3, top + 1, -3), hat_look, "Head", head_pivot)
+    m.box((4, 3, 4), (-2, top + 5, -3), hat_look, "Head", head_pivot)
+    m.box((2, 3, 2), (-1, top + 8, -4), hat_look, "Head", head_pivot)
+    m.box((10, 7, 6), (-5, tall - 7, -3), trim)
+    if staff:
+        m.box((1, 22, 1), (6, tall - 8, -3), staff, "Arm(1)", (6, 2 * tall - 2, 0))
+    m.layer(1, 0.4)
+    return m
+
+
+skin_tone = ["#b08060", "#c8987a", "#dab092"]
+wood_staff = look("wzstaff", ["#3a2614", "#5a3a1c", "#7a5028"])
+pyro = look("pyrobody", ["#5a1408", "#8a2a0a", "#b8401a", "#e8641a"], pattern="cloth")
+mob("pyromancer", "Piromante",
+    wizard(pyro, look("pyrotrim", ["#3a0c04", "#6a1e08", "#e8b923"], pattern="cloth"), skin_tone,
+           look("pyrohat", ["#4a1006", "#7a2008", "#a8380e"], pattern="cloth"), eyes=((255, 160, 60), "glow"), staff=wood_staff),
+    kind="Hostile", health=26, speed=2.4, size=(0.6, 1.95), spawn="Dark", attack=3, ranged=True,
+    biomes=["Plains", "Forest", "Savanna", "Desert", "Badlands"], weight=2, group=(1, 1),
+    drops=[("arcane_ink", 0, 2), ("blank_scroll", 0, 1), ("scroll_fireball", 1, 1, 0.08), ("scroll_fire_breath", 1, 1, 0.05)], xp=10)
+cryo = look("cryobody", ["#16406a", "#1e5a8a", "#4a8ac0", "#8ac0ea"], pattern="cloth")
+mob("cryomancer", "Criomante",
+    wizard(cryo, look("cryotrim", ["#0c2a4a", "#16406a", "#e8f4ff"], pattern="cloth"), ["#a8b8c8", "#c0d0dc", "#dae6ee"],
+           look("cryohat", ["#0e3050", "#1e5a8a", "#3a7ab0"], pattern="cloth"), eyes=((140, 220, 255), "glow"), staff=wood_staff),
+    kind="Hostile", health=26, speed=2.4, size=(0.6, 1.95), spawn="Dark", attack=3, ranged=True,
+    biomes=["Snowy Plains", "Taiga", "Mountains"], weight=3, group=(1, 1),
+    drops=[("arcane_ink", 0, 2), ("blank_scroll", 0, 1), ("scroll_ice_spike", 1, 1, 0.08), ("scroll_frost_nova", 1, 1, 0.05)], xp=10)
+necro = look("necrobody", ["#140a14", "#2a1428", "#4a1a3a", "#6a2448"], pattern="cloth")
+mob("necromancer", "Necromante",
+    wizard(necro, look("necrotrim", ["#0a040a", "#1e0c1c", "#a01828"], pattern="cloth"), ["#8a8a7a", "#a4a494", "#bcbcac"],
+           look("necrohat", ["#0e060e", "#201020", "#3a1a34"], pattern="cloth"), eyes=((240, 60, 80), "glow"),
+           staff=look("necrostaff", ["#a9a69a", "#c4c1b4", "#dcd9cc"])),
+    kind="Hostile", health=30, speed=2.2, size=(0.6, 1.95), spawn="Dark", attack=3, ranged=True,
+    biomes=["Swamp", "Dark Forest"], weight=3, group=(1, 1),
+    drops=[("arcane_ink", 0, 2), ("bone", 0, 3), ("scroll_raise_dead", 1, 1, 0.06), ("scroll_life_drain", 1, 1, 0.06)], xp=12)
+arch = look("archbody", ["#1a0a2a", "#2e1248", "#4e2280", "#6e3aa8"], pattern="cloth")
+mob("archmage", "Arquimago Corrompido",
+    wizard(arch, look("archtrim", ["#120620", "#2a0e40", "#e8b923", "#fff4a0"], pattern="plate"), ["#7a8a8a", "#92a2a0", "#aab8b4"],
+           look("archhat", ["#14061e", "#2a0e40", "#4e2280"], pattern="cloth"), eyes=((96, 240, 224), "glow"),
+           staff=look("archstaff", ["#6a4a10", "#b08a28", "#e8b923"])),
+    kind="Hostile", health=420, speed=2.6, size=(0.7, 2.0), spawn="Never", attack=8, boss=True, scale=1.7,
+    drops=[("spellbook_archmage", 1, 1), ("arcane_essence", 3, 6), ("mana_crystal", 1, 2), ("scroll_abyss_ray", 1, 1)], xp=120)
+bones = look("rsbone", ["#8a877a", "#a9a69a", "#c4c1b4", "#dcd9cc"], pattern="ribs")
+mob("risen_skeleton", "Esqueleto Erguido",
+    biped(look("rshead", ["#a9a69a", "#c4c1b4", "#dcd9cc"], eyes=((240, 60, 80), "glow")), bones,
+          look("rsarm", ["#a9a69a", "#c4c1b4"]), look("rsleg", ["#8a877a", "#a9a69a"]), slim=True),
+    kind="Neutral", health=16, speed=3.0, size=(0.6, 1.95), spawn="Never", attack=4)
+ghost = ["#4a7ab0", "#7aaad8", "#a8d0f0", "#d8f0ff"]
+mob("spectral_wolf", "Lobo Espectral",
+    quadruped((6, 6, 10), (6, 6, 5), 6, 2, look("swfbody", ghost, pattern="cloud"),
+              look("swfhead", ghost, eyes=((240, 250, 255), "glow")), look("swfleg", ghost[:3]),
+              snout=(3, 3, 3), ears=(2, 2, 1), tail=(2, 2, 7)),
+    kind="Neutral", health=14, speed=4.2, size=(0.6, 0.85), spawn="Never", attack=4)
+EGGS.update({
+    "pyromancer": ((138, 42, 10), (232, 185, 35)), "cryomancer": ((30, 90, 138), (232, 244, 255)),
+    "necromancer": ((42, 20, 40), (160, 24, 40)),
+})

@@ -61,6 +61,8 @@ fn style(name: &str) -> Style {
         "sun_spirit" => Style { helper: "fire_minion", school: 0, ground: "hellfire_stone", call: "O Espírito do Sol chama seus lacaios!", special: 2 },
         "otherside_stalker" => Style { helper: "sculk_leech", school: 3, ground: "gloomslate", call: "O Espreitador grita, e o abismo responde!", special: 3 },
         "void_blossom" => Style { helper: "spider", school: 4, ground: "grass_block", call: "A flor solta suas aranhas!", special: 3 },
+        // Its spells come from mods/spellbooks.rs; this is its staff and its disciples.
+        "archmage" => Style { helper: "pyromancer", school: 3, ground: "obsidian", call: "O Arquimago chama seus discípulos!", special: 1 },
         _ => Style { helper: "zombie", school: 4, ground: "dirt", call: "As raízes acordam os mortos!", special: 0 },
     }
 }

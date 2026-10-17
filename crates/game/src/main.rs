@@ -1072,7 +1072,7 @@ impl Game {
             survival: self.survival,
             health: self.health,
             max_health: self.max_health,
-            max_mana: self.magic.max_mana,
+            max_mana: self.magic.max_mana - self.mods.spellbooks.mana_bonus,
             bosses: self.boss.defeated.clone(),
             npcs: self.town.npcs.iter().map(|n| (n.name.clone(), n.home)).collect(),
             raining: self.weather.state.raining,
