@@ -34,8 +34,9 @@ pub struct Immersion {
     prev_swing: f32,
     prev_head_wet: bool,
     least_air: f32,
-    /// Per mob (keyed by its idle phase, which is random per mob): last hurt age and alive.
-    voices: HashMap<u32, (f32, bool)>,
+    /// Per mob (keyed by its idle phase, which is random per mob): last hurt age, alive, and
+    /// walk cycle (for footsteps).
+    voices: HashMap<u32, (f32, bool, f32)>,
     cave_t: f32,
     wind_t: f32,
     animal_t: f32,
@@ -406,6 +407,8 @@ impl Game {
         let eye = self.body.eye();
         let mut calls: Vec<(Fx, Vec3, f32)> = Vec::new();
         let mut hurt_fx: Vec<(Vec3, f32, bool)> = Vec::new();
+        let mut steps: Vec<(Vec3, f32, bool)> = Vec::new();
+        use crate::sfx_extra::Voice as V;
         let mut seen = std::collections::HashSet::new();
         let day = {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
@@ -418,16 +421,28 @@ impl Game {
             seen.insert(key);
             let at = m.body.pos + Vec3::Y * def.height * 0.8;
             let (hurt_age, alive, sleeping) = (m.hurt_age, m.alive(), m.sleeping);
-            let height = def.height;
+            let (walk, walk_speed, grounded, feet) = (m.walk, m.walk_speed, m.body.on_ground, m.body.pos);
+            let (height, width) = (def.height, def.width);
             let Some(voice) = voice_of(&def.name, def.kind == Kind::Hostile) else {
                 continue;
             };
             // Bigger creatures sound deeper.
             let depth = (height / 1.4).clamp(0.5, 2.6).sqrt();
-            let prev = self.fx.voices.insert(key, (hurt_age, alive));
+            let prev = self.fx.voices.insert(key, (hurt_age, alive, walk));
             let near = (at - eye).length() < 28.0;
+            // Footsteps (Presence Footsteps idea): one per leg landing. Four-legged animals
+            // patter paw by paw, lighter each; people and monsters step twice per stride.
+            let four_legs = width >= height * 0.7 && !matches!(voice, V::Murmur | V::Groan | V::Rattle | V::Wail | V::Cackle);
+            if let Some(&(_, _, pw)) = prev.as_ref() {
+                let per = std::f32::consts::PI / if four_legs { 2.0 } else { 1.0 };
+                if alive && grounded && walk_speed > 0.4 && (walk / per).floor() != (pw / per).floor() && (feet - eye).length() < 16.0 && steps.len() < 6 {
+                    let size = (height * width.max(0.3)).sqrt();
+                    let vol = (0.12 + size * 0.15).min(0.5) * if four_legs { 0.7 } else { 1.0 };
+                    steps.push((feet, vol, size > 1.6));
+                }
+            }
             match prev {
-                Some((ph, pa)) => {
+                Some((ph, pa, _)) => {
                     if pa && !alive {
                         if near {
                             calls.push((Fx::Voice(voice, Call::Death, depth), at, 0.9));
@@ -456,6 +471,18 @@ impl Game {
         self.fx.voices.retain(|k, _| seen.contains(k));
         for (fx, at, vol) in calls {
             self.sfx_at(Sfx::Fx(fx), at, vol, 24.0);
+        }
+        for (feet, vol, heavy) in steps {
+            let below = self.world.block_or_air((feet - Vec3::Y * 0.2).floor().as_ivec3());
+            if below == AIR {
+                continue;
+            }
+            let m = crate::audio::Material::of(&self.reg.get(below).name);
+            self.sfx_at(Sfx::Step(m), feet, vol, 16.0);
+            if heavy {
+                // Big animals land with weight.
+                self.sfx_at(Sfx::Fx(Fx::Land(0.1)), feet, vol * 0.8, 20.0);
+            }
         }
         for (at, height, died) in hurt_fx {
             self.mob_hit_fx(at, height, died);
