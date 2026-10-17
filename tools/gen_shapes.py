@@ -8,7 +8,11 @@ iron = (70, 70, 74)
 
 
 def make(wood):
-    planks = Image.open(ROOT / "block" / f"{wood}_planks.png").convert("RGBA")
+    # The 16x16 design (the pack itself holds the 64x64 texture built by tools/tex64/build.py).
+    design = Path(__file__).resolve().parent / "tex64" / "src16" / "block" / f"{wood}_planks.png"
+    planks = Image.open(design if design.exists() else ROOT / "block" / f"{wood}_planks.png").convert("RGBA")
+    if planks.size != (16, 16):
+        planks = planks.resize((16, 16), Image.BOX)
     cols = sorted({planks.getpixel((x, y))[:3] for x in range(16) for y in range(16)}, key=sum)
     dark, mid, light = cols[0], cols[len(cols) // 2], cols[-1]
     edge = tuple(max(0, c - 30) for c in dark)

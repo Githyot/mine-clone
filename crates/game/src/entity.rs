@@ -12,8 +12,11 @@ use crate::paintings::PaintingDef;
 use crate::renderer::Renderer;
 use voxel::mob::{Anim, Mob, MobDef, MobRegistry, DEATH_TIME};
 
+/// The skin layout, in model pixels (mobs.ron's texture coordinates).
 pub const SKIN_W: u32 = 64;
 pub const SKIN_H: u32 = 128;
+/// Texels per model pixel of the base game's skins (64x art: a block is 16 model pixels).
+pub const SKIN_DETAIL: u32 = 4;
 const MAX_PARTS: usize = 16;
 
 #[repr(C)]
@@ -66,47 +69,92 @@ pub struct EntityRenderer {
     pub instance_count: usize,
 }
 
+/// A skin picture: the SKIN_W × SKIN_H layout drawn with `scale` texels per model pixel.
 struct Skin {
-    pixels: Vec<u8>, // RGBA, SKIN_W × SKIN_H
+    pixels: Vec<u8>,
+    scale: u32,
 }
 
 impl Skin {
+    fn width(&self) -> u32 {
+        SKIN_W * self.scale
+    }
+
+    /// Opacity of model pixel (x, y), read at the middle of its texels.
     fn alpha(&self, x: i32, y: i32) -> u8 {
         if x < 0 || y < 0 || x >= SKIN_W as i32 || y >= SKIN_H as i32 {
             return 0;
         }
-        self.pixels[((y as u32 * SKIN_W + x as u32) * 4 + 3) as usize]
+        let s = self.scale;
+        let (tx, ty) = (x as u32 * s + s / 2, y as u32 * s + s / 2);
+        self.pixels[((ty * self.width() + tx) * 4 + 3) as usize]
+    }
+
+    /// The same picture with `scale` texels per model pixel (crisp growth, averaged shrinking).
+    fn rescaled(self, scale: u32) -> Skin {
+        if scale == self.scale {
+            return self;
+        }
+        Skin { pixels: fit_rgba(&self.pixels, self.width(), SKIN_H * self.scale, SKIN_W * scale, SKIN_H * scale), scale }
     }
 }
 
-fn load_skin(base: &Path, name: &str) -> Skin {
+/// Resize an RGBA picture to w × h: by whole multiples with crisp pixels when it grows, by
+/// averaging when it shrinks by powers of two, nearest otherwise.
+fn fit_rgba(px: &[u8], sw: u32, sh: u32, w: u32, h: u32) -> Vec<u8> {
+    if sw == w && sh == h {
+        return px.to_vec();
+    }
+    if sw > w && sw % w == 0 && (sw / w).is_power_of_two() && sh * w == h * sw {
+        let levels = (sw / w).trailing_zeros() + 1;
+        return crate::textures::mip_chain_rect(px, sw, sh, levels).pop().unwrap();
+    }
+    let mut out = vec![0u8; (w * h * 4) as usize];
+    for y in 0..h {
+        for x in 0..w {
+            let (sx, sy) = (x * sw / w, y * sh / h);
+            let s = ((sy * sw + sx) * 4) as usize;
+            let d = ((y * w + x) * 4) as usize;
+            out[d..d + 4].copy_from_slice(&px[s..s + 4]);
+        }
+    }
+    out
+}
+
+/// A mob's skin at `scale` texels per model pixel. Skins may be drawn at any multiple of the
+/// 64 × 128 layout (our own are 4×, a 1× skin from an older pack still fits).
+fn load_skin(base: &Path, name: &str, scale: u32) -> Skin {
     let bytes = std::fs::read(base.join(format!("packs/vanilla/textures/entity/{name}.png")))
         .ok()
         .or_else(|| embedded::ENTITY_TEXTURES.iter().find(|(n, _)| *n == name).map(|(_, b)| b.to_vec()));
-    let mut pixels = vec![0u8; (SKIN_W * SKIN_H * 4) as usize];
+    let (w, h) = (SKIN_W * scale, SKIN_H * scale);
     match bytes.and_then(|b| image::load_from_memory(&b).ok()) {
         Some(img) => {
             let img = img.to_rgba8();
-            for y in 0..img.height().min(SKIN_H) {
-                for x in 0..img.width().min(SKIN_W) {
-                    let p = img.get_pixel(x, y).0;
-                    let i = ((y * SKIN_W + x) * 4) as usize;
-                    pixels[i..i + 4].copy_from_slice(&p);
+            // Pictures that are not 1:2 (old 64 × 64 skins) sit at the top of the layout.
+            let k = (img.width() / SKIN_W).max(1);
+            let mut full = vec![0u8; (SKIN_W * k * SKIN_H * k * 4) as usize];
+            for y in 0..img.height().min(SKIN_H * k) {
+                for x in 0..img.width().min(SKIN_W * k) {
+                    let i = ((y * SKIN_W * k + x) * 4) as usize;
+                    full[i..i + 4].copy_from_slice(&img.get_pixel(x, y).0);
                 }
             }
+            Skin { pixels: fit_rgba(&full, SKIN_W * k, SKIN_H * k, w, h), scale }
         }
         None => {
             log::warn!("missing mob skin '{name}'");
-            for y in 0..64 {
-                for x in 0..64 {
-                    let i = ((y * SKIN_W + x) * 4) as usize;
-                    let m = ((x / 8) + (y / 8)) % 2 == 0;
+            let mut pixels = vec![0u8; (w * h * 4) as usize];
+            for y in 0..64 * scale {
+                for x in 0..64 * scale {
+                    let i = ((y * w + x) * 4) as usize;
+                    let m = ((x / (8 * scale)) + (y / (8 * scale))) % 2 == 0;
                     pixels[i..i + 4].copy_from_slice(if m { &[248, 0, 248, 255] } else { &[0, 0, 0, 255] });
                 }
             }
+            Skin { pixels, scale }
         }
     }
-    Skin { pixels }
 }
 
 /// One face of a box: where texel (0,0) sits, the directions of texture u and v, the outward normal.
@@ -193,8 +241,11 @@ impl MeshBuilder {
                 let tex = [(rx + i) as f32 + 0.5, (ry + 64 + j) as f32 + 0.5];
                 let uvc = [tex[0] / SKIN_W as f32, tex[1] / SKIN_H as f32];
                 let uv4 = [uvc; 4];
-                // Outward face.
-                self.quad([c, c + su, c + su + sv, c + sv], uv4, f.n, f.shade, part);
+                // Outward face: the whole texel square, so a detailed skin shows its detail.
+                let uvp = |x: f32, y: f32| [x / SKIN_W as f32, y / SKIN_H as f32];
+                let (u0, v0) = ((rx + i) as f32, (ry + 64 + j) as f32);
+                let cell = [uvp(u0, v0), uvp(u0 + 1.0, v0), uvp(u0 + 1.0, v0 + 1.0), uvp(u0, v0 + 1.0)];
+                self.quad([c, c + su, c + su + sv, c + sv], cell, f.n, f.shade, part);
                 // Side walls where the neighbouring texel is empty.
                 let open = |di: i32, dj: i32| skin.alpha(rx + i + di, ry + 64 + j + dj) < 128;
                 let side_shade = (f.shade * 0.85).max(0.4);
@@ -314,13 +365,17 @@ fn armor_boxes(def: &MobDef, piece: usize) -> Vec<(usize, Vec3, Vec3, (u16, u16)
     v
 }
 
-/// Our own armour picture for one material, drawn pixel by pixel in the classic style: a
-/// speckled metal surface with dark rims where plates meet, bright glints in the top corners,
-/// a collar and belly plates on the chest, a belt and knee caps on the leggings, soles and
-/// cuffs on the boots and a crest on the helmet. Chainmail is a mesh of rings with gaps.
-fn armor_skin(def: &MobDef, color: [u8; 3], chain: bool, matte: bool) -> Skin {
-    let mut pixels = vec![0u8; (SKIN_W * SKIN_H * 4) as usize];
+/// Our own armour picture for one material, drawn in the classic style at `scale` texels per
+/// model pixel: a softly speckled metal surface with a thin dark rim and a lit bevel where plates
+/// meet, round glints in the top corners, a collar and belly plates on the chest, a belt and knee
+/// caps on the leggings, soles and cuffs on the boots and a crest on the helmet. Chainmail is a
+/// mesh of round rings.
+fn armor_skin(def: &MobDef, color: [u8; 3], chain: bool, matte: bool, scale: u32) -> Skin {
+    let sc = scale.max(1);
+    let w = SKIN_W * sc;
+    let mut pixels = vec![0u8; (w * SKIN_H * sc * 4) as usize];
     let glint = if matte { 0.18 } else { 0.5 };
+    let speck = [0.74, 0.84, 0.84, 0.9, 0.9, 0.9, 0.96, 0.96, 0.96, 0.96, 1.0, 1.0, 1.0, 1.04, 1.08, 0.8];
     for piece in 0..4 {
         for (b, (_, _, size, uv, _)) in armor_boxes(def, piece).into_iter().enumerate() {
             let tex = (size.x as i32, size.y as i32, size.z as i32);
@@ -335,15 +390,10 @@ fn armor_skin(def: &MobDef, color: [u8; 3], chain: bool, matte: bool) -> Skin {
                         if x < 0 || y < 0 || x >= 64 || y >= 64 {
                             continue;
                         }
-                        let h = (((x * 73 + y * 151) ^ (x * y * 17)) + (x * 31 ^ y * 7)) & 15;
-                        // Speckle: mostly mid tones, a few darker and lighter flecks.
-                        let mut k = [0.74, 0.84, 0.84, 0.9, 0.9, 0.9, 0.96, 0.96, 0.96, 0.96, 1.0, 1.0, 1.0, 1.04, 1.08, 0.8][h as usize];
+                        let mut k = 1.0f32;
                         let mut white = 0.0f32;
                         let edge = i == 0 || j == 0 || i == rw - 1 || j == rh - 1;
                         let mut a = 255u8;
-                        if edge && !top && !bottom {
-                            k *= 0.66;
-                        }
                         if bottom {
                             k *= 0.7;
                         }
@@ -414,29 +464,58 @@ fn armor_skin(def: &MobDef, color: [u8; 3], chain: bool, matte: bool) -> Skin {
                                 }
                             }
                         }
-                        // Glints: the top corners of each face catch the light.
-                        if !bottom && !edge && j == 1 && i == 1 {
-                            white = white.max(glint);
-                        } else if !bottom && !edge && ((j == 1 && i == 2) || (j == 2 && i == 1)) {
-                            white = white.max(glint * 0.5);
-                        } else if !edge && h == 15 && !matte && j < rh / 2 {
-                            white = white.max(glint * 0.45);
+                        // Every model pixel is `sc` × `sc` texels; details are drawn at that finer size.
+                        for sj in 0..sc {
+                            for si in 0..sc {
+                                let fx = i as f32 + (si as f32 + 0.5) / sc as f32;
+                                let fy = j as f32 + (sj as f32 + 0.5) / sc as f32;
+                                let (tx, ty) = ((x as u32 * sc + si) as i32, (y as u32 * sc + sj) as i32);
+                                let h = (((tx * 73 + ty * 151) ^ (tx * ty * 17)) + (tx * 31 ^ ty * 7)) & 15;
+                                // Soft speckle: the classic flecks, at a third less contrast.
+                                let mut kk = k * (1.0 + (speck[h as usize] - 0.93) * 0.65);
+                                let mut wh = white;
+                                let mut aa = a;
+                                // A thin dark rim around each plate and a lit bevel just inside it.
+                                let rim = (fx.min(fy).min(rw as f32 - fx).min(rh as f32 - fy)) * sc as f32;
+                                if !top && !bottom {
+                                    if rim < 1.0 {
+                                        kk *= 0.62;
+                                    } else if rim < 2.0 && (fx < 1.0 || fy < 1.0) {
+                                        kk *= 1.1;
+                                    } else if rim < 2.0 {
+                                        kk *= 0.86;
+                                    }
+                                }
+                                // Round glint in the top-left corner of each face.
+                                if !bottom {
+                                    let d = ((fx - 1.4).powi(2) + (fy - 1.4).powi(2)).sqrt();
+                                    wh = wh.max(glint * (1.0 - d / 1.2).clamp(0.0, 1.0));
+                                }
+                                if !edge && h == 15 && !matte && j < rh / 2 {
+                                    wh = wh.max(glint * 0.3);
+                                }
+                                if chain && !(piece == 0 && front && j < 3) && !edge {
+                                    let (cx, cy) = (fx.fract() - 0.5, fy.fract() - 0.5);
+                                    let r = (cx * cx + cy * cy).sqrt();
+                                    if r < 0.2 || ((i + j) % 2 == 1 && r > 0.46) {
+                                        aa = 0;
+                                    }
+                                    kk *= 1.0 + (0.3 - r) * 0.5 - cy * 0.3;
+                                }
+                                let o = ((ty as u32 * w + tx as u32) * 4) as usize;
+                                for c in 0..3 {
+                                    let v = (color[c] as f32 * kk).min(255.0);
+                                    pixels[o + c] = (v + (255.0 - v) * wh) as u8;
+                                }
+                                pixels[o + 3] = aa;
+                            }
                         }
-                        if chain && (i + j) % 2 == 1 && !edge && !(piece == 0 && front && j < 3) {
-                            a = 0;
-                        }
-                        let o = ((y as u32 * SKIN_W + x as u32) * 4) as usize;
-                        for c in 0..3 {
-                            let v = (color[c] as f32 * k).min(255.0);
-                            pixels[o + c] = (v + (255.0 - v) * white) as u8;
-                        }
-                        pixels[o + 3] = a;
                     }
                 }
             }
         }
     }
-    Skin { pixels }
+    Skin { pixels, scale: sc }
 }
 
 fn armor_mesh(def: &MobDef, piece: usize, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
@@ -452,34 +531,43 @@ fn armor_mesh(def: &MobDef, piece: usize, layer: u32) -> (Vec<EntityVertex>, Vec
 }
 
 impl EntityRenderer {
-    pub fn new(r: &Renderer, reg: &MobRegistry, paintings: &[PaintingDef], base: &Path) -> EntityRenderer {
+    /// `texture_res` is the texture resolution setting (pixels per block face): skins get one
+    /// texel per model pixel at 16, up to SKIN_DETAIL at 64 and above.
+    pub fn new(r: &Renderer, reg: &MobRegistry, paintings: &[PaintingDef], base: &Path, texture_res: u32) -> EntityRenderer {
         let device = &r.device;
-        let mut skins: Vec<Skin> = reg.defs.iter().map(|d| load_skin(base, &d.name)).collect();
+        let scale = (texture_res / 16).clamp(1, SKIN_DETAIL).next_power_of_two();
+        let mut skins: Vec<Skin> = reg.defs.iter().map(|d| load_skin(base, &d.name, scale)).collect();
         let back = crate::paintings::back_pixels(base);
-        skins.extend(paintings.iter().map(|p| Skin { pixels: crate::paintings::skin_pixels(p, &back) }));
+        skins.extend(paintings.iter().map(|p| Skin { pixels: crate::paintings::skin_pixels(p, &back), scale: 1 }.rescaled(scale)));
         let player = reg.id("player").map(|i| &reg.defs[i]);
         let armor_layer0 = skins.len();
         if let Some(pd) = player {
-            skins.extend(ARMOR_MATERIALS.iter().map(|(n, c)| armor_skin(pd, *c, *n == "chainmail", *n == "leather")));
+            skins.extend(ARMOR_MATERIALS.iter().map(|(n, c)| armor_skin(pd, *c, *n == "chainmail", *n == "leather", scale)));
         }
         let layers = skins.len().max(1) as u32;
+        let (tw, th) = (SKIN_W * scale, SKIN_H * scale);
+        let levels = scale.trailing_zeros() + 1;
         let tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("mob skins"),
-            size: wgpu::Extent3d { width: SKIN_W, height: SKIN_H, depth_or_array_layers: layers },
-            mip_level_count: 1,
+            size: wgpu::Extent3d { width: tw, height: th, depth_or_array_layers: layers },
+            mip_level_count: levels,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
+        // Mip levels down to one texel per model pixel, so detailed skins don't shimmer far away.
         for (i, s) in skins.iter().enumerate() {
-            r.queue.write_texture(
-                wgpu::TexelCopyTextureInfo { texture: &tex, mip_level: 0, origin: wgpu::Origin3d { x: 0, y: 0, z: i as u32 }, aspect: wgpu::TextureAspect::All },
-                &s.pixels,
-                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(SKIN_W * 4), rows_per_image: Some(SKIN_H) },
-                wgpu::Extent3d { width: SKIN_W, height: SKIN_H, depth_or_array_layers: 1 },
-            );
+            for (level, data) in crate::textures::mip_chain_rect(&s.pixels, tw, th, levels).iter().enumerate() {
+                let (lw, lh) = (tw >> level, th >> level);
+                r.queue.write_texture(
+                    wgpu::TexelCopyTextureInfo { texture: &tex, mip_level: level as u32, origin: wgpu::Origin3d { x: 0, y: 0, z: i as u32 }, aspect: wgpu::TextureAspect::All },
+                    data,
+                    wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(lw * 4), rows_per_image: Some(lh) },
+                    wgpu::Extent3d { width: lw, height: lh, depth_or_array_layers: 1 },
+                );
+            }
         }
         let view = tex.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
         let skin_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {

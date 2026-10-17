@@ -480,6 +480,7 @@ impl Game {
             format!("Balanço da visão: {}", onoff(st.view_bobbing)),
             format!("Itens no chão: {}", if st.flat_drops { "Deitados" } else { "Flutuando" }),
             format!("Construções: {}", if st.sparse_structures { "Espaçadas" } else { "Normais" }),
+            format!("Resolução das texturas: {}x", st.texture_resolution),
             "Controle...".to_string(),
             "Pacotes de textura...".to_string(),
         ]
@@ -552,6 +553,15 @@ impl Game {
             13 => st.flat_drops = !st.flat_drops,
             14 => st.sparse_structures = !st.sparse_structures,
             15 => {
+                st.texture_resolution = match st.texture_resolution {
+                    16 => 32,
+                    32 => 64,
+                    64 => 128,
+                    _ => 16,
+                };
+                self.reload_textures();
+            }
+            16 => {
                 self.options_back = self.screen;
                 self.set_screen(Screen::Controls);
             }

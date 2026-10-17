@@ -60,12 +60,19 @@ fn gui_names() -> Vec<String> {
     v
 }
 
-/// Gather the interface pictures of the enabled packs (first pack wins) into one atlas.
-fn load_gui(packs: &mut [Pack]) -> GuiAtlas {
+/// Gather the interface pictures of the enabled packs (first pack wins) into one atlas. What no
+/// pack has comes from the base game's own interface art (`packs/vanilla/textures/gui/`).
+fn load_gui(packs: &mut [Pack], base: &Path) -> GuiAtlas {
     let mut imgs: Vec<(String, image::RgbaImage)> = Vec::new();
     for name in gui_names() {
         let rel = format!("assets/minecraft/textures/gui/{name}.png");
-        if let Some(img) = packs.iter_mut().find_map(|p| p.read(&rel).and_then(|b| decode(&b))) {
+        let found = packs.iter_mut().find_map(|p| p.read(&rel).and_then(|b| decode(&b))).or_else(|| {
+            std::fs::read(base.join("packs/vanilla/textures/gui").join(format!("{name}.png")))
+                .ok()
+                .or_else(|| embedded::GUI_TEXTURES.iter().find(|(n, _)| *n == name).map(|(_, b)| b.to_vec()))
+                .and_then(|b| decode(&b))
+        });
+        if let Some(img) = found {
             imgs.push((name, first_frame(img)));
         }
     }
@@ -257,9 +264,15 @@ fn tint(img: &mut image::RgbaImage, c: [u8; 3]) {
     }
 }
 
+/// Fit a texture to the array's layer size: smaller pictures grow with crisp pixels, bigger
+/// ones (a 64x texture with the resolution capped at 16x or 32x) shrink by averaging, like mipmaps.
 fn resize_nearest(img: &image::RgbaImage, size: u32) -> Vec<u8> {
     if img.width() == size && img.height() == size {
         return img.as_raw().clone();
+    }
+    if img.width() > size && img.width() == img.height() && img.width().is_power_of_two() {
+        let levels = img.width().trailing_zeros() - size.trailing_zeros() + 1;
+        return mip_chain(img.as_raw(), img.width(), levels).pop().unwrap();
     }
     let mut out = vec![0u8; (size * size * 4) as usize];
     for y in 0..size {
@@ -292,7 +305,12 @@ pub fn vanilla_texture_dir(base: &Path) -> Option<PathBuf> {
     d.is_dir().then_some(d)
 }
 
-pub fn load(names: &[String], base: &Path, enabled_packs: &[String]) -> TextureSet {
+/// Resolution of the base game's own textures (pixels per block face).
+pub const BASE_RESOLUTION: u32 = 64;
+
+/// Load every texture into one array. `max_res` caps the layer size (16, 32, 64...): the setting
+/// for computers with little video memory; packs above it are shrunk smoothly.
+pub fn load(names: &[String], base: &Path, enabled_packs: &[String], max_res: u32) -> TextureSet {
     let mut packs: Vec<Pack> = enabled_packs.iter().filter_map(|n| Pack::open(&base.join("resourcepacks").join(n))).collect();
     let used: Vec<String> = packs.iter().map(|p| p.name.clone()).collect();
     let vanilla_dir = vanilla_texture_dir(base);
@@ -355,22 +373,30 @@ pub fn load(names: &[String], base: &Path, enabled_packs: &[String]) -> TextureS
         images.push(found.map(first_frame));
     }
 
-    // All layers of a texture array share one size: use the largest (packs can be 32x, 64x...).
-    let size = images.iter().flatten().map(|i| i.width()).max().unwrap_or(16).clamp(16, 256).next_power_of_two();
+    // All layers of a texture array share one size: use the largest (packs can be 16x, 32x,
+    // 128x...; a 16x Minecraft pack over our 64x art grows 4x, pixel for pixel).
+    let cap = max_res.clamp(16, 256).next_power_of_two();
+    let size = images.iter().flatten().map(|i| i.width()).max().unwrap_or(16).clamp(16, 256).next_power_of_two().min(cap);
     let layers = images.iter().map(|i| i.as_ref().map(|i| resize_nearest(i, size)).unwrap_or_else(|| missing(size))).collect();
-    let gui = load_gui(&mut packs);
+    let gui = load_gui(&mut packs, base);
     TextureSet { size, layers, packs: used, gui }
 }
 
 /// Mip chain for one layer, averaging only visible pixels so cut-out edges don't darken.
 pub fn mip_chain(base: &[u8], size: u32, levels: u32) -> Vec<Vec<u8>> {
+    mip_chain_rect(base, size, size, levels)
+}
+
+/// Mip chain of a w × h picture (both halve at every level).
+pub fn mip_chain_rect(base: &[u8], w: u32, h: u32, levels: u32) -> Vec<Vec<u8>> {
     let mut out = vec![base.to_vec()];
-    let mut s = size;
+    let (mut s, mut sh) = (w, h);
     for _ in 1..levels {
         let prev = out.last().unwrap();
         let ns = (s / 2).max(1);
-        let mut next = vec![0u8; (ns * ns * 4) as usize];
-        for y in 0..ns {
+        let nh = (sh / 2).max(1);
+        let mut next = vec![0u8; (ns * nh * 4) as usize];
+        for y in 0..nh {
             for x in 0..ns {
                 let mut c = [0u32; 4];
                 let mut wsum = 0u32;
@@ -396,6 +422,7 @@ pub fn mip_chain(base: &[u8], size: u32, levels: u32) -> Vec<Vec<u8>> {
         }
         out.push(next);
         s = ns;
+        sh = nh;
     }
     out
 }

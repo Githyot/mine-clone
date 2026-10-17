@@ -46,6 +46,19 @@ fn main() {
         }
         code.push_str("];\n");
     }
+    // Interface art, keyed by its path under textures/gui/ without ".png" ("sprites/hud/hotbar").
+    let gui_dir = root.join("packs/vanilla/textures/gui");
+    println!("cargo:rerun-if-changed={}", gui_dir.display());
+    let mut gui = Vec::new();
+    walk_png(&gui_dir, &mut gui);
+    gui.sort();
+    code.push_str("pub static GUI_TEXTURES: &[(&str, &[u8])] = &[\n");
+    for p in &gui {
+        let key = p.strip_prefix(&gui_dir).unwrap().with_extension("").to_string_lossy().replace('\\', "/");
+        code.push_str(&format!("    ({:?}, include_bytes!({:?})),\n", key, p.display().to_string()));
+    }
+    code.push_str("];\n");
+
     for (var, file) in [("MOBS_RON", "packs/vanilla/mobs.ron"), ("PAINTINGS_RON", "packs/vanilla/paintings.ron"), ("ITEMS_RON", "packs/vanilla/items.ron"), ("RECIPES_RON", "packs/vanilla/recipes.ron"), ("STRUCTURES_RON", "packs/vanilla/structures.ron")] {
         let p = root.join(file);
         println!("cargo:rerun-if-changed={}", p.display());
@@ -72,6 +85,18 @@ fn main() {
     let tracks_src = if tracks.exists() { format!("include_str!({:?})", tracks.display().to_string()) } else { "\"[]\"".into() };
     code.push_str(&format!("pub static TRACKS_JSON: &str = {tracks_src};\n"));
     fs::write(out, code).unwrap();
+}
+
+fn walk_png(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+    for e in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            println!("cargo:rerun-if-changed={}", p.display());
+            walk_png(&p, out);
+        } else if p.extension().is_some_and(|x| x == "png") {
+            out.push(p);
+        }
+    }
 }
 
 /// The program icon of the Windows .exe (the chameleon on a dirt block), compiled with windres
