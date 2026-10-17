@@ -1630,6 +1630,7 @@ RECOLORED = {
         ZSHIRT=pal("#6a5010", "#806216", "#96741c", "#ac8824"),
         ZPANTS=pal("#2a1414", "#381c1a", "#462420", "#542c26"))),
     "ash_skeleton": ("skeleton", dict(BONE=pal("#26242a", "#323036", "#3e3c42", "#4a484e", "#58565c"))),
+    "ember_wraith": ("skeleton", dict(BONE=pal("#8a5a10", "#b07818", "#d09a22", "#e8bc3a", "#fcdc6a"))),
     "fire_imp": ("skeleton", dict(BONE=pal("#7a1e0c", "#9a2c10", "#ba4414", "#d8641c", "#ee8a2a"))),
     "crimson_boar": ("pig", dict(
         PIG=pal("#4a1018", "#5e1620", "#721c28", "#862430", "#982c38"),
@@ -2097,7 +2098,7 @@ def main():
              "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian",
              "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
              "goblin_trader", "mutant_zombie", "npc_guard", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton",
-             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay", "lich", "obsidilith", "void_blossom", "marauder", "invoker", "brute"]
+             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay", "lich", "obsidilith", "void_blossom", "marauder", "invoker", "brute", "ember_wraith"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols

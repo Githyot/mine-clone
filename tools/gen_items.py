@@ -543,6 +543,30 @@ def mana_crystal():
     return outline(from_map(rows, pmap(p)))
 
 
+def blaze_rod():
+    """A glowing rod of ember, bright at its heart."""
+    rows = [
+        "................",
+        "............oo..",
+        "...........oYo..",
+        "..........oYo...",
+        ".........oYo....",
+        "........oYo.....",
+        ".......oYo......",
+        "......oYo.......",
+        ".....oYo........",
+        "....oYo.........",
+        "...oYo..........",
+        "..oYo...........",
+        "..oo............",
+        "................",
+        "................",
+        "................",
+    ]
+    cols = {"o": hexrgb("#c46a1a"), "Y": hexrgb("#ffd060")}
+    return outline(from_map(rows, cols))
+
+
 def glow_berries():
     """A sprig with three glowing orange berries."""
     rows = [
@@ -1963,6 +1987,7 @@ def item_registry():
     reg["ancient_seed"] = ancient_seed
     reg["lich_phylactery"] = lich_phylactery
     reg["glow_berries"] = glow_berries
+    reg["blaze_rod"] = blaze_rod
     reg["obsidian_heart"] = obsidian_heart
     reg["void_seed"] = void_seed
     reg["guardian_heart"] = guardian_heart

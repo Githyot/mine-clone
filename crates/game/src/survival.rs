@@ -2437,7 +2437,7 @@ impl Game {
         }
         for m in &self.mobs.list {
             // Fire imps glow like a torch.
-            let glows = self.mobs.reg.defs[m.def].name == "fire_imp";
+            let glows = matches!(self.mobs.reg.defs[m.def].name.as_str(), "fire_imp" | "ember_wraith");
             if (m.on_fire > 0.0 || glows) && m.alive() {
                 found.push((m.body.pos.distance(eye), m.body.pos + Vec3::Y * 0.8, if glows { 0.7 } else { 0.85 }));
             }

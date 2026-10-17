@@ -611,6 +611,73 @@ def raider_outpost():
     }
 
 
+def nether_fortress():
+    """A nether brick fortress (YUNG's Better Nether Fortresses idea): a long bridge on arches
+    over the lava with fenced walkways, and a two-storey keep in the middle with a chest,
+    soul lanterns of shroomlight and iron-barred windows."""
+    W, D, H = 29, 11, 12
+    layers = [grid(W, D, ".") for _ in range(H)]
+    deck = 4
+    # The bridge running east-west, with arches underneath.
+    for x in range(W):
+        for z in range(3, 8):
+            layers[deck][z][x] = "N"
+            if z in (3, 7):
+                layers[deck + 1][z][x] = "f"
+        if x % 6 == 0:
+            for y in range(deck):
+                for z in (3, 7):
+                    layers[y][z][x] = "N"
+        elif x % 6 in (1, 5):
+            for z in (3, 7):
+                layers[deck - 1][z][x] = "N"
+    # The keep in the middle.
+    kx0, kx1 = 9, 19
+    for y in range(deck, H):
+        for z in range(D):
+            for x in range(kx0, kx1 + 1):
+                edge = x in (kx0, kx1) or z in (0, D - 1)
+                if y in (deck, deck + 4, H - 1):
+                    layers[y][z][x] = "N"
+                elif edge:
+                    layers[y][z][x] = "N"
+                else:
+                    layers[y][z][x] = "."
+    for y in (deck + 1, deck + 2):
+        for z in (4, 5, 6):
+            layers[y][z][kx0] = "."
+            layers[y][z][kx1] = "."
+    for y in (deck + 2, deck + 6):
+        layers[y][0][14] = "B"
+        layers[y][D - 1][14] = "B"
+    layers[deck + 1][2][11] = "c"
+    layers[deck + 3][5][14] = "L"
+    layers[deck + 7][5][14] = "L"
+    layers[deck + 5][8][17] = "c"
+    for z in range(1, D - 1):  # a stair hole to the upper floor
+        pass
+    layers[deck + 4][2][17] = "."
+    layers[deck + 4][2][16] = "."
+    for k, (x, y) in enumerate(((16, deck + 1), (17, deck + 2), (18, deck + 3))):
+        layers[y][2][min(x, kx1 - 1)] = "N"
+    # Crenellations on the roof.
+    for x in range(kx0, kx1 + 1):
+        if x % 2 == 0:
+            layers[H - 1][0][x] = "N"
+    return {
+        "name": "fortaleza_do_nether",
+        "biomes": ["Nether Wastes", "Soul Sand Valley", "Crimson Forest"],
+        "spacing": 14,
+        "chance": 0.55,
+        "foundation": "nether_bricks",
+        "palette": {"N": "nether_bricks", "f": "nether_brick_fence", "B": "iron_bars", "c": "chest", "L": "shroomlight"},
+        "layers": [rows(l) for l in layers],
+        "loot": [("", "gold_ingot", 2, 6, 0.6), ("", "diamond", 1, 2, 0.25), ("", "iron_ingot", 2, 5, 0.5),
+                 ("", "blaze_rod", 1, 3, 0.4), ("", "obsidian", 2, 5, 0.3), ("", "fire_staff", 1, 1, 0.08),
+                 ("", "life_crystal", 1, 1, 0.12)],
+    }
+
+
 def windmill():
     """A windmill (Towns and Towers idea): a cobblestone base, a plank cap and four sails of
     wool on fence arms over the north side."""
@@ -705,6 +772,7 @@ structs = [
     basalt_altar(),
     brick_shrine(),
     raider_outpost(),
+    nether_fortress(),
 ]
 OUT.write_text(ron(structs))
 print(f"wrote {OUT} ({len(structs)} structures)")

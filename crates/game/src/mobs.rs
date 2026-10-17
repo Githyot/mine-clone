@@ -370,6 +370,7 @@ pub fn caster_school(name: &str) -> Option<u8> {
         "fire_imp" => Some(0),
         "swamp_witch" => Some(4),
         "invoker" => Some(3),
+        "ember_wraith" => Some(0),
         _ => None,
     }
 }

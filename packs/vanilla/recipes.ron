@@ -200,6 +200,8 @@
         (pattern: ["##", "##", "##"], key: {'#': "oak_planks"}, result: "oak_door", count: 3),
         (pattern: ["###", "###"], key: {'#': "oak_planks"}, result: "oak_trapdoor", count: 2),
         (pattern: ["##", "##"], key: {'#': "cobblestone"}, result: "cobblestone_bricks", count: 4),
+        (pattern: ["#|#", "#|#"], key: {'#': "nether_bricks", '|': "nether_bricks"}, result: "nether_brick_fence", count: 6),
+        (pattern: [" R ", " R ", " | "], key: {'R': "blaze_rod", '|': "stick"}, result: "fire_staff", count: 1),
         (pattern: ["##", "##"], key: {'#': "mossy_cobblestone"}, result: "mossy_cobblestone_bricks", count: 4),
         (pattern: ["#  ", "## ", "###"], key: {'#': "cobblestone_bricks"}, result: "cobblestone_brick_stairs", count: 4),
         (pattern: ["###"], key: {'#': "cobblestone_bricks"}, result: "cobblestone_brick_slab", count: 6),

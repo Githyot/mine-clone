@@ -136,6 +136,7 @@
     (name: "mana_crystal", display_name: Some("Cristal de Mana")),
     // Bosses: the summon item, its trophy material and what it makes.
     (name: "ancient_seed", display_name: Some("Semente Ancestral")),
+    (name: "blaze_rod", display_name: Some("Vara de Brasa"), fuel: 120.0),
     (name: "glow_berries", display_name: Some("Bagas Brilhantes"), food: Some((hunger: 2, saturation: 1.2)), places: Some("cave_vines")),
     (name: "lich_phylactery", display_name: Some("Filactério do Lich")),
     (name: "obsidian_heart", display_name: Some("Coração de Obsidiana")),
