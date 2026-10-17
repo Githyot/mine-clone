@@ -151,17 +151,33 @@ impl Game {
         Some(seen.into_iter().collect())
     }
 
-    fn in_portal(&self) -> bool {
+    /// Standing in a portal: Some(true) for an end portal, Some(false) for a nether portal.
+    fn portal_here(&self) -> Option<bool> {
         let p = self.body.pos;
-        [p, p + Vec3::Y].iter().any(|q| self.reg.get(self.world.block_or_air(q.floor().as_ivec3())).shape == Shape::Portal)
+        [p, p + Vec3::Y * 0.2, p + Vec3::Y].iter().find_map(|q| {
+            let b = self.reg.get(self.world.block_or_air(q.floor().as_ivec3()));
+            (b.shape == Shape::Portal).then(|| b.name.starts_with("end_"))
+        })
     }
 
     /// Standing in a portal for a few seconds takes the player to the other dimension.
     pub(crate) fn portal_step(&mut self, dt: f32) {
-        if !self.in_portal() {
-            self.portal_t = if self.portal_t < 0.0 { (self.portal_t + dt).min(0.0) } else { 0.0 };
+        if self.dim == Dim::End && self.body.pos.y < -24.0 {
+            // Fell off into the void.
+            if self.survival {
+                self.damage(4.0 * dt * 10.0, None);
+            } else {
+                let at = self.end_arrival();
+                self.body.pos = at;
+                self.body.vel = Vec3::ZERO;
+                self.fall_peak = at.y;
+            }
             return;
         }
+        let Some(end) = self.portal_here() else {
+            self.portal_t = if self.portal_t < 0.0 { (self.portal_t + dt).min(0.0) } else { 0.0 };
+            return;
+        };
         if self.portal_t < 0.0 {
             // Just came through: step out before going back.
             self.portal_t = -0.5;
@@ -171,8 +187,21 @@ impl Game {
             self.sfx(Sfx::Portal);
         }
         self.portal_t += dt;
+        if end && self.portal_t >= 0.25 {
+            // End portals take you at once: to the End, or from it back home.
+            self.portal_t = 0.0;
+            if self.dim == Dim::End {
+                let home = self.home_spot();
+                self.arrive_plain = true;
+                self.travel(Dim::Overworld, home);
+            } else {
+                let at = self.end_arrival();
+                self.travel(Dim::End, at);
+            }
+            return;
+        }
         let need = if self.survival { 4.0 } else { 1.0 };
-        if self.portal_t >= need {
+        if !end && self.portal_t >= need {
             self.portal_t = 0.0;
             let to = if self.dim == Dim::Overworld { Dim::Nether } else { Dim::Overworld };
             let p = self.body.pos;
@@ -222,16 +251,30 @@ impl Game {
             return;
         }
         let Some(at) = self.arrival.take() else { return };
-        let spot = self.find_portal(at).unwrap_or_else(|| self.build_portal(at));
+        let spot = if self.dim == Dim::End {
+            self.arrive_in_end()
+        } else if std::mem::take(&mut self.arrive_plain) {
+            if let Some(b) = self.surv.spawn {
+                b.as_vec3() + Vec3::new(0.5, 0.0, 0.5)
+            } else {
+            let (x, z) = (at.x.floor() as i32, at.z.floor() as i32);
+            let y = self.world.surface_y(x, z).map(|y| y + 1).unwrap_or(at.y as i32);
+            Vec3::new(x as f32 + 0.5, y as f32, z as f32 + 0.5)
+            }
+        } else {
+            self.find_portal(at).unwrap_or_else(|| self.build_portal(at))
+        };
         self.body.pos = spot;
         self.body.vel = Vec3::ZERO;
         self.fall_peak = spot.y;
         self.portal_t = -0.5;
         self.set_screen(Screen::Playing);
-        if self.dim == Dim::Nether {
-            self.toast("Nether", 3.0);
+        match self.dim {
+            Dim::Nether => self.toast("Nether", 3.0),
+            Dim::End => self.toast("O End", 3.0),
+            Dim::Overworld => {}
         }
-        if self.args.mobs && std::env::var("MC_NETHER").is_ok() {
+        if self.args.mobs && (std::env::var("MC_NETHER").is_ok() || std::env::var("MC_END").is_ok()) {
             // Test hook: the Nether's creatures lined up in front of the portal.
             self.spawn_demo_mobs();
         }
@@ -246,10 +289,10 @@ impl Game {
             for dx in -16..=16 {
                 for y in 1..top {
                     let p = IVec3::new(c.x + dx, y, c.z + dz);
-                    if self.reg.get(self.world.block_or_air(p)).shape != Shape::Portal {
+                    if self.reg.get(self.world.block_or_air(p)).name != "nether_portal" {
                         continue;
                     }
-                    if self.reg.get(self.world.block_or_air(p - IVec3::Y)).shape == Shape::Portal {
+                    if self.reg.get(self.world.block_or_air(p - IVec3::Y)).name == "nether_portal" {
                         continue;
                     }
                     let d = (p - c).as_vec3().length_squared();

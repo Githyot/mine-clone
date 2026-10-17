@@ -22,6 +22,15 @@ fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
     let dir = normalize(wp.xyz / wp.w);
     let s = g.sun_dir.xyz;
     let daylight = g.fog_color.w;
+    // The End: a dark violet void with faint fixed specks.
+    if (g.weather.z > 1.5 && g.fog.z < 0.5) {
+        var c = g.fog_color.rgb * (1.0 + 0.6 * max(dir.y, 0.0));
+        let h = hash3(floor(dir * 160.0));
+        if (h > 0.996) {
+            c += vec3<f32>(0.35, 0.3, 0.45) * (h - 0.996) * 250.0;
+        }
+        return vec4<f32>(c, 1.0);
+    }
     // Underwater, or under the Nether's roof: only fog.
     if (g.fog.z > 0.5 || g.weather.z > 0.5) {
         return vec4<f32>(g.fog_color.rgb, 1.0);

@@ -1548,6 +1548,15 @@ RECOLORED = {
         PIG=pal("#4a1018", "#5e1620", "#721c28", "#862430", "#982c38"),
         PIG_SNOUT=pal("#8a3a3a", "#9c4848", "#ae5656", "#c06464"),
         PIG_HOOF=pal("#1a0a0a", "#2a1210"))),
+    # End creatures.
+    "void_walker": ("skeleton", dict(BONE=pal("#0c0a10", "#141018", "#1c1622", "#241c2c", "#2e2436"))),
+    "void_guardian": ("forest_guardian", dict(
+        GBARK=pal("#120e18", "#1c1624", "#261e30", "#30263c", "#3a2e48"),
+        GLEAF=pal("#4a2a5e", "#603878", "#784a92", "#9260ac", "#ac7ac6"),
+        MOSS=pal("#2a1a36", "#382446", "#463058", "#563c6a", "#664a7c", "#78589a"),
+        ROOT_C=pal("#bdb889", "#cdc898", "#dbd6a6"),
+        GLOW=(230, 140, 255),
+        GLOW_DIM=(140, 60, 180))),
 }
 for _n, (_b, _) in RECOLORED.items():
     ROLES[_n] = ROLES[_b]
@@ -2001,7 +2010,7 @@ def main():
              "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian",
              "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
              "goblin_trader", "mutant_zombie", "npc_guard", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton",
-             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar"]
+             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols

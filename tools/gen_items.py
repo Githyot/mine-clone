@@ -1010,6 +1010,70 @@ def quartz():
     return outline(from_map(rows, pmap(p)))
 
 
+ORB = [
+    "................",
+    "................",
+    "................",
+    "......2222......",
+    ".....233332.....",
+    "....23444332....",
+    "...2345543321...",
+    "...2345433321...",
+    "...2344333221...",
+    "...2333332221...",
+    "....23322221....",
+    ".....122211.....",
+    "......1111......",
+    "................",
+    "................",
+    "................",
+]
+
+
+def ender_pearl():
+    p = pal("#0a2a26", "#124a42", "#1e6e60", "#2e9282", "#5ac2b0", "#b8f0e6")
+    return outline(from_map(ORB, pmap(p)))
+
+
+def ender_eye():
+    p = pal("#0c2a14", "#1a4e24", "#2e7a3a", "#4aa456", "#8ad890", "#d8f8d0")
+    img = from_map(ORB, pmap(p))
+    # a dark slit pupil
+    for y in range(5, 11):
+        img[y, 7, :3] = (14, 20, 12)
+    return outline(img)
+
+
+def chorus_fruit():
+    rows = [
+        "................",
+        "................",
+        "................",
+        ".....33.44......",
+        "....3443443.....",
+        "...344444443....",
+        "...34433444.3...",
+        "..3443323443....",
+        "..3433222343....",
+        "..34322222433...",
+        "...3322222333...",
+        "...332232233....",
+        "....3322233.....",
+        ".....33333......",
+        "................",
+        "................",
+    ]
+    p = pal("#3a1e3e", "#5a3460", "#7a4e82", "#9a6aa2", "#c0a0c8")
+    return outline(from_map(rows, pmap(p)))
+
+
+def popped_chorus_fruit():
+    img = chorus_fruit()
+    rgb = img[..., :3].astype(np.float32)
+    img[..., :3] = np.clip(rgb * 1.25 + 18, 0, 255)
+    return img
+
+
 def nether_brick_item():
     return nether_tint(brick())
 
@@ -1679,6 +1743,7 @@ def item_registry():
         "flint_and_steel": flint_and_steel,
         "honeycomb": honeycomb, "minecart": minecart_item,
         "gold_nugget": gold_nugget, "quartz": quartz, "nether_brick": nether_brick_item,
+        "ender_pearl": ender_pearl, "ender_eye": ender_eye, "chorus_fruit": chorus_fruit, "popped_chorus_fruit": popped_chorus_fruit,
         "leather_backpack": lambda: backpack(("#5a3a1a", "#a0703a")),
         "iron_backpack": lambda: backpack(("#7a7a80", "#d0d0d6")),
         "gold_backpack": lambda: backpack(("#a07810", "#f4d050")),

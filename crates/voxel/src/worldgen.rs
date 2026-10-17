@@ -9,7 +9,9 @@ use crate::trees::{self, TreeBlocks, TreeKind, TreeSpace, Wood};
 
 pub const SEA_LEVEL: i32 = 62;
 
+mod end;
 mod nether;
+pub use end::{end_pillars, EndPillar, END_EXIT_Y, END_PLATFORM};
 pub use nether::{NETHER_LAVA, NETHER_ROOF};
 
 /// Which world a generator makes. Each dimension is saved in its own folder.
@@ -18,14 +20,15 @@ pub enum Dim {
     #[default]
     Overworld,
     Nether,
+    End,
 }
 
 impl Dim {
     pub fn from_u8(v: u8) -> Dim {
-        if v == 1 {
-            Dim::Nether
-        } else {
-            Dim::Overworld
+        match v {
+            1 => Dim::Nether,
+            2 => Dim::End,
+            _ => Dim::Overworld,
         }
     }
 
@@ -38,6 +41,7 @@ impl Dim {
         match self {
             Dim::Overworld => "",
             Dim::Nether => "nether",
+            Dim::End => "end",
         }
     }
 }
@@ -63,10 +67,11 @@ pub enum Biome {
     NetherWastes = 15,
     SoulSandValley = 16,
     CrimsonForest = 17,
+    TheEnd = 18,
 }
 
 impl Biome {
-    pub const COUNT: usize = 18;
+    pub const COUNT: usize = 19;
 
     pub fn from_u8(v: u8) -> Biome {
         match v {
@@ -87,6 +92,7 @@ impl Biome {
             15 => Biome::NetherWastes,
             16 => Biome::SoulSandValley,
             17 => Biome::CrimsonForest,
+            18 => Biome::TheEnd,
             _ => Biome::Plains,
         }
     }
@@ -111,6 +117,7 @@ impl Biome {
             Biome::NetherWastes => "Nether Wastes",
             Biome::SoulSandValley => "Soul Sand Valley",
             Biome::CrimsonForest => "Crimson Forest",
+            Biome::TheEnd => "The End",
         }
     }
 
@@ -131,7 +138,7 @@ impl Biome {
             Biome::DarkForest => [0.72, 0.86, 0.72],
             Biome::Badlands => [1.14, 0.94, 0.62],
             Biome::CherryGrove => [1.02, 1.08, 0.9],
-            Biome::NetherWastes | Biome::SoulSandValley | Biome::CrimsonForest => [1.0, 1.0, 1.0],
+            Biome::NetherWastes | Biome::SoulSandValley | Biome::CrimsonForest | Biome::TheEnd => [1.0, 1.0, 1.0],
         }
     }
 
@@ -278,6 +285,7 @@ pub struct Generator {
     bands: [BlockId; BANDS],
     pub dim: Dim,
     nether: nether::NetherPalette,
+    end: end::EndPalette,
 }
 
 const BANDS: usize = 48;
@@ -367,12 +375,16 @@ impl Generator {
             bands,
             dim: Dim::Overworld,
             nether: nether::NetherPalette::new(reg),
+            end: end::EndPalette::new(reg),
         }
     }
 
     fn column(&self, wx: i32, wz: i32) -> Column {
         if self.dim == Dim::Nether {
             return Column { height: NETHER_ROOF, biome: self.nether_biome(wx, wz) };
+        }
+        if self.dim == Dim::End {
+            return Column { height: self.end_land(wx, wz).map(|l| l.0).unwrap_or(0), biome: Biome::TheEnd };
         }
         let x = wx as f32;
         let z = wz as f32;
@@ -505,6 +517,9 @@ impl Generator {
         if self.dim == Dim::Nether {
             return Surface { height: NETHER_ROOF, biome: col.biome, top: p.bedrock, liquid: None, trees: None };
         }
+        if self.dim == Dim::End {
+            return Surface { height: col.height, biome: col.biome, top: self.end.end_stone, liquid: None, trees: None };
+        }
         let (top, _, _) = self.top_blocks(&col, wx, wz);
         let h = col.height;
         let top = if h < SEA_LEVEL && (top == p.grass || top == p.snow_grass) { p.dirt } else { top };
@@ -556,6 +571,9 @@ impl Generator {
     pub fn generate(&self, pos: ChunkPos) -> Chunk {
         if self.dim == Dim::Nether {
             return self.generate_nether(pos);
+        }
+        if self.dim == Dim::End {
+            return self.generate_end(pos);
         }
         let p = &self.pal;
         let mut chunk = Chunk::new(pos);
@@ -1016,6 +1034,22 @@ mod tests {
     }
 
     #[test]
+    fn end_has_an_island_pillars_and_a_void() {
+        let reg = registry();
+        let g = Generator::new(5, &reg).with_dim(Dim::End);
+        let (stone, obsidian, crystal) = (reg.id("end_stone").unwrap(), reg.id("obsidian").unwrap(), reg.id("end_crystal").unwrap());
+        let c = g.generate(ChunkPos::new(1, 1));
+        assert!((0..16).any(|x| (40..80).any(|y| c.get(x, y, 8) == stone)), "no island near the middle");
+        let p = end_pillars(5)[0];
+        let pc = g.generate(ChunkPos::new(p.x.div_euclid(16), p.z.div_euclid(16)));
+        let (lx, lz) = (p.x.rem_euclid(16) as usize, p.z.rem_euclid(16) as usize);
+        assert_eq!(pc.get(lx, p.top as usize, lz), obsidian);
+        assert_eq!(pc.get(lx, p.top as usize + 2, lz), crystal);
+        let void = g.generate(ChunkPos::new(20, 0));
+        assert!((0..256).all(|y| void.get(3, y, 3) == AIR), "the gap past the main island is empty");
+    }
+
+    #[test]
     fn every_biome_appears() {
         let reg = registry();
         let g = Generator::new(1234, &reg);
@@ -1032,6 +1066,7 @@ mod tests {
                 count[nether.biome_at(x, z) as usize] += 1;
             }
         }
+        count[Generator::new(1234, &reg).with_dim(Dim::End).biome_at(0, 0) as usize] += 1;
         let total: usize = count.iter().sum();
         for (i, &c) in count.iter().enumerate() {
             println!("{:>14}: {:.1}%", Biome::from_u8(i as u8).name(), c as f32 * 100.0 / total as f32);

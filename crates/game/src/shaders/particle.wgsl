@@ -70,7 +70,7 @@ fn fs_particle(in: POut) -> @location(0) vec4<f32> {
     }
     let sky = plight(in.light.x) * g.fog_color.w;
     let blk = plight(in.light.y);
-    let l = max(max(max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82)), vec3<f32>(0.06)), vec3<f32>(0.34, 0.24, 0.2) * g.weather.z);
+    let l = max(max(max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82)), vec3<f32>(0.06)), dim_ambient());
     let rgb = c.rgb * in.tint * l;
     let fog = smoothstep(g.fog.x, g.fog.y, in.dist);
     return vec4<f32>(mix(rgb, g.fog_color.rgb, fog), 1.0);

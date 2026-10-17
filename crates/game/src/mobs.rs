@@ -115,7 +115,9 @@ impl Mobs {
         let passive = self.list.iter().filter(|m| self.reg.defs[m.def].kind != Kind::Hostile).count();
         let hostile = self.list.len() - passive;
         // The Nether: everything lives in its caves, in the dark, and only its own creatures.
+        // The End: always dark, on the islands' tops. Overworld creatures stay home.
         let nether = world.gen.dim == voxel::worldgen::Dim::Nether;
+        let away = world.gen.dim != voxel::worldgen::Dim::Overworld;
         for _ in 0..4 {
             let a = self.rand_f32() * std::f32::consts::TAU;
             let r = 20.0 + self.rand_f32() * 36.0;
@@ -137,7 +139,7 @@ impl Mobs {
             let light = world.light(g + IVec3::Y);
             let sky = (light >> 4) as f32 * daylight;
             let blk = (light & 15) as f32;
-            let dark = nether || sky.max(blk) < 7.0;
+            let dark = away || sky.max(blk) < 7.0;
             let biome = world.gen.biome_at(x, z).name();
             if self.ground.len() != self.reg.defs.len() {
                 let grass = self.grass;
@@ -148,15 +150,15 @@ impl Mobs {
                     .map(|d| if d.ground.is_empty() { vec![grass] } else { d.ground.iter().map(|n| world.reg.id_or_air(n)).filter(|&b| b != AIR).collect() })
                     .collect();
             }
-            let animals = if nether { passive < MAX_PASSIVE } else { !cave && !dark && passive < MAX_PASSIVE };
+            let animals = if away { passive < MAX_PASSIVE } else { !cave && !dark && passive < MAX_PASSIVE };
             let candidates: Vec<usize> = self
                 .reg
                 .defs
                 .iter()
                 .enumerate()
                 .filter(|(i, d)| {
-                    d.in_biome(biome)
-                        && (!nether || !d.biomes.is_empty())
+                    (d.in_biome(biome) || (!away && d.biomes.iter().any(|b| b == "Overworld")))
+                        && (!away || !d.biomes.is_empty())
                         && match d.spawn {
                             SpawnRule::Grass => animals && !water && self.ground[*i].contains(&below),
                             SpawnRule::Water => animals && water,

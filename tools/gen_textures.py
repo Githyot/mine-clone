@@ -1407,6 +1407,7 @@ def build_registry():
     reg.update(decor_registry())
     reg.update(extras_registry())
     reg.update(nether_registry())
+    reg.update(end_registry())
     return reg
 
 
@@ -2278,6 +2279,132 @@ def nether_registry():
         "blackstone": blackstone,
         "nether_portal": nether_portal,
         "quartz_block": quartz_block,
+    }
+
+END_STONE = pal("#bdb889", "#cdc898", "#dbd6a6", "#e6e2b4", "#f0edc4")
+
+
+def end_stone(name="end_stone"):
+    rng = rng_for(name)
+    img = from_rgb(shade(fbm(rng, ((4, 0.3), (2, 0.4), (1, 0.35))), END_STONE, 0.7))
+    # little pits
+    for _ in range(9):
+        x, y = rng.integers(0, N, 2)
+        put(img, x, y, END_STONE[0])
+    return img
+
+
+def end_stone_bricks():
+    img = bricks()
+    rgb = img[..., :3].astype(np.float32)
+    l = rgb.mean(axis=2, keepdims=True) / 255.0
+    base = np.array([226, 222, 170], np.float32)
+    img[..., :3] = np.clip(l * 1.25 * base, 0, 255)
+    return img
+
+
+PURPUR = pal("#7c4e7c", "#8e5e8e", "#a06ea0", "#b07eb0", "#c092c0")
+
+
+def purpur_block():
+    rng = rng_for("purpur_block")
+    img = from_rgb(shade(fbm(rng, ((4, 0.2), (2, 0.3), (1, 0.4))), PURPUR, 0.5))
+    for i in range(N):
+        for (x, y) in ((i, 0), (0, i), (i, 8), (8, i)):
+            put(img, x, y, PURPUR[0])
+    return img
+
+
+def end_portal_frame_side():
+    img = end_stone("frame_side")
+    p = pal("#1e4a40", "#2a5e52", "#367264")
+    for x in range(N):
+        for y in range(3):
+            put(img, x, y, p[1 if (x + y) % 3 else 0])
+    return img
+
+
+def end_portal_frame_top(eye=False):
+    rng = rng_for("frame_top")
+    p = pal("#1e4a40", "#2a5e52", "#367264", "#448270")
+    img = from_rgb(shade(fbm(rng, ((4, 0.3), (2, 0.4), (1, 0.3))), p, 0.7))
+    for i in range(N):
+        for (x, y) in ((i, 0), (i, 15), (0, i), (15, i)):
+            put(img, x, y, END_STONE[1])
+    for y in range(5, 11):
+        for x in range(5, 11):
+            put(img, x, y, (12, 20, 18))
+    if eye:
+        g = pal("#0c3a20", "#1e6a3c", "#38a85e", "#7ee09a")
+        for y in range(5, 11):
+            for x in range(5, 11):
+                d = abs(x - 7.5) + abs(y - 7.5)
+                put(img, x, y, g[3 - min(3, int(d))])
+        put(img, 7, 7, (8, 12, 10))
+        put(img, 8, 8, (8, 12, 10))
+    return img
+
+
+def end_portal():
+    """Deep space: near-black teal with scattered stars."""
+    rng = rng_for("end_portal")
+    img = canvas()
+    img[..., 3] = 255
+    img[..., :3] = (6, 12, 16)
+    for _ in range(22):
+        x, y = rng.integers(0, N, 2)
+        c = [(40, 110, 100), (90, 170, 160), (150, 220, 210), (60, 80, 140)][int(rng.integers(0, 4))]
+        put(img, x, y, c)
+    return img
+
+
+def end_crystal():
+    """A pink-violet gem in a dark cage, with see-through gaps."""
+    img = canvas()
+    p = pal("#6a2a7a", "#9a4aaa", "#c878d4", "#f0b6f6", "#fff0ff")
+    cage = (40, 30, 46)
+    for y in range(N):
+        for x in range(N):
+            edge = x in (0, 15) or y in (0, 15)
+            d = abs(x - 7.5) + abs(y - 7.5)
+            if edge and (x + y) % 4 < 2:
+                img[y, x] = (*cage, 255)
+            elif d < 6.5:
+                img[y, x] = (*p[min(4, int(6.5 - d))], 255)
+    return img
+
+
+def chorus_plant():
+    rng = rng_for("chorus_plant")
+    p = pal("#4a2a4a", "#5e3a5e", "#74507a", "#8a6890", "#a080a8")
+    img = canvas()
+    for y in range(N):
+        for x in range(1, 15):
+            v = int(np.clip(2 + rng.normal(0, 0.8) + (1 if 5 <= x <= 10 else -1), 0, 4))
+            img[y, x] = (*p[v], 255)
+    return img
+
+
+def chorus_flower():
+    rng = rng_for("chorus_flower")
+    p = pal("#6a4a76", "#8a6a96", "#a88ab4", "#c6aad0", "#e2cce8")
+    img = from_rgb(shade(fbm(rng, ((4, 0.3), (2, 0.4), (1, 0.3))), p, 0.8))
+    bevel(img)
+    return img
+
+
+def end_registry():
+    return {
+        "end_stone": end_stone,
+        "end_stone_bricks": end_stone_bricks,
+        "purpur_block": purpur_block,
+        "end_portal_frame_side": end_portal_frame_side,
+        "end_portal_frame_top": end_portal_frame_top,
+        "end_portal_frame_eye": lambda: end_portal_frame_top(True),
+        "end_portal": end_portal,
+        "end_crystal": end_crystal,
+        "chorus_plant": chorus_plant,
+        "chorus_flower": chorus_flower,
     }
 
 

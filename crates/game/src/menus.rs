@@ -147,8 +147,9 @@ impl Game {
         self.fall_peak = self.body.pos.y;
         self.paintings = paintings::load(&save.dir, &self.painting_defs);
         self.surv = crate::survival::Survival::load(&save.dir, &self.items);
-        if level.as_ref().is_some_and(|l| l.dim == 1) {
-            self.load_dim(voxel::worldgen::Dim::Nether, false);
+        let dim = level.as_ref().map(|l| voxel::worldgen::Dim::from_u8(l.dim)).unwrap_or_default();
+        if dim != voxel::worldgen::Dim::Overworld {
+            self.load_dim(dim, false);
         }
         self.title_world = name.to_string();
     }

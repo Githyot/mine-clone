@@ -335,4 +335,20 @@
             (item: "iron_ingot", min: 1, max: 2, chance: 0.3),
         ],
     ),
+    (
+        name: "ruina_do_end",
+        biomes: ["Plains", "Forest", "Birch Forest", "Taiga", "Savanna", "Desert", "Snowy Plains", "Dark Forest", "Swamp", "Jungle", "Badlands"],
+        spacing: 14,
+        chance: 0.3,
+        sink: 1,
+        foundation: Some("stone_bricks"),
+        palette: [('S', "stone_bricks"), ('M', "mossy_cobblestone"), ('F', "end_portal_frame"), ('L', "lava"), ('s', "stone_slab")],
+        layers: [
+            ["SSSSSSS", "SSSSSSS", "SSSSSSS", "SSSSSSS", "SSSSSSS", "SSSSSSS", "SSSSSSS"],
+            ["SMSSSMS", "SSSSSSS", "MSLLLSS", "SSLLLSM", "SSLLLSS", "SSSSSMS", "SMSSSSS"],
+            ["S.....S", "..FFF..", ".F...F.", ".F...F.", ".F...F.", "..FFF..", "S.....S"],
+            ["S.....S", ".......", ".......", ".......", ".......", ".......", "M.....S"],
+            ["s.....s", ".......", ".......", ".......", ".......", ".......", "s......"],
+        ],
+    ),
 ])

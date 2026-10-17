@@ -314,6 +314,26 @@ def shrine():
     }
 
 
+def end_ruin():
+    """A sunken stone ruin with a ring of twelve empty end portal frames over a lava pit."""
+    S, M, F, L = "S", "M", "F", "L"
+    floor = ["SMSSSMS", "SSSSSSS", "MSLLLSS", "SSLLLSM", "SSLLLSS", "SSSSSMS", "SMSSSSS"]
+    frames = ["S.....S", "..FFF..", ".F...F.", ".F...F.", ".F...F.", "..FFF..", "S.....S"]
+    above = ["S.....S", ".......", ".......", ".......", ".......", ".......", "M.....S"]
+    top = ["s.....s", ".......", ".......", ".......", ".......", ".......", "s......"]
+    return {
+        "name": "ruina_do_end",
+        "biomes": ["Plains", "Forest", "Birch Forest", "Taiga", "Savanna", "Desert", "Snowy Plains", "Dark Forest", "Swamp", "Jungle", "Badlands"],
+        "spacing": 14,
+        "chance": 0.3,
+        "sink": 1,
+        "foundation": "stone_bricks",
+        "palette": {"S": "stone_bricks", "M": "mossy_cobblestone", "F": "end_portal_frame", "L": "lava", "s": "stone_slab"},
+        "layers": [["SSSSSSS"] * 7, floor, frames, above, top],
+        "loot": [],
+    }
+
+
 def wizard_tower():
     """A wizard's tower (Towns and Towers idea): a tall stone room lined with bookshelves, a
     chest of magic things and a purple cone roof."""
@@ -464,6 +484,7 @@ structs = [
     shrine(),
     wizard_tower(),
     windmill(),
+    end_ruin(),
 ]
 OUT.write_text(ron(structs))
 print(f"wrote {OUT} ({len(structs)} structures)")

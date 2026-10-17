@@ -74,6 +74,10 @@ impl Game {
         if dt == 0.0 {
             return;
         }
+        let void = self.mobs.reg.defs[self.mobs.list[i].def].name == crate::end::GUARDIAN;
+        if void {
+            self.update_void_guardian(i, dt);
+        }
         let player = self.body.pos;
         let m = &mut self.mobs.list[i];
         // A boss never loses interest.
@@ -90,10 +94,10 @@ impl Game {
             for k in 0..3 {
                 let a = k as f32 * 2.1;
                 let at = pos + Vec3::new(a.cos() * 3.0, 0.5, a.sin() * 3.0);
-                self.mobs.spawn("zombie", at);
+                self.mobs.spawn(if void { "void_walker" } else { "zombie" }, at);
             }
             self.sfx(Sfx::Thunder(0.4));
-            self.toast("As raízes acordam os mortos!", 3.0);
+            self.toast(if void { "O vazio chama seus andarilhos!" } else { "As raízes acordam os mortos!" }, 3.0);
         }
         self.boss.attack_t -= dt;
         if self.boss.attack_t > 0.0 {
@@ -104,7 +108,7 @@ impl Game {
         let stomp = self.boss.turn % 3 == 0 && dist < 9.0;
         if stomp {
             // Stomp: the ground shakes; standing close throws you up and hurts.
-            let ground = self.reg.id_or_air("dirt");
+            let ground = self.reg.id_or_air(if void { "end_stone" } else { "dirt" });
             let (layer, tint) = self.block_look(ground);
             for k in 0..12 {
                 let a = k as f32 / 12.0 * std::f32::consts::TAU;
@@ -125,9 +129,10 @@ impl Game {
             for k in 0..n {
                 let a = (k as f32 - (n - 1) as f32 / 2.0) * 0.14;
                 let dir = (to * a.cos() + side * a.sin()).normalize_or_zero();
-                self.enemy_bolt(head + dir, dir * 17.0, 4, if angry { 4.0 } else { 3.0 });
+                let school = if void { 3 } else { 4 };
+                self.enemy_bolt(head + dir, dir * 17.0, school, if angry { 4.0 } else { 3.0 });
             }
-            self.sfx(Sfx::Cast(4));
+            self.sfx(Sfx::Cast(if void { 3 } else { 4 }));
         }
     }
 
@@ -137,6 +142,9 @@ impl Game {
             self.boss.defeated.push(name.to_string());
         }
         self.toast(format!("{display} foi derrotado!"), 5.0);
+        if name == crate::end::GUARDIAN {
+            self.open_end_exit();
+        }
         self.sfx(Sfx::Thunder(0.3));
     }
 

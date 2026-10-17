@@ -57,7 +57,7 @@ fn fs_entity(in: EOut) -> @location(0) vec4<f32> {
     let blk = light_curve(in.light.y);
     var l = max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82));
     l = max(mix(l, sqrt(l), 0.15), vec3<f32>(0.05));
-    l = max(l, vec3<f32>(0.34, 0.24, 0.2) * g.weather.z);
+    l = max(l, dim_ambient());
     var rgb = c.rgb * in.shade * l;
     rgb = mix(rgb, vec3<f32>(1.0, 0.25, 0.2), in.light.z * 0.6);
     rgb = mix(rgb, vec3<f32>(1.0), in.light.w);

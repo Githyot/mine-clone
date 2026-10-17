@@ -204,6 +204,16 @@ NETHER
   (joga bolas de fogo) e javali carmesim. Água evapora no Nether. Se morrer lá, você
   renasce no mundo normal. Receitas: tijolos do Nether, bloco de quartzo, tábuas carmesim.
 
+O END
+  Olho do Ender = pérola do Ender (cai do andarilho do vazio, que aparece à noite) + quartzo.
+  Ache uma ruína de pedra com 12 molduras em volta de um poço de lava, ou faça as molduras
+  (6 obsidianas, 2 quartzos e 1 olho). Coloque um olho em cada moldura (botão direito) e o
+  portal se abre. No End, a ilha tem pilares de obsidiana com cristais que curam o
+  Guardião do Vazio. Quebre os cristais e derrote o guardião para abrir o portal de volta
+  no centro da ilha. Longe dali, depois do vazio, há ilhas com plantas de coro.
+  Pérola do Ender: botão direito para se teleportar até onde está olhando. Fruta do coro:
+  ao comer, você salta para um lugar perto. Cair no vazio machuca muito.
+
 PINTURAS
   Mire numa parede e aperte P (no controle: seta para a esquerda). Passe o mouse sobre um nome
   para ver a pintura na parede antes de escolher; "Aleatória" escolhe uma que cabe ali.

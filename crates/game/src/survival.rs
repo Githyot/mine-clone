@@ -897,6 +897,17 @@ impl Game {
         if item.name == "ancient_seed" {
             return self.use_ancient_seed();
         }
+        if item.name == "ender_eye" {
+            if let Some(hit) = self.target {
+                if self.use_ender_eye(hit) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if item.name == "ender_pearl" {
+            return self.throw_ender_pearl();
+        }
         if item.name == "mana_crystal" && self.survival {
             return self.use_mana_crystal();
         }
@@ -1222,8 +1233,12 @@ impl Game {
                 self.surv.hunger = (self.surv.hunger + f.hunger as f32).min(20.0);
                 self.surv.saturation = (self.surv.saturation + f.saturation).min(self.surv.hunger);
                 let sel = self.selected;
+                let chorus = self.held_stack().is_some_and(|s| self.items.get(s.item).name == "chorus_fruit");
                 self.surv.inv.take(sel, 1);
                 self.sfx(Sfx::Pickup);
+                if chorus {
+                    self.chorus_hop();
+                }
             }
         } else {
             self.surv.eat = 0.0;

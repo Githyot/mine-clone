@@ -178,6 +178,9 @@
         // The Nether.
         (pattern: ["##", "##"], key: {'#': "nether_brick"}, result: "nether_bricks"),
         (pattern: ["##", "##"], key: {'#': "quartz"}, result: "quartz_block"),
+        (pattern: ["##", "##"], key: {'#': "end_stone"}, result: "end_stone_bricks", count: 4),
+        (pattern: ["##", "##"], key: {'#': "popped_chorus_fruit"}, result: "purpur_block", count: 4),
+        (pattern: ["OOO", "QEQ", "OOO"], key: {'O': "obsidian", 'Q': "quartz", 'E': "ender_eye"}, result: "end_portal_frame"),
         (pattern: ["#"], key: {'#': "crimson_stem"}, result: "crimson_planks", count: 4),
         (pattern: ["###", "###", "###"], key: {'#': "gold_nugget"}, result: "gold_ingot"),
         (pattern: [" # ", "# #"], key: {'#': "oak_planks"}, result: "oak_roof", count: 6),
@@ -275,6 +278,7 @@
         (pattern: ["III", "IBI", "III"], key: {'I': "diamond", 'B': "gold_backpack"}, result: "diamond_backpack"),
     ],
     shapeless: [
+        (ingredients: ["ender_pearl", "quartz"], result: "ender_eye"),
         (ingredients: ["oak_log"], result: "oak_planks", count: 4),
         (ingredients: ["birch_log"], result: "birch_planks", count: 4),
         (ingredients: ["spruce_log"], result: "spruce_planks", count: 4),
@@ -340,6 +344,7 @@
         (ingredients: ["oxidized_copper_bulb", "honeycomb"], result: "waxed_oxidized_copper_bulb"),
     ],
     smelting: [
+        (input: "chorus_fruit", result: "popped_chorus_fruit", xp: 0.1),
         (input: "stone", result: "smooth_stone", xp: 0.1),
         (input: "netherrack", result: "nether_brick", xp: 0.1),
         (input: "nether_quartz_ore", result: "quartz", xp: 0.2),

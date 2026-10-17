@@ -9,6 +9,7 @@ mod controller;
 mod copper;
 mod creative;
 mod dimension;
+mod end;
 mod fishing;
 mod magic;
 mod bosses;
@@ -483,6 +484,8 @@ struct Game {
     arrival: Option<Vec3>,
     /// Died in the Nether: once the Overworld is loaded, come back to life there.
     respawn_home: bool,
+    /// Coming home from the End: land on the ground (at the bed, if any), not in a portal.
+    arrive_plain: bool,
     wander: wanderers::Wanderers,
     copper: copper::Copper,
     bobber: Option<fishing::Bobber>,
@@ -608,7 +611,7 @@ impl Game {
         let world_name = args.world.clone().or_else(|| menus::list_worlds(&base).first().map(|w| w.name.clone())).unwrap_or_else(|| "Mundo 1".into());
         let save = Arc::new(WorldSave::new(level_path_hint(&base, &world_name)));
         let level = save.load_level();
-        let start_nether = level.as_ref().is_some_and(|l| l.dim == 1);
+        let start_dim = level.as_ref().map(|l| voxel::worldgen::Dim::from_u8(l.dim)).unwrap_or_default();
         let seed = level.as_ref().map(|l| l.seed).or(args.seed).unwrap_or_else(|| {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1)
         });
@@ -794,6 +797,7 @@ impl Game {
             portal_t: 0.0,
             arrival: None,
             respawn_home: false,
+            arrive_plain: false,
             wander: Default::default(),
             copper: copper::Copper::new(&reg_for_fluids),
             weather: weather::Weather::new(weather_save, seed),
@@ -853,8 +857,15 @@ impl Game {
             grabbed: false,
         };
         game.apply_shader();
-        if start_nether {
-            game.load_dim(voxel::worldgen::Dim::Nether, false);
+        if start_dim != voxel::worldgen::Dim::Overworld {
+            game.load_dim(start_dim, false);
+        }
+        if std::env::var("MC_END").is_ok() && game.dim == voxel::worldgen::Dim::Overworld {
+            // Test hook: arrive in the End on its platform.
+            game.load_dim(voxel::worldgen::Dim::End, true);
+            game.arrival = Some(game.end_arrival());
+            game.body.pos = game.arrival.unwrap();
+            game.needs_spawn = false;
         }
         if std::env::var("MC_NETHER").is_ok() && game.dim == voxel::worldgen::Dim::Overworld {
             // Test hook: arrive in the Nether through a fresh portal.
@@ -1017,6 +1028,8 @@ impl Game {
             _ if self.is_title_screen() => Situation::Title,
             Screen::Loading => Situation::Title,
             _ if self.body.head_in_water => Situation::Underwater,
+            _ if self.dim == voxel::worldgen::Dim::Nether => Situation::Nether,
+            _ if self.dim == voxel::worldgen::Dim::End => Situation::End,
             _ => Situation::Creative,
         }
     }
@@ -1303,6 +1316,10 @@ impl Game {
                 }
                 if let Some(i) = self.args.slot {
                     self.selected = i;
+                }
+                if std::env::var("MC_END_RING").is_ok() {
+                    // Test hook: a ring of end portal frames, the last eye just set.
+                    self.test_end_ring();
                 }
                 if std::env::var("MC_PORTAL").is_ok() {
                     // Test hook: an obsidian frame in front, lit with flint and steel.
@@ -3500,10 +3517,14 @@ impl Game {
         // Distant terrain pushes the fog out to its own edge.
         // The Nether has a roof: no distant terrain there.
         let nether = self.dim == voxel::worldgen::Dim::Nether;
-        let extra = if nether { 0.0 } else { self.settings.lod_distance.max(0) as f32 };
+        let end = self.dim == voxel::worldgen::Dim::End;
+        let extra = if nether || end { 0.0 } else { self.settings.lod_distance.max(0) as f32 };
         let view_end = rd + extra;
         let (fog_color, fog_start, fog_end) = if underwater {
             ([0.04, 0.12, 0.35], 0.0, 28.0)
+        } else if end {
+            // A dark violet void.
+            ([0.03, 0.018, 0.045], rd * 0.45, rd - 2.0)
         } else if nether {
             // A thick red haze instead of a sky.
             ([0.2, 0.035, 0.025], rd * 0.15, rd * 0.85)
@@ -3520,15 +3541,16 @@ impl Game {
         let mut g = Globals {
             cam_pos: [eye.x - block.x as f32, eye.y - block.y as f32, eye.z - block.z as f32, (self.now % 3600.0) + self.start.elapsed().as_secs_f32() * 0.0],
             cam_world: [eye.x, eye.y, eye.z, CLOUD_HEIGHT],
-            fog_color: [fog_color[0], fog_color[1], fog_color[2], if nether { 0.0 } else { daylight }],
-            fog: [fog_start, fog_end, if underwater { 1.0 } else { 0.0 }, if nether { 1.0 } else { 0.3 }],
+            fog_color: [fog_color[0], fog_color[1], fog_color[2], if nether || end { 0.0 } else { daylight }],
+            fog: [fog_start, fog_end, if underwater { 1.0 } else { 0.0 }, if nether || end { 1.0 } else { 0.3 }],
             sun_dir: [sun.x, sun.y, sun.z, if self.settings.relief { 1.0 } else { 0.0 }],
             sky_top: [top[0], top[1], top[2], 1.0],
             sky_horizon: [horizon[0], horizon[1], horizon[2], 1.0],
             effects,
             // The light a held torch gives comes from the player's hand, wherever the camera is.
             hand_light: [head.x - block.x as f32, head.y - 0.4 - block.y as f32, head.z - block.z as f32, self.hand_light_level()],
-            weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else { 0.0 }, 0.0],
+            // z: 1 Nether, 2 End (sky and ambient light in the shaders).
+            weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else if end { 2.0 } else { 0.0 }, 0.0],
             dyn_lights: self.dynamic_lights(eye, block),
             ..Default::default()
         };
