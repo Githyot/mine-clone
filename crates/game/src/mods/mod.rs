@@ -7,6 +7,7 @@
 
 pub mod aether;
 pub mod aquaculture;
+pub mod bomd;
 pub mod combat;
 pub mod dwellers;
 pub mod ecologics;

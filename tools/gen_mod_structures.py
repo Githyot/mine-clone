@@ -4593,6 +4593,73 @@ def barn():
                   sink=1, foundation="dirt", rough=5, mobs=[("npc_farmer", 1)])
 
 
+@group("bomd")
+def bomd_arenas():
+    """Bosses of Mass Destruction idea: each boss waits in a lair of its own and wakes when you
+    come near (structure dwellers). The lich's frozen crypt in the snow, the gauntlet's forge in
+    the Nether, the obsidilith's monolith ring in the End and the void blossom's overgrown
+    garden in the jungle."""
+    out = []
+    # The lich's crypt: a sunken ring of ice pillars round an altar, snow on the floor.
+    rng = random.Random(901)
+    c = Canvas(21, 12, 21)
+    c.disc(10, 10, 10.4, 0, "packed_ice")
+    c.disc(10, 10, 9.4, 1, "snow")
+    for (x, z) in circle_ring(10, 10, 8)[::4]:
+        h = rng.randint(5, 9)
+        c.column(x, z, 1, h, rng.choice(["packed_ice", "blue_ice", "packed_ice"]))
+    c.disc(10, 10, 2.4, 1, "blue_ice")
+    c.box(9, 2, 9, 11, 2, 11, "quartz_block")
+    c.set(10, 3, 10, "chest")
+    c.set(7, 2, 10, "lantern")
+    c.set(13, 2, 10, "lantern")
+    out.append(struct("cripta_do_lich", ["Snowy Plains"], c, 90, 0.5,
+                      loot=rare(("lich_phylactery", 1, 1, 0.3), ("diamond", 1, 3, 0.4), ("blue_ice", 2, 6, 0.6)),
+                      sink=1, foundation="packed_ice", rough=6, mobs=[("lich", 1), ("skeleton", 3)]))
+    # The gauntlet's forge: a blackstone platform with magma channels, gold-capped pillars
+    # and an anvil.
+    c = Canvas(19, 12, 19)
+    c.disc(9, 9, 9.4, 0, "blackstone")
+    for k in range(-8, 9):
+        c.set(9 + k, 0, 9, "magma_block")
+        c.set(9, 0, 9 + k, "magma_block")
+    c.disc(9, 9, 2.4, 0, "nether_bricks")
+    for (x, z) in ((2, 2), (16, 2), (2, 16), (16, 16)):
+        c.column(x, z, 1, 7, "nether_bricks")
+        c.set(x, 8, z, "gold_block")
+        c.set(x, 9, z, "shroomlight")
+    c.set(9, 1, 9, "iron_block")
+    c.set(10, 1, 9, "chest")
+    out.append(struct("forja_da_manopla", ["Nether Wastes"], c, 24, 0.35,
+                      loot=rare(("gauntlet_core", 1, 1, 0.3), ("gold_ingot", 3, 9, 0.6), ("blaze_rod", 1, 4, 0.5)),
+                      foundation="blackstone", rough=5, mobs=[("nether_gauntlet", 1), ("ash_skeleton", 2)]))
+    # The obsidilith's monolith ring on the End stone.
+    c = Canvas(19, 14, 19)
+    c.disc(9, 9, 9.4, 0, "obsidian")
+    c.disc(9, 9, 7.4, 0, "end_stone_bricks")
+    for (x, z) in circle_ring(9, 9, 7)[::5]:
+        c.column(x, z, 1, 10, "obsidian")
+        c.set(x, 11, z, "glowstone")
+    c.set(9, 1, 9, "chest")
+    out.append(struct("anel_do_obsidilito", ["The End"], c, 12, 0.35,
+                      loot=rare(("obsidian_heart", 1, 1, 0.3), ("ender_pearl", 2, 5, 0.6)),
+                      foundation="end_stone", rough=5, mobs=[("obsidilith", 1)]))
+    # The void blossom's garden: a mossy sunken bed walled with vines and dark flowers.
+    rng = random.Random(904)
+    c = Canvas(17, 8, 17)
+    c.disc(8, 8, 8.4, 0, "moss_block")
+    c.disc(8, 8, 8.4, 1, "mossy_cobblestone", hollow=True)
+    for z in range(17):
+        for x in range(17):
+            if c.get(x, 0, z) == "moss_block" and rng.random() < 0.18:
+                c.set(x, 1, z, rng.choice(["poppy", "short_grass", "moss_carpet"]))
+    c.set(8, 1, 8, "chest")
+    out.append(struct("jardim_do_vazio", ["Jungle", "Dark Forest"], c, 60, 0.4,
+                      loot=rare(("void_seed", 1, 1, 0.3), ("emerald", 1, 4, 0.5)),
+                      sink=1, foundation="dirt", rough=5, mobs=[("void_blossom", 1), ("spider", 2)]))
+    return out
+
+
 # ==== END OF STRUCTURES ====
 
 if __name__ == "__main__":

@@ -65,6 +65,7 @@
         (pattern: [" X ", " X ", "X/X"], key: {'X': "diamond", '/': "stick"}, result: "diamond_greatsword"),
         (pattern: ["  X", " / ", "/  "], key: {'X': "diamond", '/': "stick"}, result: "diamond_spear"),
         (pattern: [" XX", " /X", "/  "], key: {'X': "diamond", '/': "stick"}, result: "diamond_halberd"),
+        (pattern: ["GBG", "BMB", "GBG"], key: {'G': "gold_block", 'B': "blaze_rod", 'M': "magma_block"}, result: "gauntlet_core"),
         (pattern: ["###"], key: {'#': "coconut_planks"}, result: "coconut_slab", count: 6),
         (pattern: ["#  ", "## ", "###"], key: {'#': "coconut_planks"}, result: "coconut_stairs", count: 4),
         (pattern: ["#|#", "#|#"], key: {'#': "coconut_planks", '|': "stick"}, result: "coconut_fence", count: 3),
