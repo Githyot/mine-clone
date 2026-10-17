@@ -18,6 +18,7 @@ mod bosses;
 mod npcs;
 mod pets;
 mod raids;
+mod villages;
 mod explore;
 mod signs;
 mod fluids;
@@ -456,6 +457,7 @@ struct Game {
     boss: bosses::BossState,
     town: npcs::Town,
     raid: raids::Raid,
+    villages: villages::Villages,
     map: explore::MapCache,
     /// Saved tame animals not back in the world yet.
     pets_waiting: Vec<pets::PetSave>,
@@ -796,6 +798,7 @@ impl Game {
             boss: bosses::BossState::new(bosses_beaten),
             town: npcs::Town::new(town_npcs),
             raid: raids::Raid::default(),
+            villages: villages::Villages::default(),
             map: explore::MapCache::default(),
             pets_waiting: pets::load(&save.dir),
             signs: signs::load(&save.dir),
@@ -1526,6 +1529,7 @@ impl Game {
                 // Townsfolk live at home.
                 self.update_npcs(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_raids(dt);
+                self.update_villages(dt);
                 self.update_map(dt);
                 self.update_pets(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }

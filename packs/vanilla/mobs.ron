@@ -757,6 +757,75 @@
         ],
         layers: [(part: 1, inflate: 0.5)],
     ),
+    // Village settlers (vanilla villager idea, our own folk): they trade, and run from monsters.
+    (
+        name: "settler_farmer", display_name: "Colono Fazendeiro", kind: Passive, health: 20, speed: 1.8,
+        width: 0.6, height: 1.8, spawn: Never,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (4, 12, 4), origin: (-8, 12, -2), uv: (40, 16), anim: Arm(0), pivot: (-6, 22, 0)),
+            (size: (4, 12, 4), origin: (4, 12, -2), uv: (32, 48), anim: Arm(1), pivot: (6, 22, 0)),
+            (size: (4, 12, 4), origin: (-4, 0, -2), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (4, 12, 4), origin: (0, 0, -2), uv: (16, 48), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.3), (part: 2, inflate: 0.3), (part: 3, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)],
+    ),
+    (
+        name: "settler_smith", display_name: "Colono Ferreiro", kind: Passive, health: 20, speed: 1.8,
+        width: 0.6, height: 1.8, spawn: Never,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (4, 12, 4), origin: (-8, 12, -2), uv: (40, 16), anim: Arm(0), pivot: (-6, 22, 0)),
+            (size: (4, 12, 4), origin: (4, 12, -2), uv: (32, 48), anim: Arm(1), pivot: (6, 22, 0)),
+            (size: (4, 12, 4), origin: (-4, 0, -2), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (4, 12, 4), origin: (0, 0, -2), uv: (16, 48), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.3), (part: 2, inflate: 0.3), (part: 3, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)],
+    ),
+    (
+        name: "settler_librarian", display_name: "Colono Bibliotecário", kind: Passive, health: 20, speed: 1.8,
+        width: 0.6, height: 1.8, spawn: Never,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (4, 12, 4), origin: (-8, 12, -2), uv: (40, 16), anim: Arm(0), pivot: (-6, 22, 0)),
+            (size: (4, 12, 4), origin: (4, 12, -2), uv: (32, 48), anim: Arm(1), pivot: (6, 22, 0)),
+            (size: (4, 12, 4), origin: (-4, 0, -2), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (4, 12, 4), origin: (0, 0, -2), uv: (16, 48), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.3), (part: 2, inflate: 0.3), (part: 3, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)],
+    ),
+    (
+        name: "settler_shepherd", display_name: "Colono Pastor", kind: Passive, health: 20, speed: 1.8,
+        width: 0.6, height: 1.8, spawn: Never,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (4, 12, 4), origin: (-8, 12, -2), uv: (40, 16), anim: Arm(0), pivot: (-6, 22, 0)),
+            (size: (4, 12, 4), origin: (4, 12, -2), uv: (32, 48), anim: Arm(1), pivot: (6, 22, 0)),
+            (size: (4, 12, 4), origin: (-4, 0, -2), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (4, 12, 4), origin: (0, 0, -2), uv: (16, 48), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.3), (part: 2, inflate: 0.3), (part: 3, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)],
+    ),
+    // The village sentinel (iron golem idea): a big stone-and-iron keeper that fights monsters.
+    (
+        name: "sentinel", display_name: "Sentinela", kind: Passive, health: 100, speed: 1.6,
+        drops: [(item: "iron_ingot", min: 3, max: 5)], xp: 5,
+        width: 1.2, height: 2.8, spawn: Never, attack: 12, scale: 1.55,
+        prey: ["zombie", "skeleton", "stalker", "spider", "mutant_zombie", "marauder", "brute", "invoker", "mummy", "frost_archer", "sunken"],
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (4, 12, 4), origin: (-8, 12, -2), uv: (40, 16), anim: Arm(0), pivot: (-6, 22, 0)),
+            (size: (4, 12, 4), origin: (4, 12, -2), uv: (32, 48), anim: Arm(1), pivot: (6, 22, 0)),
+            (size: (4, 12, 4), origin: (-4, 0, -2), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (4, 12, 4), origin: (0, 0, -2), uv: (16, 48), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.3), (part: 2, inflate: 0.3), (part: 3, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)],
+    ),
     // The Nether's own creatures (our names, our art).
     (
         name: "nether_zombie", display_name: "Zumbi do Nether", kind: Neutral, health: 20, speed: 2.3,

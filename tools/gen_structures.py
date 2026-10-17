@@ -1081,6 +1081,124 @@ def shipwreck():
                  ("", "diamond", 1, 1, 0.12), ("", "carrot", 1, 4, 0.4), ("", "gold_nugget", 2, 8, 0.4)],
     }
 
+VILLAGE_STYLES = {
+    "carvalho": ("oak_planks", "oak_log", "oak_roof", "oak_fence", ["Plains", "Meadow", "Forest", "Birch Forest", "Savanna"]),
+    "pinheiro": ("spruce_planks", "spruce_log", "spruce_roof", "spruce_fence", ["Taiga", "Snowy Plains"]),
+}
+
+
+def village(style):
+    """A village (vanilla idea): a square with a well in the middle and buildings set round
+    it in a ring by the game, each turned with its door to the square. Settlers live in it."""
+    plank, log, roof, fence, biomes = VILLAGE_STYLES[style]
+    out = []
+    # The square: a gravel yard, a well with a roof on posts, lanterns on the corners.
+    W = 11
+    ground = grid(W, W, "g")
+    well_rim = grid(W, W, ".")
+    for z in range(3, 8):
+        for x in range(3, 8):
+            ground[z][x] = "C"
+            well_rim[z][x] = "C" if x in (3, 7) or z in (3, 7) else "w"
+    for (x, z) in ((0, 0), (W - 1, 0), (0, W - 1), (W - 1, W - 1)):
+        well_rim[z][x] = "f"
+    posts = grid(W, W, ".")
+    lamps = grid(W, W, ".")
+    for (x, z) in ((3, 3), (7, 3), (3, 7), (7, 7)):
+        posts[z][x] = "f"
+        lamps[z][x] = "f"
+    for (x, z) in ((0, 0), (W - 1, 0), (0, W - 1), (W - 1, W - 1)):
+        posts[z][x] = "l"
+    top = grid(W, W, ".")
+    for z in range(3, 8):
+        for x in range(3, 8):
+            top[z][x] = "s"
+    top[5][5] = "P"
+    clear = grid(W, W, ".")
+    pieces = [f"vila_casa_{style}", f"vila_fazenda_{style}", f"vila_ferreiro_{style}", f"vila_casa_{style}_2",
+              f"vila_biblioteca_{style}", f"vila_fazenda_{style}_2", f"vila_casa_{style}_3"]
+    out.append({
+        "name": f"vila_{style}",
+        "biomes": biomes, "spacing": 22, "chance": 0.6, "sink": 1, "foundation": "cobblestone",
+        "palette": {"g": "gravel", "C": "cobblestone", "w": "water", "f": fence, "l": "lantern", "s": "oak_slab", "P": plank},
+        "layers": [rows(l) for l in (ground, well_rim, posts, lamps, top, clear)],
+        "loot": [], "pieces": pieces,
+    })
+    # Homes: the cottage, three times over with the same plan.
+    for suffix in ("", "_2", "_3"):
+        h = house(plank, log, roof, biomes, f"vila_casa_{style}{suffix}")
+        h["piece_only"] = True
+        out.append(h)
+    # Farms: a fenced field of ripe wheat and carrots round a water channel.
+    for suffix, crop in (("", "wheat_stage7"), ("_2", "carrots_stage3")):
+        W, D = 9, 9
+        soil = grid(W, D, "D")
+        plants = grid(W, D, ".")
+        rail = grid(W, D, ".")
+        for z in range(D):
+            for x in range(W):
+                edge = x in (0, W - 1) or z in (0, D - 1)
+                if edge:
+                    soil[z][x] = "L" if x in (0, W - 1) and z in (0, D - 1) else "c"
+                    rail[z][x] = "f"
+                elif x == 4:
+                    soil[z][x] = "w"
+                else:
+                    plants[z][x] = "h"
+        rail[D - 1][4] = "."  # a gap on the square's side to walk in
+        plants[0][0] = "o" if suffix == "" else "."
+        out.append({
+            "name": f"vila_fazenda_{style}{suffix}", "biomes": biomes, "spacing": 22, "chance": 0.0, "sink": 1,
+            "foundation": "dirt", "piece_only": True,
+            "palette": {"D": "farmland", "c": "cobblestone", "L": log, "w": "water", "h": crop, "f": fence, "o": "composter"},
+            "layers": [rows(l) for l in (soil, [[("o" if c == "o" else "h" if c == "h" else ".") for c in r] for r in plants], rail, grid(W, D, "."))],
+            "loot": [],
+        })
+    # The smithy: a stone room open to the front with an anvil-like furnace corner and loot.
+    W, D = 9, 8
+    layers = []
+    floor = grid(W, D, "S")
+    layers.append(floor)
+    for y in (1, 2, 3):
+        g = grid(W, D, ".")
+        for z in range(D):
+            for x in range(W):
+                if z == 0 or x in (0, W - 1):
+                    g[z][x] = "L" if x in (0, W - 1) and z in (0, D - 1) else "S"
+                elif z == D - 1 and x in (0, W - 1):
+                    g[z][x] = "L"
+        if y == 1:
+            g[1][1] = "F"; g[1][2] = "F"; g[1][3] = "K"; g[1][6] = "T"; g[1][7] = "a"
+            g[3][1] = "h"; g[6][7] = "t"
+        if y == 2:
+            g[1][1] = "S"; g[1][2] = "S"; g[3][0] = "G"; g[3][W - 1] = "G"
+        layers.append(g)
+    roof_l = grid(W, D, "s")
+    layers.append(roof_l)
+    out.append({
+        "name": f"vila_ferreiro_{style}", "biomes": biomes, "spacing": 22, "chance": 0.0, "foundation": "cobblestone",
+        "piece_only": True,
+        "palette": {"S": "cobblestone", "L": log, "F": "furnace", "K": "chest", "T": "crafting_table", "a": "stone_bricks",
+                    "h": "hay_block", "t": "torch", "G": "glass_pane", "s": "stone_slab"},
+        "layers": [rows(l) for l in layers],
+        "loot": [("", "iron_ingot", 2, 6, 0.9), ("", "coal", 3, 9, 0.7), ("", "iron_pickaxe", 1, 1, 0.2), ("", "iron_sword", 1, 1, 0.2),
+                 ("", "bread", 1, 4, 0.5), ("", "obsidian", 1, 3, 0.3), ("", "diamond", 1, 1, 0.08)],
+    })
+    # The library: the cottage plan with shelves along the walls.
+    b = house(plank, log, roof, biomes, f"vila_biblioteca_{style}")
+    b["piece_only"] = True
+    lay = [list(map(list, l)) for l in b["layers"]]
+    for y in (1, 2):
+        for z in range(2, 7):
+            lay[y][z][1] = "B" if lay[y][z][1] == "." else lay[y][z][1]
+            lay[y][z][5] = "B" if lay[y][z][5] == "." else lay[y][z][5]
+    lay[1][2][1] = "B"; lay[1][2][2] = "."; lay[1][2][5] = "K"; lay[1][6][5] = "t"
+    b["layers"] = [rows(l) for l in lay]
+    b["palette"] = dict(b["palette"], B="bookshelf")
+    b["loot"] = [("", "paper", 3, 9, 0.8), ("", "compass", 1, 1, 0.2), ("", "map", 1, 1, 0.3)]
+    out.append(b)
+    return out
+
 
 def ron(structs):
     out = ["// Generated by tools/gen_structures.py: edit that script, not this file.", "(structures: ["]
@@ -1092,6 +1210,10 @@ def ron(structs):
         out.append(f'        chance: {s["chance"]},')
         if s.get("sink"):
             out.append(f'        sink: {s["sink"]},')
+        if s.get("piece_only"):
+            out.append("        piece_only: true,")
+        if s.get("pieces"):
+            out.append("        pieces: [" + ", ".join(f'"{p}"' for p in s["pieces"]) + "],")
         if s.get("foundation"):
             out.append(f'        foundation: Some("{s["foundation"]}"),')
         out.append("        palette: [" + ", ".join(f"('{k}', \"{v}\")" for k, v in s["palette"].items()) + "],")
@@ -1136,6 +1258,8 @@ structs = [
     igloo(),
     mineshaft(),
     shipwreck(),
+    *village("carvalho"),
+    *village("pinheiro"),
 ]
 OUT.write_text(ron(structs))
 print(f"wrote {OUT} ({len(structs)} structures)")

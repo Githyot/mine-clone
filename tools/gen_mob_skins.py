@@ -1736,6 +1736,34 @@ RECOLORED = {
         ZSHIRT=pal("#2a3a5a", "#32466a", "#3a527a", "#445e8a"),
         ZPANTS=pal("#1a2a3a", "#223446", "#2a3e52", "#32485e"))),
     "frost_archer": ("skeleton", dict(BONE=pal("#7a9aa8", "#98b6c2", "#b4ced8", "#cce2ea", "#e2f2f8"))),
+    # Village settlers: plain folk in work clothes (our own look, not vanilla villagers).
+    "settler_farmer": ("player", dict(
+        PHAIR=pal("#8a6a2a", "#9c7a32", "#ae8a3a", "#c09a44", "#d0a84e"),
+        PTUNIC=pal("#7a6a3a", "#8a7844", "#9a864e", "#aa9458", "#b8a262"),
+        PTROUSER=pal("#3a3020", "#463a28", "#524430", "#5e4e38"),
+        PSKIN=pal("#b07a56", "#bc8662", "#c8926e", "#d49e7a", "#dea986"))),
+    "settler_smith": ("player", dict(
+        PHAIR=pal("#1a1612", "#24201a", "#2e2a22", "#38342a", "#423e32"),
+        PTUNIC=pal("#3a2010", "#4a2a16", "#5a341c", "#6a3e22", "#7a4828"),
+        PTROUSER=pal("#2a2a2a", "#343434", "#3e3e3e", "#484848"),
+        PSKIN=pal("#8a5a3a", "#9a6644", "#aa724e", "#b87e58", "#c48a62"))),
+    "settler_librarian": ("player", dict(
+        PHAIR=pal("#9a9a9a", "#aaaaaa", "#bababa", "#cacaca", "#dadada"),
+        PTUNIC=pal("#6a1a1a", "#7c2222", "#8e2a2a", "#a03434", "#b23e3e"),
+        PTROUSER=pal("#2a2a3a", "#343446", "#3e3e52", "#48485e"),
+        PSKIN=pal("#d0a080", "#daac8c", "#e4b898", "#ecc4a4", "#f2d0b2"))),
+    "settler_shepherd": ("player", dict(
+        PHAIR=pal("#4a2a14", "#5a341a", "#6a3e20", "#7a4826", "#8a522c"),
+        PTUNIC=pal("#b0a890", "#beb69e", "#ccc4ac", "#dad2ba", "#e6dec6"),
+        PTROUSER=pal("#4a3a2a", "#584632", "#66523a", "#745e42"),
+        PSKIN=pal("#c08a66", "#cc9874", "#d6a582", "#e0b290", "#e8bf9e"))),
+    "sentinel": ("player", dict(
+        PHAIR=pal("#4a4a46", "#5a5a56", "#6a6a66", "#7a7a76", "#8a8a86"),
+        PTUNIC=pal("#6a6a66", "#7a7a76", "#8a8a86", "#9a9a96", "#aaaaa6"),
+        PTROUSER=pal("#5a5a56", "#6a6a66", "#7a7a76", "#8a8a86"),
+        PLEATHER=pal("#3a5a2a", "#466a32", "#527a3a", "#5e8a42"),
+        PSKIN=pal("#7e7e7a", "#8e8e8a", "#9e9e9a", "#aeaeaa", "#bebeba"),
+        PIRIS=(140, 40, 30))),
 }
 RECOLORED["wolf_tame"] = RECOLORED["wolf"]
 RECOLORED["cat_tame"] = RECOLORED["cat"]
@@ -2194,7 +2222,7 @@ def main():
     order = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "stalker", "spider",
              "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian",
              "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
-             "goblin_trader", "mutant_zombie", "npc_guard", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton",
+             "goblin_trader", "mutant_zombie", "npc_guard", "settler_farmer", "settler_smith", "settler_librarian", "settler_shepherd", "sentinel", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton",
              "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay", "lich", "obsidilith", "void_blossom", "marauder", "invoker", "brute", "ember_wraith", "void_walker_desert", "void_walker_snowy", "void_walker_swamp", "void_walker_savanna", "void_walker_crimson", "void_walker_soul",
              "horse", "donkey", "llama", "camel", "wolf", "cat", "goat", "panda", "parrot", "frog", "turtle", "ooze", "mummy", "sunken", "frost_archer", "wolf_tame", "cat_tame"]
     scale, gap = 4, 8

@@ -49,6 +49,12 @@ pub struct StructureDef {
     pub foundation: Option<String>,
     #[serde(default)]
     pub loot: Vec<LootDef>,
+    /// Buildings set around this one in a ring (a village square and its houses).
+    #[serde(default)]
+    pub pieces: Vec<String>,
+    /// Only placed as a piece of another structure, never on its own.
+    #[serde(default)]
+    pub piece_only: bool,
 }
 
 #[derive(Deserialize)]
@@ -175,26 +181,102 @@ impl Structure {
 
 /// Biggest footprint side we look around for (larger buildings would be cut off).
 const MAX_SIDE: i32 = 32;
+/// How far the pieces of a village reach from its square.
+const VILLAGE_REACH: i32 = 48;
 
 impl Generator {
     /// Buildings whose footprint may cross this chunk.
     pub fn placements_near(&self, pos: ChunkPos) -> Vec<Placement> {
         let mut out = Vec::new();
         let structs = self.structures();
+        let hits = |p: &Placement, f: IVec2| p.origin.x <= pos.x * 16 + 15 && p.origin.x + f.x > pos.x * 16 && p.origin.z <= pos.y * 16 + 15 && p.origin.z + f.y > pos.y * 16;
         for (si, s) in structs.list.iter().enumerate() {
+            if s.def.piece_only {
+                continue;
+            }
             let r = s.def.spacing.max(2) * 16 * self.spread / 100;
-            let x0 = (pos.x * 16 - MAX_SIDE).div_euclid(r);
-            let x1 = (pos.x * 16 + 15).div_euclid(r);
-            let z0 = (pos.y * 16 - MAX_SIDE).div_euclid(r);
-            let z1 = (pos.y * 16 + 15).div_euclid(r);
+            let reach = if s.def.pieces.is_empty() { MAX_SIDE } else { MAX_SIDE + VILLAGE_REACH };
+            let x0 = (pos.x * 16 - reach).div_euclid(r);
+            let x1 = (pos.x * 16 + 15 + reach - MAX_SIDE).div_euclid(r);
+            let z0 = (pos.y * 16 - reach).div_euclid(r);
+            let z1 = (pos.y * 16 + 15 + reach - MAX_SIDE).div_euclid(r);
             for rz in z0..=z1 {
                 for rx in x0..=x1 {
                     if let Some(p) = self.try_place(si, s, rx, rz, r) {
-                        let f = s.footprint(p.turns);
-                        let hit = p.origin.x <= pos.x * 16 + 15 && p.origin.x + f.x > pos.x * 16 && p.origin.z <= pos.y * 16 + 15 && p.origin.z + f.y > pos.y * 16;
-                        if hit {
+                        if hits(&p, s.footprint(p.turns)) {
                             out.push(p);
                         }
+                        for piece in self.village_pieces(&structs, s, &p, rx, rz) {
+                            if hits(&piece, structs.list[piece.index].footprint(piece.turns)) {
+                                out.push(piece);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// The buildings of a village around its square: set in a ring, each turned to face the
+    /// square, each only where the ground is fairly flat and dry.
+    fn village_pieces(&self, structs: &Structures, s: &Structure, center: &Placement, rx: i32, rz: i32) -> Vec<Placement> {
+        let mut out: Vec<Placement> = Vec::new();
+        if s.def.pieces.is_empty() {
+            return out;
+        }
+        let mut rng = Rng::for_pos(self.seed, rx, rz, 9100);
+        let f0 = s.footprint(center.turns);
+        let (cx, cz) = (center.origin.x + f0.x / 2, center.origin.z + f0.y / 2);
+        let n = s.def.pieces.len();
+        let a0 = rng.f32() * std::f32::consts::TAU;
+        for (k, name) in s.def.pieces.iter().enumerate() {
+            let Some(pi) = structs.list.iter().position(|p| &p.def.name == name) else { continue };
+            let piece = &structs.list[pi];
+            let a = a0 + k as f32 / n as f32 * std::f32::consts::TAU + (rng.f32() - 0.5) * 0.3;
+            let dist = 15.0 + rng.f32() * 9.0 + (k % 2) as f32 * 8.0;
+            let (dx, dz) = (a.cos(), a.sin());
+            // The door (south in the plan) toward the square.
+            let turns = if dz.abs() > dx.abs() {
+                if dz < 0.0 { 0 } else { 2 }
+            } else if dx > 0.0 {
+                1
+            } else {
+                3
+            };
+            let f = piece.footprint(turns);
+            let (px, pz) = (cx + (dx * dist) as i32 - f.x / 2, cz + (dz * dist) as i32 - f.y / 2);
+            // Not on top of another piece.
+            if out.iter().any(|o| {
+                let g = structs.list[o.index].footprint(o.turns);
+                px < o.origin.x + g.x + 2 && o.origin.x < px + f.x + 2 && pz < o.origin.z + g.y + 2 && o.origin.z < pz + f.y + 2
+            }) {
+                continue;
+            }
+            let hs = [self.height_at(px, pz), self.height_at(px + f.x - 1, pz), self.height_at(px, pz + f.y - 1), self.height_at(px + f.x - 1, pz + f.y - 1), self.height_at(px + f.x / 2, pz + f.y / 2)];
+            let (lo, hi) = (*hs.iter().min().unwrap(), *hs.iter().max().unwrap());
+            if lo < SEA_LEVEL || hi - lo > 4 {
+                continue;
+            }
+            out.push(Placement { index: pi, origin: IVec3::new(px, hs[4] + 1 - piece.def.sink, pz), turns });
+        }
+        out
+    }
+
+    /// Village squares near (x, z): their middle, for whoever wants to people them.
+    pub fn villages_near(&self, x: i32, z: i32, range: i32) -> Vec<IVec3> {
+        let structs = self.structures();
+        let mut out = Vec::new();
+        for (si, s) in structs.list.iter().enumerate() {
+            if s.def.pieces.is_empty() {
+                continue;
+            }
+            let r = s.def.spacing.max(2) * 16 * self.spread / 100;
+            for rz in (z - range).div_euclid(r)..=(z + range).div_euclid(r) {
+                for rx in (x - range).div_euclid(r)..=(x + range).div_euclid(r) {
+                    if let Some(p) = self.try_place(si, s, rx, rz, r) {
+                        let f = s.footprint(p.turns);
+                        out.push(IVec3::new(p.origin.x + f.x / 2, p.origin.y + s.def.sink + 1, p.origin.z + f.y / 2));
                     }
                 }
             }
