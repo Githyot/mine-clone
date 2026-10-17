@@ -20,6 +20,17 @@ impl crate::Game {
         self.world.set_block(p, id);
     }
 
+    /// Clears plants and anything else above a patch of ground.
+    fn t_clear(&mut self, c: IVec3, r: i32) {
+        for dz in -r..=r {
+            for dx in -r..=r {
+                for dy in 1..=3 {
+                    self.world.set_block(c + IVec3::new(dx, dy, dz), AIR);
+                }
+            }
+        }
+    }
+
     /// The spot two blocks in front of the feet, on the ground.
     fn t_front(&self, dist: f32) -> IVec3 {
         let f = self.forward();
@@ -180,7 +191,8 @@ impl crate::Game {
             }
             "warden" | "breeze" | "sniffer" => {
                 let at = self.body.pos + Vec3::new(self.forward().x, 0.0, self.forward().z).normalize_or_zero() * 6.0;
-                let y = self.world.surface_y(at.x.floor() as i32, at.z.floor() as i32).map(|y| y as f32 + 1.0).unwrap_or(at.y);
+                let y = self.body.pos.y;
+                self.t_clear(IVec3::new(at.x.floor() as i32, y as i32 - 1, at.z.floor() as i32), 4);
                 let n = if scene == "breeze" { 2 } else { 1 };
                 for k in 0..n {
                     let p = Vec3::new(at.x + k as f32 * 2.5, y, at.z);
@@ -193,7 +205,7 @@ impl crate::Game {
                     }
                 }
                 if scene == "warden" {
-                    self.add_effect(crate::effects::DARKNESS, 0, 13.0, false);
+                    self.add_effect(crate::effects::NIGHT_VISION, 0, 600.0, false);
                 }
                 if scene == "breeze" {
                     for k in 0..3 {
@@ -215,6 +227,7 @@ impl crate::Game {
             }
             "brush" => {
                 let gy = self.world.surface_y(front.x, front.z).unwrap_or(front.y);
+                self.t_clear(IVec3::new(front.x, gy, front.z), 3);
                 for dx in -1..=1 {
                     self.t_put(IVec3::new(front.x + dx, gy, front.z), if dx == 0 { "suspicious_sand" } else { "suspicious_gravel" });
                 }
@@ -226,6 +239,7 @@ impl crate::Game {
             "sculk" => {
                 // A small sculk field: sensors, a shrieker, a catalyst, veins.
                 let gy = self.world.surface_y(front.x, front.z).unwrap_or(front.y);
+                self.t_clear(IVec3::new(front.x, gy, front.z + 1), 4);
                 for dz in -2..=3 {
                     for dx in -3..=3 {
                         self.t_put(IVec3::new(front.x + dx, gy, front.z + dz), "sculk");
@@ -267,6 +281,7 @@ impl crate::Game {
                     self.update_trials(0.1);
                 }
             }
+            "night_vision" => self.add_effect(crate::effects::NIGHT_VISION, 0, 600.0, false),
             _ => log::warn!("MC_FASE6: unknown scene {scene}"),
         }
         let _ = (AIR, Open::Craft, Station::Grindstone, Event::Brewed);

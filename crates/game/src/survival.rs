@@ -2403,13 +2403,18 @@ impl Game {
 
     /// The armour the player wears, drawn over the player model with the same bones.
     pub(crate) fn armor_instances(&self, bones: &crate::entity::Bones) -> Vec<(usize, crate::entity::Bones)> {
-        (0..4)
-            .filter_map(|piece| {
-                let st = self.surv.armor[piece]?;
-                let mesh = self.entities.armor_mesh(&self.items.get(st.item).name, piece)?;
-                Some((mesh, *bones))
-            })
-            .collect()
+        let mut out = Vec::new();
+        for piece in 0..4 {
+            let Some(st) = self.surv.armor[piece] else { continue };
+            if let Some(mesh) = self.entities.armor_mesh(&self.items.get(st.item).name, piece) {
+                out.push((mesh, *bones));
+                // Smithing trims show as a coloured pattern over the piece.
+                if let Some(t) = crate::smithing::trim_of(&st).and_then(|(_, m)| self.entities.trim_mesh(m, piece)) {
+                    out.push((t, *bones));
+                }
+            }
+        }
+        out
     }
 
     /// The held item in the right hand of the player model, for the views from outside.

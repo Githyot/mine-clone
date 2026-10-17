@@ -341,14 +341,16 @@ impl crate::Game {
             return;
         };
         let s = self.ui.scale;
-        let slide = ((age * 4.0).min(1.0) * ((4.0 - age) * 4.0).min(1.0)).clamp(0.0, 1.0);
-        let (tw, th) = (160.0 * s, 32.0 * s);
+        let head = if a.1.ends_with("root") { "Nova aba!" } else { "Progresso alcançado!" };
+        // Screenshots show it fully in place.
+        let slide = if self.args.screenshot.is_some() { 1.0 } else { ((age * 4.0).min(1.0) * ((4.0 - age) * 4.0).min(1.0)).clamp(0.0, 1.0) };
+        let text_w = self.ui.text_width(head, s).max(self.ui.text_width(a.2, s));
+        let (tw, th) = ((160.0 * s).max(36.0 * s + text_w), 32.0 * s);
         let x = w - tw * slide;
         let y = 2.0 * s + 30.0 * s * (!self.prog.effects.is_empty()) as u8 as f32;
         self.ui.rect(x, y, tw, th, [33, 33, 33, 235]);
         self.ui.frame(x, y, tw, th, s, [120, 80, 160, 255]);
         self.draw_item_name_icon(a.4, x + 8.0 * s, y + 8.0 * s, 16.0 * s);
-        let head = if a.1.ends_with("root") { "Nova aba!" } else { "Progresso alcançado!" };
         self.ui.text_scaled(x + 30.0 * s, y + 6.0 * s, head, [255, 255, 85, 255], s);
         self.ui.text_scaled(x + 30.0 * s, y + 18.0 * s, a.2, [255, 255, 255, 255], s);
     }
@@ -460,11 +462,13 @@ impl crate::Game {
             let tx = x0 + t as f32 * tab_w;
             self.ui.rect(tx + s, y0 + s, tab_w - 2.0 * s, 12.0 * s, if on { [70, 70, 90, 255] } else { [40, 40, 46, 255] });
             let label = if t < 5 { TABS[t] } else { "Estatísticas" };
-            let lw = self.ui.text_width(label, s * 0.75);
-            self.ui.text_scaled(tx + tab_w / 2.0 - lw / 2.0, y0 + 4.0 * s, label, [230, 230, 230, 255], s * 0.75);
+            // Shrink a long name until it fits its tab.
+            let ls = (s * 0.75).min((tab_w - 4.0 * s) / self.ui.text_width(label, 1.0).max(1.0));
+            let lw = self.ui.text_width(label, ls);
+            self.ui.text_scaled(tx + tab_w / 2.0 - lw / 2.0, y0 + 7.0 * s - 4.0 * ls, label, [230, 230, 230, 255], ls);
         }
         let earned_total = self.prog.earned.len();
-        let foot = format!("{earned_total}/{} progressos   ←/→ abas   ↑/↓ rolar   L fechar", ADVANCEMENTS.len());
+        let foot = format!("{earned_total}/{} progressos   Setas: abas e rolar   L: fechar", ADVANCEMENTS.len());
         self.ui.text_scaled(x0 + 4.0 * s, y0 + ph - 9.0 * s, &foot, [170, 170, 170, 255], s * 0.75);
         let rows_y = y0 + 16.0 * s;
         let row_h = 18.0 * s;

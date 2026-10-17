@@ -643,7 +643,7 @@ impl Game {
                     }
                 }
                 let t = format!("Estantes: {shelves}/15");
-                self.ui.text_scaled(x0 + 8.0 * s, y0 + 70.0 * s, &t, dark, s * 0.75);
+                self.ui.text_scaled(x0 + 8.0 * s, y0 + 31.0 * s, &t, dark, s * 0.6);
                 // A small open book over the table.
                 let (bx, by) = at(14.0, 18.0);
                 let flap = (self.now * 2.0).sin() * 2.0 * s;
@@ -665,7 +665,7 @@ impl Game {
                         let too = self.survival && cost >= 40;
                         let t = if too { "Caro demais!".to_string() } else { format!("Custo: {cost} níveis") };
                         let col = if too || (self.survival && cost > self.level_now()) { [255, 85, 85, 255] } else { [80, 200, 40, 255] };
-                        self.ui.label(x0 + 60.0 * s, y0 + 70.0 * s, &t, col, s);
+                        self.ui.text_scaled(x0 + 60.0 * s, y0 + 24.0 * s, &t, col, s * 0.85);
                     }
                 } else if let Some((_, xp)) = self.grindstone_result() {
                     if xp > 0 {
@@ -700,14 +700,14 @@ impl Game {
                 self.ui.rect(fx, fy, 18.0 * s * brew.fuel as f32 / 20.0, 4.0 * s, [230, 140, 40, 255]);
             }
             Station::Beacon(p) => {
-                let (x, y) = at(136.0, 50.0);
+                let (x, y) = at(150.0, 50.0);
                 slots.push((Slot::Cont(0), x, y));
                 let levels = self.pyramid_levels(p);
                 let state = self.prog.beacons.get(&p).copied().unwrap_or_default();
                 self.ui.text_scaled(x0 + 8.0 * s, y0 + 18.0 * s, &format!("Pirâmide: {levels} níveis"), dark, s * 0.75);
                 let mut pick: Option<(u8, bool)> = None;
                 for (k, &(e, need)) in BEACON_POWERS.iter().enumerate() {
-                    let (bx, by) = at(10.0 + (k % 2) as f32 * 24.0, 28.0 + (k / 2) as f32 * 22.0);
+                    let (bx, by) = at(8.0 + (k % 3) as f32 * 24.0, 28.0 + (k / 3) as f32 * 22.0);
                     let on = state.primary == e;
                     let can = levels >= need;
                     let over = mouse.0 >= bx && mouse.0 < bx + 22.0 * s && mouse.1 >= by && mouse.1 < by + 20.0 * s;
@@ -723,7 +723,7 @@ impl Game {
                     if e == 0 {
                         continue;
                     }
-                    let (bx, by) = at(70.0 + k as f32 * 24.0, 28.0);
+                    let (bx, by) = at(88.0 + k as f32 * 24.0, 28.0);
                     let can = levels >= 4;
                     let on = state.secondary == e;
                     let over = mouse.0 >= bx && mouse.0 < bx + 22.0 * s && mouse.1 >= by && mouse.1 < by + 20.0 * s;
@@ -737,7 +737,7 @@ impl Game {
                         pick = Some((e, true));
                     }
                 }
-                self.ui.text_scaled(x0 + 70.0 * s, y0 + 52.0 * s, "Pague com um lingote ou gema:", dark, s * 0.75);
+                self.ui.text_scaled(x0 + 88.0 * s, y0 + 55.0 * s, "Pagamento:", dark, s * 0.75);
                 if let Some((e, second)) = pick {
                     self.clicked = false;
                     let paid = self.station_inv(st).and_then(|i| i.slots[0]).is_some_and(|s| BEACON_PAY.contains(&self.items.get(s.item).name.as_str()));

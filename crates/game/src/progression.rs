@@ -496,6 +496,6 @@ impl crate::Game {
         self.draw_effects_hud(w);
         self.draw_locator_bar(w, hx, hy);
         self.draw_advancement_toast(w);
-        self.draw_advancements(w, h);
+        let _ = h;
     }
 }

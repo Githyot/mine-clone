@@ -3183,6 +3183,8 @@ impl Game {
                     self.ui.text(2.0 * s, y, l, [224, 224, 224, 255]);
                 }
             }
+            // The advancements panel covers the rest of the HUD.
+            self.draw_advancements(w, h);
         }
 
         match self.screen {

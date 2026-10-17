@@ -44,10 +44,6 @@ pub const MATERIALS: [(&str, &str, [u8; 3]); 11] = [
     ("resin_brick", "Resina", [239, 120, 30]),
 ];
 
-pub fn template_item(pattern: &str) -> String {
-    format!("{pattern}_armor_trim_smithing_template")
-}
-
 pub const UPGRADE: &str = "netherite_upgrade_smithing_template";
 
 /// Tooltip line for a trim pair (pattern id in the pair's id slot is TRIM; its level packs
@@ -65,11 +61,6 @@ pub fn unpack(packed: u8) -> Option<(usize, usize)> {
 
 pub fn trim_of(s: &ItemStack) -> Option<(usize, usize)> {
     unpack(s.ench.get(TRIM))
-}
-
-/// The trim colour on a worn piece, if any.
-pub fn trim_color(s: &ItemStack) -> Option<[u8; 3]> {
-    trim_of(s).map(|(_, m)| MATERIALS[m].2)
 }
 
 /// What the smithing table makes from (template, base, addition), if anything.
