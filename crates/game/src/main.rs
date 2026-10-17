@@ -889,6 +889,15 @@ impl Game {
             game.arrival = Some(game.end_arrival());
             game.body.pos = game.arrival.unwrap();
             game.needs_spawn = false;
+            if let Some(name) = game.args.find.clone() {
+                // Test hook: look at a structure on the far islands.
+                if let Some((o, size)) = game.world.gen.find_structure(&name, 1500, 0, 60) {
+                    game.arrival = None;
+                    game.body.pos = Vec3::new(o.x as f32 + size.x as f32 / 2.0, o.y as f32 + size.y as f32 * 0.6 + 2.0, o.z as f32 + size.z as f32 + 9.0);
+                    game.body.flying = true;
+                    log::info!("found {name} at {o}");
+                }
+            }
         }
         if std::env::var("MC_NETHER").is_ok() && game.dim == voxel::worldgen::Dim::Overworld {
             // Test hook: arrive in the Nether through a fresh portal.
@@ -897,14 +906,19 @@ impl Game {
             game.arrival = Some(Vec3::new(p.x / 8.0, 70.0, p.z / 8.0));
             game.body.pos = game.arrival.unwrap();
             game.needs_spawn = false;
-            if std::env::var("MC_NETHER").as_deref() == Ok("warped") {
-                // Test hook: stand on a floor in the nearest warped forest.
+            let want = match std::env::var("MC_NETHER").as_deref() {
+                Ok("warped") => Some(voxel::worldgen::Biome::WarpedForest),
+                Ok("deltas") => Some(voxel::worldgen::Biome::BasaltDeltas),
+                _ => None,
+            };
+            if let Some(want) = want {
+                // Test hook: stand on a floor in the nearest warped forest (or basalt deltas).
                 let (x0, z0) = (game.body.pos.x as i32, game.body.pos.z as i32);
                 'search: for r in (0..2000).step_by(16) {
                     for k in 0..(r / 8).max(1) {
                         let a = k as f32 / (r / 8).max(1) as f32 * std::f32::consts::TAU;
                         let (x, z) = (x0 + (a.cos() * r as f32) as i32, z0 + (a.sin() * r as f32) as i32);
-                        if game.world.gen.biome_at(x, z) != voxel::worldgen::Biome::WarpedForest {
+                        if game.world.gen.biome_at(x, z) != want {
                             continue;
                         }
                         if let Some(y) = game.world.gen.nether_floor_near(x, 40, z) {

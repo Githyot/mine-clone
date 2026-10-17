@@ -71,10 +71,12 @@ pub enum Biome {
     CrimsonForest = 17,
     TheEnd = 18,
     WarpedForest = 19,
+    BasaltDeltas = 20,
+    EndHighlands = 21,
 }
 
 impl Biome {
-    pub const COUNT: usize = 20;
+    pub const COUNT: usize = 22;
 
     pub fn from_u8(v: u8) -> Biome {
         match v {
@@ -97,6 +99,8 @@ impl Biome {
             17 => Biome::CrimsonForest,
             18 => Biome::TheEnd,
             19 => Biome::WarpedForest,
+            20 => Biome::BasaltDeltas,
+            21 => Biome::EndHighlands,
             _ => Biome::Plains,
         }
     }
@@ -123,6 +127,8 @@ impl Biome {
             Biome::CrimsonForest => "Crimson Forest",
             Biome::TheEnd => "The End",
             Biome::WarpedForest => "Warped Forest",
+            Biome::BasaltDeltas => "Basalt Deltas",
+            Biome::EndHighlands => "End Highlands",
         }
     }
 
@@ -143,7 +149,7 @@ impl Biome {
             Biome::DarkForest => [0.72, 0.86, 0.72],
             Biome::Badlands => [1.14, 0.94, 0.62],
             Biome::CherryGrove => [1.02, 1.08, 0.9],
-            Biome::NetherWastes | Biome::SoulSandValley | Biome::CrimsonForest | Biome::WarpedForest | Biome::TheEnd => [1.0, 1.0, 1.0],
+            Biome::NetherWastes | Biome::SoulSandValley | Biome::CrimsonForest | Biome::WarpedForest | Biome::BasaltDeltas | Biome::TheEnd | Biome::EndHighlands => [1.0, 1.0, 1.0],
         }
     }
 
@@ -398,7 +404,7 @@ impl Generator {
             return Column { height: NETHER_ROOF, biome: self.nether_biome(wx, wz) };
         }
         if self.dim == Dim::End {
-            return Column { height: self.end_land(wx, wz).map(|l| l.0).unwrap_or(0), biome: Biome::TheEnd };
+            return Column { height: self.end_land(wx, wz).map(|l| l.0).unwrap_or(0), biome: end::end_biome(wx, wz) };
         }
         let x = wx as f32;
         let z = wz as f32;
@@ -1093,6 +1099,7 @@ mod tests {
             }
         }
         count[Generator::new(1234, &reg).with_dim(Dim::End).biome_at(0, 0) as usize] += 1;
+        count[Generator::new(1234, &reg).with_dim(Dim::End).biome_at(2000, 0) as usize] += 1;
         let total: usize = count.iter().sum();
         for (i, &c) in count.iter().enumerate() {
             println!("{:>14}: {:.1}%", Biome::from_u8(i as u8).name(), c as f32 * 100.0 / total as f32);

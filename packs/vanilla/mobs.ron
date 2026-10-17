@@ -983,7 +983,7 @@
         name: "void_walker", display_name: "Andarilho do Vazio", kind: Neutral, health: 40, speed: 2.9,
         drops: [(item: "ender_pearl", chance: 0.6)], xp: 5,
         width: 0.6, height: 2.9, spawn: Dark, attack: 7, scale: 1.45, weight: 3,
-        biomes: ["The End", "Overworld"],
+        biomes: ["The End", "End Highlands", "Overworld"],
         parts: [
             (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
             (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),

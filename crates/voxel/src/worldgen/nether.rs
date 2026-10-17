@@ -34,6 +34,7 @@ pub(super) struct NetherPalette {
     shroomlight: BlockId,
     basalt: BlockId,
     blackstone: BlockId,
+    debris: BlockId,
 }
 
 impl NetherPalette {
@@ -59,6 +60,7 @@ impl NetherPalette {
             shroomlight: g("shroomlight"),
             basalt: g("basalt"),
             blackstone: g("blackstone"),
+            debris: g("ancient_debris"),
         }
     }
 }
@@ -68,8 +70,11 @@ impl Generator {
         let (x, z) = (wx as f32, wz as f32);
         let soul = self.variant.fbm2(x / 220.0 + 300.0, z / 220.0, 3);
         let warm = self.temperature.fbm2(x / 260.0 - 500.0, z / 260.0, 2);
+        let delta = self.variant.fbm2(x / 200.0 - 700.0, z / 200.0 + 150.0, 2);
         if soul > 0.16 {
             Biome::SoulSandValley
+        } else if delta > 0.2 {
+            Biome::BasaltDeltas
         } else if warm > 0.14 {
             Biome::CrimsonForest
         } else if warm < -0.14 {
@@ -131,6 +136,16 @@ impl Generator {
                                 }
                                 Biome::CrimsonForest if open_above && yi > NETHER_LAVA => p.nylium,
                                 Biome::WarpedForest if open_above && yi > NETHER_LAVA => p.warped_nylium,
+                                // Grey ash of blackstone and basalt, magma round the lava.
+                                Biome::BasaltDeltas if near_floor => {
+                                    if yi <= NETHER_LAVA + 2 && rng.chance(0.4) {
+                                        p.magma
+                                    } else if rng.chance(0.45) {
+                                        p.basalt
+                                    } else {
+                                        p.blackstone
+                                    }
+                                }
                                 Biome::NetherWastes if open_above && (NETHER_LAVA - 2..=NETHER_LAVA + 3).contains(&yi) && rng.chance(0.3) => p.gravel,
                                 _ => p.netherrack,
                             }
@@ -169,6 +184,21 @@ impl Generator {
                     x += rng.range(-1, 1);
                     y += rng.range(-1, 1);
                     z += rng.range(-1, 1);
+                }
+            }
+        }
+        // Ancient debris: one or two blocks hidden deep in the rock under the lava sea.
+        if p.debris != AIR {
+            for _ in 0..2 {
+                if !rng.chance(0.45) {
+                    continue;
+                }
+                let (x, y, z) = (rng.range(0, 15), rng.range(8, 22), rng.range(0, 15));
+                for k in 0..rng.range(1, 2) {
+                    let xx = (x + k).min(15);
+                    if chunk.get(xx as usize, y as usize, z as usize) == p.netherrack {
+                        chunk.set(xx as usize, y as usize, z as usize, p.debris);
+                    }
                 }
             }
         }
@@ -239,6 +269,32 @@ impl Generator {
                                     let b = if rng.chance(0.1) { p.shroomlight } else { cap };
                                     chunk.set(cx as usize, cy as usize, cz as usize, b);
                                 }
+                            }
+                        }
+                    }
+                }
+                // Basalt deltas: jagged columns and little pools of lava held in basalt rims.
+                Biome::BasaltDeltas => {
+                    if rng.chance(0.5) {
+                        let h = rng.range(2, 9);
+                        for k in 1..=h {
+                            let y = fy + k;
+                            if y >= NETHER_ROOF - 3 || chunk.get(x as usize, y as usize, z as usize) != AIR {
+                                break;
+                            }
+                            chunk.set(x as usize, y as usize, z as usize, p.basalt);
+                        }
+                    } else {
+                        let r = rng.range(1, 2);
+                        for dz in -r..=r {
+                            for dx in -r..=r {
+                                let (cx, cz) = ((x + dx) as usize, (z + dz) as usize);
+                                let rim = dx.abs() == r || dz.abs() == r;
+                                let below = chunk.get(cx, (fy - 1) as usize, cz);
+                                if below == AIR || below == p.lava {
+                                    continue;
+                                }
+                                chunk.set(cx, fy as usize, cz, if rim { p.basalt } else { p.lava });
                             }
                         }
                     }

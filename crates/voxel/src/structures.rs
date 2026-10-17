@@ -235,6 +235,23 @@ impl Generator {
             }
             return Some(Placement { index: si, origin: IVec3::new(ox, ground + 1 - s.def.sink, oz), turns });
         }
+        if self.dim == crate::worldgen::Dim::End {
+            // On an island's top with land under every corner; ships float high above one.
+            let corners = [(ox, oz), (ox + f.x - 1, oz), (ox, oz + f.y - 1), (ox + f.x - 1, oz + f.y - 1), (cx, cz)];
+            let tops: Vec<i32> = corners.iter().filter_map(|&(x, z)| self.end_top(x, z)).collect();
+            if s.def.name.starts_with("navio") {
+                let ground = self.end_top(cx, cz)?;
+                return Some(Placement { index: si, origin: IVec3::new(ox, ground + 22, oz), turns });
+            }
+            if tops.len() < corners.len() {
+                return None;
+            }
+            let (lo, hi) = (*tops.iter().min().unwrap(), *tops.iter().max().unwrap());
+            if hi - lo > 6 {
+                return None;
+            }
+            return Some(Placement { index: si, origin: IVec3::new(ox, tops[4] + 1 - s.def.sink, oz), turns });
+        }
         // Fairly flat dry ground only.
         let hs = [self.height_at(ox, oz), self.height_at(ox + f.x - 1, oz), self.height_at(ox, oz + f.y - 1), self.height_at(ox + f.x - 1, oz + f.y - 1), self.height_at(cx, cz)];
         let lo = *hs.iter().min().unwrap();
