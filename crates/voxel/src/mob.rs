@@ -135,6 +135,10 @@ pub struct MobDef {
     /// A town NPC: lives in a house, never despawns, talks and trades.
     #[serde(default = "d_false")]
     pub town: bool,
+    /// Lives under water (fish, whales): swims about below the surface, never climbs out onto
+    /// the bank, and flops about when stranded. See `Mob::aquatic_steer`.
+    #[serde(default = "d_false")]
+    pub aquatic: bool,
 }
 
 fn d_scale() -> f32 {
@@ -554,6 +558,9 @@ impl Mob {
                 jump = true;
             }
         }
+        if def.aquatic {
+            self.aquatic_steer(world, &mut wish, &mut jump);
+        }
         let input = Input { wish, jump, sneak: false, sprint: run, crawl: false };
         self.body.step(world, &input, dt);
         let moved = (self.body.pos - before) * Vec3::new(1.0, 0.0, 1.0);
@@ -569,6 +576,36 @@ impl Mob {
             }
         } else {
             self.stuck = 0.0;
+        }
+    }
+}
+
+impl Mob {
+    /// Water creatures (`MobDef::aquatic`): in the water they keep off the bottom and away from
+    /// the surface, and never swim out onto land (a wander goal or chase that leads out of the
+    /// water is dropped); stranded on land they flop about until they reach water again.
+    fn aquatic_steer(&mut self, world: &impl Terrain, wish: &mut Vec3, jump: &mut bool) {
+        let at = |p: Vec3| p.floor().as_ivec3();
+        if self.body.in_water {
+            if *wish != Vec3::ZERO {
+                let ahead = self.body.pos + Vec3::Y * 0.3 + wish.normalize() * 1.2;
+                if !world.liquid(at(ahead)) {
+                    *wish = Vec3::ZERO;
+                    self.wander = None;
+                    self.idle = 0.5 + self.rng.f32();
+                }
+            }
+            // Rise off the bottom; sink back when close under the surface.
+            let near_bottom = world.solid(at(self.body.pos - Vec3::Y * 0.6));
+            let near_top = !world.liquid(at(self.body.pos + Vec3::Y * 1.4));
+            *jump = near_bottom && !near_top;
+        } else {
+            // Stranded: flop about now and then.
+            *jump = self.body.on_ground && self.rng.chance(0.04);
+            if *jump {
+                let a = self.rng.f32() * std::f32::consts::TAU;
+                *wish = Vec3::new(a.cos(), 0.0, a.sin());
+            }
         }
     }
 }
@@ -701,6 +738,61 @@ mod tests {
         assert!(m.body.pos.y > 9.3 && m.body.pos.y < 10.2, "{}", m.body.pos.y);
         let (m, _) = run(&reg, "duck", Vec3::new(0.5, 9.6, 0.5), far, 6.0, &Pond);
         assert!(m.body.pos.y > 9.3 && m.body.pos.y < 10.2, "{}", m.body.pos.y);
+    }
+
+    fn with_mods() -> MobRegistry {
+        MobRegistry::from_ron_many(&[include_str!("../../../packs/vanilla/mobs.ron"), include_str!("../../../packs/vanilla/mods/mobs.ron")]).unwrap()
+    }
+
+    #[test]
+    fn mod_creatures_load_with_unique_names_and_known_prey() {
+        let reg = with_mods();
+        for n in ["gorilla", "crocodile", "cachalot_whale", "snail", "giraffe", "mutant_stalker", "void_walker_jungle"] {
+            assert!(reg.id(n).is_some(), "{n}");
+        }
+        let mut names: Vec<&str> = reg.defs.iter().map(|d| d.name.as_str()).collect();
+        names.sort();
+        let n = names.len();
+        names.dedup();
+        assert_eq!(n, names.len(), "duplicate mob names");
+        for d in &reg.defs {
+            for p in &d.prey {
+                assert!(reg.id(p).is_some(), "{} hunts unknown {p}", d.name);
+            }
+            // Mini-bosses never get the boss bar.
+            assert!(!(d.name.starts_with("mutant_") && d.boss), "{}", d.name);
+        }
+        assert!(reg.defs[reg.id("orca").unwrap()].aquatic);
+    }
+
+    /// Water from y=5 to 9 for x < 3, dry land (ground at y=9) beyond.
+    struct Lake;
+    impl Terrain for Lake {
+        fn solid(&self, p: IVec3) -> bool {
+            p.y < 5 || (p.x >= 3 && p.y < 10)
+        }
+        fn liquid(&self, p: IVec3) -> bool {
+            p.x < 3 && (5..10).contains(&p.y)
+        }
+    }
+
+    #[test]
+    fn fish_stay_in_the_water() {
+        let reg = with_mods();
+        let i = reg.id("bass").unwrap();
+        let def = &reg.defs[i];
+        let mut m = Mob::new(i, def, Vec3::new(1.5, 7.0, 0.5), 9);
+        let far = Vec3::new(100.0, 10.0, 100.0);
+        let mut ev = Vec::new();
+        for k in 0..3000 {
+            if k % 300 == 0 {
+                // Tempt it towards the shore.
+                m.go_to(Vec3::new(8.5, 10.0, 0.5), 5.0);
+            }
+            m.tick(def, &Lake, far, false, 15, true, 0.02, &mut ev);
+            assert!(m.body.pos.x < 3.6, "swam out at {}", m.body.pos);
+        }
+        assert!(m.body.in_water && m.body.pos.y < 9.5 && m.body.pos.y > 4.9, "{}", m.body.pos);
     }
 
     #[test]

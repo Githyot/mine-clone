@@ -7,7 +7,12 @@
         (pattern: ["GGG", "QCQ", "WWW"], key: {'G': "glass", 'Q': "quartz", 'C': "calendar", 'W': "oak_slab"}, result: "season_sensor_spring"),
     ],
     shapeless: [
+        (ingredients: ["crocodile_scute", "crocodile_scute", "crocodile_scute", "crocodile_scute"], result: "leather", count: 2),
+        (ingredients: ["snake_skin", "snake_skin"], result: "leather"),
+        (ingredients: ["serpent_tooth"], result: "bone", count: 3),
+        (ingredients: ["mosquito_proboscis", "mosquito_proboscis"], result: "string"),
     ],
     smelting: [
+        (input: "banana_slug_slime", result: "clay_ball", xp: 0.1),
     ],
 )
