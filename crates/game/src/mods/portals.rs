@@ -274,6 +274,9 @@ impl Game {
             }
         }
         log::info!("built a {} at {g}", def.portal);
+        // The feet land on the +z side: face away from the portal, out over the new world.
+        self.yaw = std::f32::consts::PI;
+        self.pitch = 0.0;
         Vec3::new(x0 as f32 + 2.0, g.y as f32, g.z as f32 + 1.5)
     }
 }
