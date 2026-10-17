@@ -1798,7 +1798,8 @@ impl Game {
             })
             .map(|t| t.distance)
             .unwrap_or(f32::MAX);
-            if let Some((i, t)) = self.mobs.pick(self.body.eye(), self.forward(), 3.5) {
+            if self.combat_swing(block_dist) {
+            } else if let Some((i, t)) = self.mobs.pick(self.body.eye(), self.forward(), 3.5) {
                 if t < block_dist {
                     self.attack_cd = if self.survival { 0.1 } else { 0.45 };
                     self.break_cd = 0.3;

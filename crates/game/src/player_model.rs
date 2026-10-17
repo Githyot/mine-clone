@@ -53,6 +53,9 @@ pub struct Animator {
     lean: f32,
     /// Attack swing 0..1 (0 = not swinging).
     pub swing: f32,
+    /// How the weapon moves (Better Combat idea, see `mods/combat.rs`): 0 chop down from
+    /// above, 1 slash across, 2 thrust ahead, 3 uppercut from below.
+    pub swing_style: u8,
     was_ground: bool,
     fall_speed: f32,
     /// 0..1 head under water, and the breaststroke phase for the first-person arms.
@@ -73,7 +76,14 @@ impl Animator {
     pub fn start_swing(&mut self) {
         if self.swing <= 0.0 || self.swing > 0.5 {
             self.swing = 0.001;
+            self.swing_style = 0;
         }
+    }
+
+    /// Start a weapon swing of the given style right away (combo attacks).
+    pub fn start_styled_swing(&mut self, style: u8) {
+        self.swing = 0.001;
+        self.swing_style = style;
     }
 
     pub fn update(&mut self, p: &Pose, dt: f32) {
@@ -253,10 +263,28 @@ impl Animator {
             rot[L_ARM] = Quat::from_rotation_x(-2.4 + f.cos() * 0.6);
         }
         if self.swing > 0.0 {
-            // Hit: the right arm comes down from above, the body twists into it.
+            // Hit: the right arm comes down from above, the body twists into it. Combo swings
+            // cut across, thrust ahead or come up from below instead.
             let s = (self.swing * PI).sin();
-            rot[R_ARM] = Quat::from_rotation_y(-s * 0.3) * Quat::from_rotation_x(-1.9 * s - 0.2) * Quat::from_rotation_z(0.2 * s);
-            rot[BODY] = rot[BODY] * Quat::from_rotation_y(-s * 0.25);
+            let ph = self.swing;
+            match self.swing_style {
+                1 => {
+                    rot[R_ARM] = Quat::from_rotation_y(0.9 - 1.8 * ph) * Quat::from_rotation_x(-1.45 * s - 0.15) * Quat::from_rotation_z(0.3 * s);
+                    rot[BODY] = rot[BODY] * Quat::from_rotation_y(0.35 - 0.7 * ph);
+                }
+                2 => {
+                    rot[R_ARM] = Quat::from_rotation_x(-1.55 * s.sqrt() - 0.05) * Quat::from_rotation_z(0.05 * s);
+                    rot[BODY] = rot[BODY] * Quat::from_rotation_y(-s * 0.4) * Quat::from_rotation_x(s * 0.12);
+                }
+                3 => {
+                    rot[R_ARM] = Quat::from_rotation_y(-s * 0.2) * Quat::from_rotation_x(0.5 - 3.0 * ph) * Quat::from_rotation_z(0.15 * s);
+                    rot[BODY] = rot[BODY] * Quat::from_rotation_y(-s * 0.2);
+                }
+                _ => {
+                    rot[R_ARM] = Quat::from_rotation_y(-s * 0.3) * Quat::from_rotation_x(-1.9 * s - 0.2) * Quat::from_rotation_z(0.2 * s);
+                    rot[BODY] = rot[BODY] * Quat::from_rotation_y(-s * 0.25);
+                }
+            }
         }
         // Head follows the camera, relative to the body.
         let head_yaw = wrap(p.look_yaw + PI - self.body_yaw).clamp(-1.3, 1.3);
@@ -294,11 +322,20 @@ impl Animator {
         let bob = self.walk;
         let a = self.amount.min(1.0);
         let sway = Vec3::new((bob).sin() * 0.03 * a, -((bob).cos().abs()) * 0.035 * a, 0.0);
-        let swing_off = Vec3::new(-0.18 * s2, 0.12 * (s2 * 2.0 * PI / PI).sin().abs() * 0.5, -0.25 * s);
+        let ph = self.swing.max(0.0);
+        let (swing_off, turn, tip) = match self.swing_style {
+            // Slash: the fist sweeps from the right across to the left.
+            1 => (Vec3::new(0.2 * s - 0.55 * ph * s, 0.12 * s, -0.22 * s), 0.25 + s * (0.7 - 1.6 * ph), 1.75 + s * 0.15),
+            // Thrust: straight into the screen and back.
+            2 => (Vec3::new(-0.12 * s, 0.06 * s, -0.5 * s), 0.25 - s * 0.15, 1.75 + s * 0.05),
+            // Uppercut: from low up past the middle.
+            3 => (Vec3::new(-0.15 * s, -0.25 * s + 0.5 * ph * s, -0.2 * s), 0.25 - s * 0.4, 1.75 + s * (1.1 - 1.2 * ph)),
+            _ => (Vec3::new(-0.18 * s2, 0.12 * (s2 * 2.0 * PI / PI).sin().abs() * 0.5, -0.25 * s), 0.25 - s * 0.6, 1.75 + s * 0.5),
+        };
         // Tipping the arm forward makes it reach into the screen.
         Mat4::from_translation(Vec3::new(0.40, -0.46, -0.30) + sway + swing_off)
-            * Mat4::from_rotation_y(0.25 - s * 0.6)
-            * Mat4::from_rotation_x(1.75 + s * 0.5)
+            * Mat4::from_rotation_y(turn)
+            * Mat4::from_rotation_x(tip)
             * Mat4::from_rotation_z(0.15)
     }
 

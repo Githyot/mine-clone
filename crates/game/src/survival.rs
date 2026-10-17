@@ -490,6 +490,9 @@ impl Game {
 
     /// Seconds a weapon needs between full-strength swings (the hand is quick, an axe slow).
     pub(crate) fn attack_cooldown(&self) -> f32 {
+        if let Some(c) = self.weapon_cooldown() {
+            return c;
+        }
         match self.held_tool().map(|t| t.kind) {
             None => 0.25,
             Some(ToolKind::Sword) => 0.625,

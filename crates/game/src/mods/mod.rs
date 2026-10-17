@@ -6,6 +6,7 @@
 //! read after the base game's files.
 
 pub mod aether;
+pub mod combat;
 pub mod dwellers;
 pub mod mounts;
 pub mod portals;
@@ -39,6 +40,7 @@ pub struct Mods {
     pub mount: mounts::Mount,
     /// How the player arrives in the dimension being loaded, when a mod portal sent them.
     pub arriving: Option<portals::Arrive>,
+    pub combat: combat::Combat,
 }
 
 impl Game {
@@ -72,6 +74,7 @@ impl Game {
         if dt > 0.0 {
             self.update_dwellers(dt);
             self.update_mount(dt);
+            self.update_combat();
         }
     }
 
@@ -92,7 +95,9 @@ impl Game {
 
     /// Lines for the F3 screen.
     pub(crate) fn mods_info_lines(&self) -> Vec<String> {
-        vec![self.season_line()]
+        let mut v = vec![self.season_line()];
+        v.extend(self.combat_line());
+        v
     }
 
     /// HUD bits drawn over the game view.
