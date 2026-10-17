@@ -8,6 +8,7 @@
 pub mod aether;
 pub mod combat;
 pub mod dwellers;
+pub mod ecologics;
 pub mod macaws;
 pub mod mounts;
 pub mod portals;
@@ -43,6 +44,7 @@ pub struct Mods {
     pub arriving: Option<portals::Arrive>,
     pub combat: combat::Combat,
     pub macaws: macaws::Macaws,
+    pub ecologics: ecologics::Ecologics,
 }
 
 impl Game {
@@ -78,6 +80,7 @@ impl Game {
             self.update_mount(dt);
             self.update_combat();
             self.update_macaws(dt);
+            self.update_ecologics(dt);
         }
     }
 
