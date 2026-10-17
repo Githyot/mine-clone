@@ -116,6 +116,8 @@ pub enum Sfx {
     Portal,
     /// A tune on an instrument (Immersive Melodies idea): instrument 0 lute, 1 flute, 2 cello.
     Melody(u8, u8),
+    /// A whole melody on an instrument (mods/melodies.rs): instrument, melody number.
+    Tune(u8, u16),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

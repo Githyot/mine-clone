@@ -11,6 +11,7 @@ pub mod combat;
 pub mod dwellers;
 pub mod ecologics;
 pub mod macaws;
+pub mod melodies;
 pub mod mounts;
 pub mod paintings_pp;
 pub mod portals;
@@ -51,6 +52,7 @@ pub struct Mods {
     pub macaws: macaws::Macaws,
     pub ecologics: ecologics::Ecologics,
     pub snow: snow::Snow,
+    pub melodies: melodies::Melodies,
 }
 
 impl Game {
@@ -98,7 +100,7 @@ impl Game {
 
     /// Right click: a mod block or item that does something. True when it was used.
     pub(crate) fn mods_use(&mut self) -> bool {
-        self.aether_use() || self.seasons_use() || self.aquaculture_use() || self.snow_use()
+        self.aether_use() || self.seasons_use() || self.melodies_use() || self.aquaculture_use() || self.snow_use()
     }
 
     /// A key went down. True when a mod used it.
