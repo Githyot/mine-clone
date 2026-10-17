@@ -2487,6 +2487,8 @@ impl Game {
             Shape::Lantern => (hit.normal.y < 0) as u8,
             // Runs the way you look.
             Shape::Bridge => facing(f.x, f.z) & 1,
+            // Along the axis of the face clicked, like a log.
+            Shape::Hollow => if hit.normal.y != 0 { 0 } else if hit.normal.x != 0 { 1 } else { 2 },
             Shape::Trapdoor => {
                 let side = if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) ^ 2 } else { facing(-f.x, -f.z) };
                 side | if upper { 8 } else { 0 }

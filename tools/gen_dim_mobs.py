@@ -68,6 +68,11 @@ def paint(look, face, i, j, fw, fh, g, seed):
         t = 0.3 + 0.35 * n + 0.15 * jit - (0.3 if int(g[1] + 64) % 4 == 0 else 0.0)
     elif pat == "cloth":
         t = 0.45 + 0.25 * n + 0.1 * jit - (0.2 if int(g[2] + 64) % 6 == 0 or int(g[0] + 64) % 6 == 0 else 0.0)
+    elif pat == "rosettes":
+        # A jaguar's coat: dark rings with a darker-gold middle on the light ground.
+        cx, cy = (i + 2 * (j // 4)) % 5 - 2, j % 4 - 1.5
+        d = cx * cx + cy * cy
+        t = 0.0 if 1.5 < d < 3.5 and hash01(seed, i // 5, j // 4, 1) > 0.3 else (0.45 if d <= 1.5 else 0.6 + 0.3 * n)
     elif pat == "leaves":
         t = 0.2 + 0.7 * fbm(seed + 17, g[0], g[1], g[2], 1.5)
     if face == "top":

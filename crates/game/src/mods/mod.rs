@@ -7,9 +7,11 @@
 
 pub mod aether;
 pub mod aircraft;
+pub mod distant_lands;
 pub mod dwellers;
 pub mod mounts;
 pub mod portals;
+pub mod saplings;
 pub mod seasons;
 pub mod social;
 
@@ -45,6 +47,8 @@ pub struct Mods {
     pub social: social::Social,
     /// How the player arrives in the dimension being loaded, when a mod portal sent them.
     pub arriving: Option<portals::Arrive>,
+    /// What the carpenter table makes (Distant Lands), an index into its list.
+    pub carpenter: u8,
 }
 
 impl Game {
@@ -92,7 +96,7 @@ impl Game {
 
     /// Right click: a mod block or item that does something. True when it was used.
     pub(crate) fn mods_use(&mut self) -> bool {
-        self.aircraft_use() || self.aether_use() || self.seasons_use()
+        self.aircraft_use() || self.carpenter_use() || self.aether_use() || self.seasons_use()
     }
 
     /// A key went down. True when a mod used it.

@@ -435,3 +435,6 @@ EGGS = {
     "shriek_worm": ((22, 48, 60), (240, 240, 236)), "sculk_centipede": ((18, 51, 65), (217, 214, 200)),
     "sludge": ((37, 64, 61), (70, 230, 220)), "glare": ((63, 122, 58), (207, 232, 106)),
 }
+
+# The creatures of Distant Lands' Brazilian biomes (Overworld) add themselves to MOBS and EGGS.
+import distant_mobs_spec  # noqa: E402,F401
