@@ -8,6 +8,7 @@
 pub mod aether;
 pub mod aircraft;
 pub mod distant_lands;
+pub mod apotheosis;
 pub mod dwellers;
 pub mod mounts;
 pub mod portals;
@@ -32,6 +33,11 @@ pub struct ModSave {
     pub dwellers: Vec<[i32; 4]>,
     /// Aircraft in every dimension except the loaded one (those live in `Mods::aircraft`).
     pub aircraft: Vec<aircraft::Plane>,
+    /// Apotheosis: the world tier in use and the highest reached (0 Refúgio .. 4 Pináculo).
+    pub world_tier: u8,
+    pub tier_unlocked: u8,
+    /// Health the player's gems add right now (already counted in the saved max health).
+    pub gem_health: f32,
 }
 
 #[derive(Default)]
@@ -42,6 +48,7 @@ pub struct Mods {
     pub seasons: seasons::Seasons,
     dwell_t: f32,
     pub aether: aether::Aether,
+    pub apoth: apotheosis::Apotheosis,
     pub mount: mounts::Mount,
     pub aircraft: aircraft::Aircraft,
     pub social: social::Social,
@@ -80,6 +87,7 @@ impl Game {
         self.mods.last_time = self.time_of_day;
         self.update_seasons(dt);
         self.update_aether(dt);
+        self.update_apotheosis(dt);
         if dt > 0.0 {
             self.update_dwellers(dt);
             self.update_mount(dt);
@@ -92,26 +100,28 @@ impl Game {
     pub(crate) fn mods_test_hooks(&mut self) {
         self.seasons_test_hook();
         self.aircraft_test_hook();
+        self.apoth_test_hook();
     }
 
     /// Right click: a mod block or item that does something. True when it was used.
     pub(crate) fn mods_use(&mut self) -> bool {
-        self.aircraft_use() || self.carpenter_use() || self.aether_use() || self.seasons_use()
+        self.aircraft_use() || self.carpenter_use() || self.aether_use() || self.seasons_use() || self.apoth_use()
     }
 
     /// A key went down. True when a mod used it.
-    pub(crate) fn mods_key(&mut self, _code: KeyCode) -> bool {
-        false
+    pub(crate) fn mods_key(&mut self, code: KeyCode) -> bool {
+        self.apoth_key(code)
     }
 
     /// Lines for the F3 screen.
     pub(crate) fn mods_info_lines(&self) -> Vec<String> {
-        vec![self.season_line()]
+        vec![self.season_line(), self.apoth_info_line()]
     }
 
     /// HUD bits drawn over the game view.
     pub(crate) fn draw_mods_hud(&mut self, w: f32, h: f32) {
         self.draw_season_hud(w, h);
         self.draw_aircraft_hud(w, h);
+        self.draw_apoth_hud(w, h);
     }
 }

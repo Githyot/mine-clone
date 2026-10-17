@@ -264,8 +264,9 @@ impl Mobs {
             m.tick(def, world, player, creative, sky, day, dt, &mut events);
             for e in &events {
                 match *e {
-                    MobEvent::Hit { damage, from } => out.damage.push((damage, Some(from))),
+                    MobEvent::Hit { damage, from } => out.damage.push((damage * m.power, Some(from))),
                     MobEvent::Shoot { damage, from, at, hit } => {
+                        let damage = damage * m.power;
                         // A real arrow: aimed at the player's middle (a little off on a miss),
                         // lobbed so gravity brings it there.
                         let mut target = at + Vec3::Y * 0.9;
@@ -289,7 +290,7 @@ impl Mobs {
                     MobEvent::Explode { pos, power } => out.explosions.push((pos, power)),
                     MobEvent::Bite { damage } => {
                         if let Some(j) = target[i] {
-                            bites.push((i, j, damage));
+                            bites.push((i, j, damage * m.power));
                         }
                     }
                     MobEvent::Burning | MobEvent::Died { .. } => {}

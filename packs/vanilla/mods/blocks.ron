@@ -42,6 +42,8 @@
     (name: "light_angelic_stone", display_name: Some("Pedra Angelical Luminosa"), hardness: 3.0, tool: Some(Pickaxe), tier: 1, light: 13),
     (name: "hellfire_stone", display_name: Some("Pedra do Fogo Infernal"), hardness: 3.0, tool: Some(Pickaxe), tier: 1, light: 0),
     (name: "light_hellfire_stone", display_name: Some("Pedra do Fogo Infernal Luminosa"), hardness: 3.0, tool: Some(Pickaxe), tier: 1, light: 13),
+    (name: "salvaging_table", display_name: Some("Mesa de Desmonte"), hardness: 2.5, tool: Some(Pickaxe), textures: (top: Some("salvaging_table_top"), side: Some("salvaging_table_side"), bottom: Some("smooth_stone"))),
+    (name: "gem_cutting_table", display_name: Some("Mesa de Lapidação"), hardness: 2.5, tool: Some(Axe), textures: (top: Some("gem_cutting_table_top"), side: Some("gem_cutting_table_side"), bottom: Some("oak_planks"))),
     (name: "ipe_log", display_name: Some("Tronco de Ipê"), hardness: 2.0, tool: Some(Axe), textures: (side: Some("ipe_log"), top: Some("ipe_log_top"))),
     (name: "hollow_ipe_log", display_name: Some("Tronco Oco de Ipê"), hardness: 2.0, tool: Some(Axe), shape: Hollow, transparency: Cutout, textures: (all: Some("ipe_log"))),
     (name: "ipe_planks", display_name: Some("Tábuas de Ipê"), hardness: 2.0, tool: Some(Axe)),
