@@ -3,6 +3,7 @@
 // No console window behind the game on Windows release builds.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod ambient;
 mod audio;
 mod backpacks;
 mod controller;
@@ -10,6 +11,7 @@ mod copper;
 mod creative;
 mod dimension;
 mod end;
+mod farm;
 mod fishing;
 mod magic;
 mod bosses;
@@ -29,6 +31,7 @@ mod paintings;
 mod particles;
 mod player_model;
 mod post;
+mod pots;
 mod rails;
 mod renderer;
 mod settings;
@@ -486,8 +489,12 @@ struct Game {
     respawn_home: bool,
     /// Coming home from the End: land on the ground (at the bed, if any), not in a portal.
     arrive_plain: bool,
+    /// Fractional count of ambient blocks still to look at (ambient.rs).
+    ambient_t: f32,
     wander: wanderers::Wanderers,
     copper: copper::Copper,
+    farm: farm::Farm,
+    pots: pots::Pots,
     bobber: Option<fishing::Bobber>,
     weather: weather::Weather,
     anim: player_model::Animator,
@@ -798,8 +805,11 @@ impl Game {
             arrival: None,
             respawn_home: false,
             arrive_plain: false,
+            ambient_t: 0.0,
             wander: Default::default(),
             copper: copper::Copper::new(&reg_for_fluids),
+            farm: farm::Farm::new(&reg_for_fluids),
+            pots: pots::Pots::new(&reg_for_fluids),
             weather: weather::Weather::new(weather_save, seed),
             anim: player_model::Animator::default(),
             camera_mode,
@@ -1247,11 +1257,13 @@ impl Game {
             self.update_leaf_decay(dt);
             if matches!(self.screen, Screen::Playing | Screen::Inventory) {
                 self.portal_step(dt);
+                self.update_ambient(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
             self.update_fishing(dt);
             self.update_redstone(dt);
             self.update_carts(dt);
             self.update_random_ticks(dt);
+            self.update_farmers(dt);
             let fe = self.fluids.update(&mut self.world, dt);
             if let Some(p) = fe.hardened.first() {
                 if p.as_vec3().distance(self.body.pos) < 24.0 {
@@ -1316,6 +1328,21 @@ impl Game {
                 }
                 if let Some(i) = self.args.slot {
                     self.selected = i;
+                }
+                if std::env::var("MC_AMBIENT").is_ok() {
+                    // Test hook: a few seconds of ambient bits already in the air.
+                    for _ in 0..80 {
+                        self.update_ambient(0.05);
+                        self.particles.update(&self.world, 0.05);
+                    }
+                }
+                if std::env::var("MC_FARM").is_ok() {
+                    // Test hook: a small field in front, some of it ripe.
+                    self.test_farm();
+                }
+                if std::env::var("MC_POTS").is_ok() {
+                    // Test hook: planted pots on hoppers.
+                    self.test_pots();
                 }
                 if std::env::var("MC_END_RING").is_ok() {
                     // Test hook: a ring of end portal frames, the last eye just set.
@@ -1443,9 +1470,9 @@ impl Game {
             for (pos, power) in out.explosions {
                 self.explode(pos, power);
             }
-            for (from, vel, dmg) in out.fireballs {
-                self.enemy_bolt(from, vel, 0, dmg);
-                self.sfx(Sfx::Cast(0));
+            for (from, vel, dmg, school) in out.fireballs {
+                self.enemy_bolt(from, vel, school, dmg);
+                self.sfx(Sfx::Cast(school));
             }
             // A soft thrum when a bow is loosed, a wooden thunk when an arrow lands.
             if out.shots > 0 {

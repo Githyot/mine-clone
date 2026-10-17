@@ -167,6 +167,11 @@ impl Game {
                             if next != AIR && (r >> 16) % 20 == 0 {
                                 self.copper_swap(p, next);
                             }
+                            if self.farm.is_crop(id) {
+                                self.crop_tick(p, id, (r >> 24) as u32);
+                            } else if self.pots.is_planted(id) {
+                                self.pot_tick(p, id, (r >> 24) as u32);
+                            }
                         }
                         y += 16;
                     }

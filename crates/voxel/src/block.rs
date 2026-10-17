@@ -75,6 +75,9 @@ pub enum Shape {
     Bridge,
     /// The glowing sheet inside a lit portal frame: across x (variant 0) or across z (1).
     Portal,
+    /// A small pot (Botany Pots idea) with a plant standing in it, crossed like a flower: the
+    /// pot takes the side and top pictures, the plant the bottom one.
+    Pot,
 }
 
 impl Shape {
@@ -108,6 +111,7 @@ impl Shape {
                 | Shape::Chain
                 | Shape::Bridge
                 | Shape::Portal
+                | Shape::Pot
         )
     }
 }

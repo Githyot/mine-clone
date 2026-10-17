@@ -46,6 +46,7 @@ const SHOPS: &[(&str, &[(&str, u8, u8)])] = &[
     ("npc_merchant", &[("torch", 8, 1), ("apple", 3, 1), ("cooked_beef", 2, 1), ("oak_sapling", 4, 1), ("bucket", 1, 2), ("fishing_rod", 1, 2), ("iron_ingot", 2, 2), ("red_bed", 1, 3), ("ancient_seed", 1, 4)]),
     ("npc_wizard", &[("lapis_lazuli", 6, 2), ("topaz_wand", 1, 5), ("ruby_wand", 1, 6), ("sapphire_wand", 1, 6), ("amethyst_wand", 1, 7), ("mana_crystal", 1, 8), ("flame_tome", 1, 12), ("thunder_tome", 1, 14)]),
     ("goblin_trader", &[("diamond", 1, 5), ("redstone", 12, 1), ("gold_ingot", 3, 2), ("copper_ingot", 10, 1), ("honeycomb", 4, 1), ("ruby", 1, 3), ("topaz", 1, 3), ("life_crystal", 1, 9), ("minecart", 1, 3), ("leather_backpack", 1, 6), ("tnt", 2, 2)]),
+    ("npc_farmer", &[("wheat_seeds", 8, 1), ("carrot", 4, 1), ("potato", 4, 1), ("beetroot_seeds", 6, 1), ("bread", 4, 1), ("hay_block", 2, 2), ("iron_hoe", 1, 2)]),
     ("npc_smith", &[("bronze_ingot", 4, 2), ("silver_ingot", 2, 3), ("tungsten_ingot", 2, 4), ("platinum_ingot", 2, 5), ("iron_pickaxe", 1, 4), ("platinum_sword", 1, 8), ("diamond", 1, 6)]),
 ];
 
@@ -75,6 +76,7 @@ impl Game {
             "npc_merchant" => self.carrying("emerald") >= 5,
             "npc_nurse" => self.max_health > 20.0,
             "npc_wizard" => self.magic.max_mana > 20.0 || self.surv.inv.slots.iter().flatten().any(|s| crate::magic::is_caster(&self.items.get(s.item).name)),
+            "npc_farmer" => ["wheat_seeds", "wheat", "carrot", "potato", "beetroot_seeds"].iter().any(|i| self.carrying(i) > 0),
             "npc_smith" => self.boss.defeated.iter().any(|b| b == "forest_guardian"),
             // A guard comes once a few people live here.
             "npc_guard" => self.town.npcs.len() >= 2,
@@ -122,7 +124,7 @@ impl Game {
         self.town.check_t = 6.0;
         self.find_houses();
         // One newcomer per check, into a house nobody lives in.
-        for name in ["npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", "npc_guard"] {
+        for name in ["npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", "npc_farmer", "npc_guard"] {
             if self.town_has(name) || !self.npc_wish_met(name) {
                 continue;
             }

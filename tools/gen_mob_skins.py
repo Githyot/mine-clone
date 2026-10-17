@@ -75,6 +75,7 @@ ROLES = {
     "npc_nurse": ["head", "body", "arm", "arm", "leg", "leg"],
     "npc_wizard": ["head", "body", "arm", "arm", "leg", "leg"],
     "npc_smith": ["head", "body", "arm", "arm", "leg", "leg"],
+    "npc_farmer": ["head", "body", "arm", "arm", "leg", "leg"],
     "npc_guard": ["head", "body", "arm", "arm", "leg", "leg"],
 }
 
@@ -144,7 +145,7 @@ HARDCODED = {
                         ((2, 6, 2), (-6, 34, -1), (54, 0)), ((2, 6, 2), (4, 34, -1), (54, 0))],
 }
 # Town NPCs share the player's model.
-for _n in ("npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", "npc_guard"):
+for _n in ("npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", "npc_guard", "npc_farmer"):
     HARDCODED[_n] = HARDCODED["player"]
 
 
@@ -166,7 +167,7 @@ HARDCODED_LAYERS = {
     "duck": [(0, 0.3), (4, 0.3), (5, 0.3)],
     "forest_guardian": [(0, 0.8), (1, 0.6), (2, 0.5), (3, 0.5)],
 }
-for _n in ("npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", "npc_guard"):
+for _n in ("npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", "npc_guard", "npc_farmer"):
     HARDCODED_LAYERS[_n] = HARDCODED_LAYERS["player"]
 
 
@@ -1484,6 +1485,11 @@ TOWNSFOLK = {
                       PTUNIC=pal("#2a2a2c", "#343436", "#3e3e40", "#48484a", "#525254"),
                       PTROUSER=pal("#3a2a1a", "#463220", "#523a26", "#5e442c"),
                       PSKIN=pal("#7a4a30", "#8a563a", "#9a6244", "#a86e4e", "#b47a58")),
+    "npc_farmer": dict(PHAIR=pal("#6a4a1e", "#7c5824", "#8e662a", "#a07430", "#b28236"),
+                       PTUNIC=pal("#3e5a2a", "#4a6a32", "#567a3a", "#628a42", "#6e9a4a"),
+                       PTROUSER=pal("#2e3a5a", "#364468", "#3e4e76", "#465884"),
+                       PLEATHER=pal("#5a3a1a", "#6c4620", "#7e5226", "#905e2c"),
+                       PSKIN=pal("#b07a56", "#bc8662", "#c8926e", "#d49e7a", "#dea986")),
     "npc_guard": dict(PHAIR=pal("#2a1a0e", "#3a2412", "#4c3018", "#5e3c1e", "#6e4824"),
                       PTUNIC=pal("#5a5e66", "#6c7078", "#80848c", "#9498a0", "#a8acb4"),
                       PTROUSER=pal("#1e2a48", "#263456", "#2e3e64", "#384872"),
@@ -1537,6 +1543,49 @@ RECOLORED = {
         FOX=pal("#6a3a1e", "#7c4624", "#8e522a", "#a05e32", "#b06a3a", "#be7844"),
         FOX_WHITE=pal("#bcae98", "#ccc0aa", "#dcd2c0", "#e8e0d2"),
         FOX_BLACK=pal("#2a1a12", "#36241a", "#422e20"))),
+    "swamp_witch": ("player", dict(
+        PSKIN=pal("#7a8a5a", "#869664", "#92a26e", "#9eae7a", "#aaba86"),
+        PHAIR=pal("#0e0c12", "#16121c", "#1e1826", "#261e30", "#2e243a"),
+        PTUNIC=pal("#2a1436", "#341a44", "#3e2052", "#482660", "#522c6e"),
+        PTROUSER=pal("#1e1a14", "#28221a", "#322a20", "#3c3226"),
+        PLEATHER=pal("#3a5a1a", "#466c20", "#527e26", "#5e902c"),
+        PIRIS=(160, 220, 60))),
+    # Naturalist animals.
+    "lion": ("bear", dict(
+        BEAR=pal("#7a5a2a", "#8e6a32", "#a27c3c", "#b48e48", "#c4a056", "#d2b064"),
+        BEAR_MUZZLE=pal("#b49a6e", "#c4aa7e", "#d2ba8e", "#e0caa0"))),
+    "rhino": ("cow", dict(
+        COW_BROWN=pal("#5a5a5e", "#68686c", "#76767a", "#848488"),
+        COW_WHITE=pal("#6e6e72", "#7c7c80", "#8a8a8e", "#98989c"),
+        COW_MUZZLE=pal("#5e5a58", "#6c6866", "#7a7674"),
+        COW_HORN=pal("#a8a090", "#c4bca8", "#dcd4c0"))),
+    "elephant": ("cow", dict(
+        COW_BROWN=pal("#6a6466", "#787274", "#868082", "#948e90"),
+        COW_WHITE=pal("#7a7476", "#888284", "#969092", "#a49ea0"),
+        COW_MUZZLE=pal("#6e6668", "#7c7476", "#8a8284"),
+        COW_HORN=pal("#d8d2c0", "#e6e0d0", "#f2eee2"))),
+    "zebra": ("deer", dict(
+        DEER=pal("#1a1a1c", "#d4d2cc", "#24242a", "#e0ded8", "#2e2e34", "#eceae4"),
+        DEER_PALE=pal("#d8d6d0", "#e4e2dc", "#eeece6", "#f8f6f2"),
+        DEER_DARK=pal("#101012", "#1a1a1e"))),
+    "hippo": ("pig", dict(
+        PIG=pal("#5a4a56", "#6a5866", "#7a6676", "#8a7486", "#9a8296"),
+        PIG_SNOUT=pal("#a07a84", "#b08a94", "#c09aa4", "#d0aab4"),
+        PIG_HOOF=pal("#2a2028", "#3a2e38"))),
+    "cardinal": ("duck", dict(
+        DUCK_GRAY=pal("#8a1414", "#a01a1a", "#b42222", "#c82a2a", "#d83434"),
+        DUCK_BACK=pal("#701010", "#861616", "#9a1c1c"),
+        DUCK_CHEST=pal("#b42222", "#c42a2a", "#d43434", "#e03e3e"),
+        DUCK_GREEN=pal("#1a1012", "#241418", "#2e1a1e", "#381e24", "#422228"),
+        DUCK_BILL=pal("#b85a14", "#d06c1a", "#e07e22", "#f0902c"),
+        SPECULUM=pal("#8a1414", "#a01a1a", "#b42222"))),
+    "bluejay": ("duck", dict(
+        DUCK_GRAY=pal("#1e3a7a", "#24468e", "#2c54a2", "#3462b4", "#3e70c4"),
+        DUCK_BACK=pal("#182e64", "#1e3a78", "#24468c"),
+        DUCK_CHEST=pal("#c8ccd4", "#d6d9e0", "#e2e5ea", "#eef0f4"),
+        DUCK_GREEN=pal("#2a4a96", "#3256a8", "#3a62b8", "#446ec6", "#4e7ad2"),
+        DUCK_BILL=pal("#1a1a1e", "#242428", "#2e2e32", "#38383c"),
+        SPECULUM=pal("#101012", "#e8e8ec", "#101012"))),
     # Nether creatures.
     "nether_zombie": ("zombie", dict(
         ZSKIN=pal("#8a4a4a", "#9c5a56", "#ae6a62", "#be7a6e", "#cc8a7c"),
@@ -2010,7 +2059,7 @@ def main():
              "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian",
              "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
              "goblin_trader", "mutant_zombie", "npc_guard", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton",
-             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian"]
+             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols

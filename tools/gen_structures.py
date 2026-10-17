@@ -396,6 +396,76 @@ def wizard_tower():
     }
 
 
+def witch_hut():
+    """A swamp witch's hut on stilts (YUNG's Better Witch Huts idea): dark planks on log posts
+    over the water, a porch with a lantern, mushrooms and a chest of odd things inside."""
+    W, D = 9, 9
+    layers = []
+    posts = {(1, 2), (7, 2), (1, 7), (7, 7), (4, 0)}
+    for y in range(3):  # stilts
+        g = grid(W, D, ".")
+        for (x, z) in posts:
+            g[z][x] = "L"
+        if y == 2:
+            g[0][4] = "F"
+        layers.append(g)
+    g = grid(W, D, ".")  # floor and porch
+    for z in range(0, D):
+        for x in range(1, 8):
+            if z >= 2 or x in (3, 4, 5):
+                g[z][x] = "P"
+    layers.append(g)
+    for y in range(3):  # walls
+        g = grid(W, D, ".")
+        for z in range(2, D):
+            for x in range(1, 8):
+                edge = x in (1, 7) or z in (2, D - 1)
+                corner = x in (1, 7) and z in (2, D - 1)
+                if corner:
+                    g[z][x] = "L"
+                elif edge:
+                    g[z][x] = "D"
+        if y in (0, 1):
+            g[2][4] = "d" if y == 0 else "u"
+        if y == 1:
+            g[5][1] = g[5][7] = g[D - 1][4] = "G"
+        if y == 0:
+            g[0][3] = g[0][5] = "f"
+            g[D - 2][2] = "c"
+            g[D - 2][6] = "T"
+            g[4][2] = "r"
+            g[6][6] = "b"
+            g[D - 2][4] = "B"
+        if y == 2:
+            g[1][4] = "h"
+        layers.append(g)
+    layers[4][1][4] = "."
+    for k, (x0, x1) in enumerate(((0, 8), (1, 7), (2, 6), (3, 5))):  # roof
+        g = grid(W, D, ".")
+        for z in range(1, D):
+            for x in range(x0, x1 + 1):
+                g[z][x] = "R" if x in (x0, x1) else ("D" if k == 3 else ".")
+        if k == 0:
+            g[1][4] = "R"
+        layers.append(g)
+    layers[6][1][4] = "h"
+    return {
+        "name": "cabana_da_bruxa",
+        "biomes": ["Swamp"],
+        "spacing": 10,
+        "chance": 0.4,
+        "foundation": "spruce_log",
+        "palette": {"L": "spruce_log", "P": "spruce_planks", "D": "dark_oak_planks", "R": "oak_slab",
+                    "F": "oak_fence", "f": "oak_fence", "G": "glass_pane", "d": "oak_door:2", "u": "oak_door:10",
+                    "c": "chest", "T": "dark_oak_table", "r": "red_mushroom", "b": "brown_mushroom",
+                    "B": "bookshelf", "h": "lantern:1"},
+        "layers": [rows(l) for l in layers],
+        "loot": [("", "redstone", 2, 8, 0.6), ("", "gunpowder", 1, 4, 0.5), ("", "string", 1, 5, 0.5),
+                 ("", "bone", 1, 4, 0.4), ("", "mana_crystal", 1, 1, 0.3), ("", "amethyst_wand", 1, 1, 0.12),
+                 ("", "emerald", 1, 3, 0.35)],
+    }
+
+
 def windmill():
     """A windmill (Towns and Towers idea): a cobblestone base, a plank cap and four sails of
     wool on fence arms over the north side."""
@@ -485,6 +555,7 @@ structs = [
     wizard_tower(),
     windmill(),
     end_ruin(),
+    witch_hut(),
 ]
 OUT.write_text(ron(structs))
 print(f"wrote {OUT} ({len(structs)} structures)")

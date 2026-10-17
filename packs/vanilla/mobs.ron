@@ -26,10 +26,63 @@
         ],
         layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.5)],
     ),
+    // A hippo by the water.
+    (
+        name: "hippo", display_name: "Hipopótamo", kind: Neutral, health: 44, speed: 2.0,
+        drops: [(item: "porkchop", min: 2, max: 4), (item: "leather", min: 0, max: 2)], xp: 5,
+        width: 1.6, height: 1.6, spawn: Grass, attack: 8, group: (1, 2), weight: 3, scale: 1.8,
+        biomes: ["Swamp", "River"],
+        parts: [
+            (size: (10, 8, 16), origin: (-5, 6, -8), uv: (0, 0)),
+            (size: (8, 8, 8), origin: (-4, 8, 7), uv: (0, 24), anim: Head, pivot: (0, 12, 8)),
+            (size: (4, 3, 1), origin: (-2, 9, 15), uv: (32, 24), anim: Head, pivot: (0, 12, 8)),
+            (size: (4, 6, 4), origin: (-5, 0, -7), uv: (0, 40), anim: Leg(0), pivot: (-3, 6, -5)),
+            (size: (4, 6, 4), origin: (1, 0, -7), uv: (0, 40), anim: Leg(1), pivot: (3, 6, -5)),
+            (size: (4, 6, 4), origin: (-5, 0, 3), uv: (0, 40), anim: Leg(1), pivot: (-3, 6, 5)),
+            (size: (4, 6, 4), origin: (1, 0, 3), uv: (0, 40), anim: Leg(0), pivot: (3, 6, 5)),
+        ],
+        layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.5)],
+    ),
     (
         name: "cow", display_name: "Vaca", kind: Passive, health: 10, speed: 2.2,
         drops: [(item: "beef", min: 1, max: 3), (item: "leather", min: 0, max: 2)], xp: 2,
         width: 0.9, height: 1.4, spawn: Grass,
+        parts: [
+            (size: (12, 10, 18), origin: (-6, 10, -9), uv: (0, 0)),
+            (size: (8, 8, 6), origin: (-4, 14, 8), uv: (0, 28), anim: Head, pivot: (0, 18, 9)),
+            (size: (1, 3, 1), origin: (-5, 20, 11), uv: (28, 28), anim: Head, pivot: (0, 18, 9)),
+            (size: (1, 3, 1), origin: (4, 20, 11), uv: (28, 28), anim: Head, pivot: (0, 18, 9)),
+            (size: (4, 10, 4), origin: (-6, 0, -8), uv: (0, 42), anim: Leg(0), pivot: (-4, 10, -6)),
+            (size: (4, 10, 4), origin: (2, 0, -8), uv: (0, 42), anim: Leg(1), pivot: (4, 10, -6)),
+            (size: (4, 10, 4), origin: (-6, 0, 4), uv: (0, 42), anim: Leg(1), pivot: (-4, 10, 6)),
+            (size: (4, 10, 4), origin: (2, 0, 4), uv: (0, 42), anim: Leg(0), pivot: (4, 10, 6)),
+        ],
+        layers: [(part: 0, inflate: 0.6), (part: 1, inflate: 0.5)],
+    ),
+    // An elephant herd.
+    (
+        name: "elephant", display_name: "Elefante", kind: Passive, health: 60, speed: 2.0,
+        drops: [(item: "beef", min: 3, max: 6), (item: "leather", min: 2, max: 4)], xp: 6,
+        width: 1.9, height: 2.8, spawn: Grass, group: (2, 3), weight: 2, scale: 2.0,
+        biomes: ["Savanna"],
+        parts: [
+            (size: (12, 10, 18), origin: (-6, 10, -9), uv: (0, 0)),
+            (size: (8, 8, 6), origin: (-4, 14, 8), uv: (0, 28), anim: Head, pivot: (0, 18, 9)),
+            (size: (1, 3, 1), origin: (-5, 20, 11), uv: (28, 28), anim: Head, pivot: (0, 18, 9)),
+            (size: (1, 3, 1), origin: (4, 20, 11), uv: (28, 28), anim: Head, pivot: (0, 18, 9)),
+            (size: (4, 10, 4), origin: (-6, 0, -8), uv: (0, 42), anim: Leg(0), pivot: (-4, 10, -6)),
+            (size: (4, 10, 4), origin: (2, 0, -8), uv: (0, 42), anim: Leg(1), pivot: (4, 10, -6)),
+            (size: (4, 10, 4), origin: (-6, 0, 4), uv: (0, 42), anim: Leg(1), pivot: (-4, 10, 6)),
+            (size: (4, 10, 4), origin: (2, 0, 4), uv: (0, 42), anim: Leg(0), pivot: (4, 10, 6)),
+        ],
+        layers: [(part: 0, inflate: 0.6), (part: 1, inflate: 0.5)],
+    ),
+    // A rhino: charges when hit.
+    (
+        name: "rhino", display_name: "Rinoceronte", kind: Neutral, health: 40, speed: 2.6,
+        drops: [(item: "beef", min: 2, max: 4), (item: "leather", min: 1, max: 3)], xp: 5,
+        width: 1.3, height: 1.8, spawn: Grass, attack: 8, group: (1, 2), weight: 3, scale: 1.35,
+        biomes: ["Savanna"],
         parts: [
             (size: (12, 10, 18), origin: (-6, 10, -9), uv: (0, 0)),
             (size: (8, 8, 6), origin: (-4, 14, 8), uv: (0, 28), anim: Head, pivot: (0, 18, 9)),
@@ -157,6 +210,30 @@
         ],
         layers: [(part: 0, inflate: 0.4), (part: 1, inflate: 0.4)],
     ),
+    // Zebras graze in groups and run off.
+    (
+        name: "zebra", display_name: "Zebra", kind: Passive, health: 14, speed: 4.8,
+        drops: [(item: "leather", min: 0, max: 2)], xp: 2,
+        width: 0.9, height: 1.6, spawn: Grass, flee_range: 10.0, group: (2, 4), weight: 6,
+        biomes: ["Savanna"],
+        parts: [
+            (size: (8, 8, 14), origin: (-4, 12, -7), uv: (0, 0)),
+            (size: (4, 8, 4), origin: (-2, 17, 4), uv: (44, 0), anim: Head, pivot: (0, 19, 6)),
+            (size: (6, 5, 7), origin: (-3, 23, 4), uv: (0, 22), anim: Head, pivot: (0, 19, 6)),
+            (size: (3, 2, 1), origin: (-6, 26, 5), uv: (26, 22), anim: Head, pivot: (0, 19, 6)),
+            (size: (3, 2, 1), origin: (3, 26, 5), uv: (26, 22), anim: Head, pivot: (0, 19, 6)),
+            (size: (1, 6, 1), origin: (-3, 28, 5), uv: (34, 22), anim: Head, pivot: (0, 19, 6)),
+            (size: (1, 6, 1), origin: (2, 28, 5), uv: (34, 22), anim: Head, pivot: (0, 19, 6)),
+            (size: (3, 1, 1), origin: (-6, 31, 5), uv: (38, 22), anim: Head, pivot: (0, 19, 6)),
+            (size: (3, 1, 1), origin: (3, 31, 5), uv: (38, 22), anim: Head, pivot: (0, 19, 6)),
+            (size: (2, 4, 1), origin: (-1, 15, -8), uv: (46, 22)),
+            (size: (2, 12, 2), origin: (-4, 0, -6), uv: (0, 34), anim: Leg(0), pivot: (-3, 12, -5)),
+            (size: (2, 12, 2), origin: (2, 0, -6), uv: (0, 34), anim: Leg(1), pivot: (3, 12, -5)),
+            (size: (2, 12, 2), origin: (-4, 0, 4), uv: (0, 34), anim: Leg(1), pivot: (-3, 12, 5)),
+            (size: (2, 12, 2), origin: (2, 0, 4), uv: (0, 34), anim: Leg(0), pivot: (3, 12, 5)),
+        ],
+        layers: [(part: 0, inflate: 0.4), (part: 1, inflate: 0.4)],
+    ),
     (
         name: "fox", display_name: "Raposa", kind: Passive, health: 10, speed: 3.2,
         drops: [(item: "leather", min: 0, max: 1)], xp: 2, attack: 2,
@@ -217,11 +294,67 @@
         ],
         layers: [(part: 0, inflate: 0.7), (part: 1, inflate: 0.5), (part: 5, inflate: 0.7), (part: 6, inflate: 0.4)],
     ),
+    // Naturalist: savanna and swamp animals, recoloured from our own models.
+    (
+        name: "lion", display_name: "Leão", kind: Neutral, health: 32, speed: 3.4,
+        drops: [(item: "beef", min: 1, max: 2), (item: "leather", min: 0, max: 2)], xp: 6,
+        width: 1.2, height: 1.3, spawn: Grass, attack: 7, group: (1, 2), weight: 3, scale: 0.95,
+        biomes: ["Savanna"],
+        parts: [
+            (size: (12, 11, 20), origin: (-6, 10, -10), uv: (0, 0)),
+            (size: (8, 8, 7), origin: (-4, 14, 9), uv: (0, 31), anim: Head, pivot: (0, 18, 10)),
+            (size: (4, 3, 3), origin: (-2, 14, 16), uv: (30, 31), anim: Head, pivot: (0, 18, 10)),
+            (size: (2, 2, 1), origin: (-4, 22, 12), uv: (44, 31), anim: Head, pivot: (0, 18, 10)),
+            (size: (2, 2, 1), origin: (2, 22, 12), uv: (44, 31), anim: Head, pivot: (0, 18, 10)),
+            (size: (10, 3, 7), origin: (-5, 21, 2), uv: (16, 46)),
+            (size: (4, 10, 4), origin: (-6, 0, -9), uv: (0, 46), anim: Leg(0), pivot: (-4, 10, -7)),
+            (size: (4, 10, 4), origin: (2, 0, -9), uv: (0, 46), anim: Leg(1), pivot: (4, 10, -7)),
+            (size: (4, 10, 4), origin: (-6, 0, 5), uv: (0, 46), anim: Leg(1), pivot: (-4, 10, 7)),
+            (size: (4, 10, 4), origin: (2, 0, 5), uv: (0, 46), anim: Leg(0), pivot: (4, 10, 7)),
+        ],
+        layers: [(part: 0, inflate: 0.7), (part: 1, inflate: 0.5), (part: 5, inflate: 0.7), (part: 6, inflate: 0.4)],
+    ),
     (
         name: "duck", display_name: "Pato", kind: Passive, health: 4, speed: 2.0,
         drops: [(item: "chicken"), (item: "feather", min: 0, max: 2)], xp: 1,
         width: 0.5, height: 0.7, spawn: Water, swims: true, flee_range: 4.0,
         biomes: ["Plains", "Beach", "Swamp", "River", "Forest", "Birch Forest"],
+        parts: [
+            (size: (6, 5, 9), origin: (-3, 3, -5), uv: (0, 0)),
+            (size: (4, 5, 4), origin: (-2, 7, 2), uv: (30, 0), anim: Head, pivot: (0, 8, 3)),
+            (size: (4, 1, 3), origin: (-2, 8, 6), uv: (46, 0), anim: Head, pivot: (0, 8, 3)),
+            (size: (4, 2, 2), origin: (-2, 7, -7), uv: (46, 4)),
+            (size: (1, 4, 7), origin: (-4, 3, -4), uv: (0, 14), anim: Wing(0), pivot: (-3, 7, 0)),
+            (size: (1, 4, 7), origin: (3, 3, -4), uv: (0, 14), anim: Wing(1), pivot: (3, 7, 0)),
+            (size: (1, 3, 1), origin: (-2, 0, 0), uv: (16, 14), anim: Leg(0), pivot: (-2, 3, 0)),
+            (size: (1, 3, 1), origin: (1, 0, 0), uv: (16, 14), anim: Leg(1), pivot: (1, 3, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)],
+    ),
+    // A blue jay.
+    (
+        name: "bluejay", display_name: "Gaio-Azul", kind: Passive, health: 3, speed: 2.4,
+        drops: [(item: "feather", min: 0, max: 1)], xp: 1,
+        width: 0.4, height: 0.5, spawn: Grass, flee_range: 6.0, group: (1, 3), weight: 5, scale: 0.6,
+        biomes: ["Forest", "Birch Forest", "Taiga"],
+        parts: [
+            (size: (6, 5, 9), origin: (-3, 3, -5), uv: (0, 0)),
+            (size: (4, 5, 4), origin: (-2, 7, 2), uv: (30, 0), anim: Head, pivot: (0, 8, 3)),
+            (size: (4, 1, 3), origin: (-2, 8, 6), uv: (46, 0), anim: Head, pivot: (0, 8, 3)),
+            (size: (4, 2, 2), origin: (-2, 7, -7), uv: (46, 4)),
+            (size: (1, 4, 7), origin: (-4, 3, -4), uv: (0, 14), anim: Wing(0), pivot: (-3, 7, 0)),
+            (size: (1, 4, 7), origin: (3, 3, -4), uv: (0, 14), anim: Wing(1), pivot: (3, 7, 0)),
+            (size: (1, 3, 1), origin: (-2, 0, 0), uv: (16, 14), anim: Leg(0), pivot: (-2, 3, 0)),
+            (size: (1, 3, 1), origin: (1, 0, 0), uv: (16, 14), anim: Leg(1), pivot: (1, 3, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)],
+    ),
+    // Small songbirds.
+    (
+        name: "cardinal", display_name: "Cardeal", kind: Passive, health: 3, speed: 2.4,
+        drops: [(item: "feather", min: 0, max: 1)], xp: 1,
+        width: 0.4, height: 0.5, spawn: Grass, flee_range: 6.0, group: (1, 3), weight: 5, scale: 0.6,
+        biomes: ["Forest", "Birch Forest", "Plains"],
         parts: [
             (size: (6, 5, 9), origin: (-3, 3, -5), uv: (0, 0)),
             (size: (4, 5, 4), origin: (-2, 7, 2), uv: (30, 0), anim: Head, pivot: (0, 8, 3)),
@@ -330,6 +463,19 @@
         ],
         layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.3), (part: 2, inflate: 0.3), (part: 3, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)],
     ),
+    (
+        name: "npc_farmer", display_name: "Fazendeiro", kind: Passive, health: 60, speed: 2.0,
+        width: 0.6, height: 1.8, spawn: Never, town: true,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (4, 12, 4), origin: (-8, 12, -2), uv: (40, 16), anim: Arm(0), pivot: (-6, 22, 0)),
+            (size: (4, 12, 4), origin: (4, 12, -2), uv: (32, 48), anim: Arm(1), pivot: (6, 22, 0)),
+            (size: (4, 12, 4), origin: (-4, 0, -2), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (4, 12, 4), origin: (0, 0, -2), uv: (16, 48), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.3), (part: 2, inflate: 0.3), (part: 3, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)],
+    ),
     // Not a creature: the minecart's model (Phase 4), drawn by the entity renderer like one.
     // Painted by tools/gen_minecart.py. +Z runs along the rail.
     (
@@ -350,6 +496,22 @@
     (
         name: "goblin_trader", display_name: "Mercador Goblin", kind: Passive, health: 30, speed: 2.4,
         width: 0.5, height: 1.45, spawn: Never, town: true, scale: 0.75, flee_range: 3.0,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (4, 12, 4), origin: (-8, 12, -2), uv: (40, 16), anim: Arm(0), pivot: (-6, 22, 0)),
+            (size: (4, 12, 4), origin: (4, 12, -2), uv: (32, 48), anim: Arm(1), pivot: (6, 22, 0)),
+            (size: (4, 12, 4), origin: (-4, 0, -2), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (4, 12, 4), origin: (0, 0, -2), uv: (16, 48), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.3), (part: 2, inflate: 0.3), (part: 3, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)],
+    ),
+    // YUNG's Better Witch Huts: a witch of the swamps who throws green hexes.
+    (
+        name: "swamp_witch", display_name: "Bruxa do Pântano", kind: Hostile, health: 26, speed: 2.3,
+        drops: [(item: "redstone", min: 0, max: 3), (item: "gunpowder", min: 0, max: 2), (item: "string", chance: 0.3), (item: "mana_crystal", chance: 0.05)], xp: 6,
+        width: 0.6, height: 1.9, spawn: Dark, attack: 5, ranged: true, weight: 6,
+        biomes: ["Swamp"],
         parts: [
             (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
             (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),

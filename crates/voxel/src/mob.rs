@@ -241,6 +241,12 @@ pub struct Mob {
 pub const DEATH_TIME: f32 = 0.9;
 
 impl Mob {
+    /// Walk to a spot (town folk at work), then stand there a moment.
+    pub fn go_to(&mut self, p: Vec3, wait: f32) {
+        self.wander = Some(p);
+        self.idle = wait;
+    }
+
     pub fn new(def_index: usize, def: &MobDef, pos: Vec3, seed: u64) -> Mob {
         let mut body = Body::sized(pos, def.width, def.height);
         body.speed_override = Some(def.speed);

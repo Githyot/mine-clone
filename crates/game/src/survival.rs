@@ -540,7 +540,7 @@ impl Game {
         self.surv.drops.push(Dropped { stack, body, age: 0.0, spin, spin_rest: spin });
     }
 
-    fn pop_drop(&mut self, center: Vec3, stack: ItemStack) {
+    pub(crate) fn pop_drop(&mut self, center: Vec3, stack: ItemStack) {
         let r = &mut self.surv.rng;
         let v = Vec3::new(r.f32() - 0.5, 0.0, r.f32() - 0.5) * 2.0 + Vec3::Y * 3.0;
         self.spawn_drop(center, stack, v);
@@ -883,6 +883,20 @@ impl Game {
         if item.armor.is_some() {
             return self.equip_held();
         }
+        if self.pot_plant(item.places) {
+            return true;
+        }
+        if let Some(tool) = &item.tool {
+            if tool.kind == ToolKind::Hoe && self.till() {
+                return true;
+            }
+        }
+        if let Some(b) = item.places.filter(|&b| self.farm.is_crop(b)) {
+            // Carrots and potatoes: planted on farmland, eaten anywhere else.
+            if self.plant_crop(b) {
+                return true;
+            }
+        }
         if item.food.is_some() {
             // Eating is handled while the button is held (update).
             return false;
@@ -952,6 +966,9 @@ impl Game {
             return true;
         }
         let Some(block) = item.places else { return false };
+        if self.farm.is_crop(block) {
+            return self.plant_crop(block);
+        }
         if let Some(pos) = self.place_block_as(block) {
             if self.survival {
                 let sel = self.selected;
@@ -1772,27 +1789,58 @@ impl Game {
                 None => None,
             };
             if let Some(st) = st {
-                let it = self.items.get(st.item);
-                let mut name = it.display_name.clone();
-                if let Some(t) = &it.tool {
-                    name = format!("{name} ({}/{})", t.durability - st.damage, t.durability);
-                } else if let Some(f) = &it.food {
-                    name = format!("{name} (+{} fome)", f.hunger);
-                }
+                let mut name = self.items.get(st.item).display_name.clone();
                 if let (Some(Slot::Cont(i)), Open::Shop) = (hovered, open) {
                     let price = self.surv.shop_prices.get(i).copied().unwrap_or(0);
                     name = format!("{name} x{}: {price} esmeralda(s)", st.count);
                 }
-                let tw = self.ui.text_width(&name, s);
-                let (mx, my) = mouse;
-                self.ui.rect(mx + 8.0 * s, my - 14.0 * s, tw + 6.0 * s, 12.0 * s, [16, 0, 16, 235]);
-                self.ui.text(mx + 11.0 * s, my - 12.0 * s, &name, WHITE);
+                let mut lines = vec![(name, WHITE)];
+                lines.extend(self.item_details(&st));
+                self.draw_tooltip_lines(&lines, mouse);
             }
         }
         if let Some(c) = self.surv.cursor {
             item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &c, mouse.0 - 8.0 * s, mouse.1 - 8.0 * s, 16.0 * s);
         }
         self.ui.text_centered(w / 2.0, y0 + ph + 4.0 * s, "Esq.: pegar  Dir.: metade  Shift: mover  Roda: 1 a 1  R: receita  U: usos", WHITE);
+    }
+
+    /// Extra tooltip lines (Durability Tooltip idea): wear left in colour, attack, armour, food.
+    pub(crate) fn item_details(&self, st: &ItemStack) -> Vec<(String, [u8; 4])> {
+        const GRAY: [u8; 4] = [170, 170, 170, 255];
+        let it = self.items.get(st.item);
+        let mut out = Vec::new();
+        let dur = it.tool.as_ref().map(|t| t.durability).or(it.armor.map(|a| a.durability));
+        if let Some(d) = dur {
+            let left = d.saturating_sub(st.damage);
+            let k = left as f32 / d.max(1) as f32;
+            // Green when new, yellow at half, red when nearly broken.
+            let col = if k > 0.5 { [90, 220, 90, 255] } else if k > 0.2 { [235, 210, 70, 255] } else { [235, 80, 70, 255] };
+            out.push((format!("Durabilidade: {left} / {d} ({:.0}%)", k * 100.0), col));
+        }
+        if let Some(t) = &it.tool {
+            out.push((format!("Dano: {}", t.damage), GRAY));
+        }
+        if let Some(a) = &it.armor {
+            out.push((format!("Armadura: +{}", a.points), GRAY));
+        }
+        if let Some(f) = &it.food {
+            out.push((format!("Fome: +{}  Saturação: +{:.1}", f.hunger, f.saturation), GRAY));
+        }
+        out
+    }
+
+    pub(crate) fn draw_tooltip_lines(&mut self, lines: &[(String, [u8; 4])], mouse: (f32, f32)) {
+        let s = self.ui.scale;
+        let tw = lines.iter().map(|(t, _)| self.ui.text_width(t, s)).fold(0.0, f32::max);
+        let h = lines.len() as f32 * 10.0 * s + 2.0 * s;
+        let x = (mouse.0 + 8.0 * s).min(self.ui.width - tw - 8.0 * s);
+        let y = mouse.1 - 14.0 * s;
+        self.ui.rect(x, y, tw + 6.0 * s, h, [16, 0, 16, 235]);
+        self.ui.frame(x, y, tw + 6.0 * s, h, s, [60, 20, 110, 255]);
+        for (k, (t, c)) in lines.iter().enumerate() {
+            self.ui.text(x + 3.0 * s, y + 2.0 * s + k as f32 * 10.0 * s, t, *c);
+        }
     }
 
     pub(crate) fn close_survival_screen(&mut self) {
@@ -2250,7 +2298,7 @@ impl Game {
             for (d, b) in mobs {
                 let def = &self.mobs.reg.defs[*d];
                 // Fire imps throw fire from their bare hands.
-                if !def.ranged || def.parts.len() < 3 || def.name == "fire_imp" {
+                if !def.ranged || def.parts.len() < 3 || crate::mobs::caster_school(&def.name).is_some() {
                     continue;
                 }
                 let p = &def.parts[2];

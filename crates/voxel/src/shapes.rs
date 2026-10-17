@@ -253,6 +253,7 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
             }
         }
         Shape::Chain => out.push([7, 0, 7, 9, 16, 9]),
+        Shape::Pot => out.push([3, 0, 3, 13, 6, 13]),
         Shape::Portal => out.push(match variant {
             // Upright across x or z (nether portal), or lying flat (end portal).
             0 => [0, 0, 6, 16, 16, 10],

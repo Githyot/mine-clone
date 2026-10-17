@@ -527,8 +527,10 @@ impl Game {
             }
         }
         if let Some(id) = tip {
-            let n = self.items.get(id).display_name.clone();
-            self.tooltip(&n, mouse);
+            let st = ItemStack::new(id, 1);
+            let mut lines = vec![(self.items.get(id).display_name.clone(), WHITE)];
+            lines.extend(self.item_details(&st));
+            self.draw_tooltip_lines(&lines, mouse);
         }
         if let Some(c) = self.surv.cursor {
             item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &c, mouse.0 - 8.0 * s, mouse.1 - 8.0 * s, 16.0 * s);

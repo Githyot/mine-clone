@@ -36,7 +36,7 @@ pub struct MobOutcome {
     pub shots: usize,
     pub explosions: Vec<(Vec3, f32)>,
     /// Fireballs thrown by fire imps: (from, velocity, damage).
-    pub fireballs: Vec<(Vec3, Vec3, f32)>,
+    pub fireballs: Vec<(Vec3, Vec3, f32, u8)>,
     /// Mobs that died this tick: (def index, where).
     pub deaths: Vec<(usize, Vec3)>,
 }
@@ -274,9 +274,9 @@ impl Mobs {
                             target += Vec3::new(a.cos(), 0.4, a.sin()) * 1.6;
                         }
                         let d = target - from;
-                        if def.name == "fire_imp" {
-                            // Fire imps throw a straight fireball instead of an arrow.
-                            out.fireballs.push((from, d.normalize_or_zero() * 14.0, damage));
+                        if let Some(school) = caster_school(&def.name) {
+                            // Casters throw a straight bolt of their magic instead of an arrow.
+                            out.fireballs.push((from, d.normalize_or_zero() * 14.0, damage, school));
                             continue;
                         }
                         let flat = Vec3::new(d.x, 0.0, d.z).length();
@@ -360,5 +360,15 @@ pub(crate) fn ray_box(o: Vec3, d: Vec3, lo: Vec3, hi: Vec3) -> Option<f32> {
         Some(tmin.max(0.0))
     } else {
         None
+    }
+}
+
+/// Ranged mobs that throw magic from their hands instead of shooting a bow, with its school
+/// (0 fire, 1 frost, 3 void, 4 nature).
+pub fn caster_school(name: &str) -> Option<u8> {
+    match name {
+        "fire_imp" => Some(0),
+        "swamp_witch" => Some(4),
+        _ => None,
     }
 }

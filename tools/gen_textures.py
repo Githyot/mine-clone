@@ -1408,6 +1408,7 @@ def build_registry():
     reg.update(extras_registry())
     reg.update(nether_registry())
     reg.update(end_registry())
+    reg.update(farming_registry())
     return reg
 
 
@@ -2406,6 +2407,127 @@ def end_registry():
         "chorus_plant": chorus_plant,
         "chorus_flower": chorus_flower,
     }
+
+
+# ---- farming ---------------------------------------------------------------
+
+
+def farmland():
+    """Tilled earth: dark furrows across, a little damp."""
+    rng = rng_for("farmland")
+    p = pal("#3a2414", "#4a2e1a", "#5a3a22", "#6a462a", "#7a5232")
+    img = from_rgb(shade(fbm(rng, ((4, 0.3), (2, 0.4), (1, 0.4))), p, 0.8))
+    for y in range(N):
+        if y % 4 == 0:
+            for x in range(N):
+                put(img, x, y, p[0])
+    for i in range(N):
+        for (x, y) in ((i, 0), (0, i), (15, i), (i, 15)):
+            put(img, x, y, p[1])
+    return img
+
+
+HAY = pal("#7a6010", "#9a7a18", "#b89422", "#d0ac34", "#e2c44e")
+
+
+def hay_block_side():
+    rng = rng_for("hay_side")
+    img = canvas()
+    img[..., 3] = 255
+    for x in range(N):
+        for y in range(N):
+            v = 2 + rng.normal(0, 0.9) + (0.6 if (x * 3 + y // 5) % 4 == 0 else 0)
+            img[y, x, :3] = HAY[int(np.clip(v, 0, 4))]
+    for x in range(N):  # two red bands of twine
+        for y in (3, 12):
+            put(img, x, y, (120, 40, 24) if x % 2 else (150, 56, 34))
+    return img
+
+
+def hay_block_top():
+    rng = rng_for("hay_top")
+    img = from_rgb(shade(fbm(rng, ((2, 0.4), (1, 0.6))), HAY, 0.9))
+    for i in range(N):
+        for (x, y) in ((i, 0), (0, i), (15, i), (i, 15)):
+            put(img, x, y, HAY[0])
+    return img
+
+
+def crop(kind, stage, stages):
+    """Cutout crop rows: stalks grow taller with each stage; the last shows the harvest."""
+    rng = rng_for(f"{kind}{stage}")
+    img = canvas()
+    t = (stage + 1) / stages
+    leaf = pal("#2e5a14", "#3e7418", "#52901e", "#6aa826")
+    ripe = stage == stages - 1
+    h = max(2, int(round(t * (14 if kind == "wheat" else 9))))
+    cols = (1, 4, 7, 10, 13) if kind == "wheat" else (2, 6, 10, 13)
+    for c in cols:
+        x0 = c + int(rng.integers(-1, 2))
+        hh = max(1, h - int(rng.integers(0, 3)))
+        for k in range(hh):
+            y = 15 - k
+            x = int(np.clip(x0 + (1 if k > hh * 0.6 and c % 2 else 0), 0, 15))
+            if kind == "wheat":
+                if ripe or stage >= 6:
+                    col = HAY[int(np.clip(1 + k / hh * 3 + rng.normal(0, 0.4), 0, 4))]
+                else:
+                    col = leaf[int(np.clip(k / hh * 3 + rng.normal(0, 0.4), 0, 3))]
+                put(img, x, y, col)
+                if k >= hh - 3 and (ripe or stage >= 5):  # ears
+                    put(img, x + 1, y, HAY[3] if ripe else leaf[3])
+            else:
+                put(img, x, y, leaf[int(np.clip(k / hh * 3 + rng.normal(0, 0.4), 0, 3))])
+                if k > 1 and rng.random() < 0.5:
+                    put(img, int(np.clip(x + rng.choice([-1, 1]), 0, 15)), y, leaf[2])
+        if ripe and kind != "wheat":
+            root = {"carrots": (230, 120, 30), "potatoes": (200, 160, 90), "beetroots": (150, 30, 50)}[kind]
+            put(img, x0, 15, root)
+            put(img, int(np.clip(x0 + 1, 0, 15)), 15, tuple(int(v * 0.8) for v in root))
+            put(img, x0, 14, root)
+    return img
+
+
+def farming_registry():
+    reg = {"farmland": farmland, "hay_block_side": hay_block_side, "hay_block_top": hay_block_top,
+           "botany_pot_side": botany_pot_side, "botany_pot_top": botany_pot_top, "botany_pot_empty": botany_pot_empty}
+    for kind, n in (("wheat", 8), ("carrots", 4), ("potatoes", 4), ("beetroots", 4)):
+        for k in range(n):
+            reg[f"{kind}_stage{k}"] = lambda kind=kind, k=k, n=n: crop(kind, k, n)
+    return reg
+
+
+POT = pal("#6a3420", "#7e4028", "#924c30", "#a65a3a", "#b86a46")
+
+
+def botany_pot_side():
+    """Terracotta, only the lower six rows matter (the pot is six pixels tall)."""
+    rng = rng_for("botany_pot_side")
+    img = canvas()
+    img[..., 3] = 255
+    for y in range(N):
+        for x in range(N):
+            v = 2 + rng.normal(0, 0.6) - (0.8 if y >= 15 else 0)
+            img[y, x, :3] = POT[int(np.clip(v, 0, 4))]
+    for x in range(N):  # the rim
+        put(img, x, 10, POT[4])
+        put(img, x, 11, POT[3])
+    return img
+
+
+def botany_pot_top():
+    """Soil inside a terracotta rim (the pot covers pixels 3..12)."""
+    rng = rng_for("botany_pot_top")
+    soil = pal("#2a1a0e", "#362214", "#422a1a", "#4e3420")
+    img = from_rgb(shade(fbm(rng, ((2, 0.5), (1, 0.5))), soil, 0.9))
+    for i in range(3, 13):
+        for (x, y) in ((i, 3), (3, i), (12, i), (i, 12)):
+            put(img, x, y, POT[4])
+    return img
+
+
+def botany_pot_empty():
+    return canvas()
 
 
 def to_image(arr):

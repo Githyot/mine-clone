@@ -485,6 +485,26 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     continue;
                 }
 
+                if shape == Shape::Pot {
+                    // The plant: crossed quads standing in the soil, drawn from the bottom picture.
+                    let l = light[i];
+                    let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
+                    let layer = t.faces[idu][3] as u32;
+                    let quads: [[[u32; 3]; 4]; 2] = [
+                        [[3, 5, 3], [13, 5, 13], [13, 16, 13], [3, 16, 3]],
+                        [[13, 5, 3], [3, 5, 13], [3, 16, 13], [13, 16, 3]],
+                    ];
+                    let uvs = [[0, 16], [16, 16], [16, 0], [0, 0]];
+                    for q in quads {
+                        for order in [[0usize, 1, 2, 3], [1, 0, 3, 2]] {
+                            for &k in &order {
+                                let c = q[k];
+                                out.solid.push(pack([base[0] + c[0], base[1] + c[1], base[2] + c[2]], 3, uvs[k], layer, 2, 0, sky, blk, white));
+                            }
+                        }
+                    }
+                }
+
                 if shape.is_boxes() {
                     let nb = |o: isize| blocks[(i as isize + o) as usize] as usize;
                     let mut conn = 0;
@@ -526,6 +546,8 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                                 // The face it points to shows the piston top, the back its bottom.
                                 let df = DIR6_FACE[pdir];
                                 t.faces[idu][if f == df { 2 } else if f == df ^ 1 { 3 } else { 0 }]
+                            } else if shape == Shape::Pot && f == 3 {
+                                t.faces[idu][0]
                             } else {
                                 t.faces[idu][f]
                             } as u32;

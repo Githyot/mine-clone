@@ -28,6 +28,8 @@ pub enum Kind {
     Bubble,
     /// Magic: drifts without falling and shines at full brightness.
     Glow,
+    /// Ambient bits (Subtle Effects idea): a leaf, ash or dust drifting slowly down, swaying.
+    Mote,
 }
 
 struct Particle {
@@ -125,6 +127,14 @@ impl Particles {
         self.push(p);
     }
 
+    /// A slow drifting bit lit like the world around it: a falling leaf, ash, dust.
+    pub fn mote(&mut self, at: Vec3, layer: u16, tint: [f32; 3], size: f32, fall: f32, life: f32) {
+        let a = self.rand() * std::f32::consts::TAU;
+        let uv = [(self.rand() * 12.0).floor() / 16.0, (self.rand() * 12.0).floor() / 16.0];
+        let p = Particle { pos: at, vel: Vec3::new(a.cos() * 0.2, -fall, a.sin() * 0.2), life: life * (0.7 + self.rand() * 0.6), size, layer: layer as u32, uv, tint, kind: Kind::Mote };
+        self.push(p);
+    }
+
     pub fn bubbles(&mut self, at: Vec3, layer: u16, count: usize) {
         for _ in 0..count {
             let off = Vec3::new(self.rand() - 0.5, self.rand() * 0.3, self.rand() - 0.5) * 0.6;
@@ -149,6 +159,15 @@ impl Particles {
                 Kind::Glow => {
                     p.vel *= 1.0 - dt * 2.5;
                     p.pos += p.vel * dt;
+                }
+                Kind::Mote => {
+                    // Sway side to side as it sinks; gone once it touches the ground.
+                    let t = p.life * 2.3 + p.pos.y;
+                    p.pos += (p.vel + Vec3::new(t.sin() * 0.35, 0.0, t.cos() * 0.25)) * dt;
+                    if world.solid(p.pos.floor().as_ivec3()) || world.liquid(p.pos.floor().as_ivec3()) {
+                        p.life = p.life.min(0.2);
+                        p.vel = Vec3::ZERO;
+                    }
                 }
                 Kind::Bubble => {
                     p.vel.x += ((p.pos.y * 9.0).sin()) * dt * 0.8;
