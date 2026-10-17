@@ -41,6 +41,7 @@ mod particles;
 mod player_model;
 mod post;
 mod pots;
+mod progress;
 mod rails;
 mod renderer;
 mod settings;
@@ -459,6 +460,7 @@ struct Game {
     magic: magic::Magic,
     boss: bosses::BossState,
     town: npcs::Town,
+    progress: progress::Progress,
     raid: raids::Raid,
     villages: villages::Villages,
     map: explore::MapCache,
@@ -804,6 +806,7 @@ impl Game {
             magic: magic::Magic::new(max_mana),
             boss: bosses::BossState::new(bosses_beaten),
             town: npcs::Town::new(town_npcs),
+            progress: progress::Progress::new(),
             raid: raids::Raid::default(),
             villages: villages::Villages::default(),
             map: explore::MapCache::default(),
@@ -1096,6 +1099,7 @@ impl Game {
         signs::save(&self.world.save.dir, &self.signs);
         self.save_pets();
         self.surv.save(&self.world.save.dir, &self.items);
+        self.progress_save();
         self.settings.save(&self.base.join("settings.ron"));
     }
 
@@ -1155,6 +1159,9 @@ impl Game {
             return;
         }
         if repeat {
+            return;
+        }
+        if self.progress_key(code) {
             return;
         }
         let f3 = self.keys.contains(&KeyCode::F3);
@@ -1446,6 +1453,10 @@ impl Game {
                     self.travel(voxel::worldgen::Dim::Nether, Vec3::new(p.x / 8.0, 70.0, p.z / 8.0));
                     return;
                 }
+                if let Ok(n) = std::env::var("MC_PROGRESS") {
+                    // Test hook: chapters before N done, the Guide in front (MC_TALK, MC_JOURNAL, MC_REWARD).
+                    self.test_progress(n.parse().unwrap_or(0));
+                }
                 if std::env::var("MC_HOUSE").is_ok() {
                     // Test hook: two small houses in front; people move in; MC_SHOP opens a shop.
                     self.test_houses();
@@ -1539,6 +1550,7 @@ impl Game {
             self.surv_update(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
             self.update_magic(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
             self.update_boss(if self.args.screenshot.is_some() { 0.0 } else { dt });
+            self.update_progress(if self.args.screenshot.is_some() { 0.0 } else { dt });
             if self.dim == voxel::worldgen::Dim::Overworld {
                 // Townsfolk live at home.
                 self.update_npcs(if self.args.screenshot.is_some() { 0.0 } else { dt });
@@ -1583,6 +1595,7 @@ impl Game {
                     self.boss_defeated(&n, &dn);
                 }
             }
+            self.progress_deaths(&out.deaths);
             if self.survival {
                 self.surv_mob_deaths(&out.deaths);
             }
@@ -3073,6 +3086,7 @@ impl Game {
             }
             self.draw_hotbar_items(hx, hy, cell);
             self.draw_boss_bar(w);
+            self.draw_progress(w, h);
             if self.survival {
                 self.draw_survival_hud(hx, hy, cell);
                 self.draw_mana(w);
