@@ -46,7 +46,7 @@ fn main() {
         }
         code.push_str("];\n");
     }
-    for (var, file) in [("MOBS_RON", "packs/vanilla/mobs.ron"), ("PAINTINGS_RON", "packs/vanilla/paintings.ron"), ("ITEMS_RON", "packs/vanilla/items.ron"), ("RECIPES_RON", "packs/vanilla/recipes.ron"), ("STRUCTURES_RON", "packs/vanilla/structures.ron"), ("MODS_BLOCKS_RON", "packs/vanilla/mods/blocks.ron"), ("MODS_ITEMS_RON", "packs/vanilla/mods/items.ron"), ("MODS_RECIPES_RON", "packs/vanilla/mods/recipes.ron"), ("MODS_MOBS_RON", "packs/vanilla/mods/mobs.ron"), ("MODS_STRUCTURES_RON", "packs/vanilla/mods/structures.ron")] {
+    for (var, file) in [("MOBS_RON", "packs/vanilla/mobs.ron"), ("PAINTINGS_RON", "packs/vanilla/paintings.ron"), ("ITEMS_RON", "packs/vanilla/items.ron"), ("RECIPES_RON", "packs/vanilla/recipes.ron"), ("STRUCTURES_RON", "packs/vanilla/structures.ron"), ("MODS_BLOCKS_RON", "packs/vanilla/mods/blocks.ron"), ("MODS_ITEMS_RON", "packs/vanilla/mods/items.ron"), ("MODS_RECIPES_RON", "packs/vanilla/mods/recipes.ron"), ("MODS_MOBS_RON", "packs/vanilla/mods/mobs.ron"), ("MODS_STRUCTURES_RON", "packs/vanilla/mods/structures.ron"), ("MODS_DIMS_MOBS_RON", "packs/vanilla/mods/dims_mobs.ron"), ("MODS_DIMS_STRUCTURES_RON", "packs/vanilla/mods/dims_structures.ron")] {
         let p = root.join(file);
         println!("cargo:rerun-if-changed={}", p.display());
         if p.exists() {

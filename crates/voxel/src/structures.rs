@@ -123,7 +123,7 @@ impl Structures {
     /// Several structure files read as one list (the base game, then mod packs).
     pub fn from_ron_many(texts: &[&str], reg: &BlockRegistry) -> Result<Structures, String> {
         let mut file = StructureFile { structures: Vec::new() };
-        for text in texts {
+        for text in texts.iter().filter(|t| !t.trim().is_empty()) {
             let f: StructureFile = ron::from_str(text).map_err(|e| format!("structures.ron: {e}"))?;
             file.structures.extend(f.structures);
         }
@@ -277,15 +277,18 @@ impl Generator {
             }
             return Some(Placement { index: si, origin: IVec3::new(ox, SEA_LEVEL + 1 - s.def.sink, oz), turns });
         }
-        if self.dim == crate::worldgen::Dim::End {
-            // On the outer islands, on fairly flat ground.
+        let floating = matches!(self.dim, crate::worldgen::Dim::End | crate::worldgen::Dim::Aether);
+        if floating {
+            // On the End's outer islands or the Aether's islands, on fairly flat ground.
             let corners = [(ox, oz), (ox + f.x - 1, oz), (ox, oz + f.y - 1), (ox + f.x - 1, oz + f.y - 1), (cx, cz)];
             let mut hs = Vec::with_capacity(5);
             for &(x, z) in &corners {
-                hs.push(self.end_land(x, z)?.0);
+                let land = if self.dim == crate::worldgen::Dim::End { self.end_land(x, z) } else { self.aether_land(x, z) };
+                hs.push(land?.0);
             }
             let (lo, hi) = (*hs.iter().min().unwrap(), *hs.iter().max().unwrap());
-            if hi - lo > s.def.rough || ((cx * cx + cz * cz) as f32) < 400.0 * 400.0 {
+            let main_island = self.dim == crate::worldgen::Dim::End && ((cx * cx + cz * cz) as f32) < 400.0 * 400.0;
+            if hi - lo > s.def.rough || main_island {
                 return None;
             }
             return Some(Placement { index: si, origin: IVec3::new(ox, hs[4] + 1 - s.def.sink, oz), turns });

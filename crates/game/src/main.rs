@@ -305,9 +305,10 @@ fn load_game_data(base: &Path) -> Result<(BlockRegistry, ItemRegistry, Recipes),
 /// Buildings the generator scatters (`packs/vanilla/structures.ron` and the mod pack's, else the built-in copies).
 fn load_structures(base: &Path, reg: &BlockRegistry) -> Arc<voxel::structures::Structures> {
     let [text, mods] = read_pack_pair(base, "structures.ron", embedded::STRUCTURES_RON, embedded::MODS_STRUCTURES_RON);
-    let parsed = voxel::structures::Structures::from_ron_many(&[&text, &mods], reg).or_else(|e| {
+    let [_, dims] = read_pack_pair(base, "dims_structures.ron", "", embedded::MODS_DIMS_STRUCTURES_RON);
+    let parsed = voxel::structures::Structures::from_ron_many(&[&text, &mods, &dims], reg).or_else(|e| {
         log::error!("{e}; using the built-in structures");
-        voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, embedded::MODS_STRUCTURES_RON], reg)
+        voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, embedded::MODS_STRUCTURES_RON, embedded::MODS_DIMS_STRUCTURES_RON], reg)
     });
     Arc::new(parsed.unwrap_or_else(|e| {
         log::error!("{e}");
@@ -664,9 +665,10 @@ impl Game {
 
         // Mobs: a mobs.ron on disk wins, like blocks.
         let [mobs_text, mods_mobs] = read_pack_pair(&base, "mobs.ron", embedded::MOBS_RON, embedded::MODS_MOBS_RON);
-        let mob_reg = voxel::mob::MobRegistry::from_ron_many(&[&mobs_text, &mods_mobs]).unwrap_or_else(|e| {
+        let [_, dims_mobs] = read_pack_pair(&base, "dims_mobs.ron", "", embedded::MODS_DIMS_MOBS_RON);
+        let mob_reg = voxel::mob::MobRegistry::from_ron_many(&[&mobs_text, &mods_mobs, &dims_mobs]).unwrap_or_else(|e| {
             log::error!("{e}; using built-in mobs");
-            voxel::mob::MobRegistry::from_ron_many(&[embedded::MOBS_RON, embedded::MODS_MOBS_RON]).unwrap_or_default()
+            voxel::mob::MobRegistry::from_ron_many(&[embedded::MOBS_RON, embedded::MODS_MOBS_RON, embedded::MODS_DIMS_MOBS_RON]).unwrap_or_default()
         });
         let painting_defs = paintings::load_defs(&base);
         let paintings = paintings::load(&save.dir, &painting_defs);
@@ -942,6 +944,7 @@ impl Game {
             }
         }
         game.load_mods();
+        game.mods_dim_test_hook();
         game
     }
 
@@ -3631,7 +3634,10 @@ impl Game {
         // The Nether has a roof: no distant terrain there.
         let nether = self.dim == voxel::worldgen::Dim::Nether;
         let end = self.dim == voxel::worldgen::Dim::End;
-        let extra = if nether || end { 0.0 } else { self.settings.lod_distance.max(0) as f32 };
+        // The Otherside (mods/portals.rs) is a closed, dark world like the Nether.
+        let other = self.dim == voxel::worldgen::Dim::Otherside;
+        // Nor in the mod pack's dimensions (floating islands, closed caverns).
+        let extra = if self.dim != voxel::worldgen::Dim::Overworld { 0.0 } else { self.settings.lod_distance.max(0) as f32 };
         let view_end = rd + extra;
         let (fog_color, fog_start, fog_end) = if underwater {
             ([0.04, 0.12, 0.35], 0.0, 28.0)
@@ -3641,6 +3647,9 @@ impl Game {
         } else if nether {
             // A thick red haze instead of a sky.
             ([0.2, 0.035, 0.025], rd * 0.15, rd * 0.85)
+        } else if other {
+            // A cold blue-black murk.
+            ([0.018, 0.04, 0.05], rd * 0.12, rd * 0.8)
         } else if extra > 0.0 {
             (horizon, rd * 0.6, view_end - 8.0)
         } else {
@@ -3654,17 +3663,17 @@ impl Game {
         let mut g = Globals {
             cam_pos: [eye.x - block.x as f32, eye.y - block.y as f32, eye.z - block.z as f32, (self.now % 3600.0) + self.start.elapsed().as_secs_f32() * 0.0],
             cam_world: [eye.x, eye.y, eye.z, CLOUD_HEIGHT],
-            fog_color: [fog_color[0], fog_color[1], fog_color[2], if nether || end { 0.0 } else { daylight }],
-            fog: [fog_start, fog_end, if underwater { 1.0 } else { 0.0 }, if nether || end { 1.0 } else { 0.3 }],
+            fog_color: [fog_color[0], fog_color[1], fog_color[2], if nether || end || other { 0.0 } else { daylight }],
+            fog: [fog_start, fog_end, if underwater { 1.0 } else { 0.0 }, if nether || end || other { 1.0 } else { 0.3 }],
             sun_dir: [sun.x, sun.y, sun.z, if self.settings.relief { 1.0 } else { 0.0 }],
             sky_top: [top[0], top[1], top[2], 1.0],
             sky_horizon: [horizon[0], horizon[1], horizon[2], 1.0],
             effects,
             // The light a held torch gives comes from the player's hand, wherever the camera is.
             hand_light: [head.x - block.x as f32, head.y - 0.4 - block.y as f32, head.z - block.z as f32, self.hand_light_level()],
-            // z: 1 Nether, 2 End (sky and ambient light in the shaders).
+            // z: 1 Nether, 2 End, -1 Aether, 1.25 Otherside (sky and ambient light in the shaders).
             // w: the year for the seasons (mods/seasons.rs), 0 when off.
-            weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else if end { 2.0 } else { 0.0 }, self.season_uniform()],
+            weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else if end { 2.0 } else { self.mod_dim_uniform() }, self.season_uniform()],
             dyn_lights: self.dynamic_lights(eye, block),
             ..Default::default()
         };

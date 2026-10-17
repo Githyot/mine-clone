@@ -135,6 +135,10 @@ pub struct MobDef {
     /// A town NPC: lives in a house, never despawns, talks and trades.
     #[serde(default = "d_false")]
     pub town: bool,
+    /// Flies (birds, sky creatures): holds a height over the ground and comes down to the
+    /// player's level to fight.
+    #[serde(default = "d_false")]
+    pub flies: bool,
 }
 
 fn d_scale() -> f32 {
@@ -166,7 +170,7 @@ impl MobRegistry {
     /// Several mob files read as one list (the base game, then mod packs).
     pub fn from_ron_many(texts: &[&str]) -> Result<Self, String> {
         let mut f = MobFile { mobs: Vec::new() };
-        for text in texts {
+        for text in texts.iter().filter(|t| !t.trim().is_empty()) {
             let g: MobFile = ron::from_str(text).map_err(|e| format!("mobs.ron: {e}"))?;
             f.mobs.extend(g.mobs);
         }
@@ -554,7 +558,11 @@ impl Mob {
                 jump = true;
             }
         }
-        let input = Input { wish, jump, sneak: false, sprint: run, crawl: false };
+        let mut sneak = false;
+        if def.flies {
+            (wish, jump, sneak) = self.fly(def, world, player, fights, wish);
+        }
+        let input = Input { wish, jump, sneak, sprint: run, crawl: false };
         self.body.step(world, &input, dt);
         let moved = (self.body.pos - before) * Vec3::new(1.0, 0.0, 1.0);
         let speed = moved.length() / dt.max(1e-4);
@@ -570,6 +578,24 @@ impl Mob {
         } else {
             self.stuck = 0.0;
         }
+    }
+}
+
+impl Mob {
+    /// Flying: climb or sink toward the wanted height (a few blocks over the ground, bobbing,
+    /// or level with the player when fighting) and slow the wish down to the mob's own speed.
+    fn fly(&mut self, def: &MobDef, world: &impl Terrain, player: Vec3, fights: bool, wish: Vec3) -> (Vec3, bool, bool) {
+        self.body.flying = true;
+        let ground = (0..40).map(|k| (self.body.pos - Vec3::Y * k as f32).floor().as_ivec3()).find(|&p| world.solid(p)).map(|p| p.y as f32 + 1.0);
+        let want = if fights {
+            player.y + if def.ranged { 4.0 } else { 0.5 }
+        } else {
+            let hover = 3.0 + (self.phase.sin() * 0.5 + 0.5) * 5.0 + (self.age * 0.4 + self.phase).sin();
+            ground.map(|g| g + hover).unwrap_or(self.body.pos.y)
+        };
+        let dy = want - self.body.pos.y;
+        let k = def.speed / crate::physics::FLY_SPEED;
+        (wish * k, dy > 0.5, dy < -0.5)
     }
 }
 

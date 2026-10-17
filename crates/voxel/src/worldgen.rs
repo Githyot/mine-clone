@@ -9,11 +9,13 @@ use crate::trees::{self, TreeBlocks, TreeKind, TreeSpace, Wood};
 
 pub const SEA_LEVEL: i32 = 62;
 
+mod aether;
 mod caves;
 mod end;
 mod nether;
 pub use caves::CaveBiome;
 pub use end::{end_pillars, EndPillar, END_EXIT_Y, END_PLATFORM};
+pub use aether::AETHER_ARRIVAL_Y;
 pub use nether::{NETHER_LAVA, NETHER_ROOF};
 
 /// Which world a generator makes. Each dimension is saved in its own folder.
@@ -23,6 +25,10 @@ pub enum Dim {
     Overworld,
     Nether,
     End,
+    /// The mod pack's sky islands (worldgen/aether.rs).
+    Aether,
+    /// The mod pack's dark world under the Deep Dark (worldgen/otherside.rs).
+    Otherside,
 }
 
 impl Dim {
@@ -30,6 +36,8 @@ impl Dim {
         match v {
             1 => Dim::Nether,
             2 => Dim::End,
+            3 => Dim::Aether,
+            4 => Dim::Otherside,
             _ => Dim::Overworld,
         }
     }
@@ -44,6 +52,8 @@ impl Dim {
             Dim::Overworld => "",
             Dim::Nether => "nether",
             Dim::End => "end",
+            Dim::Aether => "aether",
+            Dim::Otherside => "otherside",
         }
     }
 }
@@ -71,10 +81,22 @@ pub enum Biome {
     CrimsonForest = 17,
     TheEnd = 18,
     WarpedForest = 19,
+    // Biomes of the mod content pack (crates/voxel/src/worldgen/moddims.rs and Distant Lands).
+    Aether = 40,
+    GoldenGrove = 41,
+    Deeplands = 42,
+    EchoingForest = 43,
+    OvercastColumns = 44,
+    BloomingCaverns = 45,
+    MataAtlantica = 46,
+    Cerrado = 47,
+    Pantanal = 48,
+    Araucaria = 49,
+    Caatinga = 50,
 }
 
 impl Biome {
-    pub const COUNT: usize = 20;
+    pub const COUNT: usize = 51;
 
     pub fn from_u8(v: u8) -> Biome {
         match v {
@@ -97,6 +119,17 @@ impl Biome {
             17 => Biome::CrimsonForest,
             18 => Biome::TheEnd,
             19 => Biome::WarpedForest,
+            40 => Biome::Aether,
+            41 => Biome::GoldenGrove,
+            42 => Biome::Deeplands,
+            43 => Biome::EchoingForest,
+            44 => Biome::OvercastColumns,
+            45 => Biome::BloomingCaverns,
+            46 => Biome::MataAtlantica,
+            47 => Biome::Cerrado,
+            48 => Biome::Pantanal,
+            49 => Biome::Araucaria,
+            50 => Biome::Caatinga,
             _ => Biome::Plains,
         }
     }
@@ -123,6 +156,17 @@ impl Biome {
             Biome::CrimsonForest => "Crimson Forest",
             Biome::TheEnd => "The End",
             Biome::WarpedForest => "Warped Forest",
+            Biome::Aether => "Aether",
+            Biome::GoldenGrove => "Golden Grove",
+            Biome::Deeplands => "Deeplands",
+            Biome::EchoingForest => "Echoing Forest",
+            Biome::OvercastColumns => "Overcast Columns",
+            Biome::BloomingCaverns => "Blooming Caverns",
+            Biome::MataAtlantica => "Mata Atlântica",
+            Biome::Cerrado => "Cerrado",
+            Biome::Pantanal => "Pantanal",
+            Biome::Araucaria => "Mata de Araucárias",
+            Biome::Caatinga => "Caatinga",
         }
     }
 
@@ -144,6 +188,17 @@ impl Biome {
             Biome::Badlands => [1.14, 0.94, 0.62],
             Biome::CherryGrove => [1.02, 1.08, 0.9],
             Biome::NetherWastes | Biome::SoulSandValley | Biome::CrimsonForest | Biome::WarpedForest | Biome::TheEnd => [1.0, 1.0, 1.0],
+            Biome::Aether => [0.9, 1.08, 0.95],
+            Biome::GoldenGrove => [1.18, 1.08, 0.62],
+            Biome::Deeplands => [0.62, 0.7, 0.78],
+            Biome::EchoingForest => [0.55, 0.85, 0.9],
+            Biome::OvercastColumns => [0.75, 0.78, 0.82],
+            Biome::BloomingCaverns => [0.85, 0.7, 1.0],
+            Biome::MataAtlantica => [0.74, 1.1, 0.62],
+            Biome::Cerrado => [1.12, 1.0, 0.62],
+            Biome::Pantanal => [0.8, 0.98, 0.66],
+            Biome::Araucaria => [0.78, 0.94, 0.8],
+            Biome::Caatinga => [1.14, 0.96, 0.66],
         }
     }
 
@@ -298,6 +353,7 @@ pub struct Generator {
     nether: nether::NetherPalette,
     end: end::EndPalette,
     caves: caves::CavePalette,
+    aether: aether::AetherPalette,
 }
 
 const BANDS: usize = 48;
@@ -390,6 +446,7 @@ impl Generator {
             nether: nether::NetherPalette::new(reg),
             end: end::EndPalette::new(reg),
             caves: caves::CavePalette::new(reg),
+            aether: aether::AetherPalette::new(reg),
         }
     }
 
@@ -399,6 +456,9 @@ impl Generator {
         }
         if self.dim == Dim::End {
             return Column { height: self.end_land(wx, wz).map(|l| l.0).unwrap_or(0), biome: Biome::TheEnd };
+        }
+        if self.dim == Dim::Aether {
+            return Column { height: self.aether_land(wx, wz).map(|l| l.0).unwrap_or(0), biome: self.aether_biome(wx, wz) };
         }
         let x = wx as f32;
         let z = wz as f32;
@@ -534,6 +594,9 @@ impl Generator {
         if self.dim == Dim::End {
             return Surface { height: col.height, biome: col.biome, top: self.end.end_stone, liquid: None, trees: None };
         }
+        if self.dim == Dim::Aether {
+            return Surface { height: col.height, biome: col.biome, top: self.aether.grass_id(), liquid: None, trees: None };
+        }
         let (top, _, _) = self.top_blocks(&col, wx, wz);
         let h = col.height;
         let top = if h < SEA_LEVEL && (top == p.grass || top == p.snow_grass) { p.dirt } else { top };
@@ -588,6 +651,9 @@ impl Generator {
         }
         if self.dim == Dim::End {
             return self.generate_end(pos);
+        }
+        if self.dim == Dim::Aether {
+            return self.generate_aether(pos);
         }
         let p = &self.pal;
         let mut chunk = Chunk::new(pos);
@@ -1095,9 +1161,31 @@ mod tests {
         count[Generator::new(1234, &reg).with_dim(Dim::End).biome_at(0, 0) as usize] += 1;
         let total: usize = count.iter().sum();
         for (i, &c) in count.iter().enumerate() {
+            // Unused numbers, and the mod pack's biomes (tested with their dimensions).
+            if Biome::from_u8(i as u8) as usize != i || i >= 40 {
+                continue;
+            }
             println!("{:>14}: {:.1}%", Biome::from_u8(i as u8).name(), c as f32 * 100.0 / total as f32);
             assert!(c > 0, "{} never appears", Biome::from_u8(i as u8).name());
         }
+    }
+
+    #[test]
+    fn aether_has_islands_in_both_biomes() {
+        let reg = registry();
+        let g = Generator::new(42, &reg).with_dim(Dim::Aether);
+        let (mut land, mut golden, mut n) = (0, 0, 0);
+        for z in (-3000..3000).step_by(48) {
+            for x in (-3000..3000).step_by(48) {
+                n += 1;
+                land += usize::from(g.aether_land(x, z).is_some());
+                golden += usize::from(g.biome_at(x, z) == Biome::GoldenGrove);
+            }
+        }
+        assert!(land * 10 > n && land * 10 < n * 8, "islands cover {land} of {n} columns");
+        assert!(golden > 0, "no golden groves");
+        let c = g.generate(ChunkPos::new(0, 0));
+        assert!((0..256).all(|y| c.get(5, y, 5) != reg.id_or_air("bedrock")), "no bedrock in the sky");
     }
 
     #[test]

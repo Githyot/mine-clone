@@ -5,7 +5,10 @@
 //! The pack's data (blocks, items, recipes, mobs, structures) is in `packs/vanilla/mods/`,
 //! read after the base game's files.
 
+pub mod aether;
 pub mod dwellers;
+pub mod mounts;
+pub mod portals;
 pub mod seasons;
 
 use serde::{Deserialize, Serialize};
@@ -32,6 +35,10 @@ pub struct Mods {
     last_time: f32,
     pub seasons: seasons::Seasons,
     dwell_t: f32,
+    pub aether: aether::Aether,
+    pub mount: mounts::Mount,
+    /// How the player arrives in the dimension being loaded, when a mod portal sent them.
+    pub arriving: Option<portals::Arrive>,
 }
 
 impl Game {
@@ -61,8 +68,10 @@ impl Game {
         }
         self.mods.last_time = self.time_of_day;
         self.update_seasons(dt);
+        self.update_aether(dt);
         if dt > 0.0 {
             self.update_dwellers(dt);
+            self.update_mount(dt);
         }
     }
 
@@ -73,7 +82,7 @@ impl Game {
 
     /// Right click: a mod block or item that does something. True when it was used.
     pub(crate) fn mods_use(&mut self) -> bool {
-        self.seasons_use()
+        self.aether_use() || self.seasons_use()
     }
 
     /// A key went down. True when a mod used it.

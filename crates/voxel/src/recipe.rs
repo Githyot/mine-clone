@@ -83,7 +83,7 @@ impl Recipes {
     /// Several recipe files read as one (the base game, then mod packs); tags merge by name.
     pub fn from_ron_many(texts: &[&str], items: &ItemRegistry) -> Result<Recipes, String> {
         let mut f = RecipeFile { tags: HashMap::new(), shaped: Vec::new(), shapeless: Vec::new(), smelting: Vec::new() };
-        for text in texts {
+        for text in texts.iter().filter(|t| !t.trim().is_empty()) {
             let g: RecipeFile = ron::from_str(text).map_err(|e| format!("recipes.ron: {e}"))?;
             for (k, v) in g.tags {
                 f.tags.entry(k).or_default().extend(v);

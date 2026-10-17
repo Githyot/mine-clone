@@ -18,7 +18,8 @@ struct Globals {
     effects: vec4<f32>,
     // A torch in the hand: xyz relative to the camera's block, w: light level 0..1.
     hand_light: vec4<f32>,
-    // x: rain 0..1, y: lightning flash 0..1, z: dimension (0 Overworld, 1 Nether, 2 End).
+    // x: rain 0..1, y: lightning flash 0..1, z: dimension (0 Overworld, 1 Nether, 2 End,
+    // -1 Aether, 1.25 Otherside: the mod pack's dimensions).
     weather: vec4<f32>,
     // Moving lights: dropped torches, burning mobs. xyz like hand_light, w: level (0 = unused).
     dyn_lights: array<vec4<f32>, 8>,
@@ -28,6 +29,13 @@ struct Globals {
 
 // The Nether and the End are never pitch dark: a dim warm glow, or a pale violet one.
 fn dim_ambient() -> vec3<f32> {
+    // The Aether's undersides stay bright with the sky's light; the Otherside glows faintly teal.
+    if (g.weather.z < -0.5) {
+        return vec3<f32>(0.5, 0.56, 0.64);
+    }
+    if (g.weather.z > 1.1 && g.weather.z < 1.5) {
+        return vec3<f32>(0.14, 0.2, 0.24);
+    }
     if (g.weather.z > 1.5) {
         return vec3<f32>(0.62, 0.6, 0.68);
     }

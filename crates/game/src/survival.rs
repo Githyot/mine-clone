@@ -1127,7 +1127,7 @@ impl Game {
     }
 
     /// Turn one of the held item into another (a bucket filled or emptied). Creative keeps it.
-    fn swap_held(&mut self, to: &str) {
+    pub(crate) fn swap_held(&mut self, to: &str) {
         if !self.survival {
             return;
         }

@@ -55,6 +55,11 @@ fn style(name: &str) -> Style {
         crate::end::GUARDIAN => Style { helper: "void_walker", school: 3, ground: "end_stone", call: "O vazio chama seus andarilhos!", special: 0 },
         "lich" => Style { helper: "skeleton", school: 1, ground: "snow", call: "O Lich ergue os mortos congelados!", special: 1 },
         "obsidilith" => Style { helper: "ash_skeleton", school: 3, ground: "obsidian", call: "O Obsidilito chama as cinzas!", special: 2 },
+        // The Aether's dungeon bosses (mods/aether.rs).
+        "slider" => Style { helper: "sentry", school: 0, ground: "carved_stone", call: "O Deslizador desperta as sentinelas!", special: 0 },
+        "valkyrie_queen" => Style { helper: "valkyrie", school: 2, ground: "angelic_stone", call: "A Rainha chama suas valquírias!", special: 1 },
+        "sun_spirit" => Style { helper: "fire_minion", school: 0, ground: "hellfire_stone", call: "O Espírito do Sol chama seus lacaios!", special: 2 },
+        "otherside_stalker" => Style { helper: "sculk_leech", school: 3, ground: "gloomslate", call: "O Espreitador grita, e o abismo responde!", special: 3 },
         "void_blossom" => Style { helper: "spider", school: 4, ground: "grass_block", call: "A flor solta suas aranhas!", special: 3 },
         _ => Style { helper: "zombie", school: 4, ground: "dirt", call: "As raízes acordam os mortos!", special: 0 },
     }

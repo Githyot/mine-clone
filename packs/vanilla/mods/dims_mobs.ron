@@ -1,0 +1,259 @@
+// Made by tools/gen_dim_mobs.py from tools/dim_mobs_spec.py: edit those and run it again.
+(mobs: [
+    (
+        name: "aerbunny", display_name: "Aerocoelho", kind: Passive, health: 3, speed: 3.2, width: 0.5, height: 0.6, spawn: Grass, hops: true, flee_range: 6.0, biomes: ["Aether", "Golden Grove"], ground: ["aether_grass_block"], drops: [(item: "swet_ball", min: 0, max: 1)], xp: 1, group: (1, 3),
+        parts: [
+            (size: (6, 5, 7), origin: (-3, 2, -4), uv: (0, 0)),
+            (size: (5, 5, 5), origin: (-3, 5, 2), uv: (26, 0), anim: Head, pivot: (0, 7, 3)),
+            (size: (2, 5, 1), origin: (-3, 10, 3), uv: (46, 0), anim: Head, pivot: (0, 7, 3)),
+            (size: (2, 5, 1), origin: (0, 10, 3), uv: (46, 0), anim: Head, pivot: (0, 7, 3)),
+            (size: (2, 2, 2), origin: (-3, 0, -3), uv: (52, 0), anim: Leg(0), pivot: (-2, 2, -2)),
+            (size: (2, 2, 2), origin: (1, 0, -3), uv: (52, 0), anim: Leg(1), pivot: (2, 2, -2)),
+            (size: (2, 2, 2), origin: (-3, 0, 0), uv: (52, 0), anim: Leg(1), pivot: (-2, 2, 1)),
+            (size: (2, 2, 2), origin: (1, 0, 0), uv: (52, 0), anim: Leg(0), pivot: (2, 2, 1)),
+        ],
+    ),
+    (
+        name: "phyg", display_name: "Porco Alado", kind: Passive, health: 10, speed: 2.4, width: 0.9, height: 0.9, spawn: Grass, biomes: ["Aether", "Golden Grove"], ground: ["aether_grass_block"], drops: [(item: "porkchop", min: 1, max: 3)], xp: 2,
+        parts: [
+            (size: (10, 8, 14), origin: (-5, 6, -7), uv: (0, 0)),
+            (size: (8, 8, 7), origin: (-4, 10, 6), uv: (0, 22), anim: Head, pivot: (0, 14, 7)),
+            (size: (4, 3, 1), origin: (-2, 11, 13), uv: (30, 22), anim: Head, pivot: (0, 14, 7)),
+            (size: (4, 6, 4), origin: (-5, 0, -6), uv: (40, 22), anim: Leg(0), pivot: (-3, 6, -4)),
+            (size: (4, 6, 4), origin: (1, 0, -6), uv: (40, 22), anim: Leg(1), pivot: (3, 6, -4)),
+            (size: (4, 6, 4), origin: (-5, 0, 2), uv: (40, 22), anim: Leg(1), pivot: (-3, 6, 4)),
+            (size: (4, 6, 4), origin: (1, 0, 2), uv: (40, 22), anim: Leg(0), pivot: (3, 6, 4)),
+            (size: (8, 2, 8), origin: (-13, 12, -4), uv: (0, 37), anim: Wing(0), pivot: (-5, 14, 0)),
+            (size: (8, 2, 8), origin: (5, 12, -4), uv: (0, 37), anim: Wing(1), pivot: (5, 14, 0)),
+        ],
+    ),
+    (
+        name: "flying_cow", display_name: "Vaca Alada", kind: Passive, health: 10, speed: 2.2, width: 0.9, height: 1.4, spawn: Grass, biomes: ["Aether", "Golden Grove"], ground: ["aether_grass_block"], drops: [(item: "beef", min: 1, max: 3), (item: "leather", min: 0, max: 2)], xp: 2,
+        parts: [
+            (size: (12, 10, 16), origin: (-6, 10, -8), uv: (0, 0)),
+            (size: (8, 8, 6), origin: (-4, 16, 7), uv: (0, 26), anim: Head, pivot: (0, 20, 8)),
+            (size: (4, 10, 4), origin: (-6, 0, -7), uv: (28, 26), anim: Leg(0), pivot: (-4, 10, -5)),
+            (size: (4, 10, 4), origin: (2, 0, -7), uv: (28, 26), anim: Leg(1), pivot: (4, 10, -5)),
+            (size: (4, 10, 4), origin: (-6, 0, 3), uv: (28, 26), anim: Leg(1), pivot: (-4, 10, 5)),
+            (size: (4, 10, 4), origin: (2, 0, 3), uv: (28, 26), anim: Leg(0), pivot: (4, 10, 5)),
+            (size: (10, 2, 10), origin: (-16, 18, -5), uv: (0, 40), anim: Wing(0), pivot: (-6, 20, 0)),
+            (size: (10, 2, 10), origin: (6, 18, -5), uv: (0, 40), anim: Wing(1), pivot: (6, 20, 0)),
+        ],
+    ),
+    (
+        name: "sheepuff", display_name: "Ovelha Fofa", kind: Passive, health: 8, speed: 2.0, width: 0.9, height: 1.2, spawn: Grass, biomes: ["Aether", "Golden Grove"], ground: ["aether_grass_block"], drops: [(item: "white_wool", min: 1, max: 2)], xp: 2,
+        parts: [
+            (size: (10, 9, 14), origin: (-5, 7, -7), uv: (0, 0)),
+            (size: (6, 6, 7), origin: (-3, 13, 6), uv: (0, 23), anim: Head, pivot: (0, 16, 7)),
+            (size: (3, 7, 3), origin: (-5, 0, -6), uv: (26, 23), anim: Leg(0), pivot: (-4, 7, -5)),
+            (size: (3, 7, 3), origin: (2, 0, -6), uv: (26, 23), anim: Leg(1), pivot: (3, 7, -5)),
+            (size: (3, 7, 3), origin: (-5, 0, 3), uv: (26, 23), anim: Leg(1), pivot: (-4, 7, 4)),
+            (size: (3, 7, 3), origin: (2, 0, 3), uv: (26, 23), anim: Leg(0), pivot: (3, 7, 4)),
+        ],
+        layers: [(part: 0, inflate: 1.2)],
+    ),
+    (
+        name: "moa", display_name: "Moa", kind: Passive, health: 20, speed: 3.4, width: 0.9, height: 2.0, spawn: Grass, biomes: ["Aether", "Golden Grove"], ground: ["aether_grass_block"], drops: [(item: "moa_feather", min: 0, max: 2)], xp: 3, group: (1, 2), weight: 6,
+        parts: [
+            (size: (10, 10, 14), origin: (-5, 12, -7), uv: (0, 0)),
+            (size: (4, 8, 4), origin: (-2, 20, 3), uv: (48, 0), anim: Head, pivot: (0, 26, 7)),
+            (size: (6, 6, 8), origin: (-3, 26, 3), uv: (0, 24), anim: Head, pivot: (0, 26, 7)),
+            (size: (2, 2, 3), origin: (-1, 28, 11), uv: (28, 24), anim: Head, pivot: (0, 26, 7)),
+            (size: (2, 8, 12), origin: (-6, 14, -6), uv: (0, 38), anim: Wing(0), pivot: (-5, 22, 0)),
+            (size: (2, 8, 12), origin: (4, 14, -6), uv: (0, 38), anim: Wing(1), pivot: (5, 22, 0)),
+            (size: (1, 12, 1), origin: (-3, 0, 0), uv: (28, 38), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (1, 12, 1), origin: (2, 0, 0), uv: (28, 38), anim: Leg(1), pivot: (2, 12, 0)),
+            (size: (8, 2, 6), origin: (-4, 19, -12), uv: (32, 38)),
+        ],
+    ),
+    (
+        name: "aerwhale", display_name: "Aerobaleia", kind: Passive, health: 40, speed: 1.6, width: 2.4, height: 1.8, spawn: Grass, biomes: ["Aether", "Golden Grove"], ground: ["aether_grass_block"], flies: true, group: (1, 1), weight: 3, scale: 2.6, xp: 5,
+        parts: [
+            (size: (12, 10, 20), origin: (-6, 0, -10), uv: (0, 0)),
+            (size: (8, 6, 8), origin: (-4, 2, -18), uv: (0, 30)),
+            (size: (16, 2, 6), origin: (-8, 5, -24), uv: (0, 44)),
+            (size: (8, 2, 6), origin: (-14, 3, 5), uv: (0, 52), anim: Wing(0), pivot: (-6, 3, 5)),
+            (size: (8, 2, 6), origin: (6, 3, 5), uv: (0, 52), anim: Wing(1), pivot: (6, 3, 5)),
+        ],
+    ),
+    (
+        name: "zephyr", display_name: "Zéfiro", kind: Hostile, health: 10, speed: 2.4, width: 1.4, height: 1.0, spawn: Dark, ranged: true, attack: 3, flies: true, biomes: ["Aether", "Golden Grove"], xp: 5, drops: [(item: "cold_aercloud", min: 0, max: 2)],
+        parts: [
+            (size: (14, 10, 14), origin: (-7, 0, -7), uv: (0, 0)),
+        ],
+    ),
+    (
+        name: "cockatrice", display_name: "Cocatriz", kind: Hostile, health: 20, speed: 3.0, width: 0.8, height: 1.8, spawn: Dark, ranged: true, attack: 4, biomes: ["Aether", "Golden Grove"], drops: [(item: "feather", min: 0, max: 2)], xp: 5,
+        parts: [
+            (size: (8, 8, 12), origin: (-4, 10, -6), uv: (0, 0)),
+            (size: (4, 6, 4), origin: (-2, 16, 2), uv: (40, 0), anim: Head, pivot: (0, 20, 6)),
+            (size: (6, 6, 7), origin: (-3, 20, 3), uv: (0, 20), anim: Head, pivot: (0, 20, 6)),
+            (size: (2, 2, 3), origin: (-1, 22, 10), uv: (26, 20), anim: Head, pivot: (0, 20, 6)),
+            (size: (2, 6, 10), origin: (-5, 12, -5), uv: (36, 20), anim: Wing(0), pivot: (-4, 18, 0)),
+            (size: (2, 6, 10), origin: (3, 12, -5), uv: (36, 20), anim: Wing(1), pivot: (4, 18, 0)),
+            (size: (1, 10, 1), origin: (-3, 0, 0), uv: (60, 20), anim: Leg(0), pivot: (-2, 10, 0)),
+            (size: (1, 10, 1), origin: (2, 0, 0), uv: (60, 20), anim: Leg(1), pivot: (2, 10, 0)),
+            (size: (6, 2, 6), origin: (-3, 15, -11), uv: (0, 36)),
+        ],
+    ),
+    (
+        name: "swet", display_name: "Swet", kind: Hostile, health: 12, speed: 2.0, width: 0.7, height: 0.7, spawn: Dark, attack: 2, hops: true, biomes: ["Aether", "Golden Grove"], drops: [(item: "swet_ball", min: 1, max: 2)], xp: 3,
+        parts: [
+            (size: (10, 10, 10), origin: (-5, 0, -5), uv: (0, 0)),
+            (size: (4, 4, 4), origin: (-2, 1, -2), uv: (40, 0)),
+        ],
+    ),
+    (
+        name: "aechor_plant", display_name: "Planta Aechor", kind: Hostile, health: 15, speed: 0.0, width: 0.8, height: 0.6, spawn: Grass, ranged: true, attack: 3, biomes: ["Aether", "Golden Grove"], ground: ["aether_grass_block"], drops: [(item: "aechor_petal", min: 1, max: 2)], xp: 3, group: (1, 1), weight: 4,
+        parts: [
+            (size: (8, 6, 8), origin: (-4, 0, -4), uv: (0, 0)),
+        ],
+    ),
+    (
+        name: "valkyrie", display_name: "Valquíria", kind: Hostile, health: 50, speed: 3.0, width: 0.6, height: 1.9, spawn: Never, attack: 7, drops: [(item: "victory_medal", min: 1, max: 1)], xp: 10,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (32, 0)),
+            (size: (3, 12, 4), origin: (-7, 12, -2), uv: (0, 16), anim: Arm(0), pivot: (-5, 22, 0)),
+            (size: (3, 12, 4), origin: (4, 12, -2), uv: (0, 16), anim: Arm(1), pivot: (5, 22, 0)),
+            (size: (4, 12, 4), origin: (-4, 0, -2), uv: (14, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (4, 12, 4), origin: (0, 0, -2), uv: (14, 16), anim: Leg(1), pivot: (2, 12, 0)),
+            (size: (10, 14, 1), origin: (-14, 10, 2), uv: (30, 16), anim: Wing(0), pivot: (-4, 22, 2)),
+            (size: (10, 14, 1), origin: (4, 10, 2), uv: (30, 16), anim: Wing(1), pivot: (4, 22, 2)),
+        ],
+        layers: [(part: 0, inflate: 0.6)],
+    ),
+    (
+        name: "valkyrie_queen", display_name: "Rainha Valquíria", kind: Hostile, health: 500, speed: 3.2, width: 0.6, height: 1.9, spawn: Never, attack: 10, boss: true, scale: 1.5, drops: [(item: "valkyrie_lance", min: 1, max: 1), (item: "gold_dungeon_key", min: 1, max: 1)], xp: 80,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (32, 0)),
+            (size: (3, 12, 4), origin: (-7, 12, -2), uv: (0, 16), anim: Arm(0), pivot: (-5, 22, 0)),
+            (size: (3, 12, 4), origin: (4, 12, -2), uv: (0, 16), anim: Arm(1), pivot: (5, 22, 0)),
+            (size: (4, 12, 4), origin: (-4, 0, -2), uv: (14, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (4, 12, 4), origin: (0, 0, -2), uv: (14, 16), anim: Leg(1), pivot: (2, 12, 0)),
+            (size: (12, 16, 1), origin: (-16, 8, 2), uv: (30, 16), anim: Wing(0), pivot: (-4, 22, 2)),
+            (size: (12, 16, 1), origin: (4, 8, 2), uv: (30, 16), anim: Wing(1), pivot: (4, 22, 2)),
+        ],
+        layers: [(part: 0, inflate: 0.6)],
+    ),
+    (
+        name: "slider", display_name: "Deslizador", kind: Hostile, health: 500, speed: 2.8, width: 2.0, height: 2.0, spawn: Never, attack: 12, boss: true, scale: 1.3, drops: [(item: "dungeon_key_silver", min: 1, max: 1), (item: "gravitite_ore", min: 2, max: 4)], xp: 60,
+        parts: [
+            (size: (16, 16, 16), origin: (-8, 0, -8), uv: (0, 0)),
+        ],
+    ),
+    (
+        name: "sentry", display_name: "Sentinela", kind: Hostile, health: 12, speed: 2.4, width: 0.6, height: 0.6, spawn: Never, attack: 4, hops: true, explodes: true, xp: 4,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 0, -4), uv: (0, 0)),
+        ],
+    ),
+    (
+        name: "sun_spirit", display_name: "Espírito do Sol", kind: Hostile, health: 600, speed: 2.4, width: 0.8, height: 2.0, spawn: Never, attack: 10, ranged: true, boss: true, scale: 2.2, flies: true, drops: [(item: "sun_altar_key", min: 1, max: 1)], xp: 100,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (32, 0)),
+            (size: (4, 12, 4), origin: (-8, 12, -2), uv: (0, 16), anim: Arm(0), pivot: (-6, 22, 0)),
+            (size: (4, 12, 4), origin: (4, 12, -2), uv: (0, 16), anim: Arm(1), pivot: (6, 22, 0)),
+            (size: (4, 12, 4), origin: (-4, 0, -2), uv: (16, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (4, 12, 4), origin: (0, 0, -2), uv: (16, 16), anim: Leg(1), pivot: (2, 12, 0)),
+        ],
+    ),
+    (
+        name: "fire_minion", display_name: "Lacaio de Fogo", kind: Hostile, health: 20, speed: 3.0, width: 0.6, height: 1.3, spawn: Never, attack: 5, xp: 5,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 16, -4), uv: (0, 0), anim: Head, pivot: (0, 16, 0)),
+            (size: (8, 8, 4), origin: (-4, 8, -2), uv: (32, 0)),
+            (size: (4, 8, 4), origin: (-8, 8, -2), uv: (0, 16), anim: Arm(0), pivot: (-6, 14, 0)),
+            (size: (4, 8, 4), origin: (4, 8, -2), uv: (0, 16), anim: Arm(1), pivot: (6, 14, 0)),
+            (size: (4, 8, 4), origin: (-4, 0, -2), uv: (16, 16), anim: Leg(0), pivot: (-2, 8, 0)),
+            (size: (4, 8, 4), origin: (0, 0, -2), uv: (16, 16), anim: Leg(1), pivot: (2, 8, 0)),
+        ],
+    ),
+    (
+        name: "shattered", display_name: "Estilhaçado", kind: Hostile, health: 40, speed: 2.6, width: 0.7, height: 2.6, spawn: Dark, attack: 7, biomes: ["Deeplands", "Echoing Forest", "Overcast Columns", "Blooming Caverns"], drops: [(item: "echo_shard", min: 0, max: 1), (item: "bone", min: 0, max: 2)], xp: 8,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 32, -4), uv: (0, 0), anim: Head, pivot: (0, 32, 0)),
+            (size: (8, 16, 4), origin: (-4, 16, -2), uv: (32, 0)),
+            (size: (3, 16, 4), origin: (-7, 16, -2), uv: (0, 20), anim: Arm(0), pivot: (-5, 30, 0)),
+            (size: (3, 16, 4), origin: (4, 16, -2), uv: (0, 20), anim: Arm(1), pivot: (5, 30, 0)),
+            (size: (4, 16, 4), origin: (-4, 0, -2), uv: (14, 20), anim: Leg(0), pivot: (-2, 16, 0)),
+            (size: (4, 16, 4), origin: (0, 0, -2), uv: (14, 20), anim: Leg(1), pivot: (2, 16, 0)),
+        ],
+    ),
+    (
+        name: "sculk_snapper", display_name: "Mordedor de Sculk", kind: Neutral, health: 20, speed: 3.0, width: 0.7, height: 0.8, spawn: Grass, attack: 5, biomes: ["Deeplands", "Echoing Forest", "Overcast Columns", "Blooming Caverns"], ground: ["gloomslate", "sculk_grime", "echo_soil", "sculk"], drops: [(item: "sculk_bone", min: 0, max: 2)], xp: 4,
+        parts: [
+            (size: (8, 6, 12), origin: (-4, 5, -6), uv: (0, 0)),
+            (size: (7, 6, 7), origin: (-4, 8, 5), uv: (0, 18), anim: Head, pivot: (0, 11, 6)),
+            (size: (3, 5, 3), origin: (-4, 0, -5), uv: (28, 18), anim: Leg(0), pivot: (-3, 5, -4)),
+            (size: (3, 5, 3), origin: (1, 0, -5), uv: (28, 18), anim: Leg(1), pivot: (2, 5, -4)),
+            (size: (3, 5, 3), origin: (-4, 0, 2), uv: (28, 18), anim: Leg(1), pivot: (-3, 5, 3)),
+            (size: (3, 5, 3), origin: (1, 0, 2), uv: (28, 18), anim: Leg(0), pivot: (2, 5, 3)),
+        ],
+    ),
+    (
+        name: "angler_fish", display_name: "Peixe-Pescador", kind: Hostile, health: 14, speed: 2.6, width: 0.8, height: 0.6, spawn: Water, attack: 5, swims: true, biomes: ["Deeplands", "Echoing Forest", "Overcast Columns", "Blooming Caverns"], xp: 4,
+        parts: [
+            (size: (10, 8, 12), origin: (-5, 0, -6), uv: (0, 0)),
+            (size: (2, 2, 2), origin: (-1, 1, -1), uv: (44, 0)),
+        ],
+    ),
+    (
+        name: "sculk_leech", display_name: "Sanguessuga de Sculk", kind: Hostile, health: 6, speed: 2.4, width: 0.4, height: 0.3, spawn: Dark, attack: 2, biomes: ["Deeplands", "Echoing Forest", "Overcast Columns", "Blooming Caverns"], xp: 2,
+        parts: [
+            (size: (5, 5, 3), origin: (-3, 0, 0), uv: (0, 0), anim: Head, pivot: (0, 1, 0)),
+            (size: (3, 3, 3), origin: (-2, 0, -3), uv: (16, 0)),
+            (size: (3, 3, 3), origin: (-2, 0, -6), uv: (16, 0)),
+            (size: (3, 3, 3), origin: (-2, 0, -9), uv: (16, 0)),
+        ],
+    ),
+    (
+        name: "shriek_worm", display_name: "Verme Uivante", kind: Hostile, health: 80, speed: 1.2, width: 1.2, height: 1.2, spawn: Dark, attack: 12, biomes: ["Deeplands"], weight: 2, group: (1, 1), drops: [(item: "heart_of_the_deep_shard", min: 0, max: 1)], xp: 20, scale: 1.4,
+        parts: [
+            (size: (12, 12, 10), origin: (-6, 0, 0), uv: (0, 0), anim: Head, pivot: (0, 5, 0)),
+            (size: (10, 10, 10), origin: (-5, 0, -10), uv: (0, 22)),
+            (size: (10, 10, 10), origin: (-5, 0, -20), uv: (0, 22)),
+            (size: (10, 10, 10), origin: (-5, 0, -30), uv: (0, 22)),
+            (size: (10, 10, 10), origin: (-5, 0, -40), uv: (0, 22)),
+            (size: (10, 10, 10), origin: (-5, 0, -50), uv: (0, 22)),
+        ],
+    ),
+    (
+        name: "sculk_centipede", display_name: "Centopeia de Sculk", kind: Hostile, health: 16, speed: 3.2, width: 0.6, height: 0.4, spawn: Dark, attack: 4, climbs: true, biomes: ["Deeplands", "Echoing Forest", "Overcast Columns", "Blooming Caverns"], xp: 4,
+        parts: [
+            (size: (6, 5, 4), origin: (-3, 0, 0), uv: (0, 0), anim: Head, pivot: (0, 1, 0)),
+            (size: (4, 3, 4), origin: (-2, 0, -4), uv: (20, 0)),
+            (size: (4, 3, 4), origin: (-2, 0, -8), uv: (20, 0)),
+            (size: (4, 3, 4), origin: (-2, 0, -12), uv: (20, 0)),
+            (size: (4, 3, 4), origin: (-2, 0, -16), uv: (20, 0)),
+            (size: (4, 3, 4), origin: (-2, 0, -20), uv: (20, 0)),
+            (size: (4, 3, 4), origin: (-2, 0, -24), uv: (20, 0)),
+        ],
+    ),
+    (
+        name: "sludge", display_name: "Lodo", kind: Hostile, health: 16, speed: 1.8, width: 0.8, height: 0.6, spawn: Dark, attack: 3, hops: true, biomes: ["Deeplands", "Echoing Forest", "Overcast Columns", "Blooming Caverns"], drops: [(item: "slime_ball", min: 0, max: 2)], xp: 3,
+        parts: [
+            (size: (10, 8, 10), origin: (-5, 0, -5), uv: (0, 0)),
+        ],
+    ),
+    (
+        name: "glare", display_name: "Clarão", kind: Passive, health: 10, speed: 2.0, width: 0.8, height: 0.8, spawn: Grass, flies: true, biomes: ["Blooming Caverns"], ground: ["gloomslate", "sculk_grime", "echo_soil", "sculk"], xp: 2, group: (1, 2),
+        parts: [
+            (size: (10, 10, 10), origin: (-5, 0, -5), uv: (0, 0)),
+            (size: (4, 4, 4), origin: (-2, 1, -2), uv: (40, 0)),
+        ],
+    ),
+    (
+        name: "otherside_stalker", display_name: "Espreitador", kind: Hostile, health: 300, speed: 3.0, width: 0.8, height: 3.0, spawn: Never, attack: 14, boss: true, scale: 1.2, drops: [(item: "heart_of_the_deep", min: 1, max: 1), (item: "echo_shard", min: 3, max: 6)], xp: 60,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 36, -4), uv: (0, 0), anim: Head, pivot: (0, 36, 0)),
+            (size: (8, 18, 4), origin: (-4, 18, -2), uv: (32, 0)),
+            (size: (3, 18, 4), origin: (-7, 18, -2), uv: (0, 22), anim: ArmForward(0), pivot: (-5, 34, 0)),
+            (size: (3, 18, 4), origin: (4, 18, -2), uv: (0, 22), anim: ArmForward(1), pivot: (5, 34, 0)),
+            (size: (4, 18, 4), origin: (-4, 0, -2), uv: (14, 22), anim: Leg(0), pivot: (-2, 18, 0)),
+            (size: (4, 18, 4), origin: (0, 0, -2), uv: (14, 22), anim: Leg(1), pivot: (2, 18, 0)),
+        ],
+    ),
+])

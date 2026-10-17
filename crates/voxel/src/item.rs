@@ -105,7 +105,7 @@ impl ItemRegistry {
     /// Several item files read as one list, in order (the base game, then mod packs).
     pub fn from_ron_many(texts: &[&str], blocks: &BlockRegistry) -> Result<Self, String> {
         let mut defs = Vec::new();
-        for text in texts {
+        for text in texts.iter().filter(|t| !t.trim().is_empty()) {
             let file: ItemFile = ron::from_str(text).map_err(|e| format!("items.ron: {e}"))?;
             defs.extend(file.items);
         }
