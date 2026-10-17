@@ -306,7 +306,7 @@ LOTE DE MODS (17/10)
     Farinha de osso faz plantas crescerem; composteira transforma plantas em farinha de osso.
     Novos lugares: templos do deserto (cuidado com a TNT) e da selva, iglu, mina abandonada,
       naufrágio, geodos de ametista e veios grandes de cobre e ferro no subsolo.
-    Novos biomas: rio, campo de cogumelos, prado, picos nevados, oceano congelado, floresta
+    Novos biomas: rio, campo de cogumelos, prado, picos nevados, oceano congelado, manguezal, floresta
       distorcida no Nether.
     Novos bichos: cavalo, burro, lhama, camelo, lobo, gato, cabra, panda, papagaio, sapo,
       tartaruga, abelha, lula, golfinho, axolote; monstros: gosma, múmia, afogado, arqueiro
