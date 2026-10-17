@@ -2490,7 +2490,14 @@ def crop(kind, stage, stages):
 
 def farming_registry():
     reg = {"farmland": farmland, "hay_block_side": hay_block_side, "hay_block_top": hay_block_top,
-           "botany_pot_side": botany_pot_side, "botany_pot_top": botany_pot_top, "botany_pot_empty": botany_pot_empty}
+           "botany_pot_side": botany_pot_side, "botany_pot_top": botany_pot_top, "botany_pot_empty": botany_pot_empty,
+           "cobblestone_bricks": cobblestone_bricks,
+           "mossy_cobblestone_bricks": lambda: cobblestone_bricks("mossy_cobblestone_bricks", True),
+           "rocky_dirt": rocky_dirt, "thatch": thatch, "lattice": lattice, "chandelier": chandelier_side,
+           "brazier": brazier_side, "brazier_top": brazier_top, "twig": twig, "pebble": pebble,
+           "red_curtain": lambda: curtain(pal("#5a1010", "#7a1818", "#962222", "#ae2c2c")),
+           "white_curtain": lambda: curtain(pal("#a8a49a", "#c4c0b6", "#d8d4ca", "#e8e4da")),
+           "green_curtain": lambda: curtain(pal("#1e3a14", "#2a4e1c", "#386226", "#467630"))}
     for kind, n in (("wheat", 8), ("carrots", 4), ("potatoes", 4), ("beetroots", 4)):
         for k in range(n):
             reg[f"{kind}_stage{k}"] = lambda kind=kind, k=k, n=n: crop(kind, k, n)
@@ -2528,6 +2535,149 @@ def botany_pot_top():
 
 def botany_pot_empty():
     return canvas()
+
+
+def cobblestone_bricks(name="cobblestone_bricks", moss=False):
+    """Cobblestone cut into rough bricks (Twigs idea)."""
+    rng = rng_for(name)
+    f = fbm(rng, ((4, 0.3), (2, 0.4), (1, 0.4)))
+    img = from_rgb(shade(0.3 + 0.5 * f, COBBLE[2:], 0.7))
+    rgb = img[..., :3]
+    for y in range(N):
+        row = y // 4
+        off = 4 if row % 2 else 0
+        for x in range(N):
+            if y % 4 == 3 or (x + off) % 8 == 7:
+                rgb[y, x] = COBBLE[0]
+            elif y % 4 == 0:
+                rgb[y, x] = scale_rgb(rgb[y, x], 1.12)
+    if moss:
+        m = fbm(rng, ((8, 0.4), (4, 0.4), (2, 0.3))) > 0.58
+        rgb[m] = shade(fbm(rng, ((2, 0.5), (1, 0.5))), MOSS, 0.8)[m]
+    return img
+
+
+def rocky_dirt():
+    """Dirt with stones pressed into it (Twigs idea)."""
+    img = dirt("rocky_dirt")
+    rng = rng_for("rocky_dirt_stones")
+    for _ in range(7):
+        cx, cy = rng.integers(1, 14), rng.integers(1, 14)
+        for dy in range(2):
+            for dx in range(2 + rng.integers(0, 2)):
+                put(img, (cx + dx) % N, (cy + dy) % N, COBBLE[3 - dy + (dx == 0)])
+    return img
+
+
+def thatch():
+    """Straw bundled in rows, darker than hay (Decorative Blocks idea)."""
+    rng = rng_for("thatch")
+    straw = pal("#5e4a1e", "#74602a", "#8a7434", "#a08a42", "#b49c52")
+    img = canvas()
+    img[..., 3] = 255
+    for y in range(N):
+        for x in range(N):
+            v = 2 + rng.normal(0, 0.8) + (0.8 if (x + y // 4) % 3 == 0 else 0) - (1.2 if y % 4 == 3 else 0)
+            img[y, x, :3] = straw[int(np.clip(v, 0, 4))]
+    return img
+
+
+def lattice():
+    """Thin wooden strips crossing on the diagonal, open between (Decorative Blocks idea)."""
+    p = WOODS["oak"]["plank"]
+    img = canvas()
+    for y in range(N):
+        for x in range(N):
+            if (x + y) % 6 == 0 or (x - y) % 6 == 0:
+                put(img, x, y, p[2] if (x + y) % 6 == 0 else p[1])
+    for i in range(N):
+        for (x, y) in ((i, 0), (i, 15), (0, i), (15, i)):
+            put(img, x, y, p[0])
+    return img
+
+
+def chandelier_side():
+    """An iron ring hung on a chain with candle flames on it."""
+    m = pal("#2e3036", "#4a4e56", "#6a707a")
+    img = canvas()
+    for y in range(0, 7):
+        put(img, 7, y, m[1 + y % 2])
+        put(img, 8, y, m[(y + 1) % 2])
+    for x in range(3, 13):
+        put(img, x, 12, m[1])
+        put(img, x, 13, m[0])
+    for x in (4, 8, 11):
+        put(img, x, 11, (230, 220, 190))
+        put(img, x, 10, (230, 220, 190))
+        put(img, x, 9, (255, 190, 80))
+        put(img, x, 8, (255, 230, 140))
+    for y in range(7, 12):
+        put(img, 6 - (y - 7) // 2, y, m[1])
+        put(img, 9 + (y - 7) // 2, y, m[1])
+    return img
+
+
+def brazier_side():
+    """An iron basket of coals with flames licking out of the top."""
+    m = pal("#26282c", "#3e4248", "#5a5f68")
+    img = canvas()
+    for y in range(9, 16):
+        for x in range(5, 11):
+            put(img, x, y, m[1] if (x + y) % 3 else m[0])
+    for x in range(5, 11):
+        put(img, x, 9, m[2])
+    flame = pal("#c4441a", "#e8742a", "#ffb04a", "#ffe08a")
+    for y in range(5, 9):
+        for x in range(6, 10):
+            k = 3 - (8 - y) // 1 + (1 if x in (7, 8) else 0)
+            if (x + y) % 4 or y > 6:
+                put(img, x, y, flame[int(np.clip(k, 0, 3))])
+    return img
+
+
+def brazier_top():
+    img = canvas()
+    coal = pal("#2a1a12", "#c4441a", "#ff9a3a")
+    for y in range(4, 12):
+        for x in range(4, 12):
+            put(img, x, y, coal[(x * 3 + y * 5) % 3])
+    return img
+
+
+def twig():
+    """A couple of sticks lying on the ground (Twigs idea)."""
+    p = WOODS["oak"]["log"] if "log" in WOODS["oak"] else WOODS["oak"]["plank"]
+    img = canvas()
+    for x in range(2, 13):
+        put(img, x, 14 - (x // 6), p[1] if x % 3 else p[2])
+    for x in range(6, 14):
+        put(img, x, 15 - (x - 6) // 5, p[0])
+    put(img, 9, 12, (70, 110, 40))
+    return img
+
+
+def pebble():
+    """A few small stones on the ground (Twigs idea)."""
+    img = canvas()
+    for (x, y, w) in ((3, 14, 3), (9, 14, 2), (11, 15, 3), (6, 15, 2)):
+        for dx in range(w):
+            put(img, x + dx, y, COBBLE[4 if dx == 0 else 3])
+            put(img, x + dx, y + 1 if y < 15 else y, COBBLE[2])
+    return img
+
+
+def curtain(cloth):
+    """Hanging cloth in soft vertical folds on a rod (Another Furniture idea)."""
+    img = canvas()
+    for y in range(N):
+        for x in range(N):
+            k = (1, 2, 3, 2, 1, 0)[x % 6]
+            put(img, x, y, cloth[k])
+    rod = pal("#3a2a1a", "#5a4228")
+    for x in range(N):
+        put(img, x, 0, rod[1])
+        put(img, x, 1, rod[0])
+    return img
 
 
 def to_image(arr):

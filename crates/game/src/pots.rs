@@ -41,6 +41,11 @@ impl Pots {
             p.yields[pot as usize] = Some(Yield::Tree(t));
             p.planted[sapling as usize] = pot;
         }
+        for f in ["poppy", "dandelion"] {
+            if let (Some(pot), Some(flower)) = (reg.id(&format!("potted_{f}")), reg.id(f)) {
+                p.planted[flower as usize] = pot;
+            }
+        }
         p
     }
 
@@ -128,6 +133,42 @@ impl Game {
             self.world.set_block(p, hopper);
             self.surv.containers.insert(p, Container::Chest(voxel::item::Inventory::new(5)));
             self.world.set_block(p + IVec3::Y, self.reg.id_or_air(n));
+        }
+    }
+
+    /// Test scene: a wall of the new building blocks in front.
+    pub(crate) fn test_decor(&mut self) {
+        let f = self.forward();
+        let c = (self.body.pos + Vec3::new(f.x, 0.0, f.z).normalize_or_zero() * 7.0).floor().as_ivec3();
+        let rows: [&[&str]; 4] = [
+            &["birch_stairs", "spruce_slab", "jungle_fence", "acacia_door", "dark_oak_trapdoor", "cherry_stairs", "crimson_fence", "sandstone_stairs", "brick_slab"],
+            &["cobblestone_bricks", "mossy_cobblestone_bricks", "rocky_dirt", "thatch", "lattice", "red_curtain", "white_curtain", "nether_brick_stairs", "purpur_stairs"],
+            &["potted_poppy", "potted_dandelion", "twig", "pebble", "brazier", "quartz_stairs", "blackstone_slab", "end_stone_brick_stairs", "thatch_roof"],
+            &["chandelier", "", "", "", "", "", "", "", ""],
+        ];
+        for dz in -1..9 {
+            for dx in -6..7 {
+                for y in -1..6 {
+                    let id = if y == -1 { self.reg.id_or_air("stone") } else { AIR };
+                    self.world.set_block(c + IVec3::new(dx, y, dz), id);
+                }
+            }
+        }
+        for (r, row) in rows.iter().enumerate() {
+            for (k, n) in row.iter().enumerate() {
+                if n.is_empty() {
+                    continue;
+                }
+                let mut id = self.reg.id_or_air(n);
+                if *n == "chandelier" {
+                    id = self.reg.variant(id, 1);
+                }
+                self.world.set_block(c + IVec3::new(k as i32 - 4, r as i32, 0), id);
+            }
+        }
+        self.body.pos = c.as_vec3() + Vec3::new(0.5, 0.0, 7.5);
+        if let Some(top) = self.reg.id("acacia_door") {
+            self.world.set_block(c + IVec3::new(-1, 1, 0), self.reg.variant(top, 8));
         }
     }
 }

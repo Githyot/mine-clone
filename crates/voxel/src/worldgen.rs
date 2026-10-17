@@ -175,6 +175,8 @@ struct Palette {
     cactus: BlockId,
     short_grass: BlockId,
     poppy: BlockId,
+    twig: BlockId,
+    pebble: BlockId,
     dandelion: BlockId,
     dead_bush: BlockId,
     pumpkin: BlockId,
@@ -248,6 +250,8 @@ impl Palette {
             cactus: g("cactus"),
             short_grass: g("short_grass"),
             poppy: g("poppy"),
+            twig: g("twig"),
+            pebble: g("pebble"),
             dandelion: g("dandelion"),
             dead_bush: g("dead_bush"),
             pumpkin: g("pumpkin"),
@@ -858,6 +862,12 @@ impl Generator {
                         chunk.set(x, above, z, if rng.chance(0.5) { p.pumpkin } else { p.melon });
                     } else if r > 0.995 && col.biome == Biome::Jungle {
                         chunk.set(x, above, z, p.melon);
+                    } else if r > 0.993 && matches!(col.biome, Biome::Forest | Biome::BirchForest | Biome::DarkForest | Biome::Taiga | Biome::Plains) {
+                        // Twigs and pebbles lying about (Twigs idea).
+                        let b = if r > 0.9965 { p.pebble } else { p.twig };
+                        if b != AIR {
+                            chunk.set(x, above, z, b);
+                        }
                     } else if r > 0.97 && matches!(col.biome, Biome::DarkForest | Biome::Swamp) {
                         let m = if rng.chance(0.5) { p.red_mushroom } else { p.brown_mushroom };
                         if m != AIR {

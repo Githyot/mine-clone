@@ -1349,6 +1349,10 @@ impl Game {
                     // Test hook: a small field in front, some of it ripe.
                     self.test_farm();
                 }
+                if std::env::var("MC_DECOR").is_ok() {
+                    // Test hook: the new building blocks.
+                    self.test_decor();
+                }
                 if std::env::var("MC_POTS").is_ok() {
                     // Test hook: planted pots on hoppers.
                     self.test_pots();
