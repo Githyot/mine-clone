@@ -347,36 +347,6 @@ impl Animator {
             * Mat4::from_rotation_z(0.15)
     }
 
-    /// Where a held item sits in first person, in the classic hand place (right of and below
-    /// the eye, a little ahead), with walking sway and the swing: the item turns in from the
-    /// right, chops down 80° and comes back. The swing styles of the combat moves change the
-    /// path. The item model's own placement goes on top of this.
-    pub fn first_person_item_frame(&self, eye: Vec3, yaw: f32, pitch: f32) -> Mat4 {
-        let t = self.swing.max(0.0);
-        let s = (t * PI).sin();
-        let r = (t.sqrt() * PI).sin();
-        let ph = t;
-        let a = self.amount.min(1.0);
-        let sway = Vec3::new(self.walk.sin() * 0.03 * a, -(self.walk.cos().abs()) * 0.035 * a, 0.0);
-        let deg = f32::to_radians;
-        let (off, turn) = match self.swing_style {
-            // Slash: the blade sweeps from the right across to the left.
-            1 => (Vec3::new(0.2 * s - 0.55 * ph * s, 0.12 * s, -0.22 * s), Mat4::from_rotation_y(s * (0.6 - 1.4 * ph)) * Mat4::from_rotation_z(-0.4 * s)),
-            // Thrust: straight into the screen and back.
-            2 => (Vec3::new(-0.12 * s, 0.06 * s, -0.5 * s), Mat4::from_rotation_x(-0.3 * s)),
-            // Uppercut: from low up past the middle.
-            3 => (Vec3::new(-0.15 * s, -0.25 * s + 0.5 * ph * s, -0.2 * s), Mat4::from_rotation_x(s * (0.8 - 1.6 * ph))),
-            _ => {
-                let f = (t * t * PI).sin();
-                (
-                    Vec3::new(-0.4 * r, 0.2 * (t.sqrt() * 2.0 * PI).sin(), -0.2 * s),
-                    Mat4::from_rotation_y(deg(45.0 - 20.0 * f)) * Mat4::from_rotation_z(deg(-20.0 * r)) * Mat4::from_rotation_x(deg(-80.0 * r)) * Mat4::from_rotation_y(deg(-45.0)),
-                )
-            }
-        };
-        Self::camera(eye, yaw, pitch) * Mat4::from_translation(Vec3::new(0.56, -0.52, -0.72) + sway + off) * turn
-    }
-
     pub fn first_person_arm(&self, def: &MobDef, eye: Vec3, yaw: f32, pitch: f32, sky: f32, blk: f32) -> Bones {
         let mut b = Bones { light: [sky, blk, 0.0, 0.0], ..Default::default() };
         let zero = [[0.0f32; 4]; 4];

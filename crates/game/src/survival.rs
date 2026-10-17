@@ -2482,24 +2482,17 @@ struct HeldLook {
 }
 
 impl Game {
-    /// The item in hand, drawn in front of the camera in first person the way Java Edition
-    /// shows it (matched against its screenshots): tools and flat items 0.6 of a block in the
-    /// lower right, blocks turned 45° at 0.4. The arm is hidden while something is held.
+    /// The item in hand in first person: held in the fist of the first-person arm, with the
+    /// same item placement as in third person, so the hand shows gripping it.
     pub(crate) fn held_item_instance(&self, eye: Vec3, cam_block: IVec3) -> Option<GpuItem> {
-        use glam::{Mat4, Quat};
-        let frame = self.anim.first_person_item_frame(eye - cam_block.as_vec3(), self.yaw, self.pitch);
+        let pd = self.mobs.reg.id("player")?;
+        let def = &self.mobs.reg.defs[pd];
+        let bones = self.anim.first_person_arm(def, eye - cam_block.as_vec3(), self.yaw, self.pitch, 0.0, 0.0);
+        let pv = def.parts[2].pivot;
         let l = self.world.light(eye.floor().as_ivec3());
         let eat = if self.surv.eat > 0.0 { (self.surv.eat * 14.0).sin().abs() * 0.04 } else { 0.0 };
-        let look = self.held_look()?;
-        // Tools and flat items stand up out of the lower right corner, edge turned to the eye
-        // and leaning in towards the crosshair, so the picture reads mirrored like in Java.
-        let (place, size) = match look.kind {
-            HeldKind::Block => (Mat4::from_translation(Vec3::new(0.3, -0.04, -0.38)) * Mat4::from_rotation_y(45f32.to_radians()), 0.4),
-            // Food, torches and other upright pictures lean the other way, also towards the middle.
-            HeldKind::Flat => (Mat4::from_translation(Vec3::new(0.22, 0.2, -0.26)) * Mat4::from_quat(Quat::from_rotation_y(105f32.to_radians()) * Quat::from_rotation_z(-15f32.to_radians())), 0.5),
-            HeldKind::Tool => (Mat4::from_translation(Vec3::new(0.22, 0.24, -0.26)) * Mat4::from_quat(Quat::from_rotation_y(105f32.to_radians()) * Quat::from_rotation_z(15f32.to_radians())), 0.52),
-        };
-        self.held_gpu_item(frame * place, size, look, l, Vec3::Y * eat)
+        // So close to the eye the item would fill the screen at its third-person size.
+        self.held_in_fist(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 0.6, l, Vec3::Y * eat)
     }
 
     /// Skeletons' bows and the arrows in flight or stuck in blocks.
@@ -2576,6 +2569,13 @@ impl Game {
     /// classic "thirdperson_righthand" placement (tools 0.85 of a block pointing forward out of
     /// the fist, flat items 0.55 standing up, blocks 0.375 tipped 75°).
     pub(crate) fn held_item_third_person(&self, arm: [[f32; 4]; 4], pivot: Vec3) -> Option<GpuItem> {
+        let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
+        self.held_in_fist(arm, pivot, 1.0, l, Vec3::ZERO)
+    }
+
+    /// The held item placed in the fist of the right arm bone `arm` (shoulder at `pivot`),
+    /// scaled by `k` about the fist.
+    fn held_in_fist(&self, arm: [[f32; 4]; 4], pivot: Vec3, k: f32, l: u8, shift: Vec3) -> Option<GpuItem> {
         use glam::{Mat4, Quat};
         let m = Mat4::from_cols_array_2d(&arm);
         let look = self.held_look()?;
@@ -2590,9 +2590,10 @@ impl Game {
             HeldKind::Flat => (Vec3::new(0.0, -9.0, 5.0), Quat::IDENTITY, 0.55),
         };
         let lift = if look.kind == HeldKind::Tool { Quat::from_rotation_x(deg(-25.0)) } else { Quat::IDENTITY };
+        let fist = pivot + Vec3::new(0.0, -10.0, 1.0);
+        let m = m * Mat4::from_translation(fist) * Mat4::from_scale(Vec3::splat(k)) * Mat4::from_translation(-fist);
         let place = m * Mat4::from_translation(pivot + at) * Mat4::from_quat(lift * Quat::from_rotation_x(deg(90.0)) * Quat::from_rotation_y(deg(180.0)) * turn) * Mat4::from_scale(Vec3::splat(16.0));
-        let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
-        self.held_gpu_item(place, size, look, l, Vec3::ZERO)
+        self.held_gpu_item(place, size, look, l, shift)
     }
 
     /// What the held item looks like and which classic item model places it.

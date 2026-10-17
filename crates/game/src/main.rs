@@ -4127,9 +4127,8 @@ impl Game {
                 held_third = self.held_item_third_person(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32));
                 items.extend(self.armor_instances(&bones));
                 items.push((pd, bones));
-            } else if self.screen == Screen::Playing && !self.hide_hud && (self.held_stack().is_none() || self.anim.underwater > 0.05) {
-                // As in Java Edition, the bare arm shows only while the hand is empty (and for
-                // the swimming strokes).
+            } else if self.screen == Screen::Playing && !self.hide_hud {
+                // The arm always shows; a held item sits in its fist (held_item_instance).
                 let l = self.world.light(head.floor().as_ivec3());
                 items.push((pd, self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, (l >> 4) as f32 / 15.0, ((l & 15) as f32 / 15.0).max(self.hand_light_level()))));
             }
