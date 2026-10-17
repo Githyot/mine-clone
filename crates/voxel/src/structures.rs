@@ -415,6 +415,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn base_and_mod_structures_load() {
+        let base = include_str!("../../../packs/vanilla/blocks.ron");
+        let mods = include_str!("../../../packs/vanilla/mods/blocks.ron");
+        let reg = BlockRegistry::from_ron_many(&[base, mods]).unwrap();
+        let s = Structures::from_ron_many(
+            &[include_str!("../../../packs/vanilla/structures.ron"), include_str!("../../../packs/vanilla/mods/structures.ron")],
+            &reg,
+        )
+        .unwrap();
+        let mut names = std::collections::HashSet::new();
+        for st in &s.list {
+            assert!(names.insert(st.def.name.clone()), "two structures called {}", st.def.name);
+            assert!(st.size.x <= 64 && st.size.z <= 64 && st.size.y <= 80, "{} is too big", st.def.name);
+        }
+    }
+
+    #[test]
     fn turning_keeps_every_cell() {
         let reg = BlockRegistry::from_ron(include_str!("../../../packs/vanilla/blocks.ron")).unwrap();
         let text = r##"(structures: [(name: "t", biomes: [], spacing: 4, palette: [('#', "stone"), ('c', "cobblestone")], layers: [["#c.", "..."]])])"##;
