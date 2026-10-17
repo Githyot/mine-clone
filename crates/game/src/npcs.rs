@@ -27,12 +27,10 @@ pub struct NpcSave {
 pub struct Town {
     pub npcs: Vec<NpcSave>,
     /// Valid rooms found near the player: (lowest cell, a spot to stand in).
-    houses: Vec<(IVec3, Vec3)>,
+    pub(crate) houses: Vec<(IVec3, Vec3)>,
     check_t: f32,
     /// Seconds until each missing NPC comes back (after dying).
     respawn: Vec<(String, f32)>,
-    /// Which guide tip comes next.
-    tip: usize,
 }
 
 impl Town {
@@ -50,7 +48,7 @@ const SHOPS: &[(&str, &[(&str, u8, u8)])] = &[
     ("npc_smith", &[("bronze_ingot", 4, 2), ("silver_ingot", 2, 3), ("tungsten_ingot", 2, 4), ("platinum_ingot", 2, 5), ("iron_pickaxe", 1, 4), ("platinum_sword", 1, 8), ("diamond", 1, 6)]),
 ];
 
-const GUIDE_TIPS: &[&str] = &[
+pub(crate) const GUIDE_TIPS: &[&str] = &[
     "Uma casa precisa de porta, luz e uma mesa (bancada ou baú).",
     "Carregue esmeraldas e um mercador vai aparecer.",
     "Cristais de vida crescem no chão de cavernas fundas.",
@@ -247,9 +245,8 @@ impl Game {
         self.mobs.list[i].yaw = to.x.atan2(to.z);
         match name.as_str() {
             "npc_guide" => {
-                let tip = GUIDE_TIPS[self.town.tip % GUIDE_TIPS.len()];
-                self.town.tip += 1;
-                self.toast(format!("{dn}: {tip}"), 6.0);
+                let at = self.mobs.list[i].body.pos;
+                self.guide_talk(at, &dn);
             }
             "npc_guard" => self.toast(format!("{dn}: Fico de olho nos monstros por aqui. Durma tranquilo!"), 4.0),
             "npc_nurse" => {
