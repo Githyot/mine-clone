@@ -1337,6 +1337,8 @@ impl Game {
                     self.body.pos = Vec3::new(sx as f32 + 0.5, y as f32, sz as f32 + 0.5);
                     self.needs_spawn = false;
                 }
+                // Never start the game inside rock (the Nether test shortcuts land in closed caves).
+                self.unstick();
                 if self.args.demo {
                     self.build_demo();
                 }
