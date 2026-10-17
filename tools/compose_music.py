@@ -2,8 +2,9 @@
 """Original soundtrack generator for the game, third version: an acoustic ensemble.
 
 Instruments (all synthesized from physical/additive models, no samples): felt piano, prepared piano, nylon guitar,
-concert harp, low marimba, upright bass, string section and solo cello/viola/fiddle, clarinet and bass clarinet,
-French horn, harmonium, frame drum, log drum and brushes. Everything stays in a low, warm register (no bells,
+concert harp, low marimba, xylophone, upright bass, a string section kept in the background, frame drum, log drum
+and brushes. Version 4 (HP, 2026-10-17): the solo bowed lines, the additive clarinet/horn and the harmonium sounded
+synthetic and sat on top of the mix, so melodies and loops moved to piano, xylophone and harp. Everything stays in a low, warm register (no bells,
 no high harmonics).
 
 Style references are approaches, never material: C418's quiet piano in a big room, Brian Eno's overlapping loops of
@@ -262,6 +263,25 @@ class Synth:
                 sig += a * np.exp(-t * d) * np.sin(TWO_PI * f0 * r * t + rng.uniform(0, TWO_PI))
         mallet = lowpass(rng.normal(0, 1, n), 900 + 600 * vel) * np.exp(-t * 300) * 0.06
         out = (sig * smoothstep(t / 0.003) + mallet) * vel
+        self.piano_cache[key] = out
+        return out
+
+    # -- xylophone (rosewood bar tuned 1 : 3, yarn mallet; kept in the middle register, never shrill) ---------------
+    def xylophone(self, midi, vel):
+        key = ("xy", midi, round(vel, 1))
+        if key in self.piano_cache:
+            return self.piano_cache[key]
+        rng = self.rng
+        f0 = float(mtof(midi))
+        n = int(1.6 * SR)
+        t = np.arange(n) / SR
+        sig = np.exp(-t * (4.0 + f0 / 260)) * np.sin(TWO_PI * f0 * t)
+        for r, a, d in ((3.0, 0.22 * (0.4 + vel), 9 + f0 / 120), (6.1, 0.03 * vel, 22 + f0 / 60)):
+            if f0 * r < 4500:
+                sig += a * np.exp(-t * d) * np.sin(TWO_PI * f0 * r * t + rng.uniform(0, TWO_PI))
+        sig = lowpass(sig, 3200, 2)
+        mallet = lowpass(rng.normal(0, 1, n), 1200 + 800 * vel) * np.exp(-t * 400) * 0.05
+        out = (sig * smoothstep(t / 0.002) + mallet) * vel
         self.piano_cache[key] = out
         return out
 
@@ -703,9 +723,8 @@ class Composer:
             t0 = tm.time(beat)
             dur = tm.time(beat + dur_b) - t0
             glide = prev_note if (i == 0 and rng.random() < 0.5) else None
-            self.score.add("cello", "bowed", t0 + rng.normal(0.03, 0.02), n, dyn * (1 + rng.normal(0, 0.05)), dur * 1.03,
-                           pan=0.3, part="cello", voices=1, attack=0.25 + 0.3 * rng.random(), release=0.5, swell=0.35,
-                           vib_cents=12, vib_delay=0.35, glide_from=glide, glide_time=0.12, detune_cents=3)
+            # HP: the solo bowed cello sounded synthetic; the counter line is a low piano voice now
+            self.score.add("piano", "piano", t0 + rng.normal(0.01, 0.01), n, dyn * 0.85 * (1 + rng.normal(0, 0.05)), dur * 1.1, pan=0.3)
         return prev_note
 
 
@@ -777,7 +796,7 @@ class Composer:
             if inst == "guitar":
                 self.score.add("guitar", "guitar", tm.time(beat) + rng.normal(0, 0.006), n, v, step * 2.5 * tm.beat_len(beat), pan=pan)
             else:
-                self.score.add({"harp": "harp", "marimba": "mallet", "prepared": "prepared"}[inst], inst, tm.time(beat) + rng.normal(0, 0.006),
+                self.score.add({"harp": "harp", "marimba": "mallet", "xylo": "mallet", "prepared": "prepared"}[inst], inst, tm.time(beat) + rng.normal(0, 0.006),
                                n, v, 4.0, pan=pan)
 
     def loops(self, t0, t1, dyn):
@@ -787,7 +806,7 @@ class Composer:
         if self.loop_voices is None:
             pcs = [(spec["tonic"] + p) % 12 for p in spec.get("loop_pcs", [0, 2, 4, 7, 9])]
             ranges = {"piano": (55, 74), "harp": (50, 72), "clarinet": (55, 72), "cello": (43, 60), "marimba": (48, 67),
-                      "horn": (50, 65), "reed": (50, 67), "guitar": (50, 69), "bassclar": (40, 55)}
+                      "horn": (50, 65), "reed": (50, 67), "guitar": (50, 69), "bassclar": (40, 55), "xylo": (60, 77)}
             voices = []
             for i, (inst, period) in enumerate(spec["loops"]):
                 lo, hi = ranges[inst]
@@ -879,6 +898,21 @@ class Composer:
                 k = int(dur / 0.11)
                 for i in range(1, k):
                     sc.add(bus or "mallet", "marimba", t0 + i * 0.11 + rng.normal(0, 0.008), n, vel * (0.45 + 0.1 * np.sin(i / 3)), 0.3, pan=pan or 0.3)
+        elif inst == "xylo":
+            while n > 79:  # HP: nothing high-pitched
+                n -= 12
+            sc.add(bus or "mallet", "xylo", t0 + rng.normal(0, 0.006), n, vel * 0.85, dur, pan=pan or -0.25)
+            if dur > 1.0:  # long note = gentle roll
+                k = int(dur / 0.13)
+                for i in range(1, k):
+                    sc.add(bus or "mallet", "xylo", t0 + i * 0.13 + rng.normal(0, 0.01), n, vel * (0.35 + 0.08 * np.sin(i / 3)), 0.3,
+                           pan=pan or -0.25)
+        elif inst == "violin":
+            while n > 79:
+                n -= 12
+            sc.add(bus or "cello", "bowed", t0 + rng.normal(0.02, 0.015), n, vel * 0.9, dur * 1.04, pan=-0.2, part="violin", voices=1,
+                   attack=0.15 + 0.2 * rng.random(), release=0.5, swell=0.3, vib_cents=12, vib_delay=0.3,
+                   glide_from=prev_m if legato else None, glide_time=0.12, detune_cents=3)
         elif inst == "reed":
             sc.add(bus or "reed", "reed", t0, n, vel, dur, pan=pan)
         elif inst == "prepared":
@@ -917,8 +951,9 @@ class Composer:
                     ch = chords[b]
                     t0 = tm.time((bar + b) * meter)
                     dur = tm.time((bar + min(b + 2, nb)) * meter) - t0
-                    for i, n in enumerate(ch.tones(50, 69)[:4]):
-                        sc.add("reed", "reed", t0 - 0.4, n, dyn * 0.7, dur + 0.6, pan=(-0.4 + 0.27 * i))
+                    for i, n in enumerate(ch.tones(48, 67)[:4]):  # a soft rolled piano chord held with the pedal
+                        sc.add("piano", "piano", t0 + 0.07 * i + rng.normal(0, 0.01), n, dyn * (0.42 + 0.05 * (i == 0)), min(dur, 6.0),
+                               pan=(-0.3 + 0.2 * i))
             # --- melody (4-bar phrases)
             melody = []
             if "melody" in layers:
@@ -971,7 +1006,8 @@ class Composer:
                 if "horn" in layers and b % 2 == 0:
                     n = ch.nearest_tone(57, prefer={ch.pc(1), ch.pc(2)})
                     t0 = tm.time(gb * meter)
-                    sc.add("winds", "wind", t0 + 0.05, n, dyn * 0.6, tm.time((gb + 2) * meter) - t0, pan=0.4, kind="horn", swell=0.5)
+                    sc.add("strings", "bowed", t0 + 0.05, n, dyn * 0.5, tm.time((gb + 2) * meter) - t0, pan=0.4, part="viola", voices=3,
+                           attack=0.9, release=0.8, swell=0.5, vib_cents=6)
                 if "counter" in layers:
                     bar_mel = [m for m in melody if gb * meter <= m[0] < (gb + 1) * meter]
                     cello_prev = self.cello_counterpoint(key, ch, gb, bar_mel, dyn * 0.75, cello_prev)
@@ -1031,7 +1067,7 @@ def make_reverb_ir(seconds, rng, bright=0.5):
 
 
 BUSES = ("piano", "strings", "cello", "winds", "guitar", "harp", "mallet", "prepared", "reed", "perc", "pizz", "drone", "fx", "loops")
-GAINS = dict(piano=0.9, strings=0.55, cello=0.6, winds=0.55, guitar=0.75, harp=0.6, mallet=0.6, prepared=0.5, reed=0.35,
+GAINS = dict(piano=1.0, strings=0.45, cello=0.6, winds=0.55, guitar=0.75, harp=0.6, mallet=0.6, prepared=0.5, reed=0.35,
              perc=0.6, pizz=0.8, drone=0.5, fx=0.45, loops=0.55)
 SENDS = dict(piano=0.35, strings=0.5, cello=0.4, winds=0.4, guitar=0.25, harp=0.45, mallet=0.35, prepared=0.3, reed=0.5,
              perc=0.2, pizz=0.2, drone=0.3, fx=0.7, loops=0.65)
@@ -1055,6 +1091,8 @@ def render(spec, verbose=True):
             s = synth.pluck(e["midi"], e["vel"], e["dur"], kind=inst)
         elif inst == "marimba":
             s = synth.marimba(e["midi"], e["vel"])
+        elif inst == "xylo":
+            s = synth.xylophone(e["midi"], e["vel"])
         elif inst == "prepared":
             s = synth.prepared(e["midi"], e["vel"])
         elif inst == "wind":
@@ -1174,67 +1212,67 @@ TRACKS = [
                S("theme", 8, 0.55, ["lh", "melody", "counter"], lh="broken"),
                S("theme2", 8, 0.62, ["lh", "melody", "counter", "strings", "harp_arp"], lh="sparse", parts=("cello", "viola", "violin2"),
                  string_dyn=0.55, harp_every=2),
-               S("dev", 8, 0.6, ["lh", "melody", "strings", "horn"], lh="arp", transpose=4, scale="major", motif="B", melody_inst="clarinet",
+               S("dev", 8, 0.6, ["lh", "melody", "strings", "horn"], lh="arp", transpose=4, scale="major", motif="B", melody_inst="xylo",
                  prog=[(0, "maj7"), (5, "add9"), (9, "m7"), (7, "sus4")], parts=("bass", "cello", "viola")),
-               S("climax", 8, 0.82, ["lh", "melody", "strings", "harp_arp", "horn"], lh="octaves", double=("cello", -1), string_dyn=0.9, tempo=1.02),
+               S("climax", 8, 0.82, ["lh", "melody", "strings", "harp_arp", "horn"], lh="octaves", double=("piano", -1), string_dyn=0.9, tempo=1.02),
                S("outro", 6, 0.4, ["lh", "melody", "reed"], lh="sparse", rit=True)]),
     # Eno-style overlapping loops frame a cello song
-    dict(id="moss", title="Musgo", situation="overworld", seed=2402, bpm=54, tonic=62, scale="dorian", melody_inst="cello",
-         prog=[(0, "madd9"), (10, "maj7"), (5, "m7"), (7, "7sus4")], mel_range=(48, 67), rest=0.35, leap=0.1, reverb=4.8, wet=0.52,
-         loops=[("piano", 17.3), ("harp", 23.9), ("clarinet", 29.7), ("piano", 31.1), ("cello", 37.3)], loop_pcs=[0, 3, 5, 7, 10],
+    dict(id="moss", title="Musgo", situation="overworld", seed=2402, bpm=54, tonic=62, scale="dorian", melody_inst="piano",
+         prog=[(0, "madd9"), (10, "maj7"), (5, "m7"), (7, "7sus4")], mel_range=(55, 74), rest=0.35, leap=0.1, reverb=4.8, wet=0.52,
+         loops=[("piano", 17.3), ("harp", 23.9), ("xylo", 29.7), ("piano", 31.1), ("harp", 37.3)], loop_pcs=[0, 3, 5, 7, 10],
          form=[S("intro", 6, 0.45, ["loops", "drone"]),
                S("theme", 8, 0.55, ["melody", "lh", "loops"], lh="sparse", loop_dyn=0.6),
                S("theme2", 8, 0.6, ["melody", "lh", "strings"], lh="broken", parts=("viola", "violin2", "violin1"), string_dyn=0.5, string_bars=2),
-               S("dev", 8, 0.65, ["melody", "lh", "strings", "horn", "swell"], lh="block", scale="major", motif="B", melody_inst="clarinet",
-                 mel_range=(55, 74), prog=[(0, "add9"), (4, "min"), (9, "m7"), (5, "maj7")], parts=("bass", "viola", "violin2"), string_dyn=0.65),
+               S("dev", 8, 0.65, ["melody", "lh", "strings", "horn", "swell"], lh="block", scale="major", motif="B", melody_inst="xylo",
+                 mel_range=(60, 77), prog=[(0, "add9"), (4, "min"), (9, "m7"), (5, "maj7")], parts=("bass", "viola", "violin2"), string_dyn=0.65),
                S("climax", 8, 0.8, ["melody", "lh", "strings", "counter"], lh="octaves", melody_inst="piano", mel_range=(62, 79), motif="A",
                  string_dyn=0.85),
                S("outro", 8, 0.42, ["loops", "drone", "reed"], rit=True)]),
     # harp, low marimba and bowed bass under water; loops drift
     dict(id="still_water", title="Água Parada", situation="underwater", seed=3203, bpm=48, tonic=63, scale="major",
          prog=[(0, "maj9"), (5, "add9"), (8, "maj7"), (7, "sus2")], mel_range=(55, 74), rest=0.5, reverb=6.5, wet=0.68,
-         master_lowpass=2800, rev_bright=0.25, loops=[("harp", 19.1), ("marimba", 26.3), ("piano", 33.7), ("reed", 41.9)],
+         master_lowpass=2800, rev_bright=0.25, loops=[("harp", 19.1), ("marimba", 26.3), ("piano", 33.7), ("xylo", 41.9)],
          loop_pcs=[0, 2, 4, 7, 9],
          form=[S("intro", 4, 0.45, ["drone", "reed"]),
                S("theme", 8, 0.5, ["loops", "reed"]),
                S("theme2", 8, 0.55, ["melody", "reed", "strings", "harp_arp"], parts=("cello", "viola"), string_bars=2, string_dyn=0.55, harp_every=2),
-               S("dev", 8, 0.6, ["melody", "strings", "loops", "drone"], transpose=5, scale="lydian", motif="B", melody_inst="cello",
-                 mel_range=(45, 62), prog=[(0, "maj7#11"), (7, "add9"), (2, "m9"), (5, "maj7")], parts=("viola", "violin2"), string_bars=2, loop_dyn=0.6),
+               S("dev", 8, 0.6, ["melody", "strings", "loops", "drone"], transpose=5, scale="lydian", motif="B", melody_inst="harp",
+                 mel_range=(50, 67), prog=[(0, "maj7#11"), (7, "add9"), (2, "m9"), (5, "maj7")], parts=("viola", "violin2"), string_bars=2, loop_dyn=0.6),
                S("climax", 6, 0.7, ["melody", "lh", "strings", "harp_arp", "horn"], lh="sparse", string_bars=2, string_dyn=0.7),
                S("outro", 6, 0.4, ["loops", "drone"], rit=True)]),
     # playful: a 7-step marimba pattern drifting over 4/4, hand drums, prepared piano, clarinet tune
     dict(id="block_by_block", title="Bloco a Bloco", situation="creative", seed=4804, bpm=80, tonic=65, scale="major", rubato=0.25,
          prog=[(0, "add9"), (5, "maj7"), (9, "m7"), (7, "6")], mel_range=(60, 77), rest=0.25, leap=0.2, reverb=2.6, wet=0.32,
-         melody_inst="clarinet",
+         melody_inst="xylo",
          form=[S("intro", 4, 0.45, ["ostinato", "perc"], perc="pulse", perc_dyn=0.4),
                S("theme", 8, 0.6, ["ostinato", "perc", "melody", "pizz"], perc="groove"),
                S("theme2", 8, 0.65, ["ostinato", "perc", "melody", "pizz", "prep"], perc="groove", melody_inst="piano"),
                S("dev", 8, 0.6, ["ostinato", "melody", "reed", "pizz"], ost_inst="harp", ost_len=5, transpose=2, motif="B", melody_inst="marimba",
                  prog=[(0, "maj7"), (9, "m7"), (2, "m7"), (7, "sus4")]),
                S("climax", 12, 0.8, ["ostinato", "perc", "melody", "pizz", "strings", "prep"], perc="groove", pizz_busy=True,
-                 double=("bassclar", -1), parts=("cello", "viola", "violin2"), string_dyn=0.6, string_bars=2),
+                 double=("piano", -1), parts=("cello", "viola", "violin2"), string_dyn=0.6, string_bars=2),
                S("outro", 4, 0.45, ["ostinato", "melody"], melody_inst="piano", rit=True)]),
     # nether: bowed drones, bass clarinet, heartbeat frame drum, prepared piano
-    dict(id="embers", title="Brasa", situation="nether", seed=5005, bpm=46, tonic=50, scale="phrygian", melody_inst="bassclar",
+    dict(id="embers", title="Brasa", situation="nether", seed=5005, bpm=46, tonic=50, scale="phrygian", melody_inst="piano",
          prog=[(0, "5"), (1, "maj7"), (0, "m7"), (10, "5")], mel_range=(40, 58), rest=0.45, reverb=5.5, wet=0.58, rev_bright=0.3,
          gains=dict(drone=0.6, fx=0.55),
          form=[S("intro", 4, 0.45, ["drone", "dissonance", "perc"], perc="heartbeat", perc_dyn=0.5),
                S("theme", 8, 0.5, ["drone", "melody", "perc", "prep"], perc="heartbeat", perc_dyn=0.5),
-               S("theme2", 8, 0.55, ["drone", "melody", "strings", "dissonance", "perc"], melody_inst="cello", mel_range=(43, 62),
+               S("theme2", 8, 0.55, ["drone", "melody", "strings", "dissonance", "perc"], melody_inst="harp", mel_range=(45, 64),
                  perc="heartbeat", parts=("bass", "cello", "viola"), string_bars=2, string_dyn=0.6),
                S("dev", 8, 0.65, ["drone", "melody", "strings", "swell", "prep", "perc"], transpose=-1, scale="locrian", motif="B",
                  prog=[(0, "m7b5"), (1, "maj7"), (6, "5"), (0, "cluster")], parts=("bass", "cello", "viola"), string_bars=2, perc="heartbeat"),
-               S("climax", 8, 0.8, ["drone", "melody", "strings", "dissonance", "lh", "perc", "horn"], lh="octaves", melody_inst="horn",
-                 mel_range=(48, 65), parts=("bass", "cello", "viola", "violin2"), string_dyn=0.85, perc="heartbeat", perc_dyn=0.9),
+               S("climax", 8, 0.8, ["drone", "melody", "strings", "dissonance", "lh", "perc", "horn"], lh="octaves", melody_inst="piano",
+                 mel_range=(48, 67), parts=("bass", "cello", "viola", "violin2"), string_dyn=0.85, perc="heartbeat", perc_dyn=0.9),
                S("outro", 6, 0.4, ["drone", "melody", "dissonance"], rit=True)]),
     # the End: wide, slow, low; piano/horn/harp loops in a whole-tone haze
     dict(id="void", title="Vazio", situation="end", seed=7206, bpm=42, tonic=52, scale="lydaug",
          prog=[(0, "sus2"), (2, "aug"), (-2, "sus2"), (4, "maj7#11")], mel_range=(55, 74), rest=0.6, reverb=7.5, wet=0.72,
-         rev_bright=0.3, loops=[("piano", 21.7), ("horn", 28.3), ("harp", 34.1), ("cello", 43.9)], loop_pcs=[0, 2, 4, 6, 11],
+         rev_bright=0.3, loops=[("piano", 21.7), ("xylo", 28.3), ("harp", 34.1), ("piano", 43.9)], loop_pcs=[0, 2, 4, 6, 11],
          form=[S("intro", 6, 0.42, ["loops", "drone"]),
                S("theme", 8, 0.5, ["loops", "reed", "melody"], loop_dyn=0.7),
-               S("theme2", 8, 0.55, ["melody", "strings", "swell", "loops"], melody_inst="clarinet", parts=("cello", "viola"), string_bars=2, loop_dyn=0.5),
-               S("dev", 8, 0.6, ["melody", "strings", "swell", "horn"], transpose=6, scale="whole", motif="B", melody_inst="viola",
+               S("theme2", 8, 0.55, ["melody", "strings", "swell", "loops"], melody_inst="xylo", parts=("cello", "viola"), string_bars=2, loop_dyn=0.5),
+               S("dev", 8, 0.6, ["melody", "strings", "swell", "horn"], transpose=6, scale="whole", motif="B", melody_inst="piano",
                  prog=[(0, "aug"), (2, "sus2"), (4, "aug"), (-2, "sus2")], parts=("bass", "cello", "viola"), string_bars=2),
                S("climax", 6, 0.7, ["melody", "strings", "harp_arp", "horn"], parts=("bass", "cello", "viola", "violin2"), string_bars=2, string_dyn=0.75),
                S("outro", 6, 0.4, ["loops", "drone"], rit=True)]),
@@ -1243,37 +1281,37 @@ TRACKS = [
          prog=[(0, "m9"), (5, "add9"), (3, "maj7"), (10, "6")], mel_range=(62, 79), rest=0.3, leap=0.18, reverb=4.4, wet=0.5,
          form=[S("intro", 4, 0.45, ["lh", "strings", "harp_arp"], lh="sparse", parts=("cello", "viola"), string_dyn=0.5, string_bars=2, harp_every=2),
                S("theme", 8, 0.6, ["lh", "melody", "counter", "strings"], lh="block", parts=("viola", "violin2"), string_dyn=0.5),
-               S("theme2", 8, 0.68, ["lh", "melody", "strings", "horn"], lh="broken", melody_inst="cello", mel_range=(50, 69),
+               S("theme2", 8, 0.68, ["lh", "melody", "strings", "horn"], lh="broken", melody_inst="xylo", mel_range=(60, 77),
                  parts=("bass", "viola", "violin2"), string_dyn=0.65),
                S("dev", 8, 0.65, ["lh", "melody", "strings", "counter", "harp_arp"], lh="arp", transpose=3, scale="major", motif="B",
                  prog=[(0, "maj7"), (9, "m7"), (5, "add9"), (7, "sus4")], parts=("viola", "violin2", "violin1"), string_dyn=0.6, harp_every=2),
-               S("climax", 8, 0.88, ["lh", "melody", "strings", "horn"], lh="octaves", double=("cello", -1), string_dyn=0.95, tempo=1.03),
+               S("climax", 8, 0.88, ["lh", "melody", "strings", "horn"], lh="octaves", double=("piano", -1), string_dyn=0.95, tempo=1.03),
                S("outro", 6, 0.45, ["lh", "melody", "strings"], lh="sparse", parts=("cello", "viola"), string_dyn=0.5, string_bars=2, rit=True)]),
     # walking: fingerpicked guitar that keeps rolling (an acoustic take on the analogue arpeggio)
     dict(id="wandering", title="Andarilho", situation="overworld", seed=9208, bpm=72, tonic=67, scale="mixolydian", rubato=0.5,
          prog=[(0, "add9"), (10, "maj7"), (5, "6"), (7, "m7")], mel_range=(60, 77), rest=0.3, leap=0.18, reverb=3.4, wet=0.4,
-         melody_inst="clarinet",
+         melody_inst="xylo",
          form=[S("intro", 4, 0.45, ["guitar"]),
                S("theme", 8, 0.6, ["guitar", "melody", "pizz"]),
-               S("theme2", 8, 0.65, ["guitar", "melody", "strings", "perc"], melody_inst="viola", mel_range=(55, 74), parts=("cello",),
+               S("theme2", 8, 0.65, ["guitar", "melody", "strings", "perc", "lh"], lh="sparse", melody_inst="piano", mel_range=(55, 74), parts=("cello",),
                  string_dyn=0.6, string_bars=2, perc="pulse", perc_dyn=0.35),
                S("dev", 8, 0.6, ["ostinato", "melody", "counter", "reed"], ost_inst="harp", ost_len=5, transpose=3, scale="major", motif="B",
                  melody_inst="piano", prog=[(0, "maj9"), (7, "6"), (9, "m7"), (5, "add9")]),
-               S("climax", 8, 0.82, ["guitar", "melody", "strings", "pizz", "perc", "horn"], double=("cello", -1), perc="groove", perc_dyn=0.5,
+               S("climax", 8, 0.82, ["guitar", "melody", "strings", "pizz", "perc", "horn"], melody_inst="piano", double=("xylo", 0), perc="groove", perc_dyn=0.5,
                  parts=("bass", "viola", "violin2"), string_dyn=0.7, string_bars=2),
                S("outro", 6, 0.45, ["guitar", "melody"], melody_inst="piano", rit=True)]),
     # 3/4 folk waltz: fiddle, guitar, harmonium, upright bass, frame drum
     dict(id="harvest", title="Colheita", situation="overworld", seed=1109, bpm=100, meter=3, tonic=62, scale="major", rubato=0.5,
-         melody_inst="fiddle", prog=[(0, "maj"), (7, "sus4"), (9, "m7"), (5, "6"), (0, "maj"), (2, "m7"), (7, "7"), (0, "add9")],
+         melody_inst="xylo", prog=[(0, "maj"), (7, "sus4"), (9, "m7"), (5, "6"), (0, "maj"), (2, "m7"), (7, "7"), (0, "add9")],
          mel_range=(57, 78), rest=0.2, leap=0.2, reverb=2.6, wet=0.33, gains=dict(cello=0.7),
          form=[S("intro", 8, 0.5, ["guitar", "pizz", "perc"], guitar="waltz", perc="waltz", perc_dyn=0.5),
                S("theme", 16, 0.65, ["guitar", "melody", "pizz", "perc"], guitar="waltz", perc="waltz", perc_dyn=0.5),
-               S("theme2", 16, 0.7, ["guitar", "melody", "pizz", "reed", "strings"], guitar="waltz", melody_inst="clarinet",
+               S("theme2", 16, 0.7, ["guitar", "melody", "pizz", "reed", "strings"], guitar="waltz", melody_inst="piano",
                  parts=("viola",), string_dyn=0.5, string_bars=2),
                S("dev", 16, 0.6, ["guitar", "melody", "strings", "counter"], guitar="waltz", transpose=-3, scale="aeolian", motif="B",
-                 melody_inst="viola", mel_range=(55, 74), prog=[(0, "min"), (8, "maj7"), (3, "add9"), (10, "6"), (0, "madd9"), (5, "m7"), (7, "min"), (0, "min")],
+                 melody_inst="piano", mel_range=(55, 74), prog=[(0, "min"), (8, "maj7"), (3, "add9"), (10, "6"), (0, "madd9"), (5, "m7"), (7, "min"), (0, "min")],
                  parts=("bass",), string_dyn=0.6, string_bars=2),
-               S("climax", 16, 0.85, ["guitar", "melody", "pizz", "strings", "reed", "perc"], guitar="waltz", double=("clarinet", -1),
+               S("climax", 16, 0.85, ["guitar", "melody", "pizz", "strings", "reed", "perc"], guitar="waltz", double=("piano", -1),
                  parts=("bass", "cello", "viola"), string_dyn=0.75, perc="waltz", tempo=1.03),
                S("outro", 8, 0.45, ["guitar", "melody", "pizz"], guitar="waltz", rit=True)]),
 ]
