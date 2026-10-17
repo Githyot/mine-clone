@@ -125,6 +125,12 @@ impl Game {
         self.mining = None;
         self.mobs.list.clear();
         self.target = None;
+        // What belongs to the world itself: life and mana crystals, bosses beaten, town folk.
+        self.max_health = level.as_ref().map(|l| l.max_health.clamp(20.0, 40.0)).unwrap_or(20.0);
+        self.magic.max_mana = level.as_ref().map(|l| l.max_mana).unwrap_or(20.0);
+        self.boss = crate::bosses::BossState::new(level.as_ref().map(|l| l.bosses.clone()).unwrap_or_default());
+        self.town = crate::npcs::Town::new(level.as_ref().map(|l| l.npcs.iter().map(|(n, h)| crate::npcs::NpcSave { name: n.clone(), home: *h }).collect()).unwrap_or_default());
+        self.t5 = crate::terraria::Terraria::default();
         if let Some(l) = &level {
             self.body.pos = Vec3::from(l.player_pos);
             self.body.flying = l.flying;
@@ -138,7 +144,7 @@ impl Game {
                 }
             }
             self.survival = l.survival;
-            self.health = if l.health > 0.0 { l.health } else { 20.0 };
+            self.health = if l.health > 0.0 { l.health.min(self.max_health) } else { self.max_health };
             self.needs_spawn = false;
         }
         if self.survival {

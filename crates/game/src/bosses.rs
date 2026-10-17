@@ -55,6 +55,8 @@ fn style(name: &str) -> Style {
         crate::end::GUARDIAN => Style { helper: "void_walker", school: 3, ground: "end_stone", call: "O vazio chama seus andarilhos!", special: 0 },
         "lich" => Style { helper: "skeleton", school: 1, ground: "snow", call: "O Lich ergue os mortos congelados!", special: 1 },
         "obsidilith" => Style { helper: "ash_skeleton", school: 3, ground: "obsidian", call: "O Obsidilito chama as cinzas!", special: 2 },
+        "world_breaker" => Style { helper: "ash_skeleton", school: 3, ground: "netherrack", call: "O Quebra-Mundos chama as cinzas!", special: 2 },
+        "vine_queen" => Style { helper: "spider", school: 4, ground: "dirt", call: "A rainha solta suas aranhas da selva!", special: 3 },
         "void_blossom" => Style { helper: "spider", school: 4, ground: "grass_block", call: "A flor solta suas aranhas!", special: 3 },
         _ => Style { helper: "zombie", school: 4, ground: "dirt", call: "As raízes acordam os mortos!", special: 0 },
     }
@@ -111,6 +113,10 @@ impl Game {
         let name = self.mobs.reg.defs[self.mobs.list[i].def].name.clone();
         if name == crate::end::GUARDIAN {
             self.update_void_guardian(i, dt);
+        }
+        if crate::boss_ai::own_ai(&name) {
+            // Worms and flyers of Etapa 5 fight in boss_ai.rs.
+            return;
         }
         let st = style(&name);
         let player = self.body.pos;
@@ -214,6 +220,7 @@ impl Game {
         if name == crate::end::GUARDIAN {
             self.open_end_exit();
         }
+        self.t5_boss_defeated(name);
         self.sfx(Sfx::Thunder(0.3));
     }
 

@@ -25,6 +25,24 @@ enum Shot {
     Strike,
     /// A short stream of flame.
     Flame,
+    /// Iron's Spells ideas (Etapa 5): jump to where you look.
+    Blink(f32),
+    /// Heal yourself.
+    Heal,
+    /// A ward around you that soaks up damage.
+    Ward,
+    /// Lightning that jumps from mob to mob.
+    Chain(u8),
+    /// A burning rock from the sky onto where you look.
+    Meteor(f32),
+    /// Spirits that circle you and strike nearby monsters.
+    Spirits(u8),
+    /// A ring of ice spikes flying out all around.
+    Ring(u8),
+    /// A slow dark orb that pulls monsters in.
+    Vortex,
+    /// A fan of homing stars.
+    Stars(u8),
 }
 
 struct SpellDef {
@@ -50,7 +68,47 @@ const SPELLS: &[SpellDef] = &[
     SpellDef { item: "thunder_tome", school: 5, cost: 10.0, cooldown: 1.2, damage: 12.0, speed: 0.0, life: 0.0, shot: Shot::Strike },
     SpellDef { item: "guardian_staff", school: 4, cost: 6.0, cooldown: 0.6, damage: 6.0, speed: 26.0, life: 1.2, shot: Shot::Fan(3) },
     SpellDef { item: "flame_tome", school: 0, cost: 1.0, cooldown: 0.08, damage: 1.5, speed: 12.0, life: 0.35, shot: Shot::Flame },
+    SpellDef { item: "blink_scroll", school: 3, cost: 6.0, cooldown: 1.0, damage: 0.0, speed: 0.0, life: 0.0, shot: Shot::Blink(14.0) },
+    SpellDef { item: "heal_scroll", school: 4, cost: 8.0, cooldown: 2.0, damage: 6.0, speed: 0.0, life: 0.0, shot: Shot::Heal },
+    SpellDef { item: "ward_tome", school: 1, cost: 10.0, cooldown: 4.0, damage: 10.0, speed: 0.0, life: 0.0, shot: Shot::Ward },
+    SpellDef { item: "chain_tome", school: 2, cost: 7.0, cooldown: 0.8, damage: 6.0, speed: 0.0, life: 0.0, shot: Shot::Chain(4) },
+    SpellDef { item: "meteor_staff", school: 0, cost: 14.0, cooldown: 1.6, damage: 18.0, speed: 30.0, life: 3.0, shot: Shot::Meteor(4.5) },
+    SpellDef { item: "spirit_staff", school: 3, cost: 12.0, cooldown: 3.0, damage: 4.0, speed: 0.0, life: 20.0, shot: Shot::Spirits(3) },
+    SpellDef { item: "ice_spike_staff", school: 1, cost: 10.0, cooldown: 1.2, damage: 7.0, speed: 22.0, life: 0.8, shot: Shot::Ring(14) },
+    SpellDef { item: "void_tome", school: 3, cost: 14.0, cooldown: 2.5, damage: 2.0, speed: 6.0, life: 4.0, shot: Shot::Vortex },
+    SpellDef { item: "star_tome", school: 5, cost: 9.0, cooldown: 0.5, damage: 9.0, speed: 22.0, life: 2.5, shot: Shot::Stars(4) },
 ];
+
+/// What a caster does, for its tooltip.
+pub fn describe(item: &str) -> Option<String> {
+    let sp = SPELLS.iter().find(|s| s.item == item)?;
+    let what = match sp.shot {
+        Shot::Blink(r) => format!("Teleporta até {r:.0} blocos"),
+        Shot::Heal => format!("Cura {:.0} de vida", sp.damage),
+        Shot::Ward => format!("Escudo que absorve {:.0} de dano", sp.damage),
+        Shot::Spirits(n) => format!("{n} espíritos lutam ao seu lado"),
+        Shot::Vortex => "Um vórtice que puxa os monstros".to_string(),
+        _ => format!("Dano: {:.0}", sp.damage),
+    };
+    Some(format!("{what} · Mana: {:.0}", sp.cost))
+}
+
+/// A spirit of the spirit staff: it circles the player and darts at monsters close by.
+pub struct Spirit {
+    angle: f32,
+    life: f32,
+    cd: f32,
+    damage: f32,
+}
+
+/// The void book's orb: drifts slowly, pulls monsters in and hurts the ones at its heart.
+pub struct Vortex {
+    pos: Vec3,
+    vel: Vec3,
+    life: f32,
+    tick: f32,
+    damage: f32,
+}
 
 fn color(school: u8) -> [f32; 3] {
     match school {
@@ -76,6 +134,10 @@ pub struct Bolt {
 pub struct Magic {
     pub mana: f32,
     pub max_mana: f32,
+    /// Stars the star amulet adds on top (Etapa 5).
+    pub extra_max: f32,
+    /// Damage multiplier of the spell being cast (modifier, arcane emblem).
+    pub power: f32,
     /// Seconds since the last cast (mana comes back faster after a moment).
     since_cast: f32,
     cooldown: f32,
@@ -83,9 +145,14 @@ pub struct Magic {
 }
 
 impl Magic {
+    /// Test pictures: no bolts in front of the camera.
+    pub(crate) fn clear_bolts_for_test(&mut self) {
+        self.bolts.clear();
+    }
+
     pub fn new(max_mana: f32) -> Magic {
         let max_mana = max_mana.clamp(20.0, 40.0);
-        Magic { mana: max_mana, max_mana, since_cast: 10.0, cooldown: 0.0, bolts: Vec::new() }
+        Magic { mana: max_mana, max_mana, extra_max: 0.0, power: 1.0, since_cast: 10.0, cooldown: 0.0, bolts: Vec::new() }
     }
 }
 
@@ -124,7 +191,7 @@ impl Game {
         m.since_cast += dt;
         m.cooldown -= dt;
         let regen = if m.since_cast > 1.2 { 4.0 } else { 0.6 };
-        m.mana = (m.mana + regen * dt).min(m.max_mana);
+        m.mana = (m.mana + regen * dt).min(m.max_mana + m.extra_max);
         let casting = use_held && self.screen == crate::Screen::Playing;
         if casting {
             if let Some(i) = self.held_item_name().and_then(|n| SPELLS.iter().position(|s| s.item == n)) {
@@ -148,14 +215,23 @@ impl Game {
         if self.magic.cooldown > 0.0 {
             return;
         }
+        let (power, mana_k, speed_k) = self.caster_mods();
+        let cost = sp.cost * mana_k;
         let free = !self.survival;
-        if !free && self.magic.mana < sp.cost {
+        if !free && self.magic.mana < cost {
             return;
         }
         if !free {
-            self.magic.mana -= sp.cost;
+            self.magic.mana -= cost;
         }
-        self.magic.cooldown = sp.cooldown;
+        self.magic.power = power;
+        self.magic.cooldown = sp.cooldown / speed_k;
+        if self.cast_extra(i) {
+            self.magic.since_cast = 0.0;
+            self.sfx(Sfx::Cast(sp.school));
+            self.anim.start_swing();
+            return;
+        }
         self.magic.since_cast = 0.0;
         let eye = self.body.eye();
         let fwd = self.forward();
@@ -220,12 +296,12 @@ impl Game {
                 return true;
             }
             if b.life <= 0.0 {
-                if matches!(sp.shot, Shot::Burst(_)) {
+                if matches!(sp.shot, Shot::Burst(_) | Shot::Meteor(_)) {
                     hits.push((b.pos, b.spell, None));
                 }
                 return false;
             }
-            if sp.shot == Shot::Homing {
+            if matches!(sp.shot, Shot::Homing | Shot::Stars(_)) {
                 if let Some(t) = self.nearest_mob(b.pos, b.vel.normalize_or_zero(), 14.0) {
                     let want = (t - b.pos).normalize_or_zero() * sp.speed;
                     b.vel = b.vel.lerp(want, (dt * 5.0).min(1.0));
@@ -233,6 +309,10 @@ impl Game {
             }
             if let Shot::Burst(_) = sp.shot {
                 b.vel.y -= 4.0 * dt;
+            }
+            if let Shot::Meteor(_) = sp.shot {
+                // Burns as it falls.
+                b.vel.y -= 10.0 * dt;
             }
             let step = b.vel * dt;
             let n = (step.length() / 0.25).ceil().max(1.0) as usize;
@@ -258,6 +338,8 @@ impl Game {
             }
             let (size, count) = match sp.shot {
                 Shot::Burst(_) => (0.16, 3),
+                Shot::Meteor(_) => (0.3, 5),
+                Shot::Stars(_) => (0.11, 2),
                 Shot::Flame => (0.12, 1),
                 _ => (0.08, 2),
             };
@@ -276,7 +358,7 @@ impl Game {
     }
 
     /// The alive mob whose body contains `p`.
-    fn mob_at(&self, p: Vec3) -> Option<usize> {
+    pub(crate) fn mob_at(&self, p: Vec3) -> Option<usize> {
         self.mobs.list.iter().position(|m| {
             if !m.alive() {
                 return false;
@@ -289,7 +371,7 @@ impl Game {
     }
 
     /// Centre of the closest alive mob within `range` and roughly ahead of `dir`.
-    fn nearest_mob(&self, from: Vec3, dir: Vec3, range: f32) -> Option<Vec3> {
+    pub(crate) fn nearest_mob(&self, from: Vec3, dir: Vec3, range: f32) -> Option<Vec3> {
         self.mobs
             .list
             .iter()
@@ -302,7 +384,8 @@ impl Game {
             .min_by(|a, b| a.distance(from).total_cmp(&b.distance(from)))
     }
 
-    fn hurt_mob(&mut self, i: usize, dmg: f32, from: Vec3, school: u8) {
+    pub(crate) fn hurt_mob(&mut self, i: usize, dmg: f32, from: Vec3, school: u8) {
+        let dmg = dmg * self.magic.power;
         let m = &mut self.mobs.list[i];
         m.hurt(dmg, from);
         match school {
@@ -322,7 +405,7 @@ impl Game {
         let sp = &SPELLS[spell];
         let layer = self.glow_layer();
         let eye = self.body.eye();
-        if let Shot::Burst(r) = sp.shot {
+        if let Shot::Burst(r) | Shot::Meteor(r) = sp.shot {
             let around: Vec<(usize, f32)> = self
                 .mobs
                 .list
@@ -387,11 +470,12 @@ impl Game {
     /// Mana stars down the right edge of the screen while a caster is in hand or mana is low.
     pub(crate) fn draw_mana(&mut self, w: f32) {
         let holding = self.held_item_name().is_some_and(is_caster);
-        if !self.survival || (!holding && self.magic.mana >= self.magic.max_mana - 0.01) {
+        let holding = holding || self.held_item_name() == Some("glyph_book");
+        if !self.survival || (!holding && self.magic.mana >= self.magic.max_mana + self.magic.extra_max - 0.01) {
             return;
         }
         let s = self.ui.scale;
-        let stars = (self.magic.max_mana / 2.0).ceil() as i32;
+        let stars = ((self.magic.max_mana + self.magic.extra_max) / 2.0).ceil() as i32;
         for i in 0..stars {
             let col = i / 10;
             let row = i % 10;
@@ -415,5 +499,231 @@ fn draw_star(ui: &mut UiBatch, x: f32, y: f32, s: f32, fill: f32) {
             let col = if full { [70, 120, 255, 255] } else { [20, 24, 60, 220] };
             ui.rect(x + c as f32 * s, y + r as f32 * s, s, s, col);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Etapa 5: the spells of the Iron's Spells idea that are not plain bolts.
+
+impl Game {
+    /// Where the player looks, up to `range` blocks: the first mob or block in the way.
+    pub(crate) fn look_point(&self, range: f32) -> Vec3 {
+        let eye = self.body.eye();
+        let fwd = self.forward();
+        let mut p = eye;
+        let mut t = 0.0;
+        while t < range {
+            p += fwd * 0.25;
+            t += 0.25;
+            if self.mob_at(p).is_some() || self.world.solid(p.floor().as_ivec3()) {
+                return p - fwd * 0.25;
+            }
+        }
+        p
+    }
+
+    /// Casts the spell if it is one of the new kinds; false leaves it to the bolt code.
+    fn cast_extra(&mut self, i: usize) -> bool {
+        let sp = &SPELLS[i];
+        let eye = self.body.eye();
+        let fwd = self.forward();
+        let layer = self.glow_layer();
+        let col = color(sp.school);
+        match sp.shot {
+            Shot::Blink(range) => {
+                let mut to = self.look_point(range);
+                // Land on your feet in open air.
+                let mut k = 0;
+                while k < 8 && (self.world.solid(to.floor().as_ivec3()) || self.world.solid((to + Vec3::Y).floor().as_ivec3())) {
+                    to += Vec3::Y;
+                    k += 1;
+                }
+                for _ in 0..20 {
+                    let v = Vec3::new(self.surv.rng.f32() - 0.5, self.surv.rng.f32(), self.surv.rng.f32() - 0.5) * 3.0;
+                    self.particles.glow(self.body.pos + Vec3::Y, v, layer, col, 0.1, 0.5);
+                    self.particles.glow(to + Vec3::Y, v, layer, col, 0.1, 0.5);
+                }
+                self.body.pos = Vec3::new(to.x, to.y.floor(), to.z);
+                self.body.vel = Vec3::ZERO;
+                self.fall_peak = self.body.pos.y;
+            }
+            Shot::Heal => {
+                self.health = (self.health + sp.damage * self.magic.power).min(self.max_health);
+                for _ in 0..16 {
+                    let v = Vec3::new(self.surv.rng.f32() - 0.5, 1.0, self.surv.rng.f32() - 0.5) * 2.0;
+                    self.particles.glow(self.body.pos + Vec3::Y * 0.5, v, layer, col, 0.09, 0.8);
+                }
+            }
+            Shot::Ward => {
+                self.t5.ward = sp.damage * self.magic.power;
+                self.t5.ward_t = 12.0;
+            }
+            Shot::Chain(n) => {
+                let mut from = eye;
+                let mut dir = fwd;
+                let mut hit: Vec<usize> = Vec::new();
+                for _ in 0..n {
+                    let Some(k) = self
+                        .mobs
+                        .list
+                        .iter()
+                        .enumerate()
+                        .filter(|(k, m)| m.alive() && !hit.contains(k) && !self.mobs.reg.defs[m.def].town)
+                        .map(|(k, m)| (k, m.body.center()))
+                        .filter(|(_, c)| {
+                            let to = *c - from;
+                            to.length() < if hit.is_empty() { 16.0 } else { 7.0 } && (hit.len() > 0 || to.normalize_or_zero().dot(dir) > 0.8)
+                        })
+                        .min_by(|a, b| a.1.distance(from).total_cmp(&b.1.distance(from)))
+                        .map(|(k, _)| k)
+                    else {
+                        break;
+                    };
+                    let to = self.mobs.list[k].body.center();
+                    let seg = to - from;
+                    let steps = (seg.length() / 0.3).ceil().max(1.0) as usize;
+                    for s in 0..=steps {
+                        let jitter = Vec3::new(self.surv.rng.f32() - 0.5, self.surv.rng.f32() - 0.5, self.surv.rng.f32() - 0.5) * 0.25;
+                        self.particles.glow(from + seg * (s as f32 / steps as f32) + jitter, Vec3::ZERO, layer, col, 0.07, 0.25);
+                    }
+                    self.hurt_mob(k, sp.damage, from, sp.school);
+                    hit.push(k);
+                    dir = seg.normalize_or_zero();
+                    from = to;
+                }
+                if hit.is_empty() {
+                    return false;
+                }
+                self.sfx(Sfx::SpellHit(2));
+            }
+            Shot::Meteor(_) => {
+                let at = self.look_point(48.0);
+                let flat = Vec3::new(fwd.x, 0.0, fwd.z).normalize_or_zero();
+                let from = at - flat * 8.0 + Vec3::Y * 26.0;
+                let vel = (at - from).normalize_or_zero() * sp.speed;
+                self.magic.bolts.push(Bolt { pos: from, vel, life: sp.life, spell: i, hostile: None });
+            }
+            Shot::Spirits(n) => {
+                self.t5.spirits.clear();
+                for k in 0..n {
+                    self.t5.spirits.push(Spirit { angle: k as f32 / n as f32 * std::f32::consts::TAU, life: sp.life, cd: 0.5 + k as f32 * 0.3, damage: sp.damage * self.magic.power });
+                }
+            }
+            Shot::Ring(n) => {
+                let from = self.body.pos + Vec3::Y * 1.0;
+                for k in 0..n {
+                    let a = k as f32 / n as f32 * std::f32::consts::TAU;
+                    let dir = Vec3::new(a.cos(), 0.0, a.sin());
+                    self.magic.bolts.push(Bolt { pos: from + dir * 0.6, vel: dir * sp.speed, life: sp.life, spell: i, hostile: None });
+                }
+            }
+            Shot::Vortex => {
+                self.t5.vortexes.push(Vortex { pos: eye + fwd, vel: fwd * sp.speed, life: sp.life, tick: 0.0, damage: sp.damage * self.magic.power });
+            }
+            Shot::Stars(n) => {
+                let right = fwd.cross(Vec3::Y).normalize_or_zero();
+                for k in 0..n {
+                    let a = (k as f32 - (n - 1) as f32 / 2.0) * 0.25;
+                    let dir = (fwd * a.cos() + right * a.sin() + Vec3::Y * 0.1).normalize();
+                    self.magic.bolts.push(Bolt { pos: eye + fwd * 0.6, vel: dir * sp.speed, life: sp.life, spell: i, hostile: None });
+                }
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// Spirits, vortexes and the ward, each frame.
+    pub(crate) fn update_spell_extras(&mut self, dt: f32) {
+        if dt == 0.0 {
+            return;
+        }
+        let layer = self.glow_layer();
+        if self.t5.ward > 0.0 {
+            self.t5.ward_t -= dt;
+            if self.t5.ward_t <= 0.0 {
+                self.t5.ward = 0.0;
+            } else if self.surv.rng.f32() < dt * 10.0 {
+                let a = self.surv.rng.f32() * std::f32::consts::TAU;
+                let p = self.body.pos + Vec3::new(a.cos() * 0.7, 0.2 + self.surv.rng.f32() * 1.6, a.sin() * 0.7);
+                self.particles.glow(p, Vec3::ZERO, layer, [0.6, 0.85, 1.5], 0.06, 0.4);
+            }
+        }
+        // Spirits: circle, then dart at the closest monster in reach.
+        let me = self.body.pos + Vec3::Y * 1.4;
+        let mut spirits = std::mem::take(&mut self.t5.spirits);
+        for s in spirits.iter_mut() {
+            s.life -= dt;
+            s.angle += dt * 2.2;
+            s.cd -= dt;
+            let at = me + Vec3::new(s.angle.cos() * 1.6, (s.angle * 2.0).sin() * 0.3, s.angle.sin() * 1.6);
+            self.particles.glow(at, Vec3::ZERO, layer, color(3), 0.12, 0.08);
+            if s.cd <= 0.0 {
+                s.cd = 0.9;
+                let target = self
+                    .mobs
+                    .list
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, m)| m.alive() && self.mobs.reg.defs[m.def].kind == voxel::mob::Kind::Hostile)
+                    .map(|(k, m)| (k, m.body.center()))
+                    .filter(|(_, c)| c.distance(at) < 8.0)
+                    .min_by(|a, b| a.1.distance(at).total_cmp(&b.1.distance(at)));
+                if let Some((k, c)) = target {
+                    let seg = c - at;
+                    for j in 0..8 {
+                        self.particles.glow(at + seg * (j as f32 / 8.0), Vec3::ZERO, layer, color(3), 0.06, 0.2);
+                    }
+                    let power = self.magic.power;
+                    self.magic.power = 1.0;
+                    self.hurt_mob(k, s.damage, at, 3);
+                    self.magic.power = power;
+                }
+            }
+        }
+        spirits.retain(|s| s.life > 0.0);
+        self.t5.spirits = spirits;
+        // Vortexes.
+        let mut vs = std::mem::take(&mut self.t5.vortexes);
+        for v in vs.iter_mut() {
+            v.life -= dt;
+            v.vel *= 1.0 - (dt * 0.6).min(1.0);
+            let next = v.pos + v.vel * dt;
+            if !self.world.solid(next.floor().as_ivec3()) {
+                v.pos = next;
+            }
+            for _ in 0..3 {
+                let a = self.surv.rng.f32() * std::f32::consts::TAU;
+                let r = 0.4 + self.surv.rng.f32() * 1.6;
+                let p = v.pos + Vec3::new(a.cos() * r, (self.surv.rng.f32() - 0.5) * 0.8, a.sin() * r);
+                let swirl = Vec3::new(-a.sin(), 0.0, a.cos()) * 3.0 + (v.pos - p) * 1.5;
+                self.particles.glow(p, swirl, layer, [0.5, 0.2, 0.9], 0.1, 0.3);
+            }
+            v.tick -= dt;
+            let hit = v.tick <= 0.0;
+            if hit {
+                v.tick = 0.4;
+            }
+            for k in 0..self.mobs.list.len() {
+                let m = &self.mobs.list[k];
+                if !m.alive() || self.mobs.reg.defs[m.def].kind != voxel::mob::Kind::Hostile || self.mobs.reg.defs[m.def].boss {
+                    continue;
+                }
+                let to = v.pos - m.body.center();
+                let d = to.length();
+                if d < 7.0 {
+                    let m = &mut self.mobs.list[k];
+                    m.body.vel += to.normalize_or_zero() * dt * 30.0;
+                    if hit && d < 2.2 {
+                        let power = self.magic.power;
+                        self.magic.power = 1.0;
+                        self.hurt_mob(k, v.damage, v.pos, 3);
+                        self.magic.power = power;
+                    }
+                }
+            }
+        }
+        vs.retain(|v| v.life > 0.0);
+        self.t5.vortexes = vs;
     }
 }

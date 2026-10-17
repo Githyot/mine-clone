@@ -248,6 +248,8 @@ pub struct Mob {
     /// On a lead: held by the player, or tied to the fence post at `post`.
     pub leashed: bool,
     pub post: Option<glam::IVec3>,
+    /// Its death was handed to the game (drops, bosses); set once.
+    pub counted: bool,
     fire_tick: f32,
     rng: Rng,
 }
@@ -300,6 +302,7 @@ impl Mob {
             name: None,
             leashed: false,
             post: None,
+            counted: false,
             fire_tick: 0.0,
             rng,
         }
