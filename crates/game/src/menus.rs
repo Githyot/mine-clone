@@ -481,6 +481,7 @@ impl Game {
             format!("Balanço da visão: {}", onoff(st.view_bobbing)),
             format!("Itens no chão: {}", if st.flat_drops { "Deitados" } else { "Flutuando" }),
             format!("Construções: {}", if st.sparse_structures { "Espaçadas" } else { "Normais" }),
+            format!("Animações da interface: {}", onoff(st.ui_animations)),
             "Controle...".to_string(),
             "Pacotes de textura...".to_string(),
         ]
@@ -552,7 +553,8 @@ impl Game {
             12 => st.view_bobbing = !st.view_bobbing,
             13 => st.flat_drops = !st.flat_drops,
             14 => st.sparse_structures = !st.sparse_structures,
-            15 => {
+            15 => st.ui_animations = !st.ui_animations,
+            16 => {
                 self.options_back = self.screen;
                 self.set_screen(Screen::Controls);
             }

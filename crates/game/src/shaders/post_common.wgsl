@@ -14,6 +14,10 @@ struct Post {
     params: vec4<f32>,
     // As opções do pack.ron, na ordem: use opt(0) .. opt(7).
     options: array<vec4<f32>, 2>,
+    // Uso interno (suavização TAA): posição na tela deste quadro → do quadro anterior.
+    reproj: mat4x4<f32>,
+    // x: TAA ligado; y: o quadro anterior pode ser usado.
+    taa: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> post: Post;

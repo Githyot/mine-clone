@@ -11,6 +11,7 @@ use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::post::{PostFx, PostUniform, HDR};
+use crate::scenefx::{SceneFx, SHADOW_FORMAT};
 use crate::settings::ShaderQuality;
 use crate::shaderpack::ShaderPack;
 use crate::textures::{mip_chain, TextureSet};
@@ -41,6 +42,16 @@ pub struct Globals {
     /// Moving lights (LambDynamicLights idea): torches lying on the ground, burning mobs.
     /// xyz relative to the camera's block, w: level 0..1 (0 = unused).
     pub dyn_lights: [[f32; 4]; 8],
+    /// Position relative to the camera's block → shadow map clip space (set by the renderer).
+    pub shadow_mat: [[f32; 4]; 4],
+    /// x: shadow strength (0 = off), y: one shadow texel in clip units, z: 1 = soft (4 taps),
+    /// w: shadow distance in blocks.
+    pub shadow: [f32; 4],
+    /// x: cloud style (0 one layer, 1 layered), y: emissive textures 0/1, z: water reflection
+    /// steps (0 = off), w: unused.
+    pub extra: [f32; 4],
+    /// x, y: screen size in pixels; z: near plane; w: far plane (set by the renderer).
+    pub screen: [f32; 4],
 }
 
 #[repr(C)]
@@ -127,6 +138,11 @@ pub struct Renderer {
     copy_src_ok: bool,
     /// Skip sections the camera can't see through caves and solid rock.
     pub cave_cull: bool,
+    /// Shadows, water reflections, TAA jitter.
+    pub fx: SceneFx,
+    shadow_pipe: wgpu::RenderPipeline,
+    /// The depth texture was recreated since the effects last bound it.
+    depth_changed: bool,
 }
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -263,8 +279,14 @@ impl Renderer {
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/ui.wgsl").into()),
         });
 
+        let fx = SceneFx::new(&device);
         let terrain_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("terrain"),
+            bind_group_layouts: &[&globals_layout, &tex_layout, &fx.layout],
+            push_constant_ranges: &[],
+        });
+        let shadow_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("shadow"),
             bind_group_layouts: &[&globals_layout, &tex_layout],
             push_constant_ranges: &[],
         });
@@ -365,6 +387,24 @@ impl Renderer {
             rain: make("rain", f, &globals_only, &rain, "vs_rain", "fs_rain", &rain_layout, blend_alpha, None, depth_state(false, C::Less), T::TriangleList),
         };
         let pipes = [scene_pipes(format), scene_pipes(HDR)];
+        // Depth only, seen from the sun; a slope bias keeps lit faces from shadowing themselves.
+        let shadow_pipe = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("shadow map"),
+            layout: Some(&shadow_layout),
+            vertex: wgpu::VertexState { module: &terrain, entry_point: Some("vs_shadow"), buffers: &vbufs, compilation_options: Default::default() },
+            fragment: Some(wgpu::FragmentState { module: &terrain, entry_point: Some("fs_shadow"), targets: &[], compilation_options: Default::default() }),
+            primitive: wgpu::PrimitiveState { topology: T::TriangleList, cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: SHADOW_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: C::Less,
+                stencil: Default::default(),
+                bias: wgpu::DepthBiasState { constant: 2, slope_scale: 2.0, clamp: 0.0 },
+            }),
+            multisample: Default::default(),
+            multiview: None,
+            cache: None,
+        });
         let post = PostFx::new(&device, format);
 
         // UI
@@ -517,6 +557,9 @@ impl Renderer {
             vram_bytes: 0,
             copy_src_ok,
             cave_cull: true,
+            fx,
+            shadow_pipe,
+            depth_changed: true,
         }
     }
 
@@ -560,6 +603,7 @@ impl Renderer {
             fog_color: [g.fog_color[0], g.fog_color[1], g.fog_color[2], g.fog[2]],
             params: [g.cam_pos[3], NEAR, cam.far, 0.0],
             options: [[0.0; 4]; 2],
+            ..Default::default()
         }
     }
 
@@ -674,6 +718,7 @@ impl Renderer {
         self.config.height = h;
         self.surface.configure(&self.device, &self.config);
         self.depth = Self::make_depth(&self.device, &self.config);
+        self.depth_changed = true;
         self.post.resize(&self.device, w, h, &self.depth);
     }
 
@@ -811,9 +856,23 @@ impl Renderer {
         capture: bool,
     ) -> (FrameInfo, Option<(u32, u32, Vec<u8>)>) {
         let aspect = self.config.width as f32 / self.config.height as f32;
+        let (sw, sh) = (self.config.width, self.config.height);
         let proj = Mat4::perspective_rh(cam.fov_y, aspect, NEAR, cam.far);
         let view = Mat4::look_to_rh(cam.frac, cam.forward, Vec3::Y);
-        let view_proj = proj * view;
+        let plain_vp = proj * view;
+        // Shader-pack-only effects: TAA jitters the projection a little every frame.
+        let hdr_on = self.post.scene_view().is_some();
+        let taa = hdr_on && self.post.taa;
+        let view_proj = self.fx.jitter(sw, sh, taa) * plain_vp;
+        let reproj = if taa { Some(self.fx.reprojection(view_proj, plain_vp, cam.block)) } else { None };
+        self.fx.prepare(&self.device, hdr_on, sw, sh, &self.depth, self.depth_changed);
+        self.depth_changed = false;
+        // Sun shadows where there is a sun (the Overworld and the Aether).
+        let sun = Vec3::new(globals.sun_dir[0], globals.sun_dir[1], globals.sun_dir[2]);
+        let smat = if globals.weather[2] <= 0.0 { self.fx.shadow_matrix(sun, cam.block, cam.frac) } else { None };
+        (globals.shadow_mat, globals.shadow) = self.fx.shadow_globals(smat);
+        globals.extra[2] = if self.fx.reflecting() { if self.fx.fancy { 40.0 } else { 20.0 } } else { 0.0 };
+        globals.screen = [sw as f32, sh as f32, NEAR, cam.far];
         let view_rot = Mat4::look_to_rh(Vec3::ZERO, cam.forward, Vec3::Y);
         globals.view_proj = view_proj.to_cols_array_2d();
         globals.inv_view_rot = (proj * view_rot).inverse().to_cols_array_2d();
@@ -888,6 +947,31 @@ impl Renderer {
             lod_draws.push((instances.len(), &tile.buf, tile.quads));
             instances.push(origin.to_array());
         }
+        // Shadow casters: every section with solid blocks around the camera, seen or not.
+        let mut shadow_draws: Vec<(usize, &wgpu::Buffer, u32)> = Vec::new();
+        if smat.is_some() {
+            let reach = self.fx.shadow_radius() + 16.0;
+            for (pos, sections) in &self.chunks {
+                let cx = (pos.x * 16 - cam.block.x) as f32;
+                let cz = (pos.y * 16 - cam.block.z) as f32;
+                let dx = (cx + 8.0 - cam.frac.x).abs() - 8.0;
+                let dz = (cz + 8.0 - cam.frac.z).abs() - 8.0;
+                if dx.max(0.0).hypot(dz.max(0.0)) > reach {
+                    continue;
+                }
+                for s in sections {
+                    let y = (s.section as i32 * 16 - cam.block.y) as f32;
+                    // Far below the camera nothing it casts can reach the lit area.
+                    if y + 16.0 < -reach * 1.5 {
+                        continue;
+                    }
+                    if let Some((b, q)) = &s.solid {
+                        shadow_draws.push((instances.len(), b, *q));
+                        instances.push([cx, y, cz]);
+                    }
+                }
+            }
+        }
         lod_draws.sort_by(|a, b| Vec3::from(instances[a.0]).length_squared().total_cmp(&Vec3::from(instances[b.0]).length_squared()));
         trans_draws.sort_by(|a, b| b.0.total_cmp(&a.0));
         // Near-to-far for opaque geometry so the depth test rejects hidden pixels early.
@@ -960,6 +1044,40 @@ impl Renderer {
         let hdr_view = self.post.scene_view();
         let hdr = hdr_view.is_some();
         let pipes = &self.pipes[hdr as usize];
+        if let (Some(_), Some(sv)) = (smat, self.fx.shadow_view()) {
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("shadow map"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: sv,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_pipeline(&self.shadow_pipe);
+            pass.set_bind_group(0, &self.globals_bg, &[]);
+            pass.set_bind_group(1, &self.tex_bg, &[]);
+            pass.set_index_buffer(self.quad_ibuf.slice(..), wgpu::IndexFormat::Uint32);
+            pass.set_vertex_buffer(1, self.inst_buf.slice(..));
+            for (i, b, q) in &shadow_draws {
+                pass.set_vertex_buffer(0, b.slice(..));
+                pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
+            }
+        }
+        // With water reflections the pass is split: everything opaque first, then a copy of
+        // the picture for the water to reflect, then water, glass, rain and lines on top.
+        let split = hdr && self.fx.reflecting();
+        let late = LateDraws {
+            pipes,
+            tex_bg: &self.tex_bg,
+            quad_ibuf: &self.quad_ibuf,
+            inst_buf: &self.inst_buf,
+            trans: &trans_draws,
+            rain: (self.rain_count > 0).then_some((&self.rain_buf, self.rain_count)),
+            lines: (line_count > 0).then_some((&self.line_buf, line_count)),
+        };
         {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main"),
@@ -985,6 +1103,7 @@ impl Renderer {
 
             pass.set_pipeline(&pipes.solid);
             pass.set_bind_group(1, &self.tex_bg, &[]);
+            pass.set_bind_group(2, &self.fx.bg_solid, &[]);
             pass.set_index_buffer(self.quad_ibuf.slice(..), wgpu::IndexFormat::Uint32);
             pass.set_vertex_buffer(1, self.inst_buf.slice(..));
             for (i, b, q) in &solid_draws {
@@ -1006,29 +1125,36 @@ impl Renderer {
                 pass.set_pipeline(&pipes.cloud);
                 pass.draw(0..3, 0..1);
             }
-            pass.set_pipeline(&pipes.translucent);
-            pass.set_bind_group(1, &self.tex_bg, &[]);
-            // Mobs and paintings bind their own index buffers; water needs the shared quad one back.
-            pass.set_index_buffer(self.quad_ibuf.slice(..), wgpu::IndexFormat::Uint32);
-            pass.set_vertex_buffer(1, self.inst_buf.slice(..));
-            for (_, i, b, q) in &trans_draws {
-                pass.set_vertex_buffer(0, b.slice(..));
-                pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
-                quads += *q as usize;
-            }
-            if self.rain_count > 0 {
-                pass.set_pipeline(&pipes.rain);
-                pass.set_vertex_buffer(0, self.rain_buf.slice(..));
-                pass.draw(0..6, 0..self.rain_count);
-            }
-            if line_count > 0 {
-                pass.set_pipeline(&pipes.line);
-                pass.set_vertex_buffer(0, self.line_buf.slice(..));
-                pass.draw(0..line_count, 0..1);
+            if !split {
+                quads += late.draw(&mut pass, &self.fx.bg_solid);
             }
         }
+        if split {
+            if let (Some(src), Some(dst)) = (self.post.scene_texture(), self.fx.copy_texture()) {
+                enc.copy_texture_to_texture(src.as_image_copy(), dst.as_image_copy(), wgpu::Extent3d { width: sw, height: sh, depth_or_array_layers: 1 });
+            }
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("water and glass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: hdr_view.unwrap_or(&view),
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                })],
+                // Read-only depth: the water shader reads it for its reflections.
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &self.depth, depth_ops: None, stencil_ops: None }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_bind_group(0, &self.globals_bg, &[]);
+            quads += late.draw(&mut pass, &self.fx.bg_trans);
+        }
         if hdr {
-            self.post.run(&self.queue, &mut enc, &view, self.post_uniform(&view_proj, globals, cam));
+            let mut u = self.post_uniform(&view_proj, globals, cam);
+            if let Some((m, valid)) = reproj {
+                u.reproj = m.to_cols_array_2d();
+                u.taa = [1.0, if valid { 1.0 } else { 0.0 }, 0.0, 0.0];
+            }
+            self.post.run(&self.queue, &mut enc, &view, u);
         }
         if !ui.verts.is_empty() {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1095,6 +1221,46 @@ impl Renderer {
         frame.present();
         let lod_quads = lod_draws.iter().map(|d| d.2 as usize).sum();
         (FrameInfo { sections_drawn: solid_draws.len() + trans_draws.len(), quads_drawn: quads, lod_drawn: lod_draws.len(), lod_quads }, shot)
+    }
+}
+
+/// What is drawn after the opaque scene: water and glass (far to near), rain, lines.
+struct LateDraws<'a> {
+    pipes: &'a ScenePipes,
+    tex_bg: &'a wgpu::BindGroup,
+    quad_ibuf: &'a wgpu::Buffer,
+    inst_buf: &'a wgpu::Buffer,
+    trans: &'a [(f32, usize, &'a wgpu::Buffer, u32)],
+    rain: Option<(&'a wgpu::Buffer, u32)>,
+    lines: Option<(&'a wgpu::Buffer, u32)>,
+}
+
+impl LateDraws<'_> {
+    /// Returns the quads drawn.
+    fn draw(&self, pass: &mut wgpu::RenderPass<'_>, fx_bg: &wgpu::BindGroup) -> usize {
+        let mut quads = 0;
+        pass.set_pipeline(&self.pipes.translucent);
+        pass.set_bind_group(1, self.tex_bg, &[]);
+        pass.set_bind_group(2, fx_bg, &[]);
+        // Mobs and paintings bind their own index buffers; water needs the shared quad one back.
+        pass.set_index_buffer(self.quad_ibuf.slice(..), wgpu::IndexFormat::Uint32);
+        pass.set_vertex_buffer(1, self.inst_buf.slice(..));
+        for (_, i, b, q) in self.trans {
+            pass.set_vertex_buffer(0, b.slice(..));
+            pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
+            quads += *q as usize;
+        }
+        if let Some((buf, n)) = self.rain {
+            pass.set_pipeline(&self.pipes.rain);
+            pass.set_vertex_buffer(0, buf.slice(..));
+            pass.draw(0..6, 0..n);
+        }
+        if let Some((buf, n)) = self.lines {
+            pass.set_pipeline(&self.pipes.line);
+            pass.set_vertex_buffer(0, buf.slice(..));
+            pass.draw(0..n, 0..1);
+        }
+        quads
     }
 }
 

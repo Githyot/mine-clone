@@ -135,6 +135,8 @@ pub struct Survival {
     pub(crate) hover_slot: Option<Slot>,
     /// When the inventory screen opened, for its slide-in.
     pub(crate) opened_at: Option<std::time::Instant>,
+    /// Interface animations (juice.rs).
+    pub(crate) juice: crate::juice::UiJuice,
     /// Slot the right-button drag last dropped into.
     drag_last: Option<Slot>,
     /// Saplings planted by the player and seconds until they grow.
@@ -190,6 +192,7 @@ impl Survival {
             figure_box: None,
             hover_slot: None,
             opened_at: None,
+            juice: Default::default(),
             drag_last: None,
             saplings: Vec::new(),
             leaf_decay: Vec::new(),
@@ -391,6 +394,33 @@ pub fn item_icon(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRegistry,
         ui.rect(x, y + s, s, 2.0 * s, voxel::gems::RARITY_COLORS[r]);
     }
     if stack.count > 1 {
+        let t = stack.count.to_string();
+        let tw = ui.text_width(&t, s);
+        ui.text(x + size - tw + 2.0 * s, y + size - 6.0 * s, &t, [62, 62, 62, 255]);
+        ui.text(x + size - tw + s, y + size - 7.0 * s, &t, WHITE);
+    }
+}
+
+/// An item icon turned by `angle` (radians) about its centre: flat item pictures turn, block
+/// icons lean sideways instead.
+#[allow(clippy::too_many_arguments)]
+pub fn item_icon_tilted(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRegistry, item_base: u16, stack: &ItemStack, x: f32, y: f32, size: f32, angle: f32) {
+    let Look::Sprite(l) = items.get(stack.item).look else {
+        item_icon(ui, blocks, items, item_base, stack, x + angle * size * 0.25, y, size);
+        return;
+    };
+    if angle.abs() < 0.01 {
+        item_icon(ui, blocks, items, item_base, stack, x, y, size);
+        return;
+    }
+    let (c, sn) = (angle.cos(), angle.sin());
+    let (cx, cy) = (x + size / 2.0, y + size / 2.0);
+    let h = size / 2.0;
+    let rot = |dx: f32, dy: f32| [cx + dx * c - dy * sn, cy + dx * sn + dy * c];
+    let full = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    ui.quad([rot(-h, -h), rot(h, -h), rot(h, h), rot(-h, h)], full, WHITE, (item_base + l) as i32);
+    if stack.count > 1 {
+        let s = ui.scale;
         let t = stack.count.to_string();
         let tw = ui.text_width(&t, s);
         ui.text(x + size - tw + 2.0 * s, y + size - 6.0 * s, &t, [62, 62, 62, 255]);
@@ -1718,7 +1748,9 @@ impl Game {
 
         let result = self.craft_result();
         let mut hovered: Option<Slot> = None;
-        for &(slot, sx, sy) in &slots {
+        let anim = crate::juice::enabled(self.settings.ui_animations, self.args.screenshot.is_some());
+        let carried = self.surv.cursor.map(|c| c.item);
+        for (k, &(slot, sx, sy)) in slots.iter().enumerate() {
             let big = slot == Slot::CraftOut || slot == Slot::Cont(2) && matches!(open, Open::Furnace(_));
             let pad = if big { 4.0 * s } else { 0.0 };
             self.ui.rect(sx - s - pad, sy - s - pad, cell + 2.0 * pad, cell + 2.0 * pad, [55, 55, 55, 255]);
@@ -1731,7 +1763,12 @@ impl Game {
             }
             let st = if slot == Slot::CraftOut { result } else { self.slot_get(slot) };
             if let Some(st) = st {
-                item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &st, sx, sy, 16.0 * s);
+                // The hovered item grows a little; ones that match the cursor's stack bob.
+                let k2 = self.surv.juice.slot_scale(slot, over, anim);
+                let bob = if carried == Some(st.item) && slot != Slot::CraftOut { self.surv.juice.match_bob(k, anim) * s } else { 0.0 };
+                let size = 16.0 * s * k2;
+                let off = (size - 16.0 * s) / 2.0;
+                item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &st, sx - off, sy - off + bob, size);
             }
         }
         self.surv.hover_slot = hovered;
@@ -1816,7 +1853,15 @@ impl Game {
             }
         }
         if let Some(c) = self.surv.cursor {
-            item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &c, mouse.0 - 8.0 * s, mouse.1 - 8.0 * s, 16.0 * s);
+            // The stack on the cursor sways as it moves; rare items trail sparks.
+            let rare = crate::juice::rarity(&self.items.get(c.item).name);
+            self.surv.juice.cursor(mouse, rare, s, anim);
+            self.surv.juice.draw_sparks(&mut self.ui);
+            let angle = self.surv.juice.angle;
+            item_icon_tilted(&mut self.ui, &self.reg, &self.items, self.item_base, &c, mouse.0 - 8.0 * s, mouse.1 - 8.0 * s, 16.0 * s, angle);
+        } else {
+            self.surv.juice.cursor(mouse, None, s, anim);
+            self.surv.juice.draw_sparks(&mut self.ui);
         }
         self.ui.text_centered(w / 2.0, y0 + ph + 4.0 * s, "Esq.: pegar  Dir.: metade  Shift: mover  Roda: 1 a 1  R: receita  U: usos", WHITE);
     }

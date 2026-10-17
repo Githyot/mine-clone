@@ -25,6 +25,7 @@ mod gear;
 mod weather;
 mod entity;
 mod item_render;
+mod juice;
 mod menus;
 mod monitor;
 mod mods;
@@ -37,6 +38,7 @@ mod post;
 mod pots;
 mod rails;
 mod renderer;
+mod scenefx;
 mod settings;
 mod sfx;
 mod shaderpack;
@@ -404,6 +406,12 @@ enum ShaderRow {
     Opt(usize),
     /// Distant terrain distance.
     Lod,
+    /// Graphics extras (Sildur's, Better Clouds and Continuity ideas).
+    Shadows,
+    Reflections,
+    Taa,
+    Clouds,
+    Emissive,
 }
 
 struct Toast {
@@ -962,6 +970,7 @@ impl Game {
                 None => self.shader_error = Some(format!("pacote \"{}\" não encontrado", self.settings.shader_pack)),
             }
         }
+        self.renderer.post.taa = self.settings.taa;
         if let Err(e) = self.renderer.set_shader(pack.as_ref(), self.settings.shader_quality) {
             self.toast(format!("Erro no shader: {e}"), 8.0);
             self.shader_error = Some(e);
@@ -2026,6 +2035,7 @@ impl Game {
     fn shader_rows(&self) -> Vec<(String, ShaderRow, bool)> {
         let cur = if self.settings.shader_pack.is_empty() { None } else { self.active_shader().map(|p| p.id.clone()) };
         let mark = |on: bool, name: &str| if on { format!("> {name} <") } else { name.to_string() };
+        let onoff = |b: bool| if b { "Sim" } else { "Não" };
         let mut v = vec![
             ("Voltar".to_string(), ShaderRow::Back, false),
             (format!("Qualidade: {}", self.settings.shader_quality.label()), ShaderRow::Quality, false),
@@ -2038,6 +2048,11 @@ impl Game {
                 ShaderRow::Lod,
                 false,
             ),
+            (format!("Sombras: {}", settings::SHADOW_LEVELS[self.settings.shadows.min(2) as usize]), ShaderRow::Shadows, false),
+            (format!("Reflexos na água: {}{}", onoff(self.settings.water_reflections), if cur.is_none() { " (com shader)" } else { "" }), ShaderRow::Reflections, false),
+            (format!("Suavização TAA: {}{}", onoff(self.settings.taa), if cur.is_none() { " (com shader)" } else { "" }), ShaderRow::Taa, false),
+            (format!("Nuvens: {}", if !self.settings.show_clouds { "Não" } else if self.settings.layered_clouds { "Em camadas" } else { "Simples" }), ShaderRow::Clouds, false),
+            (format!("Minérios brilhantes: {}", onoff(self.settings.emissive_textures)), ShaderRow::Emissive, false),
             (mark(cur.is_none(), "Desligado"), ShaderRow::Pack(None), false),
         ];
         for (i, p) in self.shader_packs.iter().enumerate() {
@@ -2068,8 +2083,8 @@ impl Game {
         let fits = (((h - top - 40.0 * s) / step).floor() as usize).max(4);
         let left: Vec<usize> = (0..rows.len()).filter(|&i| !rows[i].2).collect();
         let right: Vec<usize> = (0..rows.len()).filter(|&i| rows[i].2).collect();
-        // The first five rows always show; the pack list scrolls with the wheel.
-        let fixed = 5.min(left.len());
+        // The first rows (settings) always show; the pack list scrolls with the wheel.
+        let fixed = 10.min(left.len());
         let scroll_max = left.len().saturating_sub(fits);
         self.shader_scroll = self.shader_scroll.min(scroll_max);
         let mut hit = None;
@@ -2142,6 +2157,22 @@ impl Game {
                 self.apply_shader();
             }
             ShaderRow::Reload => self.reload_shader_packs(),
+            ShaderRow::Shadows => self.settings.shadows = (self.settings.shadows + 1) % 3,
+            ShaderRow::Reflections => self.settings.water_reflections = !self.settings.water_reflections,
+            ShaderRow::Taa => {
+                self.settings.taa = !self.settings.taa;
+                self.apply_shader();
+            }
+            ShaderRow::Clouds => {
+                // Off → simple → layered → off.
+                let st = &mut self.settings;
+                (st.show_clouds, st.layered_clouds) = match (st.show_clouds, st.layered_clouds) {
+                    (false, _) => (true, false),
+                    (true, false) => (true, true),
+                    (true, true) => (false, true),
+                };
+            }
+            ShaderRow::Emissive => self.settings.emissive_textures = !self.settings.emissive_textures,
             ShaderRow::Lod => {
                 let d = &lod::DISTANCES;
                 let cur = d.iter().position(|&x| x >= self.settings.lod_distance).unwrap_or(0);
@@ -2767,6 +2798,17 @@ impl Game {
             let y = self.world.surface_y(q.x, q.z).unwrap_or(q.y - 1) + 1;
             self.world.set_block(IVec3::new(q.x, y, q.z), g(n));
         }
+        // MC_CTM=1: a shelf wall and a row of ores in front, for connected and glowing textures.
+        if std::env::var("MC_CTM").is_ok() {
+            let ores = ["diamond_ore", "redstone_ore", "emerald_ore", "lapis_ore", "gold_ore", "iron_ore", "amethyst_block"];
+            for i in -3..=3 {
+                let q = base + side * i - dir * 2;
+                for h in 0..2 {
+                    self.world.set_block(q + IVec3::Y * h, g("bookshelf"));
+                }
+                self.world.set_block(q + IVec3::Y * 2, g(ores[(i + 3) as usize]));
+            }
+        }
     }
 
     /// Raindrops splashing on the ground and on water around the player.
@@ -3001,6 +3043,9 @@ impl Game {
         let s = self.ui.scale;
         let mouse = self.mouse_pos;
         let mut clicked_button: Option<usize> = None;
+        // Screenshots show things at rest.
+        let anim = juice::enabled(self.settings.ui_animations, self.args.screenshot.is_some());
+        self.surv.juice.tick(self.selected, anim);
 
         if self.screen == Screen::Loading {
             // The first loading frame shows the plain view so it can be captured as the backdrop.
@@ -3060,7 +3105,8 @@ impl Game {
                 self.draw_survival_hud(hx, hy, cell);
                 self.draw_mana(w);
             }
-            let sx = hx + self.selected as f32 * cell;
+            // The selector slides from slot to slot (Immersive UI idea).
+            let sx = (hx + self.surv.juice.selector() * cell).round();
             if !self.ui.sprite("sprites/hud/hotbar_selection", sx - 2.0 * s, hy - 2.0 * s, 24.0 * s, 23.0 * s) {
                 self.ui.frame(sx - s, hy - s, cell + 2.0 * s, cell + 2.0 * s, 2.0 * s, [255, 255, 255, 255]);
             }
@@ -3682,8 +3728,13 @@ impl Game {
             // w: the year for the seasons (mods/seasons.rs), 0 when off.
             weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else if end { 2.0 } else { self.mod_dim_uniform() }, self.season_uniform()],
             dyn_lights: self.dynamic_lights(eye, block),
+            extra: [self.settings.layered_clouds as u8 as f32, self.settings.emissive_textures as u8 as f32, 0.0, 0.0],
             ..Default::default()
         };
+        // Shadows and reflections (scenefx.rs); the renderer fills in the rest of the globals.
+        self.renderer.fx.level = self.settings.shadows.min(2);
+        self.renderer.fx.reflections = self.settings.water_reflections;
+        self.renderer.fx.fancy = self.settings.shader_quality == ShaderQuality::Fancy;
         let cam = Camera {
             block,
             frac: Vec3::from_slice(&g.cam_pos[..3]),
