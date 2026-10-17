@@ -73,6 +73,8 @@ ROLES = {
     "horse": ["body", "neck", "head", "ear", "ear", "mane", "tail", "leg", "leg", "leg", "leg"],
     "ooze": ["body"],
     "turtle": ["shell", "body", "head", "leg", "leg", "leg", "leg"],
+    "nightwing": ["body", "head", "wing", "wing", "tail"],
+    "deep_watcher": ["body", "eye", "spike", "spike", "spike", "spike", "tail"],
     "bee": ["body", "stinger", "wing", "wing"],
     "squid": ["body", "tentacle", "tentacle", "tentacle", "tentacle", "tentacle", "tentacle", "tentacle", "tentacle"],
     "dolphin": ["body", "head", "beak", "fin", "tail", "fin", "fin"],
@@ -94,6 +96,8 @@ HARDCODED = {
     "squid": [((12, 16, 12), (-6, 8, -6), (0, 0)), ((2, 10, 2), (3, -2, -1), (48, 0)), ((2, 10, 2), (2, -2, 2), (48, 0)), ((2, 10, 2), (-1, -2, 3), (48, 0)), ((2, 10, 2), (-4, -2, 2), (48, 0)), ((2, 10, 2), (-5, -2, -1), (48, 0)), ((2, 10, 2), (-4, -2, -4), (48, 0)), ((2, 10, 2), (-1, -2, -5), (48, 0)), ((2, 10, 2), (2, -2, -4), (48, 0))],
     "dolphin": [((8, 7, 16), (-4, 0, -8), (0, 0)), ((6, 5, 6), (-3, 1, 8), (0, 24)), ((2, 2, 4), (-1, 1, 14), (26, 24)), ((1, 4, 5), (0, 7, -2), (40, 24)), ((8, 1, 5), (-4, 2, -13), (0, 36)), ((5, 1, 3), (-9, 1, 2), (28, 36)), ((5, 1, 3), (4, 1, 2), (28, 36))],
     "axolotl": [((8, 4, 10), (-4, 1, -5), (0, 0)), ((8, 5, 5), (-4, 1, 5), (0, 16)), ((2, 4, 8), (-1, 1, -13), (28, 16)), ((3, 1, 2), (-6, 0, 2), (0, 28)), ((3, 1, 2), (3, 0, 2), (0, 28)), ((3, 1, 2), (-6, 0, -4), (0, 28)), ((3, 1, 2), (3, 0, -4), (0, 28)), ((10, 3, 1), (-5, 5, 8), (20, 28))],
+    "nightwing": [((6, 3, 10), (-3, 4, -5), (0, 0)), ((6, 3, 4), (-3, 4, 5), (0, 14)), ((12, 1, 8), (-15, 6, -4), (0, 22)), ((12, 1, 8), (3, 6, -4), (0, 22)), ((3, 2, 6), (-1, 4, -11), (40, 0))],
+    "deep_watcher": [((12, 12, 12), (-6, 2, -6), (0, 0)), ((4, 4, 1), (-2, 6, 6), (48, 0)), ((1, 8, 1), (-7, 10, -7), (48, 8)), ((1, 8, 1), (6, 10, -7), (48, 8)), ((1, 8, 1), (-7, 10, 6), (48, 8)), ((1, 8, 1), (6, 10, 6), (48, 8)), ((4, 4, 8), (-2, 6, -14), (0, 26))],
     "turtle": [((12, 4, 14), (-6, 4, -7), (0, 0)), ((10, 3, 12), (-5, 1, -6), (0, 18)), ((4, 4, 5), (-2, 2, 6), (0, 34)), ((3, 2, 3), (-6, 0, -6), (20, 34)), ((3, 2, 3), (3, 0, -6), (20, 34)), ((3, 2, 3), (-6, 0, 3), (20, 34)), ((3, 2, 3), (3, 0, 3), (20, 34))],
     "pig": [((10, 8, 16), (-5, 6, -8), (0, 0)), ((8, 8, 8), (-4, 8, 7), (0, 24)),
             ((4, 3, 1), (-2, 9, 15), (32, 24)), ((4, 6, 4), (-5, 0, -7), (0, 40)),
@@ -165,7 +169,7 @@ for _n in ("npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", 
 
 # `layers` per mob as (part index, inflate), mirroring mobs.ron (checked).
 HARDCODED_LAYERS = {
-    "horse": [], "ooze": [], "turtle": [], "bee": [], "squid": [], "dolphin": [], "axolotl": [],
+    "horse": [], "ooze": [], "turtle": [], "bee": [], "squid": [], "nightwing": [], "deep_watcher": [], "dolphin": [], "axolotl": [],
     "pig": [(0, 0.5), (1, 0.5)],
     "cow": [(0, 0.6), (1, 0.5)],
     "sheep": [(0, 1.5), (1, 1.0), (2, 0.6), (3, 0.6), (4, 0.6), (5, 0.6)],
@@ -1518,6 +1522,11 @@ HORSE_HOOF = pal("#1e1814", "#2a221c", "#36302a")
 OOZE = pal("#3a8a2a", "#4aa034", "#5ab43e", "#6ac84a", "#7ad858")
 OOZE_DARK = pal("#1a4a12", "#24601a")
 TURTLE_SHELL = pal("#1e3a14", "#2a4e1c", "#3a6426", "#4a7a30")
+NIGHTWING = pal("#1a2232", "#222c40", "#2a364e", "#34405c")
+NIGHTWING_WING = pal("#141a26", "#1c2434", "#242e42")
+WATCHER = pal("#2a5a52", "#326a60", "#3c7a6e", "#468a7c", "#529a8a")
+WATCHER_SPIKE = pal("#a05a20", "#c07028", "#d88a34")
+WATCHER_EYE = pal("#e8e0c0", "#f0ead0")
 SQUID = pal("#1a2a4a", "#24365c", "#2e426e", "#3a5080", "#465e92")
 DOLPHIN = pal("#5a6a7a", "#6a7a8a", "#7a8a9a", "#8a9aaa", "#9aaaba")
 DOLPHIN_DARK = pal("#3a4654", "#465464", "#526274")
@@ -1817,6 +1826,8 @@ PAINTERS = {
     "ooze": simple_painter({"*": "OOZE"}, eyes="body"),
     "turtle": simple_painter({"*": "TURTLE_SKIN", "shell": "TURTLE_SHELL"}),
     "bee": paint_bee,
+    "nightwing": simple_painter({"*": "NIGHTWING", "wing": "NIGHTWING_WING"}),
+    "deep_watcher": simple_painter({"*": "WATCHER", "spike": "WATCHER_SPIKE", "eye": "WATCHER_EYE", "tail": "WATCHER"}, eyes="none"),
     "squid": simple_painter({"*": "SQUID"}, eyes="body"),
     "dolphin": simple_painter({"*": "DOLPHIN", "fin": "DOLPHIN_DARK", "tail": "DOLPHIN_DARK"}),
     "axolotl": simple_painter({"*": "AXOLOTL", "gills": "AXOLOTL_GILLS"}),
@@ -2165,7 +2176,7 @@ OVERLAYS = {
     "deer": overlay_deer, "fox": overlay_fox, "rabbit": overlay_rabbit, "bear": overlay_bear,
     "duck": overlay_duck, "forest_guardian": overlay_forest_guardian,
     "horse": lambda c: None, "ooze": lambda c: None, "turtle": lambda c: None,
-    "bee": lambda c: None, "squid": lambda c: None, "dolphin": lambda c: None, "axolotl": lambda c: None,
+    "bee": lambda c: None, "nightwing": lambda c: None, "deep_watcher": lambda c: None, "squid": lambda c: None, "dolphin": lambda c: None, "axolotl": lambda c: None,
 }
 for _n in TOWNSFOLK:
     OVERLAYS[_n] = townsfolk(_n, overlay_player)
@@ -2260,7 +2271,7 @@ def main():
              "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
              "goblin_trader", "mutant_zombie", "npc_guard", "settler_farmer", "settler_smith", "settler_librarian", "settler_shepherd", "sentinel", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton",
              "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay", "lich", "obsidilith", "void_blossom", "marauder", "invoker", "brute", "ember_wraith", "void_walker_desert", "void_walker_snowy", "void_walker_swamp", "void_walker_savanna", "void_walker_crimson", "void_walker_soul",
-             "horse", "donkey", "llama", "camel", "wolf", "cat", "goat", "panda", "parrot", "frog", "turtle", "bee", "squid", "dolphin", "axolotl", "ooze", "mummy", "sunken", "frost_archer", "wolf_tame", "cat_tame"]
+             "horse", "donkey", "llama", "camel", "wolf", "cat", "goat", "panda", "parrot", "frog", "turtle", "bee", "squid", "dolphin", "axolotl", "nightwing", "deep_watcher", "ooze", "mummy", "sunken", "frost_archer", "wolf_tame", "cat_tame"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols

@@ -560,12 +560,18 @@ impl Mob {
             self.body.flying = true;
             wish *= def.speed / crate::physics::FLY_SPEED;
             let mut over = 0;
-            while over < 6 && !world.solid((self.body.pos - Vec3::Y * (over as f32 + 0.5)).floor().as_ivec3()) && !world.liquid((self.body.pos - Vec3::Y * (over as f32 + 0.5)).floor().as_ivec3()) {
+            while over < 14 && !world.solid((self.body.pos - Vec3::Y * (over as f32 + 0.5)).floor().as_ivec3()) && !world.liquid((self.body.pos - Vec3::Y * (over as f32 + 0.5)).floor().as_ivec3()) {
                 over += 1;
             }
-            let want = 2.0 + (self.age * 0.7 + self.phase).sin() * 1.0;
-            jump = (over as f32) < want;
-            sneak = (over as f32) > want + 1.0;
+            if self.aggro && !player_creative {
+                // Swooping down on the player.
+                jump = to_player.y > 0.4;
+                sneak = to_player.y < -0.4;
+            } else {
+                let want = 2.0 + (self.age * 0.7 + self.phase).sin() * 1.0 + if def.kind == Kind::Hostile { 8.0 } else { 0.0 };
+                jump = (over as f32) < want;
+                sneak = (over as f32) > want + 1.0;
+            }
         } else if def.aquatic {
             if self.body.in_water {
                 // Stay under: dive when near the surface, rise from the bottom.
