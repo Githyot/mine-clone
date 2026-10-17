@@ -94,7 +94,7 @@ impl Terraria {
         for (i, st) in s.acc.iter().enumerate().take(ACC_SLOTS) {
             if let Some((name, count, damage)) = st {
                 if let Some(id) = items.id(name) {
-                    t.acc[i] = Some(ItemStack { item: id, count: *count, damage: *damage });
+                    t.acc[i] = Some(ItemStack { item: id, count: *count, damage: *damage, ench: Default::default() });
                 }
             }
         }

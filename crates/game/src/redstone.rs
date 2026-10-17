@@ -185,7 +185,7 @@ impl Redstone {
                     _ => match base {
                         "redstone_torch" => Kind::Torch(true),
                         "redstone_torch_off" => Kind::Torch(false),
-                        "redstone_block" => Kind::Block,
+                        "redstone_block" | "sculk_sensor_active" | "calibrated_sculk_sensor_active" => Kind::Block,
                         "redstone_lamp" => Kind::Lamp(false),
                         "redstone_lamp_on" => Kind::Lamp(true),
                         "tnt" => Kind::Tnt,

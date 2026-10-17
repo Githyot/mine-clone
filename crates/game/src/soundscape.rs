@@ -284,7 +284,7 @@ impl Game {
         self.mob_voices(dt);
         self.scan_emitters(dt);
         self.ambience(dt);
-        self.update_effects(dt);
+        self.update_fx(dt);
         // Delayed sounds (a drop landing after its fall).
         let mut due = Vec::new();
         self.fx.pending.retain_mut(|p| {

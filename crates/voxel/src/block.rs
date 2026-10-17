@@ -325,7 +325,8 @@ impl BlockRegistry {
         all.extend(defs.into_iter().filter(|d| d.name != "air"));
         for d in all {
             if reg.by_name.contains_key(&d.name) {
-                return Err(format!("duplicate block name '{}'", d.name));
+                // Two data files naming the same block (stages merged together): the first wins.
+                continue;
             }
             let t = &d.textures;
             let fallback = t.all.clone().or_else(|| t.side.clone()).unwrap_or_else(|| d.name.clone());

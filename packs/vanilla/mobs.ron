@@ -853,7 +853,7 @@
     ),
     (
         name: "deep_watcher", display_name: "Vigia das Profundezas", kind: Hostile, health: 30, speed: 1.6,
-        drops: [(item: "cod", min: 0, max: 2)], xp: 10,
+        drops: [(item: "cod", min: 0, max: 2), (item: "prismarine_shard", min: 0, max: 2)], xp: 10,
         width: 0.85, height: 0.85, spawn: Water, weight: 2, attack: 4, ranged: true, aquatic: true, scale: 0.8,
         biomes: ["Ocean", "Frozen Ocean"],
         parts: [

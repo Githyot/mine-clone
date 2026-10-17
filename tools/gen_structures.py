@@ -676,7 +676,7 @@ def nether_fortress():
         "palette": {"N": "nether_bricks", "f": "nether_brick_fence", "B": "iron_bars", "c": "chest", "L": "shroomlight",
                     "Z": "soul_sand", "w": "nether_wart_stage3"},
         "layers": [rows(l) for l in layers],
-        "loot": [("", "gold_ingot", 2, 6, 0.6), ("", "diamond", 1, 2, 0.25), ("", "iron_ingot", 2, 5, 0.5),
+        "loot": [("", "gold_ingot", 2, 6, 0.6), ("", "netherite_upgrade_smithing_template", 1, 1, 0.15), ("", "diamond", 1, 2, 0.25), ("", "iron_ingot", 2, 5, 0.5),
                  ("", "blaze_rod", 1, 3, 0.4), ("", "obsidian", 2, 5, 0.3), ("", "fire_staff", 1, 1, 0.08),
                  ("", "life_crystal", 1, 1, 0.12)],
     }
@@ -1270,7 +1270,7 @@ def bastion():
                     "C": "cracked_polished_blackstone_bricks", "g": "gilded_blackstone", "S": "basalt",
                     "G": "gold_block", "c": "chest", "L": "shroomlight", "M": "magma_block"},
         "layers": [rows(l) for l in layers],
-        "loot": [("", "gold_ingot", 3, 9, 0.8), ("", "gold_block", 1, 2, 0.25), ("", "netherite_scrap", 1, 1, 0.2),
+        "loot": [("", "gold_ingot", 3, 9, 0.8), ("", "gold_block", 1, 2, 0.25), ("", "netherite_scrap", 1, 1, 0.2), ("", "netherite_upgrade_smithing_template", 1, 1, 0.5),
                  ("", "ancient_debris", 1, 1, 0.15), ("", "golden_helmet", 1, 1, 0.2), ("", "golden_chestplate", 1, 1, 0.15),
                  ("", "crying_obsidian", 1, 4, 0.3), ("", "diamond", 1, 2, 0.12), ("", "gold_nugget", 5, 15, 0.6),
                  ("", "magma_cream", 2, 5, 0.3)],

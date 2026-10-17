@@ -495,6 +495,7 @@
         ],
         loot: [
             (item: "gold_ingot", min: 2, max: 6, chance: 0.6),
+            (item: "netherite_upgrade_smithing_template", min: 1, max: 1, chance: 0.15),
             (item: "diamond", min: 1, max: 2, chance: 0.25),
             (item: "iron_ingot", min: 2, max: 5, chance: 0.5),
             (item: "blaze_rod", min: 1, max: 3, chance: 0.4),
@@ -1080,6 +1081,7 @@
             (item: "gold_ingot", min: 3, max: 9, chance: 0.8),
             (item: "gold_block", min: 1, max: 2, chance: 0.25),
             (item: "netherite_scrap", min: 1, max: 1, chance: 0.2),
+            (item: "netherite_upgrade_smithing_template", min: 1, max: 1, chance: 0.5),
             (item: "ancient_debris", min: 1, max: 1, chance: 0.15),
             (item: "golden_helmet", min: 1, max: 1, chance: 0.2),
             (item: "golden_chestplate", min: 1, max: 1, chance: 0.15),

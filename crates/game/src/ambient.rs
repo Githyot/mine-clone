@@ -41,6 +41,7 @@ impl Game {
         let want = match kind {
             "frozen" => CaveBiome::Frozen,
             "dripstone" => CaveBiome::Dripstone,
+            "deep_dark" => CaveBiome::DeepDark,
             _ => CaveBiome::Lush,
         };
         let me = self.body.pos.floor().as_ivec3();

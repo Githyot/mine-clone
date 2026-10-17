@@ -1,453 +1,800 @@
-//! Visual effects of the immersion stage: dust kicked up by running and landing, sparks when a
-//! mob is hit and a puff of smoke when it dies, drops falling from wet ceilings, lava spitting,
-//! breath fogging in the cold, lightning bolts you can see, morning and swamp mist, a soft
-//! vignette (red and pulsing at low health, blue under water, orange in lava) and a little
-//! camera shake for blasts and hard landings. All of it is cheap: a few particles and some
-//! translucent rectangles. Turning view bobbing off also turns the shake off.
+//! Status effects (Phase 6): what potions, beacons, conduits, food and some monsters do to the
+//! player for a while — faster or slower, stronger, harder to hurt, breathing under water,
+//! poisoned, blinded... — the potions themselves (drunk, thrown or left as a cloud), and the
+//! icons down the right side of the screen.
 
 use glam::Vec3;
-use voxel::worldgen::{Biome, Dim};
-use voxel::AIR;
+use voxel::item::ItemStack;
 
+use crate::audio::{Material, Sfx};
 use crate::Game;
-use crate::Screen;
+
+pub const SPEED: u8 = 1;
+pub const SLOWNESS: u8 = 2;
+pub const HASTE: u8 = 3;
+pub const MINING_FATIGUE: u8 = 4;
+pub const STRENGTH: u8 = 5;
+pub const INSTANT_HEALTH: u8 = 6;
+pub const INSTANT_DAMAGE: u8 = 7;
+pub const JUMP_BOOST: u8 = 8;
+pub const NAUSEA: u8 = 9;
+pub const REGENERATION: u8 = 10;
+pub const RESISTANCE: u8 = 11;
+pub const FIRE_RESISTANCE: u8 = 12;
+pub const WATER_BREATHING: u8 = 13;
+pub const INVISIBILITY: u8 = 14;
+pub const BLINDNESS: u8 = 15;
+pub const NIGHT_VISION: u8 = 16;
+pub const HUNGER: u8 = 17;
+pub const WEAKNESS: u8 = 18;
+pub const POISON: u8 = 19;
+pub const WITHER: u8 = 20;
+pub const HEALTH_BOOST: u8 = 21;
+pub const ABSORPTION: u8 = 22;
+pub const SATURATION: u8 = 23;
+pub const GLOWING: u8 = 24;
+pub const LEVITATION: u8 = 25;
+pub const LUCK: u8 = 26;
+pub const UNLUCK: u8 = 27;
+pub const SLOW_FALLING: u8 = 28;
+pub const CONDUIT_POWER: u8 = 29;
+pub const DOLPHINS_GRACE: u8 = 30;
+pub const BAD_OMEN: u8 = 31;
+pub const HERO: u8 = 32;
+pub const DARKNESS: u8 = 33;
+pub const TRIAL_OMEN: u8 = 34;
+pub const RAID_OMEN: u8 = 35;
+pub const WIND_CHARGED: u8 = 36;
+pub const WEAVING: u8 = 37;
+pub const OOZING: u8 = 38;
+pub const INFESTED: u8 = 39;
+pub const BREATH_OF_THE_NAUTILUS: u8 = 40;
+
+/// Name, colour (for the icon, particles and the potion), harmful.
+pub fn info(id: u8) -> (&'static str, [u8; 3], bool) {
+    match id {
+        SPEED => ("Velocidade", [51, 235, 255], false),
+        SLOWNESS => ("Lentidão", [139, 175, 224], true),
+        HASTE => ("Pressa", [217, 192, 67], false),
+        MINING_FATIGUE => ("Fadiga de Mineração", [74, 66, 23], true),
+        STRENGTH => ("Força", [255, 199, 0], false),
+        INSTANT_HEALTH => ("Vida Instantânea", [248, 36, 35], false),
+        INSTANT_DAMAGE => ("Dano Instantâneo", [169, 101, 106], true),
+        JUMP_BOOST => ("Super Pulo", [253, 255, 132], false),
+        NAUSEA => ("Náusea", [85, 29, 74], true),
+        REGENERATION => ("Regeneração", [205, 92, 171], false),
+        RESISTANCE => ("Resistência", [145, 70, 240], false),
+        FIRE_RESISTANCE => ("Resistência ao Fogo", [255, 153, 0], false),
+        WATER_BREATHING => ("Respiração Aquática", [152, 218, 192], false),
+        INVISIBILITY => ("Invisibilidade", [246, 246, 246], false),
+        BLINDNESS => ("Cegueira", [31, 31, 35], true),
+        NIGHT_VISION => ("Visão Noturna", [194, 255, 102], false),
+        HUNGER => ("Fome", [88, 118, 83], true),
+        WEAKNESS => ("Fraqueza", [72, 77, 72], true),
+        POISON => ("Veneno", [135, 163, 99], true),
+        WITHER => ("Murchar", [115, 97, 86], true),
+        HEALTH_BOOST => ("Vida Extra", [248, 125, 35], false),
+        ABSORPTION => ("Absorção", [37, 82, 165], false),
+        SATURATION => ("Saturação", [248, 36, 35], false),
+        GLOWING => ("Brilho", [148, 160, 97], false),
+        LEVITATION => ("Levitação", [206, 255, 255], true),
+        LUCK => ("Sorte", [89, 193, 6], false),
+        UNLUCK => ("Azar", [192, 164, 77], true),
+        SLOW_FALLING => ("Queda Lenta", [243, 207, 185], false),
+        CONDUIT_POWER => ("Poder do Conduíte", [29, 194, 209], false),
+        DOLPHINS_GRACE => ("Graça do Golfinho", [136, 163, 190], false),
+        BAD_OMEN => ("Mau Presságio", [11, 97, 56], true),
+        HERO => ("Herói da Vila", [68, 255, 68], false),
+        DARKNESS => ("Escuridão", [41, 39, 33], true),
+        TRIAL_OMEN => ("Presságio do Desafio", [22, 166, 166], true),
+        RAID_OMEN => ("Presságio de Invasão", [222, 64, 88], true),
+        WIND_CHARGED => ("Carregado de Vento", [189, 201, 255], true),
+        WEAVING => ("Tecelagem", [120, 105, 90], true),
+        OOZING => ("Gosma", [153, 255, 163], true),
+        INFESTED => ("Infestação", [140, 155, 140], true),
+        BREATH_OF_THE_NAUTILUS => ("Fôlego do Náutilo", [0, 140, 160], false),
+        _ => ("?", [200, 200, 200], false),
+    }
+}
+
+pub const ALL: u8 = 40;
+
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Active {
+    pub id: u8,
+    /// 0 = level I.
+    pub amp: u8,
+    /// Seconds left.
+    pub time: f32,
+    /// From a beacon or conduit: no particles, refreshed while near.
+    #[serde(default)]
+    pub ambient: bool,
+}
+
+/// One potion: its item name stem, the effects it gives (id, amplifier, seconds), colour.
+pub struct PotionDef {
+    pub key: &'static str,
+    pub name: &'static str,
+    pub effects: &'static [(u8, u8, f32)],
+}
+
+macro_rules! p {
+    ($k:expr, $n:expr, [$(($e:expr, $a:expr, $t:expr)),*]) => {
+        PotionDef { key: $k, name: $n, effects: &[$(($e, $a, $t)),*] }
+    };
+}
+
+/// Every potion, by the stem of its items (`potion_<key>`, `splash_potion_<key>`,
+/// `lingering_potion_<key>`, `tipped_arrow_<key>`). `tools/gen_fase6.py` makes the items.
+pub static POTIONS: &[PotionDef] = &[
+    p!("water", "Garrafa de Água", []),
+    p!("mundane", "Poção Mundana", []),
+    p!("thick", "Poção Grossa", []),
+    p!("awkward", "Poção Estranha", []),
+    p!("night_vision", "Poção de Visão Noturna", [(NIGHT_VISION, 0, 180.0)]),
+    p!("long_night_vision", "Poção de Visão Noturna (longa)", [(NIGHT_VISION, 0, 480.0)]),
+    p!("invisibility", "Poção de Invisibilidade", [(INVISIBILITY, 0, 180.0)]),
+    p!("long_invisibility", "Poção de Invisibilidade (longa)", [(INVISIBILITY, 0, 480.0)]),
+    p!("leaping", "Poção de Salto", [(JUMP_BOOST, 0, 180.0)]),
+    p!("long_leaping", "Poção de Salto (longa)", [(JUMP_BOOST, 0, 480.0)]),
+    p!("strong_leaping", "Poção de Salto II", [(JUMP_BOOST, 1, 90.0)]),
+    p!("fire_resistance", "Poção de Resistência ao Fogo", [(FIRE_RESISTANCE, 0, 180.0)]),
+    p!("long_fire_resistance", "Poção de Resistência ao Fogo (longa)", [(FIRE_RESISTANCE, 0, 480.0)]),
+    p!("swiftness", "Poção de Velocidade", [(SPEED, 0, 180.0)]),
+    p!("long_swiftness", "Poção de Velocidade (longa)", [(SPEED, 0, 480.0)]),
+    p!("strong_swiftness", "Poção de Velocidade II", [(SPEED, 1, 90.0)]),
+    p!("slowness", "Poção de Lentidão", [(SLOWNESS, 0, 90.0)]),
+    p!("long_slowness", "Poção de Lentidão (longa)", [(SLOWNESS, 0, 240.0)]),
+    p!("strong_slowness", "Poção de Lentidão IV", [(SLOWNESS, 3, 20.0)]),
+    p!("turtle_master", "Poção do Mestre Tartaruga", [(SLOWNESS, 3, 20.0), (RESISTANCE, 2, 20.0)]),
+    p!("long_turtle_master", "Poção do Mestre Tartaruga (longa)", [(SLOWNESS, 3, 40.0), (RESISTANCE, 2, 40.0)]),
+    p!("strong_turtle_master", "Poção do Mestre Tartaruga II", [(SLOWNESS, 5, 20.0), (RESISTANCE, 3, 20.0)]),
+    p!("water_breathing", "Poção de Respiração Aquática", [(WATER_BREATHING, 0, 180.0)]),
+    p!("long_water_breathing", "Poção de Respiração Aquática (longa)", [(WATER_BREATHING, 0, 480.0)]),
+    p!("healing", "Poção de Cura", [(INSTANT_HEALTH, 0, 0.0)]),
+    p!("strong_healing", "Poção de Cura II", [(INSTANT_HEALTH, 1, 0.0)]),
+    p!("harming", "Poção de Dano", [(INSTANT_DAMAGE, 0, 0.0)]),
+    p!("strong_harming", "Poção de Dano II", [(INSTANT_DAMAGE, 1, 0.0)]),
+    p!("poison", "Poção de Veneno", [(POISON, 0, 45.0)]),
+    p!("long_poison", "Poção de Veneno (longa)", [(POISON, 0, 90.0)]),
+    p!("strong_poison", "Poção de Veneno II", [(POISON, 1, 21.6)]),
+    p!("regeneration", "Poção de Regeneração", [(REGENERATION, 0, 45.0)]),
+    p!("long_regeneration", "Poção de Regeneração (longa)", [(REGENERATION, 0, 90.0)]),
+    p!("strong_regeneration", "Poção de Regeneração II", [(REGENERATION, 1, 22.5)]),
+    p!("strength", "Poção de Força", [(STRENGTH, 0, 180.0)]),
+    p!("long_strength", "Poção de Força (longa)", [(STRENGTH, 0, 480.0)]),
+    p!("strong_strength", "Poção de Força II", [(STRENGTH, 1, 90.0)]),
+    p!("weakness", "Poção de Fraqueza", [(WEAKNESS, 0, 90.0)]),
+    p!("long_weakness", "Poção de Fraqueza (longa)", [(WEAKNESS, 0, 240.0)]),
+    p!("luck", "Poção da Sorte", [(LUCK, 0, 300.0)]),
+    p!("slow_falling", "Poção de Queda Lenta", [(SLOW_FALLING, 0, 90.0)]),
+    p!("long_slow_falling", "Poção de Queda Lenta (longa)", [(SLOW_FALLING, 0, 240.0)]),
+    p!("wind_charged", "Poção Carregada de Vento", [(WIND_CHARGED, 0, 180.0)]),
+    p!("weaving", "Poção de Tecelagem", [(WEAVING, 0, 180.0)]),
+    p!("oozing", "Poção de Gosma", [(OOZING, 0, 180.0)]),
+    p!("infested", "Poção de Infestação", [(INFESTED, 0, 180.0)]),
+];
+
+pub fn potion(key: &str) -> Option<&'static PotionDef> {
+    POTIONS.iter().find(|p| p.key == key)
+}
+
+/// How a potion item is used, and which potion it holds.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Form {
+    Drink,
+    Splash,
+    Lingering,
+    Arrow,
+}
+
+pub fn potion_of(item_name: &str) -> Option<(Form, &'static PotionDef)> {
+    let (form, key) = if let Some(k) = item_name.strip_prefix("splash_potion_") {
+        (Form::Splash, k)
+    } else if let Some(k) = item_name.strip_prefix("lingering_potion_") {
+        (Form::Lingering, k)
+    } else if let Some(k) = item_name.strip_prefix("tipped_arrow_") {
+        (Form::Arrow, k)
+    } else if let Some(k) = item_name.strip_prefix("potion_") {
+        (Form::Drink, k)
+    } else {
+        return None;
+    };
+    potion(key).map(|p| (form, p))
+}
+
+/// Seconds as "m:ss".
+pub fn clock(t: f32) -> String {
+    if !t.is_finite() || t > 35999.0 {
+        return "**:**".into();
+    }
+    let s = t.max(0.0) as u32;
+    format!("{}:{:02}", s / 60, s % 60)
+}
+
+/// Undead mobs: healing hurts them and harming heals them.
+pub fn undead(name: &str) -> bool {
+    matches!(name, "zombie" | "skeleton" | "lich" | "ember_wraith" | "nether_zombie" | "ash_skeleton" | "mutant_zombie" | "mutant_skeleton" | "husk" | "stray" | "drowned" | "wither_skeleton" | "bogged")
+}
+
+/// A lingering potion's cloud on the ground.
+pub struct Cloud {
+    pub pos: Vec3,
+    pub radius: f32,
+    pub time: f32,
+    pub effects: &'static [(u8, u8, f32)],
+    pub color: [u8; 3],
+    pub tick: f32,
+}
+
+/// A thrown potion in flight.
+pub struct Thrown {
+    pub pos: Vec3,
+    pub vel: Vec3,
+    pub potion: &'static PotionDef,
+    pub lingering: bool,
+}
+
+pub fn potion_color(p: &PotionDef) -> [u8; 3] {
+    if p.effects.is_empty() {
+        return [56, 92, 196];
+    }
+    let mut c = [0u32; 3];
+    for &(e, _, _) in p.effects {
+        let k = info(e).1;
+        for i in 0..3 {
+            c[i] += k[i] as u32;
+        }
+    }
+    let n = p.effects.len() as u32;
+    [(c[0] / n) as u8, (c[1] / n) as u8, (c[2] / n) as u8]
+}
 
 impl Game {
+    pub(crate) fn has_effect(&self, id: u8) -> bool {
+        self.prog.effects.iter().any(|e| e.id == id)
+    }
+
+    /// Amplifier + 1 (0 when the effect is not on).
+    pub(crate) fn effect_level(&self, id: u8) -> u32 {
+        self.prog.effects.iter().filter(|e| e.id == id).map(|e| e.amp as u32 + 1).max().unwrap_or(0)
+    }
+
+    /// Put an effect on the player. A stronger one replaces a weaker; the same strength keeps the
+    /// longer time. Instant effects act at once.
+    pub(crate) fn add_effect(&mut self, id: u8, amp: u8, secs: f32, ambient: bool) {
+        if !self.survival && matches!(id, INSTANT_DAMAGE | POISON | WITHER | HUNGER) {
+            return;
+        }
+        match id {
+            INSTANT_HEALTH => {
+                self.health = (self.health + (4u32 << amp.min(5)) as f32).min(self.max_health);
+                return;
+            }
+            INSTANT_DAMAGE => {
+                self.damage((6u32 << amp.min(5)) as f32, None);
+                return;
+            }
+            SATURATION if secs <= 1.0 => {
+                self.surv.hunger = (self.surv.hunger + (amp as f32 + 1.0)).min(20.0);
+                self.surv.saturation = (self.surv.saturation + 2.0 * (amp as f32 + 1.0)).min(self.surv.hunger);
+                return;
+            }
+            _ => {}
+        }
+        if let Some(e) = self.prog.effects.iter_mut().find(|e| e.id == id) {
+            if amp > e.amp || (amp == e.amp && secs > e.time) {
+                let old = e.amp;
+                e.amp = amp;
+                e.time = secs;
+                e.ambient = ambient;
+                if id == HEALTH_BOOST && amp != old {
+                    self.max_health += 4.0 * (amp as f32 - old as f32);
+                }
+                if id == ABSORPTION {
+                    self.prog.absorb = self.prog.absorb.max(4.0 * (amp as f32 + 1.0));
+                }
+            }
+            return;
+        }
+        self.prog.effects.push(Active { id, amp, time: secs, ambient });
+        match id {
+            HEALTH_BOOST => self.max_health += 4.0 * (amp as f32 + 1.0),
+            ABSORPTION => self.prog.absorb = self.prog.absorb.max(4.0 * (amp as f32 + 1.0)),
+            _ => {}
+        }
+    }
+
+    fn effect_ended(&mut self, e: &Active) {
+        match e.id {
+            HEALTH_BOOST => {
+                self.max_health = (self.max_health - 4.0 * (e.amp as f32 + 1.0)).max(2.0);
+                self.health = self.health.min(self.max_health);
+            }
+            ABSORPTION => self.prog.absorb = 0.0,
+            _ => {}
+        }
+    }
+
+    /// Milk (and the totem, when there is one): every effect goes away.
+    pub(crate) fn clear_effects(&mut self) {
+        let list = std::mem::take(&mut self.prog.effects);
+        for e in &list {
+            self.effect_ended(e);
+        }
+    }
+
+    /// Each frame: count effects down and do what they do over time.
     pub(crate) fn update_effects(&mut self, dt: f32) {
-        // Hits shake the view a little, more for a big one.
-        let lost = self.fx.prev_health - self.health;
-        if self.survival && lost > 0.5 {
-            self.fx.shake = self.fx.shake.max((lost / 8.0).min(0.6));
-        }
-        self.fx.prev_health = self.health;
-
-        // Dust kicked up while running.
-        let flat = (self.body.vel * Vec3::new(1.0, 0.0, 1.0)).length();
-        if self.sprinting && self.body.on_ground && !self.body.in_water && !self.body.flying {
-            self.fx.dust_dist += flat * dt;
-            if self.fx.dust_dist > 1.3 {
-                self.fx.dust_dist = 0.0;
-                self.kick_dust(3, 0.3);
-            }
-        }
-
-        // Breath fogging in the cold.
-        let eye = self.body.eye();
-        let biome = self
-            .world
-            .gen
-            .biome_at(eye.x.floor() as i32, eye.z.floor() as i32);
-        let cold = self.dim == Dim::Overworld
-            && (matches!(biome, Biome::Snowy | Biome::Taiga) || eye.y > 150.0);
-        if cold && !self.body.head_in_water {
-            self.fx.breath_t -= dt;
-            if self.fx.breath_t <= 0.0 {
-                self.fx.breath_t = 2.6 + self.fx.rand() * 1.2;
-                let f = self.forward();
-                let at = eye + f * 0.45 - Vec3::Y * 0.15;
-                let (layer, _) = self.block_look(self.reg.id_or_air("white_wool"));
-                for _ in 0..5 {
-                    let j = Vec3::new(
-                        self.fx.rand() - 0.5,
-                        self.fx.rand() - 0.5,
-                        self.fx.rand() - 0.5,
-                    ) * 0.12;
-                    self.particles
-                        .mote(at + j, layer, [0.95, 0.97, 1.0], 0.035, -0.25, 1.1);
-                }
-            }
-        }
-
-        // A lightning bolt to go with the flash and the thunder.
-        if let Some(close) = self.weather.thunder_sound {
-            self.lightning_bolt(close, None);
-        }
-    }
-
-    /// A few bits of the ground under the player's feet thrown up.
-    fn kick_dust(&mut self, count: usize, burst: f32) {
-        let feet = self.body.pos.floor().as_ivec3();
-        let below = self.world.block_or_air(feet - glam::IVec3::Y);
-        if below == AIR || self.world.is_liquid(below) {
+        if dt <= 0.0 || self.screen == crate::Screen::Dead {
             return;
         }
-        let (layer, tint) = self.block_look(below);
-        self.particles.block_bits(feet, layer, tint, count, burst);
-    }
-
-    /// Landing after a fall: a ring of dust, bigger the harder the landing.
-    pub(crate) fn land_dust(&mut self, k: f32) {
-        self.kick_dust(4 + (k * 14.0) as usize, 0.5 + k * 0.6);
-    }
-
-    /// Sparks off a hit mob, or a puff of smoke where one died.
-    pub(crate) fn mob_hit_fx(&mut self, at: Vec3, height: f32, died: bool) {
-        let glow = self.glow_layer();
-        if died {
-            let (layer, _) = self.block_look(self.reg.id_or_air("white_wool"));
-            for _ in 0..12 {
-                let j = Vec3::new(
-                    self.fx.rand() - 0.5,
-                    self.fx.rand() * height - height * 0.6,
-                    self.fx.rand() - 0.5,
-                );
-                self.particles
-                    .mote(at + j, layer, [0.8, 0.8, 0.8], 0.09, -0.5, 1.3);
-            }
-        } else {
-            for _ in 0..6 {
-                let v = Vec3::new(
-                    self.fx.rand() - 0.5,
-                    self.fx.rand() * 0.8,
-                    self.fx.rand() - 0.5,
-                ) * 4.0;
-                self.particles
-                    .glow(at, v, glow, [1.0, 0.75, 0.4], 0.03, 0.35);
+        // Conduit power is water breathing and night vision under water, and digs faster.
+        let mut ended = Vec::new();
+        for e in self.prog.effects.iter_mut() {
+            e.time -= dt;
+            if e.time <= 0.0 {
+                ended.push(*e);
             }
         }
-    }
-
-    /// Lava throwing up a few embers as a bubble bursts.
-    pub(crate) fn lava_spit(&mut self, at: Vec3) {
-        let glow = self.glow_layer();
-        for _ in 0..3 {
-            let v = Vec3::new(
-                self.fx.rand() - 0.5,
-                2.5 + self.fx.rand() * 2.0,
-                self.fx.rand() - 0.5,
-            );
-            self.particles
-                .glow(at, v, glow, [1.0, 0.5, 0.12], 0.045, 0.9);
+        self.prog.effects.retain(|e| e.time > 0.0);
+        for e in &ended {
+            self.effect_ended(e);
         }
-    }
-
-    /// Smoke drifting up from a fire.
-    pub(crate) fn smoke(&mut self, at: Vec3, count: usize) {
-        let (layer, _) = self.block_look(self.reg.id_or_air("stone"));
-        for _ in 0..count {
-            let j = Vec3::new(self.fx.rand() - 0.5, 0.0, self.fx.rand() - 0.5) * 0.4;
-            self.particles
-                .mote(at + j, layer, [0.3, 0.3, 0.3], 0.08, -0.6, 2.5);
-        }
-    }
-
-    /// One drop falling from a ceiling (water, or glowing lava in the Nether).
-    pub(crate) fn drip_particle(&mut self, at: Vec3, lava: bool) {
-        if lava {
-            let glow = self.glow_layer();
-            self.particles.glow(
-                at,
-                Vec3::new(0.0, -5.0, 0.0),
-                glow,
-                [1.0, 0.45, 0.1],
-                0.035,
-                0.8,
-            );
-        } else {
-            let (layer, _) = self.block_look(self.reg.id_or_air("water"));
-            self.particles
-                .mote(at, layer, [0.6, 0.75, 1.0], 0.03, 7.0, 3.0);
-        }
-    }
-
-    /// Smoke, a flash of fire and a jolt of the camera for an explosion.
-    pub(crate) fn explosion_fx(&mut self, pos: Vec3, power: f32) {
-        let (layer, _) = self.block_look(self.reg.id_or_air("stone"));
-        let glow = self.glow_layer();
-        let n = (8.0 + power * 4.0) as usize;
-        for _ in 0..n {
-            let j = Vec3::new(
-                self.fx.rand() - 0.5,
-                self.fx.rand() - 0.3,
-                self.fx.rand() - 0.5,
-            ) * power
-                * 1.2;
-            self.particles
-                .mote(pos + j, layer, [0.35, 0.33, 0.32], 0.16, -0.8, 2.5);
-            let v = Vec3::new(self.fx.rand() - 0.5, self.fx.rand(), self.fx.rand() - 0.5) * 6.0;
-            self.particles
-                .glow(pos, v, glow, [1.0, 0.6, 0.2], 0.06, 0.4);
-        }
-        let d = (self.body.eye() - pos).length();
-        let k = (1.0 - d / (power * 8.0)).clamp(0.0, 1.0);
-        self.fx.shake = self.fx.shake.max(k * 1.3);
-    }
-
-    /// A jagged line of light from the clouds to the ground, far off or close by.
-    fn lightning_bolt(&mut self, close: f32, toward: Option<Vec3>) {
-        let eye = self.body.eye();
-        let a = match toward {
-            Some(d) => d.z.atan2(d.x),
-            None => self.fx.rand() * std::f32::consts::TAU,
-        };
-        let dist = 18.0 + (1.0 - close) * 80.0;
-        let base = Vec3::new(eye.x + a.cos() * dist, 0.0, eye.z + a.sin() * dist);
-        let ground = self
-            .world
-            .surface_y(base.x.floor() as i32, base.z.floor() as i32)
-            .map(|y| y as f32 + 1.0)
-            .unwrap_or(eye.y - 4.0);
-        let top = ground + 60.0;
-        let mut p = Vec3::new(base.x, top, base.z);
-        let mut main = vec![p];
-        let mut paths = Vec::new();
-        while p.y > ground {
-            // Short jags, each a few blocks long.
-            p += Vec3::new(
-                (self.fx.rand() - 0.5) * 3.0,
-                -self.fx.range(1.5, 3.5),
-                (self.fx.rand() - 0.5) * 3.0,
-            );
-            p.y = p.y.max(ground);
-            main.push(p);
-            if self.fx.rand() < 0.18 && paths.len() < 3 && p.y > ground + 12.0 {
-                let dir =
-                    Vec3::new(self.fx.rand() - 0.5, 0.0, self.fx.rand() - 0.5).normalize_or_zero();
-                let mut b = p;
-                let mut branch = vec![b];
-                for _ in 0..(3 + (self.fx.rand() * 4.0) as usize) {
-                    b += dir * self.fx.range(1.5, 3.0)
-                        + Vec3::new(
-                            (self.fx.rand() - 0.5) * 2.0,
-                            -self.fx.range(1.5, 3.0),
-                            (self.fx.rand() - 0.5) * 2.0,
-                        );
-                    branch.push(b);
-                }
-                paths.push(branch);
-            }
-        }
-        paths.insert(0, main);
-        self.fx.bolt = paths;
-        self.fx.bolt_t = 0.35;
-        // Sparks where it strikes.
-        let glow = self.glow_layer();
-        for _ in 0..16 {
-            let v = Vec3::new(self.fx.rand() - 0.5, self.fx.rand(), self.fx.rand() - 0.5) * 6.0;
-            self.particles.glow(p, v, glow, [1.2, 1.2, 1.5], 0.15, 0.5);
-        }
-    }
-
-    /// Draw the bolt as bright lines over the scene (hidden where terrain is in front).
-    fn draw_bolt(&mut self, w: f32, h: f32) {
-        if self.fx.bolt_t <= 0.0 || self.fx.bolt.is_empty() {
-            return;
-        }
-        let Some((vp, cam_block)) = self.ui_view_proj else {
-            return;
-        };
-        let eye = self.body.eye();
-        let fade = (self.fx.bolt_t / 0.35).clamp(0.0, 1.0);
-        // It flickers once or twice while it lasts.
-        let flick = if (self.fx.bolt_t * 20.0) as i32 % 3 == 1 {
-            0.5
-        } else {
-            1.0
-        };
-        let paths = std::mem::take(&mut self.fx.bolt);
-        for (k, path) in paths.iter().enumerate() {
-            let scr: Vec<Option<(f32, f32)>> = path
-                .iter()
-                .map(|&p| {
-                    let to = p - eye;
-                    let d = to.length();
-                    let world = &self.world;
-                    if voxel::raycast::raycast(eye, to / d.max(0.01), d.min(96.0), |c| {
-                        voxel::physics::Terrain::solid(world, c)
-                    })
-                    .is_some()
-                    {
-                        return None;
+        self.prog.fx_tick += dt;
+        let ticks = (self.prog.fx_tick / 0.05) as u32;
+        self.prog.fx_tick -= ticks as f32 * 0.05;
+        for _ in 0..ticks {
+            self.prog.fx_ticks = self.prog.fx_ticks.wrapping_add(1);
+            let t = self.prog.fx_ticks;
+            let list = self.prog.effects.clone();
+            for e in list {
+                let a = e.amp as u32;
+                match e.id {
+                    REGENERATION => {
+                        let every = (50u32 >> a.min(5)).max(1);
+                        if t % every == 0 && self.health < self.max_health {
+                            self.health = (self.health + 1.0).min(self.max_health);
+                        }
                     }
-                    let c = vp * (p - cam_block.as_vec3()).extend(1.0);
-                    (c.w > 0.1).then(|| ((c.x / c.w * 0.5 + 0.5) * w, (0.5 - c.y / c.w * 0.5) * h))
-                })
-                .collect();
-            let core = if k == 0 { 3.0 } else { 1.8 } * self.ui.scale.max(1.0) * 0.6;
-            for seg in scr.windows(2) {
-                let (Some(a), Some(b)) = (seg[0], seg[1]) else {
-                    continue;
-                };
-                let alpha = fade * flick;
-                self.line(a, b, core * 3.5, [150, 160, 255, (alpha * 60.0) as u8]);
-                self.line(a, b, core, [235, 240, 255, (alpha * 255.0) as u8]);
+                    POISON => {
+                        let every = (25u32 >> a.min(5)).max(1);
+                        if t % every == 0 && self.health > 1.0 {
+                            self.prog.next_kind = crate::progression::DamageKind::Magic;
+                            self.damage(1.0, None);
+                        }
+                    }
+                    WITHER => {
+                        let every = (40u32 >> a.min(5)).max(1);
+                        if t % every == 0 {
+                            self.prog.next_kind = crate::progression::DamageKind::Magic;
+                            self.damage(1.0, None);
+                        }
+                    }
+                    HUNGER => self.surv.exhaustion += 0.005 * (a + 1) as f32,
+                    SATURATION => {
+                        self.surv.hunger = (self.surv.hunger + (a + 1) as f32).min(20.0);
+                        self.surv.saturation = (self.surv.saturation + 2.0 * (a + 1) as f32).min(self.surv.hunger);
+                    }
+                    _ => {}
+                }
             }
         }
-        self.fx.bolt = paths;
+        // Swirls rise from the player while an effect is on (not from beacons).
+        if !self.prog.effects.is_empty() && self.camera_mode != 0 {
+            self.prog.swirl_t -= dt;
+            if self.prog.swirl_t <= 0.0 {
+                self.prog.swirl_t = 0.3;
+                if let Some(e) = self.prog.effects.iter().find(|e| !e.ambient && e.id != INVISIBILITY) {
+                    let c = info(e.id).1;
+                    let glow = self.glow_layer();
+                    let r = self.prog.rng.f32() * std::f32::consts::TAU;
+                    let p = self.body.pos + Vec3::new(r.cos() * 0.4, 0.5 + self.prog.rng.f32() * 1.2, r.sin() * 0.4);
+                    self.particles.glow(p, Vec3::Y * 0.6, glow, [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0], 0.08, 1.0);
+                }
+            }
+        }
+        self.update_thrown_potions(dt);
+        self.update_potion_clouds(dt);
     }
 
-    fn line(&mut self, a: (f32, f32), b: (f32, f32), width: f32, col: [u8; 4]) {
-        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-        let len = (dx * dx + dy * dy).sqrt().max(0.001);
-        let (nx, ny) = (-dy / len * width * 0.5, dx / len * width * 0.5);
-        self.ui.quad(
-            [
-                [a.0 + nx, a.1 + ny],
-                [b.0 + nx, b.1 + ny],
-                [b.0 - nx, b.1 - ny],
-                [a.0 - nx, a.1 - ny],
-            ],
-            [[0.0; 2]; 4],
-            col,
-            -2,
-        );
+    /// Speed effects, sneaking enchantments and soul speed: how much faster than walking.
+    pub(crate) fn move_multiplier(&self) -> f32 {
+        let mut m = 1.0 + 0.2 * self.effect_level(SPEED) as f32;
+        m *= (1.0 - 0.15 * self.effect_level(SLOWNESS) as f32).max(0.0);
+        m
     }
 
-    /// Test hook for screenshots (which hold time still): MC_FX=1 fills the air with this
-    /// stage's effects at once: full mist, a lightning bolt, breath, sparks and smoke on mobs.
-    pub(crate) fn prime_effects(&mut self) {
-        if self.fx.primed || self.args.screenshot.is_none() || std::env::var("MC_FX").is_err() {
+    /// Damage dealt by the player's melee hits, changed by strength and weakness.
+    pub(crate) fn melee_effects(&self, dmg: f32) -> f32 {
+        (dmg + 3.0 * self.effect_level(STRENGTH) as f32 - 4.0 * self.effect_level(WEAKNESS) as f32).max(0.0)
+    }
+
+    /// Digging-speed factor from haste, conduit power and mining fatigue.
+    pub(crate) fn dig_effects(&self) -> f32 {
+        let haste = self.effect_level(HASTE).max(self.effect_level(CONDUIT_POWER));
+        let mut k = 1.0 + 0.2 * haste as f32;
+        let f = self.effect_level(MINING_FATIGUE);
+        if f > 0 {
+            k *= [0.3, 0.09, 0.0027, 0.00081][(f as usize - 1).min(3)];
+        }
+        k
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Potions.
+
+    /// Right click with a potion: drink it (held, like food) or throw it.
+    pub(crate) fn use_potion(&mut self, name: &str) -> bool {
+        let Some((form, p)) = potion_of(name) else { return false };
+        match form {
+            Form::Drink => {
+                // Drinking takes a moment: handled while the button is held (update_drinking).
+                true
+            }
+            Form::Splash | Form::Lingering => {
+                let f = self.forward();
+                let from = self.body.eye() + f * 0.4;
+                self.prog.thrown.push(Thrown { pos: from, vel: f * 12.0 + Vec3::Y * 2.0 + self.body.vel * 0.5, potion: p, lingering: form == Form::Lingering });
+                if self.survival {
+                    let sel = self.selected;
+                    self.surv.inv.take(sel, 1);
+                }
+                self.anim.start_swing();
+                self.sfx(Sfx::Place(Material::Glass));
+                true
+            }
+            Form::Arrow => false,
+        }
+    }
+
+    /// Hold the use button with a drink (potion, milk, honey) in hand.
+    pub(crate) fn update_drinking(&mut self, dt: f32, use_held: bool) {
+        let held = self.held_stack();
+        let name = held.map(|s| self.items.get(s.item).name.clone()).unwrap_or_default();
+        let drink = potion_of(&name).is_some_and(|(f, _)| f == Form::Drink) || name == "milk_bucket" || name == "honey_bottle" || name == "ominous_bottle";
+        if !(use_held && drink && self.screen == crate::Screen::Playing && dt > 0.0) {
+            self.prog.drink = 0.0;
             return;
         }
-        self.fx.primed = true;
-        if std::env::var("MC_FX").is_ok_and(|v| v == "low") {
-            // Low health: the red vignette at the top of its pulse.
-            self.health = 4.0;
-            self.fx.prev_health = 4.0;
-            self.fx.beat_age = 0.0;
+        self.prog.drink += dt;
+        self.prog.drink_sound -= dt;
+        if self.prog.drink_sound <= 0.0 {
+            self.prog.drink_sound = 0.25;
+            self.sfx(Sfx::Bubbles);
         }
-        for _ in 0..40 {
-            self.update_mist(1.0);
-        }
-        let f = self.forward();
-        self.lightning_bolt(0.8, Some(f));
-        self.fx.breath_t = 0.0;
-        self.update_effects(0.05);
-        let eye = self.body.eye();
-        let near: Vec<(Vec3, f32)> = self
-            .mobs
-            .list
-            .iter()
-            .filter(|m| (m.body.pos - eye).length() < 16.0)
-            .map(|m| {
-                let h = self.mobs.reg.defs[m.def].height;
-                (m.body.pos + Vec3::Y * h * 0.8, h)
-            })
-            .collect();
-        for (i, (at, h)) in near.into_iter().enumerate() {
-            self.mob_hit_fx(at, h, i % 2 == 1);
-        }
-        self.land_dust(1.0);
-        for _ in 0..4 {
-            self.particles.update(&self.world, 0.05);
-        }
-    }
-
-    /// Where the camera is pushed by shaking (add to the eye position).
-    pub(crate) fn shake_offset(&self) -> Vec3 {
-        if !self.settings.view_bobbing || self.fx.shake <= 0.0 {
-            return Vec3::ZERO;
-        }
-        let t = self.now;
-        let amp = self.fx.shake * self.fx.shake * 0.12;
-        Vec3::new(
-            (t * 37.1).sin(),
-            (t * 41.7 + 1.0).sin(),
-            (t * 29.3 + 2.0).sin(),
-        ) * amp
-    }
-
-    /// Ease the mist in and out: swamps, valleys at dawn, and rain.
-    pub(crate) fn update_mist(&mut self, dt: f32) {
-        let eye = self.body.eye();
-        let mut target = 0.0f32;
-        if self.dim == Dim::Overworld && !self.body.head_in_water {
-            let head = eye.floor().as_ivec3();
-            let sky = self.world.light(head) >> 4;
-            let biome = self.world.gen.biome_at(head.x, head.z);
-            let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
-            let dawn = a.cos() > 0.0 && a.sin() > -0.2 && a.sin() < 0.3;
-            if sky > 0 {
-                if biome == Biome::Swamp {
-                    target = 0.55;
-                }
-                let valley = matches!(
-                    biome,
-                    Biome::Plains
-                        | Biome::Forest
-                        | Biome::BirchForest
-                        | Biome::Taiga
-                        | Biome::DarkForest
-                        | Biome::CherryGrove
-                        | Biome::Swamp
-                );
-                if dawn && valley && eye.y < 85.0 {
-                    target = target.max(0.45);
-                }
-                target = target.max(self.weather.rain * 0.3);
-            }
-        }
-        let step = dt * 0.25;
-        self.fx.mist += (target - self.fx.mist).clamp(-step, step);
-    }
-
-    /// Pull the fog in for mist (Overworld above water only).
-    pub(crate) fn mist_fog(&self, start: f32, end: f32) -> (f32, f32) {
-        let m = self.fx.mist;
-        if m <= 0.0 {
-            return (start, end);
-        }
-        let s = start * (1.0 - 0.8 * m);
-        let near_end = (end * 0.35).max(s + 24.0);
-        (s, end + (near_end - end) * m)
-    }
-
-    /// The vignette: soft dark corners always, red and pulsing at low health, blue under water,
-    /// orange in lava.
-    pub(crate) fn draw_immersion_overlay(&mut self, w: f32, h: f32) {
-        if !self.world_open
-            || !matches!(
-                self.screen,
-                Screen::Playing | Screen::Inventory | Screen::Dead
-            )
-        {
+        if self.prog.drink < 1.6 {
             return;
         }
-        let eye = self.body.eye().floor().as_ivec3();
-        let l = self.world.light(eye);
-        let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
-        let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
-        let bright = (((l >> 4) as f32 * daylight).max((l & 15) as f32) / 15.0).clamp(0.0, 1.0);
-        let mut layers: Vec<([u8; 3], f32)> = vec![([0, 0, 0], 0.22 + 0.18 * (1.0 - bright))];
-        if self.body.head_in_water {
-            layers.push(([5, 20, 60], 0.35));
-        }
-        let feet = self.body.pos.floor().as_ivec3();
-        let in_lava = self.world.fluid(self.world.block_or_air(feet)) == 2
-            || self
-                .world
-                .fluid(self.world.block_or_air(feet + glam::IVec3::Y))
-                == 2;
-        if in_lava {
-            let flicker = 0.85 + 0.15 * (self.now * 17.0).sin();
-            layers.push(([255, 110, 20], 0.55 * flicker));
-        }
-        if self.survival && self.health > 0.0 && self.health <= self.max_health * 0.3 {
-            let pulse = (-self.fx.beat_age * 4.0).exp();
-            layers.push(([150, 0, 0], 0.25 + 0.3 * pulse));
-        }
-        self.draw_bolt(w, h);
-        const RINGS: usize = 28;
-        let t = (w.min(h) * 0.016).max(1.0);
-        for (c, strength) in layers {
-            for i in 0..RINGS {
-                let k = 1.0 - i as f32 / RINGS as f32;
-                // Thin rings that don't overlap, fading towards the middle.
-                let alpha = (strength * k.powf(2.5) * 255.0).clamp(0.0, 255.0) as u8;
-                if alpha == 0 {
-                    continue;
-                }
-                let col = [c[0], c[1], c[2], alpha];
-                let inset = i as f32 * t;
-                let (iw, ih) = (w - 2.0 * inset, h - 2.0 * inset);
-                if iw <= 2.0 * t || ih <= 2.0 * t {
-                    break;
-                }
-                self.ui.rect(inset, inset, iw, t, col);
-                self.ui.rect(inset, h - inset - t, iw, t, col);
-                self.ui.rect(inset, inset + t, t, ih - 2.0 * t, col);
-                self.ui.rect(w - inset - t, inset + t, t, ih - 2.0 * t, col);
+        self.prog.drink = 0.0;
+        let sel = self.selected;
+        let back = match name.as_str() {
+            "milk_bucket" => {
+                self.clear_effects();
+                "bucket"
             }
+            "honey_bottle" => {
+                self.prog.effects.retain(|e| e.id != POISON);
+                self.surv.hunger = (self.surv.hunger + 6.0).min(20.0);
+                self.surv.saturation = (self.surv.saturation + 1.2).min(self.surv.hunger);
+                "glass_bottle"
+            }
+            "ominous_bottle" => {
+                let amp = held.map(|s| s.damage.min(4) as u8).unwrap_or(0);
+                self.add_effect(BAD_OMEN, amp, 6000.0, false);
+                ""
+            }
+            _ => {
+                if let Some((_, p)) = potion_of(&name) {
+                    for &(e, a, t) in p.effects {
+                        self.add_effect(e, a, t, false);
+                    }
+                }
+                "glass_bottle"
+            }
+        };
+        self.prog.stats.add("potions_drunk", 1);
+        self.prog.event(crate::progression::Event::Drank(name.clone()));
+        if !self.survival {
+            return;
+        }
+        self.surv.inv.take(sel, 1);
+        if let Some(b) = self.items.id(back) {
+            let st = ItemStack::new(b, 1);
+            if self.surv.inv.slots[sel].is_none() {
+                self.surv.inv.slots[sel] = Some(st);
+            } else if let Some(left) = self.surv.inv.add(&self.items, st) {
+                self.throw_stack(left);
+            }
+        }
+    }
+
+    fn update_thrown_potions(&mut self, dt: f32) {
+        let mut burst = Vec::new();
+        for t in self.prog.thrown.iter_mut() {
+            t.vel.y -= 20.0 * dt;
+            let next = t.pos + t.vel * dt;
+            let hit_block = voxel::physics::Terrain::solid(&self.world, next.floor().as_ivec3());
+            let hit_mob = self.mobs.list.iter().any(|m| m.alive() && (m.body.pos + Vec3::Y * m.body.height * 0.5 - next).length() < m.body.half_width + 0.5);
+            if hit_block || hit_mob || t.pos.y < -64.0 {
+                burst.push((t.pos, t.potion, t.lingering));
+                t.pos.y = -1000.0;
+            } else {
+                t.pos = next;
+            }
+        }
+        self.prog.thrown.retain(|t| t.pos.y > -999.0);
+        for (at, p, lingering) in burst {
+            self.potion_burst(at, p, lingering);
+        }
+    }
+
+    /// A splash potion breaks: everyone near gets its effects, less the further they stand.
+    pub(crate) fn potion_burst(&mut self, at: Vec3, p: &'static PotionDef, lingering: bool) {
+        self.sfx(Sfx::Break(Material::Glass));
+        let c = potion_color(p);
+        let col = [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0];
+        let glow = self.glow_layer();
+        for k in 0..24 {
+            let a = k as f32 * 0.7;
+            let v = Vec3::new(a.cos() * 2.0, 1.5 + (k % 5) as f32 * 0.4, a.sin() * 2.0);
+            self.particles.glow(at, v, glow, col, 0.1, 1.0);
+        }
+        if lingering {
+            self.prog.clouds.push(Cloud { pos: at, radius: 3.0, time: 30.0, effects: p.effects, color: c, tick: 0.0 });
+            return;
+        }
+        // Water puts out fire and hurts nothing.
+        let d = (self.body.pos + Vec3::Y - at).length();
+        if d < 4.0 {
+            let k = 1.0 - d / 4.0;
+            for &(e, a, t) in p.effects {
+                if t == 0.0 {
+                    if k > 0.3 {
+                        self.add_effect(e, a, 0.0, false);
+                    }
+                } else {
+                    self.add_effect(e, a, t * 0.75 * k.max(0.25), false);
+                }
+            }
+        }
+        for i in 0..self.mobs.list.len() {
+            let m = &self.mobs.list[i];
+            if !m.alive() {
+                continue;
+            }
+            let d = (m.body.pos + Vec3::Y * 0.5 - at).length();
+            if d < 4.0 {
+                let name = self.mobs.reg.defs[m.def].name.clone();
+                self.potion_on_mob(i, &name, p.effects, 1.0 - d / 4.0, at);
+            }
+        }
+    }
+
+    /// What a potion does to a mob: instant ones at once, the rest roughly (poison and wither
+    /// bite now, slowness chills, fire resistance puts the fire out).
+    pub(crate) fn potion_on_mob(&mut self, i: usize, name: &str, effects: &[(u8, u8, f32)], k: f32, from: Vec3) {
+        let undead = undead(name);
+        let m = &mut self.mobs.list[i];
+        for &(e, a, t) in effects {
+            let pow = (a as u32 + 1) as f32;
+            match (e, undead) {
+                (INSTANT_HEALTH, false) | (INSTANT_DAMAGE, true) => m.health = (m.health + 4.0 * pow * k).min(m.max_health),
+                (INSTANT_DAMAGE, false) | (INSTANT_HEALTH, true) => {
+                    m.hurt(6.0 * pow * k, from);
+                }
+                (POISON, false) => {
+                    let dmg = (t / 1.25 * pow * 0.5 * k).min(m.health - 1.0).max(0.0);
+                    m.health -= dmg;
+                    m.hurt_age = 0.0;
+                }
+                (WITHER, _) => {
+                    m.hurt(t / 2.0 * pow * 0.3 * k, from);
+                }
+                (SLOWNESS, _) => m.chill = m.chill.max(t * 0.5 * k),
+                (FIRE_RESISTANCE, _) => m.on_fire = 0.0,
+                (REGENERATION, false) => m.health = (m.health + t * 0.4 * pow * k).min(m.max_health),
+                _ => {}
+            }
+        }
+    }
+
+    fn update_potion_clouds(&mut self, dt: f32) {
+        let glow = self.glow_layer();
+        let mut hits: Vec<(&'static [(u8, u8, f32)], Vec3, f32)> = Vec::new();
+        for c in self.prog.clouds.iter_mut() {
+            c.time -= dt;
+            c.radius = (c.radius - dt * 0.05).max(0.5);
+            c.tick -= dt;
+            if c.tick <= 0.0 {
+                c.tick = 0.25;
+                hits.push((c.effects, c.pos, c.radius));
+                let col = [c.color[0] as f32 / 255.0, c.color[1] as f32 / 255.0, c.color[2] as f32 / 255.0];
+                for k in 0..6 {
+                    let a = (self.prog.fx_ticks as f32 * 0.37 + k as f32 * 1.05) % std::f32::consts::TAU;
+                    let r = c.radius * (k as f32 / 6.0);
+                    self.particles.glow(c.pos + Vec3::new(a.cos() * r, 0.1, a.sin() * r), Vec3::Y * 0.3, glow, col, 0.08, 1.2);
+                }
+            }
+        }
+        self.prog.clouds.retain(|c| c.time > 0.0);
+        for (effects, at, r) in hits {
+            if (self.body.pos - at).length() < r + 0.3 {
+                for &(e, a, t) in effects {
+                    // A quarter of the potion's time each touch, like vanilla's lingering clouds.
+                    self.add_effect(e, a, if t == 0.0 { 0.0 } else { (t * 0.25).max(5.0) }, false);
+                }
+            }
+            for i in 0..self.mobs.list.len() {
+                let m = &self.mobs.list[i];
+                if m.alive() && (m.body.pos - at).length() < r {
+                    let name = self.mobs.reg.defs[m.def].name.clone();
+                    self.potion_on_mob(i, &name, effects, 0.25, at);
+                }
+            }
+        }
+    }
+
+    /// The icons of active effects, top right, with their time.
+    pub(crate) fn draw_effects_hud(&mut self, w: f32) {
+        if self.prog.effects.is_empty() || self.hide_hud {
+            return;
+        }
+        let s = self.ui.scale;
+        let list = self.prog.effects.clone();
+        let mut x = w - 26.0 * s;
+        let mut y = 2.0 * s;
+        for (k, e) in list.iter().enumerate() {
+            let (name, c, bad) = info(e.id);
+            let blink = e.time < 10.0 && ((self.now * 4.0) as i32) % 2 == 0;
+            let bg = if e.ambient { [40, 120, 140, 200] } else if bad { [70, 30, 30, 200] } else { [30, 30, 30, 200] };
+            self.ui.rect(x, y, 24.0 * s, 24.0 * s, bg);
+            self.ui.frame(x, y, 24.0 * s, 24.0 * s, s, [200, 200, 200, 255]);
+            if !blink {
+                draw_effect_icon(&mut self.ui, e.id, c, x + 4.0 * s, y + 3.0 * s, s);
+            }
+            let t = clock(e.time);
+            let tw = self.ui.text_width(&t, s * 0.75);
+            self.ui.text_scaled(x + 12.0 * s - tw / 2.0, y + 17.0 * s, &t, [255, 255, 255, 255], s * 0.75);
+            if e.amp > 0 {
+                let r = crate::enchanting::roman(e.amp + 1);
+                self.ui.text_scaled(x + 15.0 * s, y + 2.0 * s, r, [255, 255, 255, 255], s * 0.75);
+            }
+            let _ = name;
+            x -= 26.0 * s;
+            if k % 8 == 7 {
+                x = w - 26.0 * s;
+                y += 26.0 * s;
+            }
+        }
+    }
+
+    /// Dark screens: blindness closes in, darkness pulses (the warden's), nausea sways green.
+    pub(crate) fn draw_effect_overlays(&mut self, w: f32, h: f32) {
+        let blind = self.has_effect(BLINDNESS);
+        let dark = self.has_effect(DARKNESS);
+        if blind || dark {
+            let pulse = if dark { 0.55 + 0.35 * (self.now * 1.6).sin().abs() } else { 0.0 };
+            let a = if blind { 0.86 } else { pulse };
+            // A vignette: dark at the edges, a little light left in the middle.
+            let rings = 10;
+            for r in 0..rings {
+                let k = r as f32 / rings as f32;
+                let inset_x = w * 0.5 * k;
+                let inset_y = h * 0.5 * k;
+                let alpha = (a * (0.35 + 0.65 * (1.0 - k)) * 255.0 / rings as f32 * 2.2).min(255.0) as u8;
+                crate::survival::rect_around(&mut self.ui, (inset_x, inset_y, w - 2.0 * inset_x, h - 2.0 * inset_y), Some((inset_x + w * 0.05, inset_y + h * 0.05, (w - 2.0 * inset_x - w * 0.1).max(0.0), (h - 2.0 * inset_y - h * 0.1).max(0.0))), [0, 0, 0, alpha]);
+            }
+            self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, (a * 120.0) as u8]);
+        }
+        if self.has_effect(NAUSEA) {
+            let k = (self.now * 1.3).sin() * 0.5 + 0.5;
+            self.ui.rect(0.0, 0.0, w, h, [60, 120, 40, (30.0 + 40.0 * k) as u8]);
+        }
+        if self.has_effect(NIGHT_VISION) && !blind {
+            // A cool, light wash: the dark parts of the picture are lifted in the shader
+            // (terrain_effects); this tints the screen like the vanilla effect.
+            self.ui.rect(0.0, 0.0, w, h, [120, 140, 255, 14]);
+        }
+        if self.has_effect(CONDUIT_POWER) && self.body.head_in_water {
+            self.ui.rect(0.0, 0.0, w, h, [40, 200, 220, 18]);
+        }
+    }
+}
+
+/// A small picture for each effect, drawn with rectangles in its colour (our own icons).
+pub fn draw_effect_icon(ui: &mut crate::ui::UiBatch, id: u8, c: [u8; 3], x: f32, y: f32, s: f32) {
+    let col = [c[0], c[1], c[2], 255];
+    let dark = [c[0] / 2, c[1] / 2, c[2] / 2, 255];
+    let px = |ui: &mut crate::ui::UiBatch, a: f32, b: f32, w: f32, h: f32, k: [u8; 4]| ui.rect(x + a * s, y + b * s, w * s, h * s, k);
+    match id {
+        SPEED | DOLPHINS_GRACE => {
+            // A boot with speed lines.
+            px(ui, 6.0, 3.0, 5.0, 8.0, col);
+            px(ui, 6.0, 9.0, 9.0, 3.0, col);
+            px(ui, 0.0, 4.0, 4.0, 1.0, dark);
+            px(ui, 1.0, 7.0, 4.0, 1.0, dark);
+        }
+        SLOWNESS => {
+            px(ui, 4.0, 6.0, 8.0, 5.0, col);
+            px(ui, 2.0, 8.0, 3.0, 3.0, dark);
+            px(ui, 11.0, 4.0, 3.0, 3.0, dark);
+        }
+        HASTE | MINING_FATIGUE | CONDUIT_POWER => {
+            // A pickaxe.
+            px(ui, 2.0, 2.0, 12.0, 3.0, col);
+            px(ui, 7.0, 4.0, 2.0, 10.0, dark);
+        }
+        STRENGTH | WEAKNESS => {
+            // A sword.
+            px(ui, 7.0, 0.0, 2.0, 10.0, col);
+            px(ui, 4.0, 10.0, 8.0, 2.0, dark);
+            px(ui, 7.0, 12.0, 2.0, 3.0, dark);
+        }
+        INSTANT_HEALTH | REGENERATION | HEALTH_BOOST | ABSORPTION | INSTANT_DAMAGE => {
+            // A heart.
+            px(ui, 2.0, 3.0, 5.0, 5.0, col);
+            px(ui, 9.0, 3.0, 5.0, 5.0, col);
+            px(ui, 3.0, 7.0, 10.0, 3.0, col);
+            px(ui, 5.0, 10.0, 6.0, 2.0, col);
+            px(ui, 7.0, 12.0, 2.0, 2.0, col);
+        }
+        JUMP_BOOST | LEVITATION | SLOW_FALLING | WIND_CHARGED => {
+            // An arrow up.
+            px(ui, 7.0, 2.0, 2.0, 12.0, col);
+            px(ui, 4.0, 5.0, 8.0, 2.0, col);
+            px(ui, 5.0, 3.0, 6.0, 2.0, col);
+        }
+        RESISTANCE | FIRE_RESISTANCE => {
+            // A shield.
+            px(ui, 3.0, 2.0, 10.0, 8.0, col);
+            px(ui, 5.0, 10.0, 6.0, 2.0, col);
+            px(ui, 7.0, 12.0, 2.0, 2.0, col);
+            px(ui, 7.0, 3.0, 2.0, 8.0, dark);
+        }
+        WATER_BREATHING | BREATH_OF_THE_NAUTILUS => {
+            for (a, b) in [(3.0, 8.0), (8.0, 4.0), (11.0, 10.0)] {
+                px(ui, a, b, 4.0, 4.0, col);
+            }
+        }
+        NIGHT_VISION | BLINDNESS | DARKNESS | INVISIBILITY | GLOWING => {
+            // An eye.
+            px(ui, 1.0, 6.0, 14.0, 4.0, col);
+            px(ui, 3.0, 4.0, 10.0, 8.0, col);
+            px(ui, 6.0, 6.0, 4.0, 4.0, dark);
+        }
+        POISON | WITHER | HUNGER | NAUSEA | OOZING | INFESTED | WEAVING => {
+            // A drop.
+            px(ui, 7.0, 2.0, 2.0, 2.0, col);
+            px(ui, 5.0, 4.0, 6.0, 4.0, col);
+            px(ui, 4.0, 8.0, 8.0, 5.0, col);
+            px(ui, 6.0, 13.0, 4.0, 1.0, dark);
+        }
+        _ => {
+            // A banner (omens, luck, hero).
+            px(ui, 4.0, 1.0, 1.0, 14.0, dark);
+            px(ui, 5.0, 2.0, 8.0, 7.0, col);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn potion_forms_parse() {
+        assert_eq!(potion_of("potion_healing").unwrap().0, Form::Drink);
+        assert_eq!(potion_of("splash_potion_strong_poison").unwrap().0, Form::Splash);
+        assert_eq!(potion_of("lingering_potion_water").unwrap().1.key, "water");
+        assert_eq!(potion_of("tipped_arrow_slowness").unwrap().0, Form::Arrow);
+        assert!(potion_of("potion_of_nothing").is_none());
+    }
+
+    #[test]
+    fn every_effect_has_a_name() {
+        for id in 1..=ALL {
+            assert_ne!(info(id).0, "?", "effect {id}");
         }
     }
 }
