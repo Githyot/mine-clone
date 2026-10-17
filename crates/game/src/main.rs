@@ -18,6 +18,7 @@ mod bosses;
 mod npcs;
 mod pets;
 mod raids;
+mod leads;
 mod bees;
 mod boats;
 mod villages;
@@ -498,6 +499,8 @@ struct Game {
     riding: Option<usize>,
     /// The boat the player sits in.
     boating: Option<usize>,
+    /// A creature being named with a name tag, and the name so far.
+    naming: Option<(usize, String)>,
     /// The chair the player sits on.
     seat: Option<IVec3>,
     /// Which dimension is loaded, time spent standing in a portal, and where a trip lands.
@@ -828,6 +831,7 @@ impl Game {
             hopper_t: 0.0,
             riding: None,
             boating: None,
+            naming: None,
             seat: None,
             dim: voxel::worldgen::Dim::Overworld,
             portal_t: 0.0,
@@ -1136,7 +1140,11 @@ impl Game {
             return;
         }
         if self.screen == Screen::Sign {
-            self.sign_key(code);
+            if self.naming.is_some() {
+                self.naming_key(code);
+            } else {
+                self.sign_key(code);
+            }
             return;
         }
         if self.screen == Screen::CreateWorld && code != KeyCode::Escape {
@@ -1536,6 +1544,7 @@ impl Game {
                 self.update_npcs(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_raids(dt);
                 self.update_villages(dt);
+                self.update_leads(dt);
                 self.update_map(dt);
                 self.update_pets(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
@@ -3046,6 +3055,7 @@ impl Game {
             }
             self.draw_mob_health_bars(w, h);
             self.draw_sign_texts(w, h);
+            self.draw_mob_names(w, h);
             if self.screen == Screen::Playing {
                 self.draw_explore_hud(w, h);
             }
@@ -3210,6 +3220,7 @@ impl Game {
                 }
             }
             Screen::Paintings => self.draw_paintings_menu(w, h, mouse),
+            Screen::Sign if self.naming.is_some() => self.draw_naming(w, h),
             Screen::Sign => self.draw_sign_editor(w, h),
             Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer => self.draw_title_menus(w, h, mouse),
             Screen::Options | Screen::Packs => {

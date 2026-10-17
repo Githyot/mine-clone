@@ -21,7 +21,7 @@ type Trade = (&'static str, &'static [(&'static str, u8, u8)], (&'static str, u3
 const SETTLERS: [Trade; 4] = [
     ("settler_farmer", &[("bread", 6, 1), ("apple", 4, 1), ("carrot", 6, 1), ("pumpkin", 2, 1), ("melon_slice", 8, 1), ("wheat_seeds", 8, 1)], ("wheat", 20)),
     ("settler_smith", &[("iron_pickaxe", 1, 4), ("iron_sword", 1, 4), ("iron_axe", 1, 3), ("iron_chestplate", 1, 8), ("iron_helmet", 1, 5), ("bucket", 1, 2), ("iron_leggings", 1, 6)], ("coal", 15)),
-    ("settler_librarian", &[("bookshelf", 1, 3), ("compass", 1, 4), ("map", 1, 3), ("clock", 1, 4), ("lantern", 2, 1), ("glass", 8, 1)], ("paper", 24)),
+    ("settler_librarian", &[("bookshelf", 1, 3), ("compass", 1, 4), ("map", 1, 3), ("clock", 1, 4), ("lantern", 2, 1), ("glass", 8, 1), ("name_tag", 1, 5)], ("paper", 24)),
     ("settler_shepherd", &[("white_wool", 4, 1), ("string", 6, 1), ("red_wool", 2, 1), ("blue_wool", 2, 1), ("yellow_wool", 2, 1), ("white_carpet", 6, 1)], ("white_wool", 18)),
 ];
 const SENTINEL: &str = "sentinel";

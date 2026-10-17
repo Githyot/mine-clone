@@ -243,6 +243,11 @@ pub struct Mob {
     /// Wears a saddle (horses and the like), and has the player on its back.
     pub saddled: bool,
     pub ridden: bool,
+    /// A name given with a name tag (shown over its head; it stays around).
+    pub name: Option<String>,
+    /// On a lead: held by the player, or tied to the fence post at `post`.
+    pub leashed: bool,
+    pub post: Option<glam::IVec3>,
     fire_tick: f32,
     rng: Rng,
 }
@@ -292,6 +297,9 @@ impl Mob {
             home: None,
             saddled: false,
             ridden: false,
+            name: None,
+            leashed: false,
+            post: None,
             fire_tick: 0.0,
             rng,
         }

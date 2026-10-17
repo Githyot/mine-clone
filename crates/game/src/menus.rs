@@ -436,6 +436,7 @@ impl Game {
     pub(crate) fn type_text(&mut self, text: &str) {
         self.creative_type(text);
         if self.screen == Screen::Sign {
+            self.naming_type(text);
             self.sign_type(text);
             return;
         }

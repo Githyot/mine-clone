@@ -181,6 +181,8 @@
     // Wax for copper. Until there are bees, flowers drop it now and then.
     (name: "honeycomb", display_name: Some("Favo de Mel")),
     (name: "ink_sac", display_name: Some("Bolsa de Tinta")),
+    (name: "lead", display_name: Some("Laço")),
+    (name: "name_tag", display_name: Some("Etiqueta")),
     // Dyes: from flowers and the like; they colour wool, carpets, glass and concrete.
     (name: "white_dye", display_name: Some("Corante Branco")),
     (name: "orange_dye", display_name: Some("Corante Laranja")),

@@ -438,6 +438,7 @@
         (pattern: ["I I", "III"], key: {'I': "iron_ingot"}, result: "minecart"),
         (pattern: ["PPP", "HHH", "PPP"], key: {'P': "oak_planks", 'H': "honeycomb"}, result: "beehive"),
         (pattern: ["HH", "HH"], key: {'H': "honeycomb"}, result: "honeycomb_block"),
+        (pattern: ["SS ", "SB ", "  S"], key: {'S': "string", 'B': "slime_ball"}, result: "lead", count: 2),
         (pattern: ["GGG", "GDG", "GGG"], key: {'G': "glass", 'D': "white_dye"}, result: "white_stained_glass", count: 8),
         (pattern: ["GGG", "GDG", "GGG"], key: {'G': "glass", 'D': "orange_dye"}, result: "orange_stained_glass", count: 8),
         (pattern: ["GGG", "GDG", "GGG"], key: {'G': "glass", 'D': "magenta_dye"}, result: "magenta_stained_glass", count: 8),

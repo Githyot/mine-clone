@@ -315,7 +315,8 @@ impl Mobs {
         let reg = &self.reg;
         self.list.retain(|m| {
             let gone = !m.alive() && m.dead_age > DEATH_TIME;
-            let far = (m.body.pos - player).length() > DESPAWN_DIST && !reg.defs[m.def].town;
+            let keep = m.name.is_some() || m.leashed;
+            let far = (m.body.pos - player).length() > if keep { DESPAWN_DIST + 48.0 } else { DESPAWN_DIST } && !reg.defs[m.def].town;
             let fell = m.body.pos.y < -64.0;
             !(gone || far || fell)
         });
