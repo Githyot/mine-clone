@@ -289,7 +289,29 @@ impl ItemStack {
     pub fn stacks_with(&self, o: &ItemStack) -> bool {
         self.item == o.item && self.damage == 0 && o.damage == 0
     }
+
+    /// Wear on a tool or armour piece (the low 12 bits of `damage`).
+    pub fn wear(&self) -> u16 {
+        self.damage & WEAR_MASK
+    }
+
+    /// The item's modifier (Etapa 5 affixes, 0 = none): the top 4 bits of `damage`.
+    pub fn affix(&self) -> u8 {
+        (self.damage >> 12) as u8
+    }
+
+    /// The same stack with this much wear, keeping its modifier.
+    pub fn with_wear(self, wear: u16) -> ItemStack {
+        ItemStack { damage: (self.damage & !WEAR_MASK) | wear.min(WEAR_MASK), ..self }
+    }
+
+    pub fn with_affix(self, affix: u8) -> ItemStack {
+        ItemStack { damage: (self.damage & WEAR_MASK) | ((affix as u16 & 0xF) << 12), ..self }
+    }
 }
+
+/// Wear fits in 12 bits (durabilities stay at or below 4000); the top 4 hold a modifier.
+pub const WEAR_MASK: u16 = 0x0FFF;
 
 /// A row of slots: the player's 36, a chest's 27, a furnace's 3.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

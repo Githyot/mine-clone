@@ -17,6 +17,13 @@ mod magic;
 mod bosses;
 mod npcs;
 mod raids;
+mod terraria;
+mod accessories;
+mod affixes;
+mod boss_ai;
+mod glyphs;
+mod hardmode;
+mod hook;
 mod fluids;
 mod redstone;
 mod wanderers;
@@ -275,9 +282,11 @@ fn blurred_backdrop(w: usize, h: usize, px: &[u8]) -> (usize, usize, Vec<[u8; 4]
 
 /// Blocks, items and recipes from text.
 fn game_data(blocks: &str, items: &str, recipes: &str) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
-    let reg = BlockRegistry::from_ron(blocks)?;
-    let items = ItemRegistry::from_ron(items, &reg)?;
-    let recipes = Recipes::from_ron(recipes, &items)?;
+    // The Terraria side (Etapa 5) keeps its data in its own files, joined onto the base lists.
+    let reg = BlockRegistry::from_ron(&terraria::with_extra(blocks, embedded::T5_BLOCKS_RON))?;
+    let items = ItemRegistry::from_ron(&terraria::with_extra(items, embedded::T5_ITEMS_RON), &reg)?;
+    let mut recipes = Recipes::from_ron(recipes, &items)?;
+    terraria::add_recipes(&mut recipes, embedded::T5_RECIPES_RON, &items)?;
     Ok((reg, items, recipes))
 }
 
@@ -374,6 +383,8 @@ pub(crate) enum Screen {
     Packs,
     /// Shader packs and their options.
     Shaders,
+    /// The glyph grimoire: writing spells (Etapa 5).
+    Grimoire,
 }
 
 /// What a row of the shader menu does.
@@ -449,6 +460,8 @@ struct Game {
     max_health: f32,
     magic: magic::Magic,
     boss: bosses::BossState,
+    /// The Terraria side (Etapa 5): accessories, glyph spells, hard mode and its events.
+    t5: terraria::Terraria,
     town: npcs::Town,
     raid: raids::Raid,
     /// Seconds since the player was last hurt (red flash, invulnerability).
@@ -647,6 +660,7 @@ impl Game {
 
         // Mobs: a mobs.ron on disk wins, like blocks.
         let mobs_text = std::fs::read_to_string(base.join("packs/vanilla/mobs.ron")).unwrap_or_else(|_| embedded::MOBS_RON.to_string());
+        let mobs_text = terraria::with_extra(&mobs_text, embedded::T5_MOBS_RON);
         let mob_reg = voxel::mob::MobRegistry::from_ron(&mobs_text).unwrap_or_else(|e| {
             log::error!("{e}; using built-in mobs");
             voxel::mob::MobRegistry::from_ron(embedded::MOBS_RON).unwrap_or_default()
@@ -784,6 +798,7 @@ impl Game {
             max_health,
             magic: magic::Magic::new(max_mana),
             boss: bosses::BossState::new(bosses_beaten),
+            t5: terraria::Terraria::default(),
             town: npcs::Town::new(town_npcs),
             raid: raids::Raid::default(),
             hurt_age: 100.0,
@@ -1068,6 +1083,7 @@ impl Game {
         self.world.save_all();
         paintings::save(&self.world.save.dir, &self.paintings);
         self.surv.save(&self.world.save.dir, &self.items);
+        self.t5_save();
         self.settings.save(&self.base.join("settings.ron"));
     }
 
@@ -1128,16 +1144,17 @@ impl Game {
                 Screen::Paused | Screen::Inventory => self.set_screen(Screen::Playing),
                 Screen::Controls => self.set_screen(self.options_back),
                 Screen::Shaders => self.set_screen(Screen::Paused),
-                Screen::Paintings => self.set_screen(Screen::Playing),
+                Screen::Paintings | Screen::Grimoire => self.set_screen(Screen::Playing),
                 Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs => self.menu_back(),
                 Screen::Loading | Screen::Dead | Screen::Title => {}
             },
             KeyCode::KeyE => match self.screen {
                 Screen::Playing => self.surv_open_inventory(),
-                Screen::Inventory => self.set_screen(Screen::Playing),
+                Screen::Inventory | Screen::Grimoire => self.set_screen(Screen::Playing),
                 _ => {}
             },
             KeyCode::KeyT if f3 => self.reload_textures(),
+            KeyCode::KeyG if self.screen == Screen::Playing => self.glyph_cycle(),
             KeyCode::KeyP => match self.screen {
                 Screen::Playing => self.open_paintings(),
                 Screen::Paintings => self.set_screen(Screen::Playing),
@@ -1212,7 +1229,7 @@ impl Game {
 
     fn show_held_name(&mut self) {
         if let Some(st) = self.held_stack() {
-            let n = self.items.get(st.item).display_name.clone();
+            let n = self.item_label(&st);
             self.toast(n, 1.5);
         }
     }
@@ -1458,6 +1475,10 @@ impl Game {
                         self.particles.update(&self.world, 0.03);
                     }
                 }
+                if let Ok(scene) = std::env::var("MC_T5") {
+                    // Test hook: an Etapa 5 scene (terraria.rs, test_t5).
+                    self.test_t5(&scene);
+                }
                 if let Some(m) = self.args.mouse {
                     self.mouse_pos = m;
                 }
@@ -1471,6 +1492,9 @@ impl Game {
                     self.set_screen(Screen::Playing);
                 }
                 self.toast("Bem-vindo! Esc = menu, E = inventário", 6.0);
+                if std::env::var("MC_T5").as_deref() == Ok("grimoire") {
+                    self.set_screen(Screen::Grimoire);
+                }
             }
         }
 
@@ -1541,6 +1565,9 @@ impl Game {
             if self.survival {
                 self.surv_mob_deaths(&out.deaths);
             }
+            // After the mobs' own tick: worms, flyers, hard mode, accessories, glyph spells.
+            let use_held = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
+            self.update_t5(mdt, use_held && self.screen == Screen::Playing);
             self.painting_check -= dt;
             if self.painting_check <= 0.0 {
                 self.painting_check = 0.5;
@@ -1778,7 +1805,7 @@ impl Game {
                     let charge = if self.survival { self.attack_charge() } else { 1.0 };
                     let base = if self.survival { self.surv_attack_damage() } else { 4.0 };
                     // Falling onto a mob with a ready weapon is a critical hit.
-                    let crit = self.body.vel.y < -0.5 && !self.body.on_ground && !self.body.in_water && charge > 0.9;
+                    let crit = (self.body.vel.y < -0.5 && !self.body.on_ground && !self.body.in_water && charge > 0.9) || (charge > 0.9 && self.surv.rng.f32() < self.held_crit());
                     let dmg = if crit { base * 1.5 } else { base };
                     let sprint_hit = self.sprinting && charge > 0.9;
                     if crit || sprint_hit {
@@ -2177,10 +2204,14 @@ impl Game {
         }
         // Armor softens hits from something (mobs, blasts), not falls, drowning or hunger.
         let amount = if from.is_some() { self.armor_absorb(amount) } else { amount };
+        let amount = self.t5_incoming(amount, from);
+        if amount <= 0.0 {
+            return;
+        }
         self.health -= amount;
         self.hurt_age = 0.0;
         self.regen = 0.0;
-        if let Some(f) = from {
+        if let Some(f) = from.filter(|_| !self.no_knockback()) {
             self.body.knockback(self.body.pos - f, 5.0);
         }
         self.sfx(Sfx::Hurt);
@@ -2204,7 +2235,7 @@ impl Game {
         // Fall damage: one point per block beyond three.
         if self.body.on_ground || self.body.in_water {
             let fall = self.fall_peak - self.body.pos.y;
-            if fall > 3.5 && !self.body.in_water {
+            if fall > 3.5 && !self.body.in_water && !self.no_fall_damage() {
                 self.damage((fall - 3.0).floor(), None);
             }
             self.fall_peak = self.body.pos.y;
@@ -2223,7 +2254,7 @@ impl Game {
         }
         // Lava burns.
         let feet = self.body.pos.floor().as_ivec3();
-        if self.world.fluid(self.world.block_or_air(feet)) == 2 || self.world.fluid(self.world.block_or_air(feet + IVec3::Y)) == 2 {
+        if (self.world.fluid(self.world.block_or_air(feet)) == 2 || self.world.fluid(self.world.block_or_air(feet + IVec3::Y)) == 2) && !self.lava_safe(dt) {
             self.damage(4.0, None);
         }
         // Healing comes from a full stomach (survival.rs).
@@ -3018,6 +3049,7 @@ impl Game {
             }
             self.draw_hotbar_items(hx, hy, cell);
             self.draw_boss_bar(w);
+            self.draw_t5_hud(w, h);
             if self.survival {
                 self.draw_survival_hud(hx, hy, cell);
                 self.draw_mana(w);
@@ -3180,6 +3212,7 @@ impl Game {
                 }
             }
             Screen::Shaders => clicked_button = self.draw_shaders_menu(w, h, mouse),
+            Screen::Grimoire => self.draw_grimoire(w, h, mouse),
             Screen::Dead => {
                 self.ui.rect(0.0, 0.0, w, h, [120, 0, 0, 110]);
                 self.ui.text_centered(w / 2.0, h / 2.0 - 40.0 * s, "Você morreu!", WHITE);

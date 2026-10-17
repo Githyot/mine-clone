@@ -1,0 +1,20 @@
+// Etapa 5 (the Terraria side): written by tools/gen_etapa5_data.py, joined onto the base list.
+(blocks: [
+    (name: "cobalt_ore", display_name: Some("Minério de Cobalto"), hardness: 5.0, tool: Some(Pickaxe), tier: 4, drops: Some([(item: "raw_cobalt")])),
+    (name: "cobalt_block", display_name: Some("Bloco de Cobalto"), hardness: 5.0, tool: Some(Pickaxe), tier: 3),
+    (name: "palladium_ore", display_name: Some("Minério de Paládio"), hardness: 5.0, tool: Some(Pickaxe), tier: 4, drops: Some([(item: "raw_palladium")])),
+    (name: "palladium_block", display_name: Some("Bloco de Paládio"), hardness: 5.0, tool: Some(Pickaxe), tier: 3),
+    (name: "mythril_ore", display_name: Some("Minério de Mitril"), hardness: 5.5, tool: Some(Pickaxe), tier: 5, drops: Some([(item: "raw_mythril")])),
+    (name: "mythril_block", display_name: Some("Bloco de Mitril"), hardness: 5.0, tool: Some(Pickaxe), tier: 3),
+    (name: "orichalcum_ore", display_name: Some("Minério de Oricalco"), hardness: 5.5, tool: Some(Pickaxe), tier: 5, drops: Some([(item: "raw_orichalcum")])),
+    (name: "orichalcum_block", display_name: Some("Bloco de Oricalco"), hardness: 5.0, tool: Some(Pickaxe), tier: 3),
+    (name: "adamantite_ore", display_name: Some("Minério de Adamantita"), hardness: 6.0, tool: Some(Pickaxe), tier: 6, drops: Some([(item: "raw_adamantite")])),
+    (name: "adamantite_block", display_name: Some("Bloco de Adamantita"), hardness: 5.0, tool: Some(Pickaxe), tier: 3),
+    (name: "titanium_ore", display_name: Some("Minério de Titânio"), hardness: 6.0, tool: Some(Pickaxe), tier: 6, drops: Some([(item: "raw_titanium")])),
+    (name: "titanium_block", display_name: Some("Bloco de Titânio"), hardness: 5.0, tool: Some(Pickaxe), tier: 3),
+    (name: "radiant_block", display_name: Some("Bloco de Radiante"), hardness: 5.0, tool: Some(Pickaxe), tier: 3),
+    (name: "verdite_ore", display_name: Some("Minério de Verdita"), hardness: 6.5, tool: Some(Pickaxe), tier: 7, drops: Some([(item: "raw_verdite")])),
+    (name: "verdite_block", display_name: Some("Bloco de Verdita"), hardness: 5.0, tool: Some(Pickaxe), tier: 3),
+    (name: "lumite_block", display_name: Some("Bloco de Lumita"), hardness: 5.0, tool: Some(Pickaxe), tier: 3),
+    (name: "reforge_table", display_name: Some("Mesa de Reforja"), hardness: 3.0, tool: Some(Axe), textures: (top: Some("reforge_table_top"), bottom: Some("oak_planks"), side: Some("reforge_table_side"))),
+])

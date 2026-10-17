@@ -80,7 +80,7 @@ impl Game {
             "npc_smith" => self.boss.defeated.iter().any(|b| b == "forest_guardian"),
             // A guard comes once a few people live here.
             "npc_guard" => self.town.npcs.len() >= 2,
-            _ => false,
+            _ => self.t5_npc_wish(name),
         }
     }
 
@@ -124,7 +124,7 @@ impl Game {
         self.town.check_t = 6.0;
         self.find_houses();
         // One newcomer per check, into a house nobody lives in.
-        for name in ["npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", "npc_farmer", "npc_guard"] {
+        for name in ["npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", "npc_farmer", "npc_guard", "npc_tinkerer", "npc_mechanic", "npc_sorceress"] {
             if self.town_has(name) || !self.npc_wish_met(name) {
                 continue;
             }
@@ -271,7 +271,7 @@ impl Game {
                 }
             }
             _ => {
-                let Some(&(_, offers)) = SHOPS.iter().find(|s| s.0 == name) else { return true };
+                let Some(&(_, offers)) = SHOPS.iter().chain(crate::hardmode::SHOPS).find(|s| s.0 == name) else { return true };
                 let mut inv = Inventory::new(offers.len());
                 for (k, &(item, count, _)) in offers.iter().enumerate() {
                     if let Some(id) = self.items.id(item) {

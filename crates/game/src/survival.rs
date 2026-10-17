@@ -378,8 +378,8 @@ pub fn item_icon(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRegistry,
     let s = ui.scale;
     let durability = it.tool.as_ref().map(|t| t.durability).or(it.armor.map(|a| a.durability));
     if let Some(dur) = durability {
-        if stack.damage > 0 {
-            let k = 1.0 - stack.damage as f32 / dur as f32;
+        if stack.wear() > 0 {
+            let k = 1.0 - stack.wear() as f32 / dur as f32;
             let bw = size - 2.0 * s;
             let by = y + size - 2.0 * s;
             ui.rect(x + s, by, bw, 2.0 * s, [0, 0, 0, 255]);
@@ -452,6 +452,8 @@ pub(crate) enum Slot {
     Cont(usize),
     Armor(usize),
     Offhand,
+    /// Worn accessories (Etapa 5).
+    Acc(usize),
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -478,8 +480,8 @@ impl Game {
         for i in 0..4 {
             let Some(st) = self.surv.armor[i] else { continue };
             let Some(a) = self.items.get(st.item).armor else { continue };
-            let d = st.damage + (amount / 4.0).max(1.0) as u16;
-            self.surv.armor[i] = if d >= a.durability { None } else { Some(ItemStack { damage: d, ..st }) };
+            let d = st.wear() + (amount / 4.0).max(1.0) as u16;
+            self.surv.armor[i] = if d >= a.durability { None } else { Some(st.with_wear(d)) };
             if d >= a.durability {
                 self.sfx(Sfx::Break(Material::Stone));
                 self.toast("Uma peça da armadura quebrou", 2.0);
@@ -490,7 +492,9 @@ impl Game {
 
     /// Seconds a weapon needs between full-strength swings (the hand is quick, an axe slow).
     pub(crate) fn attack_cooldown(&self) -> f32 {
-        match self.held_tool().map(|t| t.kind) {
+        // A modifier makes the weapon quicker or slower (Etapa 5).
+        let k = self.held_stack().and_then(|s| crate::affixes::of(&s)).map(|a| 1.0 / a.speed).unwrap_or(1.0);
+        k * match self.held_tool().map(|t| t.kind) {
             None => 0.25,
             Some(ToolKind::Sword) => 0.625,
             Some(ToolKind::Axe) => 1.0,
@@ -522,13 +526,13 @@ impl Game {
         let sel = self.selected;
         let Some(s) = self.surv.inv.slots[sel] else { return };
         let Some(t) = self.items.get(s.item).tool.clone() else { return };
-        let d = s.damage + amount;
+        let d = s.wear() + amount;
         if d >= t.durability {
             self.surv.inv.slots[sel] = None;
             self.sfx(Sfx::Break(Material::Wood));
             self.toast("Sua ferramenta quebrou", 2.0);
         } else {
-            self.surv.inv.slots[sel] = Some(ItemStack { damage: d, ..s });
+            self.surv.inv.slots[sel] = Some(s.with_wear(d));
         }
     }
 
@@ -776,7 +780,9 @@ impl Game {
             }
             None => 1.0,
         };
-        base * (0.2 + 0.8 * k * k)
+        // Etapa 5: the weapon's modifier and the warrior emblem.
+        let bonus = self.held_stack().and_then(|s| crate::affixes::of(&s)).map(|a| a.damage).unwrap_or(1.0) * self.melee_bonus();
+        base * bonus * (0.2 + 0.8 * k * k)
     }
 
     pub(crate) fn surv_died(&mut self) {
@@ -874,6 +880,7 @@ impl Game {
                         self.use_bed(hit.block);
                         return true;
                     }
+                    "reforge_table" => return self.t5_use_block("reforge_table"),
                     _ => {}
                 }
             }
@@ -903,6 +910,9 @@ impl Game {
         }
         if item.name == "fishing_rod" {
             return self.use_rod();
+        }
+        if self.t5_use(&item.name) {
+            return true;
         }
         if crate::magic::is_caster(&item.name) {
             // Casting happens while the button is held (update_magic).
@@ -1655,6 +1665,7 @@ impl Game {
                     }
                     // A little figure of the player in the corner, like the classic screen.
                     self.ui.frame(x0 + 26.0 * s, y0 + 8.0 * s, 52.0 * s, 62.0 * s, s, [0, 0, 0, 255]);
+                    slots.extend(self.accessory_slots(x0, y0));
 
                 }
             }
@@ -1763,7 +1774,7 @@ impl Game {
         // Right-drag (like Mouse Tweaks): one item into each slot the mouse passes over.
         if self.rdown && !self.rclicked && open != Open::Shop {
             if let (Some(slot), Some(c)) = (hovered, self.surv.cursor) {
-                let fresh = self.surv.drag_last != Some(slot) && !matches!(slot, Slot::CraftOut | Slot::Armor(_)) && !(slot == Slot::Cont(2) && matches!(open, Open::Furnace(_)));
+                let fresh = self.surv.drag_last != Some(slot) && !matches!(slot, Slot::CraftOut | Slot::Armor(_) | Slot::Acc(_)) && !(slot == Slot::Cont(2) && matches!(open, Open::Furnace(_)));
                 let fits = match self.slot_get(slot) {
                     None => true,
                     Some(st) => st.stacks_with(&c) && st.count < self.items.get(st.item).max_stack,
@@ -1792,7 +1803,7 @@ impl Game {
                 None => None,
             };
             if let Some(st) = st {
-                let mut name = self.items.get(st.item).display_name.clone();
+                let mut name = self.item_label(&st);
                 if let (Some(Slot::Cont(i)), Open::Shop) = (hovered, open) {
                     let price = self.surv.shop_prices.get(i).copied().unwrap_or(0);
                     name = format!("{name} x{}: {price} esmeralda(s)", st.count);
@@ -1815,7 +1826,7 @@ impl Game {
         let mut out = Vec::new();
         let dur = it.tool.as_ref().map(|t| t.durability).or(it.armor.map(|a| a.durability));
         if let Some(d) = dur {
-            let left = d.saturating_sub(st.damage);
+            let left = d.saturating_sub(st.wear());
             let k = left as f32 / d.max(1) as f32;
             // Green when new, yellow at half, red when nearly broken.
             let col = if k > 0.5 { [90, 220, 90, 255] } else if k > 0.2 { [235, 210, 70, 255] } else { [235, 80, 70, 255] };
@@ -1830,6 +1841,7 @@ impl Game {
         if let Some(f) = &it.food {
             out.push((format!("Fome: +{}  Saturação: +{:.1}", f.hunger, f.saturation), GRAY));
         }
+        self.t5_details(st, &mut out);
         out
     }
 
@@ -1863,6 +1875,7 @@ impl Game {
             Slot::CraftOut => None,
             Slot::Armor(i) => self.surv.armor[i],
             Slot::Offhand => self.surv.offhand,
+            Slot::Acc(i) => self.t5.acc[i],
             Slot::Cont(i) => match self.open_container_inv() {
                 Some(inv) => inv.slots.get(i).copied().flatten(),
                 None => None,
@@ -1877,6 +1890,7 @@ impl Game {
             Slot::CraftOut => {}
             Slot::Armor(i) => self.surv.armor[i] = v,
             Slot::Offhand => self.surv.offhand = v,
+            Slot::Acc(i) => self.t5.acc[i] = v,
             Slot::Cont(i) => {
                 if let Some(inv) = self.open_container_inv_mut() {
                     if i < inv.slots.len() {
@@ -1928,6 +1942,11 @@ impl Game {
         if slot == Slot::CraftOut {
             self.click_craft_output(shift);
             return;
+        }
+        if let (Slot::Acc(_), Some(c)) = (slot, self.surv.cursor) {
+            if !crate::accessories::is_accessory(&self.items.get(c.item).name) {
+                return;
+            }
         }
         if let (Slot::Armor(i), Some(c)) = (slot, self.surv.cursor) {
             if self.items.get(c.item).armor.is_none_or(|a| a.slot as usize != i) {
@@ -2047,7 +2066,7 @@ impl Game {
     pub(crate) fn wheel_move(&mut self, up: bool) -> bool {
         let Some(slot) = self.surv.hover_slot else { return false };
         let Some(st) = self.slot_get(slot) else { return false };
-        if self.surv.cursor.is_some() || matches!(slot, Slot::CraftOut | Slot::Armor(_)) || self.surv.open == Open::Shop {
+        if self.surv.cursor.is_some() || matches!(slot, Slot::CraftOut | Slot::Armor(_) | Slot::Acc(_)) || self.surv.open == Open::Shop {
             return false;
         }
         let container = matches!(self.surv.open, Open::Chest(_) | Open::Furnace(_));
@@ -2100,6 +2119,8 @@ impl Game {
                     r.damage = old.damage;
                 }
             }
+            // Weapons, casters and accessories come out with a modifier (Apotheosis idea).
+            r = self.roll_affix(r);
             if shift {
                 // Craft as many as fit into the inventory.
                 let mut test = self.surv.inv.clone();

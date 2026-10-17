@@ -234,6 +234,8 @@ pub struct Mob {
     pub chill: f32,
     /// Where a town NPC lives; it wanders near here.
     pub home: Option<Vec3>,
+    /// Its death was handed to the game (drops, bosses); set once.
+    pub counted: bool,
     fire_tick: f32,
     rng: Rng,
 }
@@ -281,6 +283,7 @@ impl Mob {
             on_fire: 0.0,
             chill: 0.0,
             home: None,
+            counted: false,
             fire_tick: 0.0,
             rng,
         }
