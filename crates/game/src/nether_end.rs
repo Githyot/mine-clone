@@ -110,6 +110,7 @@ pub struct NetherEnd {
     wither_wake: f32,
     check_gateway: bool,
     pub gateway_landing: bool,
+    last_gateway: IVec3,
     /// Riding a strider over the lava: which one (by its per-mob phase), and where it was.
     strider: Option<f32>,
     strider_held: Option<(Vec3, f32)>,
@@ -855,6 +856,8 @@ impl Game {
         let egg = self.reg.id_or_air("dragon_egg");
         self.world.set_block(IVec3::new(0, END_EXIT_Y + 4, 0), egg);
         self.build_gateway(self.gateway_spot());
+        // If its chunk wasn't in yet, it is built once it is.
+        self.ne.check_gateway = true;
         self.toast("Uma passagem se abriu no céu, longe da ilha", 5.0);
         let glow = self.glow_layer();
         for k in 0..80 {
@@ -967,6 +970,7 @@ impl Game {
             if self.reg.get(self.world.block_or_air(g)).name != "end_gateway" {
                 self.build_gateway(g);
             }
+            self.ne.last_gateway = g;
         }
         let (x, z) = (at.x.floor() as i32, at.z.floor() as i32);
         let y = self.world.gen.end_top(x, z).map(|t| t + 1).unwrap_or(at.y as i32);
@@ -984,6 +988,23 @@ impl Game {
     pub(crate) fn mount_strider(&mut self) -> bool {
         let Some((i, t)) = self.mobs.pick(self.body.eye(), self.forward(), 3.5) else { return false };
         if t > self.target.map(|h| h.distance).unwrap_or(f32::MAX) || self.mob_name(i) != "strider" || self.ne.strider.is_some() {
+            return false;
+        }
+        if !self.mobs.list[i].saddled {
+            // Like horses, it needs a saddle first.
+            if !self.held_stack().is_some_and(|s| self.items.get(s.item).name == "saddle") {
+                self.toast("Use uma sela para poder montar", 2.5);
+                return true;
+            }
+            self.mobs.list[i].saddled = true;
+            if self.survival {
+                let sel = self.selected;
+                self.surv.inv.take(sel, 1);
+            }
+            self.toast("Selado! Clique com o direito para montar", 3.0);
+            return true;
+        }
+        if self.crouch > 0.5 {
             return false;
         }
         self.ne.strider = Some(self.mobs.list[i].phase);
@@ -1221,12 +1242,22 @@ impl Game {
                 log::info!("gateway at {g}: {}", self.reg.get(self.world.block_or_air(g)).name);
                 let egg = self.reg.get(self.world.block_or_air(IVec3::new(0, END_EXIT_Y + 4, 0))).name.clone();
                 log::info!("egg block: {egg}");
+                if self.body.pos.length() < 300.0 {
+                    // Step in: off to the far islands (the scene ends there, by the way back).
+                    self.body.pos = g.as_vec3() + Vec3::new(0.5, 0.0, 0.5);
+                    self.gateway_step(0.1);
+                } else {
+                    let back = self.reg.get(self.world.block_or_air(self.ne.last_gateway)).name.clone();
+                    log::info!("landed at {:.0?}, way back at {}: {back}", self.body.pos, self.ne.last_gateway);
+                }
             }
             "strider" => {
                 // Ride a strider forward for a few seconds, logging what it stands on.
                 let at = self.body.pos;
                 if self.mobs.spawn("strider", at) {
-                    self.ne.strider = Some(self.mobs.list.last().unwrap().phase);
+                    let m = self.mobs.list.last_mut().unwrap();
+                    m.saddled = true;
+                    self.ne.strider = Some(m.phase);
                 }
                 for k in 0..160 {
                     let dir = [side, flat, -side, -flat][k / 40];

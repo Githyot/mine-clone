@@ -71,12 +71,17 @@ pub enum Biome {
     CrimsonForest = 17,
     TheEnd = 18,
     WarpedForest = 19,
-    BasaltDeltas = 20,
-    EndHighlands = 21,
+    River = 20,
+    MushroomFields = 21,
+    Meadow = 22,
+    SnowyPeaks = 23,
+    FrozenOcean = 24,
+    BasaltDeltas = 25,
+    EndHighlands = 26,
 }
 
 impl Biome {
-    pub const COUNT: usize = 22;
+    pub const COUNT: usize = 27;
 
     pub fn from_u8(v: u8) -> Biome {
         match v {
@@ -99,8 +104,13 @@ impl Biome {
             17 => Biome::CrimsonForest,
             18 => Biome::TheEnd,
             19 => Biome::WarpedForest,
-            20 => Biome::BasaltDeltas,
-            21 => Biome::EndHighlands,
+            20 => Biome::River,
+            21 => Biome::MushroomFields,
+            22 => Biome::Meadow,
+            23 => Biome::SnowyPeaks,
+            24 => Biome::FrozenOcean,
+            25 => Biome::BasaltDeltas,
+            26 => Biome::EndHighlands,
             _ => Biome::Plains,
         }
     }
@@ -127,6 +137,11 @@ impl Biome {
             Biome::CrimsonForest => "Crimson Forest",
             Biome::TheEnd => "The End",
             Biome::WarpedForest => "Warped Forest",
+            Biome::River => "River",
+            Biome::MushroomFields => "Mushroom Fields",
+            Biome::Meadow => "Meadow",
+            Biome::SnowyPeaks => "Snowy Peaks",
+            Biome::FrozenOcean => "Frozen Ocean",
             Biome::BasaltDeltas => "Basalt Deltas",
             Biome::EndHighlands => "End Highlands",
         }
@@ -150,6 +165,10 @@ impl Biome {
             Biome::Badlands => [1.14, 0.94, 0.62],
             Biome::CherryGrove => [1.02, 1.08, 0.9],
             Biome::NetherWastes | Biome::SoulSandValley | Biome::CrimsonForest | Biome::WarpedForest | Biome::BasaltDeltas | Biome::TheEnd | Biome::EndHighlands => [1.0, 1.0, 1.0],
+            Biome::River => [0.92, 1.0, 0.9],
+            Biome::MushroomFields => [0.95, 1.05, 0.85],
+            Biome::Meadow => [0.9, 1.06, 0.82],
+            Biome::SnowyPeaks | Biome::FrozenOcean => [0.85, 0.95, 1.0],
         }
     }
 
@@ -186,6 +205,13 @@ struct Palette {
     cactus: BlockId,
     short_grass: BlockId,
     poppy: BlockId,
+    meadow_flowers: Vec<BlockId>,
+    mycelium: BlockId,
+    snow_block: BlockId,
+    packed_ice: BlockId,
+    mushroom_stem: BlockId,
+    red_mushroom_block: BlockId,
+    brown_mushroom_block: BlockId,
     twig: BlockId,
     pebble: BlockId,
     dandelion: BlockId,
@@ -195,6 +221,7 @@ struct Palette {
     red_sand: BlockId,
     terracotta: BlockId,
     lily_pad: BlockId,
+    sugar_cane: BlockId,
     red_mushroom: BlockId,
     brown_mushroom: BlockId,
     cobblestone: BlockId,
@@ -261,6 +288,17 @@ impl Palette {
             cactus: g("cactus"),
             short_grass: g("short_grass"),
             poppy: g("poppy"),
+            meadow_flowers: ["cornflower", "allium", "azure_bluet", "oxeye_daisy", "red_tulip", "orange_tulip", "white_tulip", "pink_tulip", "lily_of_the_valley", "poppy", "dandelion"]
+                .iter()
+                .map(|n| g(n))
+                .filter(|&b| b != AIR)
+                .collect(),
+            mycelium: g("mycelium"),
+            snow_block: g("snow"),
+            packed_ice: g("packed_ice"),
+            mushroom_stem: g("mushroom_stem"),
+            red_mushroom_block: g("red_mushroom_block"),
+            brown_mushroom_block: g("brown_mushroom_block"),
             twig: g("twig"),
             pebble: g("pebble"),
             dandelion: g("dandelion"),
@@ -270,6 +308,7 @@ impl Palette {
             red_sand: g("red_sand"),
             terracotta: g("terracotta"),
             lily_pad: g("lily_pad"),
+            sugar_cane: g("sugar_cane"),
             red_mushroom: g("red_mushroom"),
             brown_mushroom: g("brown_mushroom"),
             cobblestone: g("cobblestone"),
@@ -445,19 +484,44 @@ impl Generator {
                 h += (target - h) * swamp * edge;
             }
         }
+        // Mushroom islands: rare low humps far out in the deep ocean.
+        let mush = smoothstep(-0.38, -0.46, cont) * smoothstep(0.38, 0.46, self.humidity.fbm2(x / 260.0 - 900.0, z / 260.0 + 400.0, 2));
+        if mush > 0.0 {
+            let target = sea + 2.0 + detail * 4.0;
+            h += (target - h).max(0.0) * mush;
+        }
+        // Rivers: long winding channels across the land, cut down to just under sea level.
+        let rv = self.variant.fbm2(x / 640.0 + 900.0, z / 640.0 - 900.0, 3).abs();
+        let river = smoothstep(0.05, 0.015, rv) * smoothstep(sea + 45.0, sea + 25.0, h) * (1.0 - swamp) * (1.0 - mush);
+        if river > 0.0 && h > sea - 4.0 {
+            let target = sea - 3.0 + detail;
+            h += (target - h) * river.min(1.0).powf(0.7);
+        }
         let height = (h as i32).clamp(4, CHUNK_HEIGHT as i32 - 20);
 
         let temp = climate - (height - 90).max(0) as f32 / 120.0;
         let biome = if swamp > 0.5 && (SEA_LEVEL - 5..=SEA_LEVEL + 4).contains(&height) {
             Biome::Swamp
+        } else if mush > 0.5 && height >= SEA_LEVEL {
+            Biome::MushroomFields
+        } else if river > 0.5 && height < SEA_LEVEL {
+            Biome::River
         } else if height < SEA_LEVEL - 2 {
-            Biome::Ocean
+            if temp < -0.3 {
+                Biome::FrozenOcean
+            } else {
+                Biome::Ocean
+            }
         } else if height <= SEA_LEVEL + 1 && temp > -0.25 && swamp < 0.25 {
             Biome::Beach
         } else if bad > 0.5 {
             Biome::Badlands
+        } else if height > 150 {
+            Biome::SnowyPeaks
         } else if height > 118 {
             Biome::Mountains
+        } else if height > 92 && temp > -0.2 && temp < 0.2 && hum < 0.15 && var > 0.05 {
+            Biome::Meadow
         } else if temp < -0.28 {
             if hum > 0.0 {
                 Biome::Taiga
@@ -522,6 +586,24 @@ impl Generator {
                 }
             }
             Biome::Snowy | Biome::Taiga => (p.snow_grass, p.dirt, 3),
+            Biome::SnowyPeaks if p.snow_block != AIR => {
+                if (wx * 7 + wz * 13).rem_euclid(17) == 0 && p.packed_ice != AIR {
+                    (p.packed_ice, p.stone, 2)
+                } else {
+                    (p.snow_block, p.stone, 2)
+                }
+            }
+            Biome::SnowyPeaks => (p.snow_grass, p.stone, 1),
+            Biome::River | Biome::FrozenOcean => {
+                if (wx ^ wz) & 7 == 0 {
+                    (p.clay, p.sand, 2)
+                } else if h < SEA_LEVEL - 10 {
+                    (p.gravel, p.gravel, 2)
+                } else {
+                    (p.sand, p.sand, 3)
+                }
+            }
+            Biome::MushroomFields if p.mycelium != AIR => (p.mycelium, p.dirt, 3),
             // Red sand over deep layers of terracotta (the layers are picked in `generate`).
             Biome::Badlands if p.red_sand != AIR => (p.red_sand, p.terracotta, (h - SEA_LEVEL + 14).max(3)),
             Biome::Badlands => (p.sand, p.sandstone, 4),
@@ -543,7 +625,7 @@ impl Generator {
         let (top, _, _) = self.top_blocks(&col, wx, wz);
         let h = col.height;
         let top = if h < SEA_LEVEL && (top == p.grass || top == p.snow_grass) { p.dirt } else { top };
-        let liquid = (h < SEA_LEVEL).then_some(if matches!(col.biome, Biome::Snowy | Biome::Taiga) { p.ice } else { p.water });
+        let liquid = (h < SEA_LEVEL).then_some(if matches!(col.biome, Biome::Snowy | Biome::Taiga | Biome::FrozenOcean | Biome::SnowyPeaks) { p.ice } else { p.water });
         // Tree attempts per chunk in `decorate`, out of the forest's 9.
         let trees = if !(SEA_LEVEL..=200).contains(&h) {
             None
@@ -559,6 +641,7 @@ impl Generator {
                 Biome::Savanna => Some((self.trees.leaves(Wood::Acacia), 0.25)),
                 Biome::CherryGrove => Some((self.trees.leaves(Wood::Cherry), 0.5)),
                 Biome::Swamp => Some((p.oak_leaves, 0.4)),
+                Biome::Meadow => Some((p.birch_leaves, 0.05)),
                 _ => None,
             }
         };
@@ -622,7 +705,7 @@ impl Generator {
                     let id = if y == 0 || (y <= 4 && rng.below(5) < (5 - y) as u32) {
                         p.bedrock
                     } else if y > h {
-                        if y == SEA_LEVEL && matches!(col.biome, Biome::Snowy | Biome::Taiga) {
+                        if y == SEA_LEVEL && (matches!(col.biome, Biome::Snowy | Biome::Taiga | Biome::FrozenOcean) || (col.biome == Biome::River && self.temperature.fbm2(wx as f32 / 1100.0, wz as f32 / 1100.0, 3) < -0.28)) {
                             p.ice
                         } else {
                             p.water
@@ -737,6 +820,54 @@ impl Generator {
         }
     }
 
+    /// A huge mushroom: a pale stem under a red dome or a wide flat brown cap. `x` and `z`
+    /// keep three blocks from the chunk edge.
+    fn huge_mushroom(&self, chunk: &mut Chunk, rng: &mut Rng, x: usize, y: i32, z: usize) {
+        let p = &self.pal;
+        if p.mushroom_stem == AIR {
+            return;
+        }
+        let h = rng.range(4, 7);
+        if y + h + 3 >= CHUNK_HEIGHT as i32 || (1..=h + 1).any(|k| chunk.get(x, (y + k) as usize, z) != AIR) {
+            return;
+        }
+        for k in 1..=h {
+            chunk.set(x, (y + k) as usize, z, p.mushroom_stem);
+        }
+        let top = y + h;
+        let set = |chunk: &mut Chunk, dx: i32, dy: i32, dz: i32, b: BlockId| {
+            let (cx, cy, cz) = ((x as i32 + dx) as usize, (top + dy) as usize, (z as i32 + dz) as usize);
+            if chunk.get(cx, cy, cz) == AIR {
+                chunk.set(cx, cy, cz, b);
+            }
+        };
+        if rng.chance(0.5) {
+            // Red: a dome, sides hanging down three blocks.
+            for dy in -2..=1 {
+                let r: i32 = if dy == 1 { 1 } else { 2 };
+                for dz in -r..=r {
+                    for dx in -r..=r {
+                        let rim = dx.abs() == r || dz.abs() == r;
+                        if (dy < 1 && !rim) || (dx.abs() == r && dz.abs() == r) {
+                            continue;
+                        }
+                        set(chunk, dx, dy, dz, p.red_mushroom_block);
+                    }
+                }
+            }
+        } else {
+            // Brown: one wide flat cap.
+            for dz in -3i32..=3 {
+                for dx in -3i32..=3 {
+                    if dx.abs() == 3 && dz.abs() == 3 {
+                        continue;
+                    }
+                    set(chunk, dx, 1, dz, p.brown_mushroom_block);
+                }
+            }
+        }
+    }
+
     fn decorate(&self, chunk: &mut Chunk, rng: &mut Rng, cols: &[Column], pos: ChunkPos) {
         let p = &self.pal;
         // Trees stay inside the chunk (see `TreeKind::reach`) so generation never writes to neighbors.
@@ -751,6 +882,8 @@ impl Generator {
             Biome::Savanna => 2,
             Biome::CherryGrove => 5,
             Biome::Badlands => 2,
+            Biome::Meadow => 1,
+            Biome::MushroomFields => 3,
             _ => 0,
         };
         for _ in 0..tree_attempts {
@@ -773,10 +906,17 @@ impl Generator {
                 }
                 continue;
             }
+            if col.biome == Biome::MushroomFields {
+                if ground == p.mycelium && ground != AIR {
+                    self.huge_mushroom(chunk, rng, x.clamp(3, 12), y, z.clamp(3, 12));
+                }
+                continue;
+            }
             if ground != p.grass && ground != p.snow_grass && !(wading && ground == p.dirt) {
                 continue;
             }
             let kind = match col.biome {
+                Biome::Meadow => TreeKind::Round(Wood::Birch),
                 Biome::Taiga | Biome::Snowy | Biome::Mountains => TreeKind::Spruce,
                 Biome::BirchForest => {
                     if rng.chance(0.8) {
@@ -863,6 +1003,18 @@ impl Generator {
                     continue;
                 }
                 let ground = chunk.get(x, uy, z);
+                // Sugar cane on the banks, one to three tall.
+                let wet = [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dz)| {
+                    let (nx, nz) = (x as i32 + dx, z as i32 + dz);
+                    (0..16).contains(&nx) && (0..16).contains(&nz) && chunk.get(nx as usize, uy, nz as usize) == p.water
+                });
+                if wet && p.sugar_cane != AIR && (ground == p.grass || ground == p.sand) && rng.chance(0.18) {
+                    let h = 1 + (rng.f32() * 3.0) as usize;
+                    for k in 0..h.min(CHUNK_HEIGHT - above) {
+                        chunk.set(x, above + k, z, p.sugar_cane);
+                    }
+                    continue;
+                }
                 if ground == p.grass {
                     let r = rng.f32();
                     let grass_p = match col.biome {
@@ -873,11 +1025,28 @@ impl Generator {
                         Biome::CherryGrove => 0.2,
                         Biome::Swamp => 0.14,
                         Biome::DarkForest => 0.08,
+                        Biome::Meadow => 0.4,
                         _ => 0.06,
                     };
-                    let flower_p = if col.biome == Biome::CherryGrove { 0.05 } else { 0.012 };
+                    let flower_p = match col.biome {
+                        Biome::CherryGrove => 0.05,
+                        Biome::Meadow => 0.14,
+                        Biome::Plains | Biome::Forest | Biome::BirchForest => 0.02,
+                        _ => 0.012,
+                    };
                     if r < flower_p {
-                        chunk.set(x, above, z, if rng.chance(0.5) { p.poppy } else { p.dandelion });
+                        // Meadows and plains get every kind; elsewhere mostly poppies and dandelions.
+                        let many = matches!(col.biome, Biome::Meadow | Biome::Plains | Biome::Forest | Biome::BirchForest | Biome::CherryGrove) && !p.meadow_flowers.is_empty();
+                        let f = if many && rng.chance(0.7) {
+                            // Patches of one kind, picked by place.
+                            let k = (self.variant.noise2((pos.x * 16 + x as i32) as f32 / 24.0, (pos.y * 16 + z as i32) as f32 / 24.0) * 0.5 + 0.5) * p.meadow_flowers.len() as f32;
+                            p.meadow_flowers[(k as usize).min(p.meadow_flowers.len() - 1)]
+                        } else if rng.chance(0.5) {
+                            p.poppy
+                        } else {
+                            p.dandelion
+                        };
+                        chunk.set(x, above, z, f);
                     } else if r < flower_p + grass_p {
                         chunk.set(x, above, z, p.short_grass);
                     } else if r < 0.0125 + grass_p && col.biome == Biome::Plains {
@@ -896,6 +1065,8 @@ impl Generator {
                             chunk.set(x, above, z, m);
                         }
                     }
+                } else if ground == p.mycelium && ground != AIR && rng.chance(0.03) {
+                    chunk.set(x, above, z, if rng.chance(0.5) { p.red_mushroom } else { p.brown_mushroom });
                 } else if (ground == p.sand && col.biome == Biome::Desert && rng.chance(0.01)) || (ground == p.red_sand && ground != AIR && rng.chance(0.012)) {
                     chunk.set(x, above, z, p.dead_bush);
                 } else if ground == p.snow_grass && chunk.get(x, above, z) == AIR && p.snow_layer != AIR {

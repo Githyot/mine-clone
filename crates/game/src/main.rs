@@ -16,7 +16,9 @@ mod fishing;
 mod magic;
 mod bosses;
 mod npcs;
+mod pets;
 mod raids;
+mod signs;
 mod fluids;
 mod redstone;
 mod wanderers;
@@ -375,6 +377,8 @@ pub(crate) enum Screen {
     Packs,
     /// Shader packs and their options.
     Shaders,
+    /// Writing on a sign.
+    Sign,
 }
 
 /// What a row of the shader menu does.
@@ -453,6 +457,10 @@ struct Game {
     ne: nether_end::NetherEnd,
     town: npcs::Town,
     raid: raids::Raid,
+    /// Saved tame animals not back in the world yet.
+    pets_waiting: Vec<pets::PetSave>,
+    signs: std::collections::HashMap<[i32; 3], String>,
+    sign_edit: Option<IVec3>,
     /// Seconds since the player was last hurt (red flash, invulnerability).
     hurt_age: f32,
     regen: f32,
@@ -789,6 +797,9 @@ impl Game {
             ne: nether_end::NetherEnd::default(),
             town: npcs::Town::new(town_npcs),
             raid: raids::Raid::default(),
+            pets_waiting: pets::load(&save.dir),
+            signs: signs::load(&save.dir),
+            sign_edit: None,
             hurt_age: 100.0,
             regen: 0.0,
             fall_peak: f32::MIN,
@@ -1084,6 +1095,8 @@ impl Game {
         }
         self.world.save_all();
         paintings::save(&self.world.save.dir, &self.paintings);
+        signs::save(&self.world.save.dir, &self.signs);
+        self.save_pets();
         self.surv.save(&self.world.save.dir, &self.items);
         self.settings.save(&self.base.join("settings.ron"));
     }
@@ -1128,6 +1141,10 @@ impl Game {
             self.keys.remove(&code);
             return;
         }
+        if self.screen == Screen::Sign {
+            self.sign_key(code);
+            return;
+        }
         if self.screen == Screen::CreateWorld && code != KeyCode::Escape {
             self.form_key(code);
             return;
@@ -1145,7 +1162,7 @@ impl Game {
                 Screen::Paused | Screen::Inventory => self.set_screen(Screen::Playing),
                 Screen::Controls => self.set_screen(self.options_back),
                 Screen::Shaders => self.set_screen(Screen::Paused),
-                Screen::Paintings => self.set_screen(Screen::Playing),
+                Screen::Paintings | Screen::Sign => self.set_screen(Screen::Playing),
                 Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs => self.menu_back(),
                 Screen::Loading | Screen::Dead | Screen::Title => {}
             },
@@ -1398,6 +1415,10 @@ impl Game {
                     // Test hook: a small field in front, some of it ripe.
                     self.test_farm();
                 }
+                if let Ok(name) = std::env::var("MC_BIOME") {
+                    // Test hook: stand in the nearest biome of that name (e.g. "Meadow").
+                    self.test_biome(&name);
+                }
                 if let Ok(kind) = std::env::var("MC_CAVE") {
                     // Test hook: stand in a cave biome.
                     self.test_cave(&kind);
@@ -1525,6 +1546,7 @@ impl Game {
                 // Townsfolk live at home.
                 self.update_npcs(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_raids(dt);
+                self.update_pets(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
         }
         if self.world_open && !matches!(self.screen, Screen::Loading | Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Shaders) {
@@ -1659,7 +1681,12 @@ impl Game {
         let was_ground = self.body.on_ground;
         // The camera pass for screenshots holds still.
         if self.args.screenshot.is_none() {
-            if !self.seat_step(input.sneak) && !self.ride_step(wish, input.sneak) && !self.strider_step(wish, input.sneak, dt) && !self.elytra_step(input.jump, dt) {
+            if !self.seat_step(input.sneak)
+                && !self.ride_step(wish, input.sneak)
+                && !self.mount_step(wish, input.jump, input.sneak, dt)
+                && !self.strider_step(wish, input.sneak, dt)
+                && !self.elytra_step(input.jump, dt)
+            {
                 self.body.step(&self.world, &input, dt);
             }
         } else {
@@ -2486,6 +2513,8 @@ impl Game {
             Shape::Chair => facing(-f.x, -f.z),
             // A bench runs across your view.
             Shape::Bench => facing(f.x, f.z) ^ 1,
+            // A sign hangs on the wall clicked, or stands facing you.
+            Shape::Sign => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) | 4 } else if hit.normal.y > 0 { facing(f.x, f.z) } else { return None },
             // A shelf goes on the wall you clicked.
             Shape::Shelf => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) } else { facing(f.x, f.z) },
             // Under a block it hangs on a chain.
@@ -2642,6 +2671,9 @@ impl Game {
         let vol = self.settings.sound_volume;
         if let Some(a) = self.audio.as_mut() {
             a.play(Sfx::Place(m), vol);
+        }
+        if self.reg.get(id).shape == Shape::Sign && self.args.screenshot.is_none() {
+            self.edit_sign(pos);
         }
         Some(pos)
     }
@@ -3039,6 +3071,7 @@ impl Game {
                 }
             }
             self.draw_mob_health_bars(w, h);
+            self.draw_sign_texts(w, h);
             // Hotbar.
             let cell = 20.0 * s;
             let hx = (w - cell * 9.0) / 2.0;
@@ -3200,6 +3233,7 @@ impl Game {
                 }
             }
             Screen::Paintings => self.draw_paintings_menu(w, h, mouse),
+            Screen::Sign => self.draw_sign_editor(w, h),
             Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer => self.draw_title_menus(w, h, mouse),
             Screen::Options | Screen::Packs => {
                 if self.world_open {

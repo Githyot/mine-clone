@@ -254,6 +254,10 @@ impl Mobs {
         let mut bites: Vec<(usize, usize, f32)> = Vec::new();
         for (i, m) in self.list.iter_mut().enumerate() {
             m.prey = target[i].map(|j| prey_pos[j]);
+            // A mount under the player is moved by the player.
+            if m.ridden {
+                continue;
+            }
             let def = &self.reg.defs[m.def];
             // Far away and unloaded: freeze until the player comes back.
             if world.block(m.body.pos.floor().as_ivec3()).is_none() {

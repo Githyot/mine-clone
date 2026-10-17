@@ -247,6 +247,9 @@ pub struct Mob {
     pub chill: f32,
     /// Where a town NPC lives; it wanders near here.
     pub home: Option<Vec3>,
+    /// Wears a saddle (horses and the like), and has the player on its back.
+    pub saddled: bool,
+    pub ridden: bool,
     fire_tick: f32,
     rng: Rng,
 }
@@ -294,6 +297,8 @@ impl Mob {
             on_fire: 0.0,
             chill: 0.0,
             home: None,
+            saddled: false,
+            ridden: false,
             fire_tick: 0.0,
             rng,
         }

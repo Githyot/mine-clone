@@ -435,6 +435,10 @@ impl Game {
     /// Typing into the new-world form.
     pub(crate) fn type_text(&mut self, text: &str) {
         self.creative_type(text);
+        if self.screen == Screen::Sign {
+            self.sign_type(text);
+            return;
+        }
         if self.screen != Screen::CreateWorld {
             return;
         }

@@ -238,7 +238,7 @@ impl Game {
         // Grass and flowers in the way don't count.
         let block_dist = self.target.filter(|h| self.reg.get(self.world.block_or_air(h.block)).shape != Shape::Cross).map(|h| h.distance).unwrap_or(f32::MAX);
         let def = &self.mobs.reg.defs[self.mobs.list[i].def];
-        if !def.town || t > block_dist {
+        if !def.town || t > block_dist || def.name.ends_with("_tame") {
             return false;
         }
         let (name, dn) = (def.name.clone(), def.display_name.clone());

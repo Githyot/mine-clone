@@ -213,8 +213,9 @@ NETHER
     Piglin: fica bravo se você não usar uma peça de armadura de ouro. Com um lingote de ouro
       na mão, botão direito nele: ele pega o ouro e joga algo de volta (pérolas, obsidiana
       chorona, cargas de fogo, quartzo, couro, linha...). Piglin bruto guarda os bastiões.
-    Hoglin: javali forte da floresta carmesim. Strider: anda na lava; botão direito para
-      montar, ande com as teclas de movimento, agache para descer.
+    Hoglin: javali forte da floresta carmesim. Strider: anda na lava; ponha uma sela
+      (botão direito com a sela) e clique de novo para montar; ande com as teclas de
+      movimento e agache para descer.
     Esqueleto Wither: nas fortalezas; às vezes solta um crânio de esqueleto Wither.
   Bastiões: ruínas de pedra-negra com uma sala de ouro e baús (ouro, fragmentos de netherita).
   Âncora de renascimento (6 obsidianas choronas + 3 pedras luminosas): carregue com pedra

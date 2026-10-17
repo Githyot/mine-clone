@@ -181,6 +181,16 @@ impl Game {
             let id = self.reg.id_or_air(n);
             self.world.set_block(c + IVec3::new(dx, 1, 3), self.reg.variant(id, 0));
         }
+        // Signs: one standing, one on the wall, and carpets.
+        let sign = self.reg.id_or_air("oak_sign");
+        self.world.set_block(c + IVec3::new(2, 0, 4), self.reg.variant(sign, 0));
+        self.signs.insert((c + IVec3::new(2, 0, 4)).to_array(), "Bem-vindo\nà vila!".to_string());
+        let wall = self.reg.id_or_air("spruce_sign");
+        self.world.set_block(c + IVec3::new(3, 2, 3), self.reg.variant(wall, 4));
+        self.signs.insert((c + IVec3::new(3, 2, 3)).to_array(), "Loja\naberta".to_string());
+        for (dx, n) in [(-5, "red_carpet"), (-4, "blue_carpet"), (-3, "yellow_carpet")] {
+            self.world.set_block(c + IVec3::new(dx, 0, 5), self.reg.id_or_air(n));
+        }
         self.body.pos = c.as_vec3() + Vec3::new(0.5, 0.0, 7.5);
         if let Some(top) = self.reg.id("acacia_door") {
             self.world.set_block(c + IVec3::new(-1, 1, 0), self.reg.variant(top, 8));

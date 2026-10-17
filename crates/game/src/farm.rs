@@ -22,6 +22,11 @@ pub struct Farm {
     farmland: BlockId,
     /// The block each crop must stand on (farmland, or soul sand for nether wart).
     soil: Vec<BlockId>,
+    /// For a ripe pumpkin or melon stem: the fruit it sets beside itself (else AIR).
+    fruit: Vec<BlockId>,
+    pub cane: BlockId,
+    /// Composters being filled: how many layers each has (7 makes bone meal).
+    compost: std::collections::HashMap<IVec3, u8>,
     t: f32,
 }
 
@@ -29,9 +34,9 @@ impl Farm {
     pub fn new(reg: &BlockRegistry) -> Farm {
         let n = reg.len();
         let farmland = reg.id_or_air("farmland");
-        let mut f = Farm { next: vec![AIR; n], first: vec![AIR; n], ripe: vec![false; n], farmland, soil: vec![farmland; n], t: 0.0 };
+        let mut f = Farm { next: vec![AIR; n], first: vec![AIR; n], ripe: vec![false; n], farmland, soil: vec![farmland; n], fruit: vec![AIR; n], cane: reg.id_or_air("sugar_cane"), compost: Default::default(), t: 0.0 };
         let soul = reg.id_or_air("soul_sand");
-        for (kind, stages) in [("wheat", 8), ("carrots", 4), ("potatoes", 4), ("beetroots", 4), ("nether_wart", 4)] {
+        for (kind, stages) in [("wheat", 8), ("carrots", 4), ("potatoes", 4), ("beetroots", 4), ("nether_wart", 4), ("pumpkin_stem", 8), ("melon_stem", 8)] {
             let ids: Vec<BlockId> = (0..stages).filter_map(|k| reg.id(&format!("{kind}_stage{k}"))).collect();
             if ids.len() != stages {
                 continue;
@@ -43,6 +48,9 @@ impl Farm {
                 }
                 if k + 1 < ids.len() {
                     f.next[id as usize] = ids[k + 1];
+                } else if let Some(fruit) = kind.strip_suffix("_stem") {
+                    // A ripe stem stays and keeps setting fruit; farmers leave it be.
+                    f.fruit[id as usize] = reg.id_or_air(fruit);
                 } else {
                     f.ripe[id as usize] = true;
                 }
@@ -112,6 +120,11 @@ impl Game {
             self.world.set_block(p, AIR);
             return;
         }
+        let fruit = self.farm.fruit[id as usize];
+        if fruit != AIR {
+            self.set_fruit(p, fruit, r);
+            return;
+        }
         let next = self.farm.next[id as usize];
         if next == AIR {
             return;
@@ -121,6 +134,172 @@ impl Game {
         if r % if wet { 3 } else { 6 } == 0 {
             self.world.set_block(p, next);
         }
+    }
+
+    /// A ripe stem: now and then a pumpkin or melon on a free side, on dirt, grass or
+    /// farmland, if it hasn't one already.
+    fn set_fruit(&mut self, p: IVec3, fruit: BlockId, r: u32) {
+        let sides = [IVec3::X, -IVec3::X, IVec3::Z, -IVec3::Z];
+        if sides.iter().any(|&d| self.world.block_or_air(p + d) == fruit) || r % 4 != 0 {
+            return;
+        }
+        let at = p + sides[(r / 4 % 4) as usize];
+        let below = self.reg.get(self.world.block_or_air(at - IVec3::Y)).name.as_str();
+        if self.world.block_or_air(at) == AIR && matches!(below, "dirt" | "grass_block" | "farmland" | "coarse_dirt" | "rocky_dirt") {
+            self.world.set_block(at, fruit);
+        }
+    }
+
+    /// Can sugar cane go at `p`? On more cane, or on sand, dirt or grass next to water.
+    fn cane_fits(&self, p: IVec3) -> bool {
+        let below = self.world.block_or_air(p - IVec3::Y);
+        if below == self.farm.cane {
+            return true;
+        }
+        let name = self.reg.get(below).name.as_str();
+        matches!(name, "sand" | "red_sand" | "dirt" | "grass_block" | "coarse_dirt" | "podzol" | "farmland")
+            && [IVec3::X, -IVec3::X, IVec3::Z, -IVec3::Z].iter().any(|&d| self.world.fluid(self.world.block_or_air(p - IVec3::Y + d)) == 1)
+    }
+
+    /// Plant sugar cane on the block you look at.
+    pub(crate) fn plant_cane(&mut self) -> bool {
+        let Some(hit) = self.target else { return false };
+        let at = hit.block + hit.normal;
+        if self.world.block_or_air(at) != AIR || !self.cane_fits(at) {
+            return false;
+        }
+        self.world.set_block(at, self.farm.cane);
+        if self.survival {
+            let sel = self.selected;
+            self.surv.inv.take(sel, 1);
+        }
+        self.anim.start_swing();
+        self.sfx(Sfx::Place(Material::Grass));
+        true
+    }
+
+    /// A random tick on sugar cane: it grows up to three tall, or drops off if its ground is
+    /// gone.
+    pub(crate) fn cane_tick(&mut self, p: IVec3, r: u32) {
+        if !self.cane_fits(p) {
+            self.world.set_block(p, AIR);
+            if let Some(it) = self.items.id("sugar_cane") {
+                self.pop_drop(p.as_vec3() + Vec3::splat(0.5), ItemStack::new(it, 1));
+            }
+            return;
+        }
+        let tall = (1..3).take_while(|&k| self.world.block_or_air(p - IVec3::Y * k) == self.farm.cane).count();
+        if tall < 2 && r % 3 == 0 && self.world.block_or_air(p + IVec3::Y) == AIR {
+            self.world.set_block(p + IVec3::Y, self.farm.cane);
+        }
+    }
+
+    /// Bone meal on what you look at: a crop jumps ahead, a sapling grows soon, grass sprouts
+    /// tall grass and flowers around.
+    pub(crate) fn use_bone_meal(&mut self) -> bool {
+        let Some(hit) = self.target else { return false };
+        let p = hit.block;
+        let id = self.world.block_or_air(p);
+        let name = self.reg.get(id).name.clone();
+        let mut used = false;
+        if self.farm.is_crop(id) {
+            let mut cur = id;
+            for _ in 0..1 + (self.surv.rng.f32() * 3.0) as u32 {
+                let n = self.farm.next[cur as usize];
+                if n != AIR {
+                    cur = n;
+                }
+            }
+            if cur != id {
+                self.world.set_block(p, cur);
+                used = true;
+            } else if self.farm.fruit[id as usize] != AIR {
+                let r = (self.surv.rng.f32() * 64.0) as u32 * 4;
+                self.set_fruit(p, self.farm.fruit[id as usize], r);
+                used = true;
+            }
+        } else if name.ends_with("_sapling") {
+            if self.surv.rng.f32() < 0.45 {
+                for s in self.surv.saplings.iter_mut().filter(|(q, _)| *q == p) {
+                    s.1 = 0.0;
+                }
+                if !self.surv.saplings.iter().any(|(q, _)| *q == p) {
+                    self.surv.saplings.push((p, 0.0));
+                }
+            }
+            used = true;
+        } else if name == "grass_block" {
+            let grass = self.reg.id_or_air("short_grass");
+            let flowers = [self.reg.id_or_air("poppy"), self.reg.id_or_air("dandelion")];
+            for _ in 0..24 {
+                let (dx, dz) = ((self.surv.rng.f32() * 7.0) as i32 - 3, (self.surv.rng.f32() * 7.0) as i32 - 3);
+                for dy in -1..=1 {
+                    let g = p + IVec3::new(dx, dy, dz);
+                    if self.reg.get(self.world.block_or_air(g)).name == "grass_block" && self.world.block_or_air(g + IVec3::Y) == AIR {
+                        let roll = self.surv.rng.f32();
+                        let b = if roll < 0.12 { flowers[(roll * 20.0) as usize % 2] } else { grass };
+                        if b != AIR {
+                            self.world.set_block(g + IVec3::Y, b);
+                        }
+                        break;
+                    }
+                }
+            }
+            used = true;
+        }
+        if !used {
+            return false;
+        }
+        if self.survival {
+            let sel = self.selected;
+            self.surv.inv.take(sel, 1);
+        }
+        let glow = self.glow_layer();
+        for k in 0..8 {
+            let a = k as f32 * 0.8;
+            self.particles.glow(p.as_vec3() + Vec3::new(0.5 + a.cos() * 0.4, 1.1, 0.5 + a.sin() * 0.4), Vec3::Y * 0.6, glow, [0.6, 1.0, 0.4], 0.05, 1.0);
+        }
+        self.anim.start_swing();
+        true
+    }
+
+    /// Right click on a composter: plant matter fills it a layer at a time (some of it
+    /// rots away), and a full one gives bone meal.
+    pub(crate) fn use_composter(&mut self, p: IVec3, ready: bool) -> bool {
+        if ready {
+            self.world.set_block(p, self.reg.id_or_air("composter"));
+            self.farm.compost.remove(&p);
+            if let Some(it) = self.items.id("bone_meal") {
+                self.pop_drop(p.as_vec3() + Vec3::new(0.5, 1.1, 0.5), ItemStack::new(it, 1));
+            }
+            self.sfx(Sfx::Break(Material::Grass));
+            return true;
+        }
+        let Some(stack) = self.held_stack() else { return false };
+        let name = self.items.get(stack.item).name.clone();
+        let chance = if name.ends_with("_seeds") || name.ends_with("_leaves") || name == "short_grass" || name == "sugar_cane" || name == "kelp" {
+            0.3
+        } else if name.ends_with("_sapling") || name == "melon_slice" || name == "cactus" || name == "vine" || name == "glow_berries" {
+            0.5
+        } else if matches!(name.as_str(), "wheat" | "carrot" | "potato" | "beetroot" | "apple" | "melon" | "pumpkin" | "nether_wart" | "poppy" | "dandelion" | "hay_block" | "bread" | "baked_potato") {
+            0.65
+        } else {
+            return false;
+        };
+        if self.survival {
+            let sel = self.selected;
+            self.surv.inv.take(sel, 1);
+        }
+        self.anim.start_swing();
+        self.sfx(Sfx::Place(Material::Grass));
+        if self.surv.rng.f32() < chance {
+            let n = self.farm.compost.entry(p).or_default();
+            *n += 1;
+            if *n >= 7 {
+                self.world.set_block(p, self.reg.id_or_air("composter_ready"));
+            }
+        }
+        true
     }
 
     /// Farmers: walk to the nearest ripe crop near home, harvest it, plant it again and put
@@ -222,6 +401,19 @@ impl Game {
                 self.world.set_block(p + IVec3::Y, crop);
             }
         }
+        // Stems with their fruit, cane by the water, a composter.
+        let cane = self.farm.cane;
+        for k in 1..3 {
+            self.world.set_block(IVec3::new(c.x + 1, y + k, c.z), cane);
+        }
+        self.world.set_block(IVec3::new(c.x - 1, y + 1, c.z), cane);
+        for (dz, stem, fruit) in [(-1, "pumpkin_stem_stage7", "pumpkin"), (1, "melon_stem_stage7", "melon")] {
+            self.world.set_block(IVec3::new(c.x - 3, y + 1, c.z + dz), self.reg.id_or_air(stem));
+            self.world.set_block(IVec3::new(c.x - 4, y, c.z + dz), self.reg.id_or_air("grass_block"));
+            self.world.set_block(IVec3::new(c.x - 4, y + 1, c.z + dz), self.reg.id_or_air(fruit));
+        }
+        self.world.set_block(IVec3::new(c.x + 4, y + 1, c.z + 2), self.reg.id_or_air("composter"));
+        self.world.set_block(IVec3::new(c.x + 4, y + 1, c.z - 2), self.reg.id_or_air("composter_ready"));
         let hay = self.reg.id_or_air("hay_block");
         self.world.set_block(IVec3::new(c.x + 4, y + 1, c.z), hay);
     }
