@@ -560,6 +560,57 @@ def brick_shrine():
     }
 
 
+def raider_outpost():
+    """A raiders' watchtower (Illager Invasion idea): dark oak posts and cobblestone, a
+    lookout deck with a fence rail and a chest of plunder at the top."""
+    W = 7
+    layers = []
+    H = 12
+    for y in range(H):
+        g = grid(W, W, ".")
+        for (x, z) in ((1, 1), (5, 1), (1, 5), (5, 5)):
+            g[z][x] = "L"
+        if y == 0:
+            for z in range(1, 6):
+                for x in range(1, 6):
+                    g[z][x] = "C"
+        if y in (4, 8):
+            for z in range(1, 6):
+                for x in range(1, 6):
+                    if (x, z) not in ((3, 3),):
+                        g[z][x] = "P"
+        if 0 < y < H - 3 and y not in (4, 8):
+            g[3][3] = "."
+        if y == H - 3:
+            for z in range(W):
+                for x in range(W):
+                    g[z][x] = "P"
+        if y == H - 2:
+            for z in range(W):
+                for x in range(W):
+                    if x in (0, W - 1) or z in (0, W - 1):
+                        g[z][x] = "F"
+            g[3][3] = "c"
+            g[2][2] = "h"
+        if y == H - 1:
+            for z in range(1, 6):
+                for x in range(1, 6):
+                    g[z][x] = "s"
+        layers.append(g)
+    return {
+        "name": "posto_dos_saqueadores",
+        "biomes": ["Plains", "Taiga", "Savanna", "Snowy Plains"],
+        "spacing": 16,
+        "chance": 0.3,
+        "foundation": "cobblestone",
+        "palette": {"L": "dark_oak_log", "C": "cobblestone", "P": "dark_oak_planks", "F": "dark_oak_fence",
+                    "c": "chest", "h": "lantern", "s": "dark_oak_slab"},
+        "layers": [rows(l) for l in layers],
+        "loot": [("", "arrow", 4, 12, 0.7), ("", "emerald", 1, 4, 0.5), ("", "iron_ingot", 1, 3, 0.5),
+                 ("", "bow", 1, 1, 0.4), ("", "bread", 1, 4, 0.5), ("", "tnt", 1, 2, 0.15)],
+    }
+
+
 def windmill():
     """A windmill (Towns and Towers idea): a cobblestone base, a plank cap and four sails of
     wool on fence arms over the north side."""
@@ -653,6 +704,7 @@ structs = [
     nether_ruined_portal(),
     basalt_altar(),
     brick_shrine(),
+    raider_outpost(),
 ]
 OUT.write_text(ron(structs))
 print(f"wrote {OUT} ({len(structs)} structures)")

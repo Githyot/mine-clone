@@ -182,7 +182,7 @@ impl Generator {
         let mut out = Vec::new();
         let structs = self.structures();
         for (si, s) in structs.list.iter().enumerate() {
-            let r = s.def.spacing.max(2) * 16;
+            let r = s.def.spacing.max(2) * 16 * self.spread / 100;
             let x0 = (pos.x * 16 - MAX_SIDE).div_euclid(r);
             let x1 = (pos.x * 16 + 15).div_euclid(r);
             let z0 = (pos.y * 16 - MAX_SIDE).div_euclid(r);

@@ -1602,6 +1602,28 @@ RECOLORED = {
         ROOT_C=pal("#3a5a2a", "#4a6c34", "#5a7e3e"),
         GLOW=(255, 120, 200),
         GLOW_DIM=(160, 60, 120))),
+    # Illager Invasion ideas: grey skin, heavy brows, dark coats.
+    "marauder": ("player", dict(
+        PSKIN=pal("#5e6266", "#6a6e72", "#767a7e", "#82868a", "#8e9296"),
+        PHAIR=pal("#141414", "#1c1c1c", "#242424", "#2c2c2c", "#343434"),
+        PTUNIC=pal("#2a2a30", "#34343a", "#3e3e46", "#484852", "#52525e"),
+        PTROUSER=pal("#1e1e24", "#26262e", "#2e2e38", "#363642"),
+        PLEATHER=pal("#4a2e1a", "#5a3820", "#6a4226", "#7a4c2c"),
+        PIRIS=(40, 40, 40))),
+    "invoker": ("player", dict(
+        PSKIN=pal("#5e6266", "#6a6e72", "#767a7e", "#82868a", "#8e9296"),
+        PHAIR=pal("#141414", "#1c1c1c", "#242424", "#2c2c2c", "#343434"),
+        PTUNIC=pal("#3a1a4a", "#46205a", "#52266a", "#5e2e7a", "#6a368a"),
+        PTROUSER=pal("#2a1436", "#341a44", "#3e2052", "#482660"),
+        PLEATHER=pal("#8a6a10", "#a07c16", "#b88e1c", "#cca024"),
+        PIRIS=(120, 60, 180))),
+    "brute": ("player", dict(
+        PSKIN=pal("#5e6266", "#6a6e72", "#767a7e", "#82868a", "#8e9296"),
+        PHAIR=pal("#141414", "#1c1c1c", "#242424", "#2c2c2c", "#343434"),
+        PTUNIC=pal("#4a1a14", "#5a2018", "#6a261c", "#7a2c20", "#8a3224"),
+        PTROUSER=pal("#2a2420", "#342c26", "#3e342c", "#483c32"),
+        PLEATHER=pal("#2a2a2a", "#3a3a3a", "#4a4a4a", "#5a5a5a"),
+        PIRIS=(40, 40, 40))),
     # Nether creatures.
     "nether_zombie": ("zombie", dict(
         ZSKIN=pal("#8a4a4a", "#9c5a56", "#ae6a62", "#be7a6e", "#cc8a7c"),
@@ -2075,7 +2097,7 @@ def main():
              "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian",
              "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
              "goblin_trader", "mutant_zombie", "npc_guard", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton",
-             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay", "lich", "obsidilith", "void_blossom"]
+             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay", "lich", "obsidilith", "void_blossom", "marauder", "invoker", "brute"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols

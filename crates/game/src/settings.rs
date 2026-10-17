@@ -94,6 +94,8 @@ pub struct Settings {
     pub shader_quality: ShaderQuality,
     /// Low-detail distant terrain drawn this many blocks past the render distance (0 = off).
     pub lod_distance: i32,
+    /// Buildings farther apart in new chunks (Sparse Structures idea).
+    pub sparse_structures: bool,
 }
 
 impl Default for Settings {
@@ -125,11 +127,21 @@ impl Default for Settings {
             shader_options: BTreeMap::new(),
             shader_quality: ShaderQuality::Fancy,
             lod_distance: 0,
+            sparse_structures: false,
         }
     }
 }
 
 impl Settings {
+    /// Percent spacing for buildings.
+    pub fn structure_spread(&self) -> i32 {
+        if self.sparse_structures {
+            170
+        } else {
+            100
+        }
+    }
+
     pub fn load(path: &Path) -> Settings {
         match std::fs::read_to_string(path) {
             Ok(text) => ron::from_str(&text).unwrap_or_else(|e| {

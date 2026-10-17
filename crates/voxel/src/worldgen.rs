@@ -286,6 +286,8 @@ pub struct Generator {
     variant: Perlin,
     pal: Palette,
     structures: std::sync::Arc<crate::structures::Structures>,
+    /// Percent of each building's spacing (Sparse Structures idea: more than 100 spreads them out).
+    pub(crate) spread: i32,
     trees: TreeBlocks,
     /// Coloured terracotta layers of the badlands, repeating every `BANDS` blocks.
     bands: [BlockId; BANDS],
@@ -367,6 +369,7 @@ impl Generator {
         }
         Generator {
             structures: std::sync::Arc::new(crate::structures::Structures::empty()),
+            spread: 100,
             seed,
             continent: Perlin::new(seed ^ 0x01),
             mountain: Perlin::new(seed ^ 0x02),
@@ -655,6 +658,11 @@ impl Generator {
     /// Buildings from data (see `structures`).
     pub fn with_structures(mut self, s: std::sync::Arc<crate::structures::Structures>) -> Self {
         self.structures = s;
+        self
+    }
+
+    pub fn with_spread(mut self, percent: i32) -> Self {
+        self.spread = percent.max(50);
         self
     }
 

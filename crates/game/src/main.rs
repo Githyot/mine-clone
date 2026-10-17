@@ -623,7 +623,7 @@ impl Game {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1)
         });
         let structures = load_structures(&base, &reg);
-        let gen = Arc::new(Generator::new(seed, &reg).with_structures(structures.clone()));
+        let gen = Arc::new(Generator::new(seed, &reg).with_structures(structures.clone()).with_spread(settings.structure_spread()));
         let tints: Vec<[f32; 3]> = (0..Biome::COUNT).map(|b| Biome::from_u8(b as u8).tint()).collect();
         let tables = Arc::new(MeshTables::new(&reg, tints));
         let reg_for_fluids = reg.clone();

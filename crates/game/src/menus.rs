@@ -92,7 +92,7 @@ impl Game {
         let seed = level.as_ref().map(|l| l.seed).or(seed).unwrap_or_else(|| {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1)
         });
-        let gen = Arc::new(Generator::new(seed, &self.reg).with_structures(self.structures.clone()));
+        let gen = Arc::new(Generator::new(seed, &self.reg).with_structures(self.structures.clone()).with_spread(self.settings.structure_spread()));
         let tints: Vec<[f32; 3]> = (0..Biome::COUNT).map(|b| Biome::from_u8(b as u8).tint()).collect();
         let tables = Arc::new(MeshTables::new(&self.reg, tints));
         // Dropping the old world stops its worker threads.
@@ -479,6 +479,7 @@ impl Game {
             format!("Tamanho da interface: {}", if st.gui_scale == 0 { "Automático".to_string() } else { st.gui_scale.to_string() }),
             format!("Balanço da visão: {}", onoff(st.view_bobbing)),
             format!("Itens no chão: {}", if st.flat_drops { "Deitados" } else { "Flutuando" }),
+            format!("Construções: {}", if st.sparse_structures { "Espaçadas" } else { "Normais" }),
             "Controle...".to_string(),
             "Pacotes de textura...".to_string(),
         ]
@@ -549,7 +550,8 @@ impl Game {
             11 => st.gui_scale = (st.gui_scale + 1) % 5,
             12 => st.view_bobbing = !st.view_bobbing,
             13 => st.flat_drops = !st.flat_drops,
-            14 => {
+            14 => st.sparse_structures = !st.sparse_structures,
+            15 => {
                 self.options_back = self.screen;
                 self.set_screen(Screen::Controls);
             }

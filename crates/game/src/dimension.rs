@@ -28,7 +28,7 @@ impl Game {
         let root = level_path_hint(&self.base, &self.world_name);
         let dir = if dim.folder().is_empty() { root } else { root.join(dim.folder()) };
         let save = Arc::new(WorldSave::new(dir));
-        let gen = Arc::new(Generator::new(self.seed, &self.reg).with_structures(self.structures.clone()).with_dim(dim));
+        let gen = Arc::new(Generator::new(self.seed, &self.reg).with_structures(self.structures.clone()).with_dim(dim).with_spread(self.settings.structure_spread()));
         let tints: Vec<[f32; 3]> = (0..Biome::COUNT).map(|b| Biome::from_u8(b as u8).tint()).collect();
         let tables = Arc::new(MeshTables::new(&self.reg, tints));
         // Dropping the old world stops its worker threads.
