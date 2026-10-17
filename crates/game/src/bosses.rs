@@ -66,7 +66,7 @@ impl Game {
         self.mobs.list.iter().position(|m| m.alive() && self.mobs.reg.defs[m.def].boss)
     }
 
-    fn is_night(&self) -> bool {
+    pub(crate) fn is_night(&self) -> bool {
         let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
         (a.sin() * 2.2 + 0.45) < 0.3
     }

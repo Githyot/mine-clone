@@ -16,6 +16,7 @@ mod fishing;
 mod magic;
 mod bosses;
 mod npcs;
+mod raids;
 mod fluids;
 mod redstone;
 mod wanderers;
@@ -449,6 +450,7 @@ struct Game {
     magic: magic::Magic,
     boss: bosses::BossState,
     town: npcs::Town,
+    raid: raids::Raid,
     /// Seconds since the player was last hurt (red flash, invulnerability).
     hurt_age: f32,
     regen: f32,
@@ -783,6 +785,7 @@ impl Game {
             magic: magic::Magic::new(max_mana),
             boss: bosses::BossState::new(bosses_beaten),
             town: npcs::Town::new(town_npcs),
+            raid: raids::Raid::default(),
             hurt_age: 100.0,
             regen: 0.0,
             fall_peak: f32::MIN,
@@ -1498,6 +1501,7 @@ impl Game {
             if self.dim == voxel::worldgen::Dim::Overworld {
                 // Townsfolk live at home.
                 self.update_npcs(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.update_raids(dt);
             }
         }
         if self.world_open && !matches!(self.screen, Screen::Loading | Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Shaders) {
