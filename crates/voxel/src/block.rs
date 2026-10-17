@@ -73,6 +73,8 @@ pub enum Shape {
     /// A rope bridge (Macaw's Bridges idea): a plank deck with rope rails, running north-south
     /// (variant 0) or east-west (1).
     Bridge,
+    /// The glowing sheet inside a lit portal frame: across x (variant 0) or across z (1).
+    Portal,
 }
 
 impl Shape {
@@ -105,6 +107,7 @@ impl Shape {
                 | Shape::Lantern
                 | Shape::Chain
                 | Shape::Bridge
+                | Shape::Portal
         )
     }
 }

@@ -930,6 +930,10 @@ impl Game {
         if item.name == "flint_and_steel" {
             let Some(hit) = self.target else { return false };
             if self.redstone.kind(self.world.block_or_air(hit.block)) != crate::redstone::Kind::Tnt {
+                if self.light_portal(hit) {
+                    self.anim.start_swing();
+                    return true;
+                }
                 return false;
             }
             self.prime_tnt(hit.block, 4.0);
@@ -1070,6 +1074,20 @@ impl Game {
             return false;
         }
         let f = if name == "water_bucket" { 1 } else { 2 };
+        if f == 1 && self.dim == voxel::worldgen::Dim::Nether {
+            // Water boils away in the Nether.
+            let at = pos.as_vec3() + Vec3::splat(0.5);
+            let layer = self.glow_layer();
+            for k in 0..12 {
+                let a = k as f32 * 0.52;
+                let v = Vec3::new(a.cos() * 0.6, 1.4 + (k % 3) as f32 * 0.3, a.sin() * 0.6);
+                self.particles.glow(at, v, layer, [0.85, 0.85, 0.9], 0.18, 0.9);
+            }
+            self.sfx(Sfx::Fizz);
+            self.swap_held("bucket");
+            self.anim.start_swing();
+            return true;
+        }
         self.world.set_block(pos, self.fluids.id(f, 0));
         self.sfx(if f == 1 { Sfx::Splash(0.4) } else { Sfx::Fizz });
         self.swap_held("bucket");
@@ -2216,7 +2234,8 @@ impl Game {
         if let Some(bow) = sprite("bow") {
             for (d, b) in mobs {
                 let def = &self.mobs.reg.defs[*d];
-                if !def.ranged || def.parts.len() < 3 {
+                // Fire imps throw fire from their bare hands.
+                if !def.ranged || def.parts.len() < 3 || def.name == "fire_imp" {
                     continue;
                 }
                 let p = &def.parts[2];
@@ -2354,8 +2373,10 @@ impl Game {
             }
         }
         for m in &self.mobs.list {
-            if m.on_fire > 0.0 && m.alive() {
-                found.push((m.body.pos.distance(eye), m.body.pos + Vec3::Y * 0.8, 0.85));
+            // Fire imps glow like a torch.
+            let glows = self.mobs.reg.defs[m.def].name == "fire_imp";
+            if (m.on_fire > 0.0 || glows) && m.alive() {
+                found.push((m.body.pos.distance(eye), m.body.pos + Vec3::Y * 0.8, if glows { 0.7 } else { 0.85 }));
             }
         }
         found.retain(|f| f.0 < 48.0);

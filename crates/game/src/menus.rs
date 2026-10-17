@@ -97,6 +97,11 @@ impl Game {
         let tables = Arc::new(MeshTables::new(&self.reg, tints));
         // Dropping the old world stops its worker threads.
         self.world = World::new(self.reg.clone(), gen.clone(), save.clone(), tables);
+        self.lod.set_gen(gen.clone());
+        self.dim = voxel::worldgen::Dim::Overworld;
+        self.arrival = None;
+        self.respawn_home = false;
+        self.portal_t = 0.0;
         self.fluids = crate::fluids::Fluids::new(&self.reg);
         self.redstone = crate::redstone::Redstone::new(self.reg.clone());
         self.riding = None;
@@ -142,6 +147,9 @@ impl Game {
         self.fall_peak = self.body.pos.y;
         self.paintings = paintings::load(&save.dir, &self.painting_defs);
         self.surv = crate::survival::Survival::load(&save.dir, &self.items);
+        if level.as_ref().is_some_and(|l| l.dim == 1) {
+            self.load_dim(voxel::worldgen::Dim::Nether, false);
+        }
         self.title_world = name.to_string();
     }
 

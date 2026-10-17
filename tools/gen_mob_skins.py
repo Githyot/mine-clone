@@ -1537,6 +1537,17 @@ RECOLORED = {
         FOX=pal("#6a3a1e", "#7c4624", "#8e522a", "#a05e32", "#b06a3a", "#be7844"),
         FOX_WHITE=pal("#bcae98", "#ccc0aa", "#dcd2c0", "#e8e0d2"),
         FOX_BLACK=pal("#2a1a12", "#36241a", "#422e20"))),
+    # Nether creatures.
+    "nether_zombie": ("zombie", dict(
+        ZSKIN=pal("#8a4a4a", "#9c5a56", "#ae6a62", "#be7a6e", "#cc8a7c"),
+        ZSHIRT=pal("#6a5010", "#806216", "#96741c", "#ac8824"),
+        ZPANTS=pal("#2a1414", "#381c1a", "#462420", "#542c26"))),
+    "ash_skeleton": ("skeleton", dict(BONE=pal("#26242a", "#323036", "#3e3c42", "#4a484e", "#58565c"))),
+    "fire_imp": ("skeleton", dict(BONE=pal("#7a1e0c", "#9a2c10", "#ba4414", "#d8641c", "#ee8a2a"))),
+    "crimson_boar": ("pig", dict(
+        PIG=pal("#4a1018", "#5e1620", "#721c28", "#862430", "#982c38"),
+        PIG_SNOUT=pal("#8a3a3a", "#9c4848", "#ae5656", "#c06464"),
+        PIG_HOOF=pal("#1a0a0a", "#2a1210"))),
 }
 for _n, (_b, _) in RECOLORED.items():
     ROLES[_n] = ROLES[_b]
@@ -1989,7 +2000,8 @@ def main():
     order = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "stalker", "spider",
              "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian",
              "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
-             "goblin_trader", "mutant_zombie", "npc_guard", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton"]
+             "goblin_trader", "mutant_zombie", "npc_guard", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton",
+             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols

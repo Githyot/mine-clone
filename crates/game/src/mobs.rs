@@ -35,6 +35,8 @@ pub struct MobOutcome {
     /// Arrows shot this tick.
     pub shots: usize,
     pub explosions: Vec<(Vec3, f32)>,
+    /// Fireballs thrown by fire imps: (from, velocity, damage).
+    pub fireballs: Vec<(Vec3, Vec3, f32)>,
     /// Mobs that died this tick: (def index, where).
     pub deaths: Vec<(usize, Vec3)>,
 }
@@ -112,6 +114,8 @@ impl Mobs {
     fn natural_spawn(&mut self, world: &World, player: Vec3, daylight: f32) {
         let passive = self.list.iter().filter(|m| self.reg.defs[m.def].kind != Kind::Hostile).count();
         let hostile = self.list.len() - passive;
+        // The Nether: everything lives in its caves, in the dark, and only its own creatures.
+        let nether = world.gen.dim == voxel::worldgen::Dim::Nether;
         for _ in 0..4 {
             let a = self.rand_f32() * std::f32::consts::TAU;
             let r = 20.0 + self.rand_f32() * 36.0;
@@ -119,7 +123,7 @@ impl Mobs {
             let z = (player.z + a.sin() * r).floor() as i32;
             let Some(y) = world.surface_y(x, z) else { continue };
             // Monsters also try caves under the surface.
-            let cave = self.rand_f32() < 0.5;
+            let cave = nether || self.rand_f32() < 0.5;
             let ground = if cave { self.find_cave_floor(world, x, y, z) } else { Some(IVec3::new(x, y, z)) };
             let Some(g) = ground else { continue };
             let below = world.block_or_air(g);
@@ -133,7 +137,7 @@ impl Mobs {
             let light = world.light(g + IVec3::Y);
             let sky = (light >> 4) as f32 * daylight;
             let blk = (light & 15) as f32;
-            let dark = sky.max(blk) < 7.0;
+            let dark = nether || sky.max(blk) < 7.0;
             let biome = world.gen.biome_at(x, z).name();
             if self.ground.len() != self.reg.defs.len() {
                 let grass = self.grass;
@@ -144,7 +148,7 @@ impl Mobs {
                     .map(|d| if d.ground.is_empty() { vec![grass] } else { d.ground.iter().map(|n| world.reg.id_or_air(n)).filter(|&b| b != AIR).collect() })
                     .collect();
             }
-            let animals = !cave && !dark && passive < MAX_PASSIVE;
+            let animals = if nether { passive < MAX_PASSIVE } else { !cave && !dark && passive < MAX_PASSIVE };
             let candidates: Vec<usize> = self
                 .reg
                 .defs
@@ -152,6 +156,7 @@ impl Mobs {
                 .enumerate()
                 .filter(|(i, d)| {
                     d.in_biome(biome)
+                        && (!nether || !d.biomes.is_empty())
                         && match d.spawn {
                             SpawnRule::Grass => animals && !water && self.ground[*i].contains(&below),
                             SpawnRule::Water => animals && water,
@@ -267,6 +272,11 @@ impl Mobs {
                             target += Vec3::new(a.cos(), 0.4, a.sin()) * 1.6;
                         }
                         let d = target - from;
+                        if def.name == "fire_imp" {
+                            // Fire imps throw a straight fireball instead of an arrow.
+                            out.fireballs.push((from, d.normalize_or_zero() * 14.0, damage));
+                            continue;
+                        }
                         let flat = Vec3::new(d.x, 0.0, d.z).length();
                         let speed = 18.0;
                         let t = (flat / speed).max(0.05);

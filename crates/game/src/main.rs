@@ -8,6 +8,7 @@ mod backpacks;
 mod controller;
 mod copper;
 mod creative;
+mod dimension;
 mod fishing;
 mod magic;
 mod bosses;
@@ -476,6 +477,12 @@ struct Game {
     riding: Option<usize>,
     /// The chair the player sits on.
     seat: Option<IVec3>,
+    /// Which dimension is loaded, time spent standing in a portal, and where a trip lands.
+    dim: voxel::worldgen::Dim,
+    portal_t: f32,
+    arrival: Option<Vec3>,
+    /// Died in the Nether: once the Overworld is loaded, come back to life there.
+    respawn_home: bool,
     wander: wanderers::Wanderers,
     copper: copper::Copper,
     bobber: Option<fishing::Bobber>,
@@ -601,6 +608,7 @@ impl Game {
         let world_name = args.world.clone().or_else(|| menus::list_worlds(&base).first().map(|w| w.name.clone())).unwrap_or_else(|| "Mundo 1".into());
         let save = Arc::new(WorldSave::new(level_path_hint(&base, &world_name)));
         let level = save.load_level();
+        let start_nether = level.as_ref().is_some_and(|l| l.dim == 1);
         let seed = level.as_ref().map(|l| l.seed).or(args.seed).unwrap_or_else(|| {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1)
         });
@@ -782,6 +790,10 @@ impl Game {
             hopper_t: 0.0,
             riding: None,
             seat: None,
+            dim: voxel::worldgen::Dim::Overworld,
+            portal_t: 0.0,
+            arrival: None,
+            respawn_home: false,
             wander: Default::default(),
             copper: copper::Copper::new(&reg_for_fluids),
             weather: weather::Weather::new(weather_save, seed),
@@ -841,6 +853,17 @@ impl Game {
             grabbed: false,
         };
         game.apply_shader();
+        if start_nether {
+            game.load_dim(voxel::worldgen::Dim::Nether, false);
+        }
+        if std::env::var("MC_NETHER").is_ok() && game.dim == voxel::worldgen::Dim::Overworld {
+            // Test hook: arrive in the Nether through a fresh portal.
+            let p = game.body.pos;
+            game.load_dim(voxel::worldgen::Dim::Nether, true);
+            game.arrival = Some(Vec3::new(p.x / 8.0, 70.0, p.z / 8.0));
+            game.body.pos = game.arrival.unwrap();
+            game.needs_spawn = false;
+        }
         game
     }
 
@@ -974,9 +997,12 @@ impl Game {
             raining: self.weather.state.raining,
             thunder: self.weather.state.thunder,
             weather_timer: self.weather.state.timer,
+            dim: self.dim.as_u8(),
         };
         if self.screen != Screen::Loading || !self.needs_spawn {
-            if let Err(e) = self.world.save.save_level(&level) {
+            // level.ron always lives in the world's own folder, whatever dimension is loaded.
+            let root = WorldSave::new(level_path_hint(&self.base, &self.world_name));
+            if let Err(e) = root.save_level(&level) {
                 log::error!("could not save the world: {e}");
             }
         }
@@ -1183,6 +1209,14 @@ impl Game {
         if self.world_open && self.screen != Screen::Loading {
             let shot = self.args.screenshot.is_some();
             self.weather.update(&self.world, eye, dt, shot);
+            if self.dim != voxel::worldgen::Dim::Overworld {
+                // No weather under the Nether's roof (it carries on at home).
+                self.weather.rain = 0.0;
+                self.weather.flash = 0.0;
+                self.weather.columns.clear();
+                self.weather.thunder_sound = None;
+                self.weather.rain_sound = false;
+            }
             if let Some(close) = self.weather.thunder_sound {
                 self.sfx(Sfx::Thunder(close));
             }
@@ -1198,6 +1232,9 @@ impl Game {
                 self.rain_splashes(dt);
             }
             self.update_leaf_decay(dt);
+            if matches!(self.screen, Screen::Playing | Screen::Inventory) {
+                self.portal_step(dt);
+            }
             self.update_fishing(dt);
             self.update_redstone(dt);
             self.update_carts(dt);
@@ -1228,7 +1265,9 @@ impl Game {
                     }
                 }
             }
-            if ready {
+            if ready && (self.arrival.is_some() || self.respawn_home) {
+                self.finish_travel();
+            } else if ready {
                 if self.needs_spawn {
                     let y = self.world.surface_y(sx, sz).unwrap_or(100) + 1;
                     self.body.pos = Vec3::new(sx as f32 + 0.5, y as f32, sz as f32 + 0.5);
@@ -1264,6 +1303,16 @@ impl Game {
                 }
                 if let Some(i) = self.args.slot {
                     self.selected = i;
+                }
+                if std::env::var("MC_PORTAL").is_ok() {
+                    // Test hook: an obsidian frame in front, lit with flint and steel.
+                    self.test_portal();
+                }
+                if std::env::var("MC_TRAVEL").is_ok() {
+                    // Test hook: walk through a portal right away (saves, loads the Nether).
+                    let p = self.body.pos;
+                    self.travel(voxel::worldgen::Dim::Nether, Vec3::new(p.x / 8.0, 70.0, p.z / 8.0));
+                    return;
                 }
                 if std::env::var("MC_HOUSE").is_ok() {
                     // Test hook: two small houses in front; people move in; MC_SHOP opens a shop.
@@ -1356,13 +1405,16 @@ impl Game {
             self.surv_update(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
             self.update_magic(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
             self.update_boss(if self.args.screenshot.is_some() { 0.0 } else { dt });
-            self.update_npcs(if self.args.screenshot.is_some() { 0.0 } else { dt });
+            if self.dim == voxel::worldgen::Dim::Overworld {
+                // Townsfolk live at home.
+                self.update_npcs(if self.args.screenshot.is_some() { 0.0 } else { dt });
+            }
         }
         if self.world_open && !matches!(self.screen, Screen::Loading | Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Shaders) {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
             let creative = !self.survival || self.screen == Screen::Dead;
-            if self.screen == Screen::Playing {
+            if self.screen == Screen::Playing && self.dim == voxel::worldgen::Dim::Overworld {
                 self.update_wanderers(if self.args.screenshot.is_some() { 0.0 } else { dt }, daylight);
             }
             // Screenshots hold the world still so the picture is stable.
@@ -1373,6 +1425,10 @@ impl Game {
             }
             for (pos, power) in out.explosions {
                 self.explode(pos, power);
+            }
+            for (from, vel, dmg) in out.fireballs {
+                self.enemy_bolt(from, vel, 0, dmg);
+                self.sfx(Sfx::Cast(0));
             }
             // A soft thrum when a bow is loosed, a wooden thunk when an arrow lands.
             if out.shots > 0 {
@@ -2205,6 +2261,11 @@ impl Game {
     }
 
     fn respawn(&mut self) {
+        if self.dim != voxel::worldgen::Dim::Overworld {
+            // Death in the Nether sends you home: load the Overworld first.
+            self.travel_home_after_death();
+            return;
+        }
         let (sx, sz) = self.spawn_xz;
         let y = self.world.surface_y(sx, sz).unwrap_or(100) + 1;
         self.body.pos = Vec3::new(sx as f32 + 0.5, y as f32, sz as f32 + 0.5);
@@ -2236,7 +2297,7 @@ impl Game {
             let p = self.body.pos + fwd * (6.0 + (rows - 1 - row) as f32 * 4.5) + side * ((col as f32 - (n - 1.0) / 2.0) * 1.8);
             let x = p.x.floor() as i32;
             let z = p.z.floor() as i32;
-            let y = self.world.surface_y(x, z).unwrap_or(p.y as i32) + 1;
+            let y = self.ground_y(x, z, self.body.pos.y as i32 + 4).unwrap_or(p.y as i32) + 1;
             let at = Vec3::new(p.x, y as f32, p.z);
             if self.mobs.spawn(name, at) {
                 // Face the camera.
@@ -2814,6 +2875,12 @@ impl Game {
         if self.survival && self.hurt_age < 0.4 {
             let a = ((0.4 - self.hurt_age) / 0.4 * 90.0) as u8;
             self.ui.rect(0.0, 0.0, w, h, [200, 0, 0, a]);
+        }
+        let haze = self.portal_haze();
+        if haze > 0.0 {
+            // Standing in a portal: the view fills with purple until the trip starts.
+            let wave = 0.85 + 0.15 * (self.now as f32 * 4.0).sin();
+            self.ui.rect(0.0, 0.0, w, h, [110, 30, 170, (haze * wave * 170.0) as u8]);
         }
         let menu_screen = self.is_title_screen() || matches!(self.screen, Screen::Options | Screen::Packs);
         if !self.hide_hud && !matches!(self.screen, Screen::Paused | Screen::Dead | Screen::Shaders) && !menu_screen {
@@ -3431,10 +3498,15 @@ impl Game {
         let underwater = self.body.head_in_water;
         let rd = self.settings.render_distance as f32 * 16.0;
         // Distant terrain pushes the fog out to its own edge.
-        let extra = self.settings.lod_distance.max(0) as f32;
+        // The Nether has a roof: no distant terrain there.
+        let nether = self.dim == voxel::worldgen::Dim::Nether;
+        let extra = if nether { 0.0 } else { self.settings.lod_distance.max(0) as f32 };
         let view_end = rd + extra;
         let (fog_color, fog_start, fog_end) = if underwater {
             ([0.04, 0.12, 0.35], 0.0, 28.0)
+        } else if nether {
+            // A thick red haze instead of a sky.
+            ([0.2, 0.035, 0.025], rd * 0.15, rd * 0.85)
         } else if extra > 0.0 {
             (horizon, rd * 0.6, view_end - 8.0)
         } else {
@@ -3448,15 +3520,15 @@ impl Game {
         let mut g = Globals {
             cam_pos: [eye.x - block.x as f32, eye.y - block.y as f32, eye.z - block.z as f32, (self.now % 3600.0) + self.start.elapsed().as_secs_f32() * 0.0],
             cam_world: [eye.x, eye.y, eye.z, CLOUD_HEIGHT],
-            fog_color: [fog_color[0], fog_color[1], fog_color[2], daylight],
-            fog: [fog_start, fog_end, if underwater { 1.0 } else { 0.0 }, 0.3],
+            fog_color: [fog_color[0], fog_color[1], fog_color[2], if nether { 0.0 } else { daylight }],
+            fog: [fog_start, fog_end, if underwater { 1.0 } else { 0.0 }, if nether { 1.0 } else { 0.3 }],
             sun_dir: [sun.x, sun.y, sun.z, if self.settings.relief { 1.0 } else { 0.0 }],
             sky_top: [top[0], top[1], top[2], 1.0],
             sky_horizon: [horizon[0], horizon[1], horizon[2], 1.0],
             effects,
             // The light a held torch gives comes from the player's hand, wherever the camera is.
             hand_light: [head.x - block.x as f32, head.y - 0.4 - block.y as f32, head.z - block.z as f32, self.hand_light_level()],
-            weather: [self.weather.rain, self.weather.flash, 0.0, 0.0],
+            weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else { 0.0 }, 0.0],
             dyn_lights: self.dynamic_lights(eye, block),
             ..Default::default()
         };
@@ -3671,7 +3743,7 @@ impl Game {
         self.entities.items.prepare(&self.renderer, &drops);
         let grab_backdrop = self.want_backdrop && self.screen == Screen::Loading;
         self.renderer.extra_lines = self.fishing_line(block, third);
-        let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds, Some(&self.entities), Some(&self.lod), &self.ui, capture || grab_backdrop);
+        let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds && self.dim == voxel::worldgen::Dim::Overworld, Some(&self.entities), Some(&self.lod), &self.ui, capture || grab_backdrop);
         let shot = if grab_backdrop {
             self.want_backdrop = false;
             if let Some((w, h, px)) = &shot {

@@ -9,6 +9,39 @@ use crate::trees::{self, TreeBlocks, TreeKind, TreeSpace, Wood};
 
 pub const SEA_LEVEL: i32 = 62;
 
+mod nether;
+pub use nether::{NETHER_LAVA, NETHER_ROOF};
+
+/// Which world a generator makes. Each dimension is saved in its own folder.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Dim {
+    #[default]
+    Overworld,
+    Nether,
+}
+
+impl Dim {
+    pub fn from_u8(v: u8) -> Dim {
+        if v == 1 {
+            Dim::Nether
+        } else {
+            Dim::Overworld
+        }
+    }
+
+    pub fn as_u8(self) -> u8 {
+        self as u8
+    }
+
+    /// Sub-folder of the world's save for this dimension ("" for the overworld).
+    pub fn folder(self) -> &'static str {
+        match self {
+            Dim::Overworld => "",
+            Dim::Nether => "nether",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Biome {
@@ -27,10 +60,13 @@ pub enum Biome {
     DarkForest = 12,
     Badlands = 13,
     CherryGrove = 14,
+    NetherWastes = 15,
+    SoulSandValley = 16,
+    CrimsonForest = 17,
 }
 
 impl Biome {
-    pub const COUNT: usize = 15;
+    pub const COUNT: usize = 18;
 
     pub fn from_u8(v: u8) -> Biome {
         match v {
@@ -48,6 +84,9 @@ impl Biome {
             12 => Biome::DarkForest,
             13 => Biome::Badlands,
             14 => Biome::CherryGrove,
+            15 => Biome::NetherWastes,
+            16 => Biome::SoulSandValley,
+            17 => Biome::CrimsonForest,
             _ => Biome::Plains,
         }
     }
@@ -69,6 +108,9 @@ impl Biome {
             Biome::DarkForest => "Dark Forest",
             Biome::Badlands => "Badlands",
             Biome::CherryGrove => "Cherry Grove",
+            Biome::NetherWastes => "Nether Wastes",
+            Biome::SoulSandValley => "Soul Sand Valley",
+            Biome::CrimsonForest => "Crimson Forest",
         }
     }
 
@@ -89,6 +131,7 @@ impl Biome {
             Biome::DarkForest => [0.72, 0.86, 0.72],
             Biome::Badlands => [1.14, 0.94, 0.62],
             Biome::CherryGrove => [1.02, 1.08, 0.9],
+            Biome::NetherWastes | Biome::SoulSandValley | Biome::CrimsonForest => [1.0, 1.0, 1.0],
         }
     }
 
@@ -233,6 +276,8 @@ pub struct Generator {
     trees: TreeBlocks,
     /// Coloured terracotta layers of the badlands, repeating every `BANDS` blocks.
     bands: [BlockId; BANDS],
+    pub dim: Dim,
+    nether: nether::NetherPalette,
 }
 
 const BANDS: usize = 48;
@@ -320,10 +365,15 @@ impl Generator {
             pal: Palette::new(reg, seed),
             trees: TreeBlocks::new(reg),
             bands,
+            dim: Dim::Overworld,
+            nether: nether::NetherPalette::new(reg),
         }
     }
 
     fn column(&self, wx: i32, wz: i32) -> Column {
+        if self.dim == Dim::Nether {
+            return Column { height: NETHER_ROOF, biome: self.nether_biome(wx, wz) };
+        }
         let x = wx as f32;
         let z = wz as f32;
         let cont = self.continent.fbm2(x / 700.0, z / 700.0, 4); // -1..1
@@ -452,6 +502,9 @@ impl Generator {
     pub fn surface(&self, wx: i32, wz: i32) -> Surface {
         let p = &self.pal;
         let col = self.column(wx, wz);
+        if self.dim == Dim::Nether {
+            return Surface { height: NETHER_ROOF, biome: col.biome, top: p.bedrock, liquid: None, trees: None };
+        }
         let (top, _, _) = self.top_blocks(&col, wx, wz);
         let h = col.height;
         let top = if h < SEA_LEVEL && (top == p.grass || top == p.snow_grass) { p.dirt } else { top };
@@ -501,6 +554,9 @@ impl Generator {
     }
 
     pub fn generate(&self, pos: ChunkPos) -> Chunk {
+        if self.dim == Dim::Nether {
+            return self.generate_nether(pos);
+        }
         let p = &self.pal;
         let mut chunk = Chunk::new(pos);
         let base_x = pos.x * 16;
@@ -572,6 +628,11 @@ impl Generator {
     /// Buildings from data (see `structures`).
     pub fn with_structures(mut self, s: std::sync::Arc<crate::structures::Structures>) -> Self {
         self.structures = s;
+        self
+    }
+
+    pub fn with_dim(mut self, dim: Dim) -> Self {
+        self.dim = dim;
         self
     }
 
@@ -935,6 +996,26 @@ mod tests {
     }
 
     #[test]
+    fn nether_is_closed_with_a_lava_sea() {
+        let reg = registry();
+        let g = Generator::new(99, &reg).with_dim(Dim::Nether);
+        let (bedrock, lava) = (reg.id("bedrock").unwrap(), reg.id("lava").unwrap());
+        let (mut seas, mut open) = (0, 0);
+        for cx in 0..4 {
+            let c = g.generate(ChunkPos::new(cx, 0));
+            for x in 0..16 {
+                assert_eq!(c.get(x, 0, 3), bedrock);
+                assert_eq!(c.get(x, NETHER_ROOF as usize, 3), bedrock);
+                assert_eq!(c.get(x, NETHER_ROOF as usize + 1, 3), AIR, "nothing above the roof");
+                seas += (c.get(x, NETHER_LAVA as usize, 3) == lava) as usize;
+                open += (40..100).filter(|&y| c.get(x, y, 3) == AIR).count();
+            }
+        }
+        assert!(seas > 0, "no lava sea");
+        assert!(open > 64 * 10, "no caverns");
+    }
+
+    #[test]
     fn every_biome_appears() {
         let reg = registry();
         let g = Generator::new(1234, &reg);
@@ -942,6 +1023,13 @@ mod tests {
         for z in (-12000..12000).step_by(64) {
             for x in (-12000..12000).step_by(64) {
                 count[g.biome_at(x, z) as usize] += 1;
+            }
+        }
+        // The Nether's regions come from the Nether's own generator.
+        let nether = Generator::new(1234, &reg).with_dim(Dim::Nether);
+        for z in (-3000..3000).step_by(64) {
+            for x in (-3000..3000).step_by(64) {
+                count[nether.biome_at(x, z) as usize] += 1;
             }
         }
         let total: usize = count.iter().sum();

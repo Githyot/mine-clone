@@ -50,6 +50,9 @@ pub struct LevelData {
     pub thunder: bool,
     #[serde(default)]
     pub weather_timer: f32,
+    /// Dimension the player is in (0 Overworld, 1 Nether).
+    #[serde(default)]
+    pub dim: u8,
 }
 
 fn full_health() -> f32 {

@@ -112,6 +112,8 @@ pub enum Sfx {
     SpellHit(u8),
     /// A piston pushing out (true) or pulling back.
     Piston(bool),
+    /// A nether portal lighting or pulling the player in: a deep wavering hum.
+    Portal,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

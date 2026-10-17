@@ -406,6 +406,7 @@ impl World {
         }
         // A door goes as a whole.
         let wb = self.reg.get(was);
+        let was_frame = wb.shape == Shape::Portal || wb.name == "obsidian";
         if wb.shape == Shape::Door {
             let other = if wb.variant & 8 != 0 { p - IVec3::Y } else { p + IVec3::Y };
             let o = self.block_or_air(other);
@@ -428,6 +429,19 @@ impl World {
             self.set_block(above, AIR);
             self.set_block(dest, id);
             y += 1;
+        }
+        // A broken portal frame (or portal) puts the whole portal out.
+        if was_frame {
+            let mut todo: Vec<IVec3> = [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z].iter().map(|d| p + *d).collect();
+            let mut n = 0;
+            while let Some(q) = todo.pop() {
+                if self.reg.get(self.block_or_air(q)).shape != Shape::Portal || n > 512 {
+                    continue;
+                }
+                self.set_block(q, AIR);
+                n += 1;
+                todo.extend([IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z].iter().map(|d| q + *d));
+            }
         }
         true
     }

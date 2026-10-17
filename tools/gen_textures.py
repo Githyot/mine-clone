@@ -476,12 +476,12 @@ def obsidian():
 # --------------------------------------------------------------------------
 
 
-def ore(kind):
+def ore(kind, bg=None, p=None):
     """Stone background with a few small, outlined clusters of colour."""
     name = kind + "_ore"
     rng = rng_for(name)
-    img = stone(name + "_stone")
-    p = ORES[kind]
+    img = bg if bg is not None else stone(name + "_stone")
+    p = p if p is not None else ORES[kind]
     accent = p[3] if len(p) > 3 else None
     centers = [(3, 3), (11, 3), (7, 8), (2, 12), (12, 11)]
     jitter = rng.integers(-1, 2, (len(centers), 2))
@@ -1406,6 +1406,7 @@ def build_registry():
     reg.update(phase4_registry())
     reg.update(decor_registry())
     reg.update(extras_registry())
+    reg.update(nether_registry())
     return reg
 
 
@@ -2068,6 +2069,215 @@ def extras_registry():
         "iron_bars": iron_bars,
         "rope_bridge_top": lambda: rope_bridge(True),
         "rope_bridge_side": lambda: rope_bridge(False),
+    }
+
+
+# --------------------------------------------------------------------------
+# The Nether
+# --------------------------------------------------------------------------
+
+NETHERRACK = pal("#3e1414", "#561c1c", "#6c2422", "#7e2e2a", "#904036", "#a45244")
+
+
+def netherrack(name="netherrack"):
+    rng = rng_for(name)
+    f = fbm(rng, ((8, 0.3), (4, 0.35), (2, 0.35), (1, 0.35)))
+    img = from_rgb(shade(f, NETHERRACK, 0.8))
+    for _ in range(14):
+        x, y = rng.integers(0, N, 2)
+        put(img, x, y, NETHERRACK[0] if rng.random() < 0.6 else NETHERRACK[5])
+    return img
+
+
+def soul_sand():
+    rng = rng_for("soul_sand")
+    p = pal("#2e221a", "#3e2e22", "#4e3a2c", "#5e4636", "#6e5442")
+    img = from_rgb(shade(fbm(rng, ((4, 0.3), (2, 0.4), (1, 0.45))), p, 0.8))
+    # faint faces in the sand
+    for cx, cy in ((4, 5), (11, 10)):
+        for (dx, dy) in ((0, 0), (2, 0), (0, 3), (1, 3), (2, 3)):
+            put(img, cx + dx, cy + dy, p[0])
+    return img
+
+
+def soul_soil():
+    rng = rng_for("soul_soil")
+    p = pal("#2a1e16", "#382a20", "#46362a", "#544234")
+    return from_rgb(shade(fbm(rng, ((8, 0.3), (4, 0.4), (2, 0.4))), p, 0.9))
+
+
+def magma_block():
+    rng = rng_for("magma_block")
+    img = from_rgb(shade(fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.3))), pal("#3a1208", "#521a0c", "#6a2410"), 0.8))
+    ids, d1, d2, n = voronoi(rng, 7, 5.0)
+    edge = (d2 - d1) < 1.2
+    glow = pal("#c43c0c", "#ee7018", "#ffb040")
+    for y in range(N):
+        for x in range(N):
+            if edge[y, x]:
+                put(img, x, y, glow[int(rng.integers(0, 3))])
+    return img
+
+
+def nether_bricks():
+    img = bricks()
+    rgb = img[..., :3].astype(np.float32)
+    l = rgb.mean(axis=2, keepdims=True)
+    img[..., :3] = np.clip(np.concatenate([l * 0.55 + 8, l * 0.2, l * 0.24], axis=2), 0, 255)
+    return img
+
+
+def crimson_nylium_top():
+    rng = rng_for("crimson_nylium")
+    p = pal("#5a0c10", "#7a1418", "#961c1e", "#ae2a26", "#c43a30")
+    return from_rgb(shade(fbm(rng, ((4, 0.3), (2, 0.4), (1, 0.5))), p, 0.9))
+
+
+def crimson_nylium_side():
+    img = netherrack("crimson_nylium_side")
+    top = crimson_nylium_top()
+    rng = rng_for("crimson_nylium_side_fringe")
+    for x in range(N):
+        d = 3 + int(rng.integers(0, 3))
+        for y in range(d):
+            img[y, x] = top[y, x]
+    return img
+
+
+CRIMSON = pal("#3a1424", "#4e1c30", "#62243c", "#782e4a", "#8c3a56")
+
+
+def crimson_stem():
+    rng = rng_for("crimson_stem")
+    img = canvas()
+    img[..., 3] = 255
+    for x in range(N):
+        stripe = rng.random()
+        for y in range(N):
+            k = int(np.clip(2 + (stripe - 0.5) * 3 + rng.normal(0, 0.6), 0, 4))
+            img[y, x, :3] = CRIMSON[k]
+    glow = pal("#c43c3c", "#e86a50")
+    for _ in range(6):
+        x, y = rng.integers(0, N, 2)
+        put(img, x, y, glow[int(rng.integers(0, 2))])
+    return img
+
+
+def crimson_stem_top():
+    img = crimson_planks()
+    for y in range(N):
+        for x in range(N):
+            if x in (0, 15) or y in (0, 15):
+                put(img, x, y, CRIMSON[1])
+    return img
+
+
+def crimson_planks():
+    rng = rng_for("crimson_planks")
+    p = pal("#4a1c2e", "#5e2438", "#702c44", "#82364e", "#923e58")
+    grain = 0.6 * value_noise(rng, 8, 1) + 0.4 * value_noise(rng, 4, 1)
+    img = from_rgb(shade(normalize(grain) * 0.7 + 0.2, p[1:], 0.5))
+    for b in range(4):
+        img[b * 4 + 3, :, :3] = p[0]
+    return img
+
+
+def nether_wart_block():
+    rng = rng_for("nether_wart_block")
+    p = pal("#5a0606", "#740a0a", "#8e1010", "#a81818", "#c02424")
+    return from_rgb(shade(fbm(rng, ((8, 0.3), (4, 0.4), (2, 0.4), (1, 0.3))), p, 0.95))
+
+
+def shroomlight():
+    rng = rng_for("shroomlight")
+    p = pal("#c46a1c", "#de8a2a", "#f0aa44", "#fcc868", "#ffe2a0")
+    img = from_rgb(shade(fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.3))), p, 0.8))
+    bevel(img)
+    return img
+
+
+BASALT = pal("#2a2a2e", "#36363c", "#44444a", "#52525a", "#62626a")
+
+
+def basalt_side():
+    rng = rng_for("basalt_side")
+    img = canvas()
+    img[..., 3] = 255
+    for x in range(N):
+        base = 1 + (x * 7 % 5) % 3
+        for y in range(N):
+            img[y, x, :3] = BASALT[int(np.clip(base + rng.normal(0, 0.5), 0, 4))]
+    for x in (4, 9, 13):
+        img[:, x, :3] = BASALT[0]
+    return img
+
+
+def basalt_top():
+    rng = rng_for("basalt_top")
+    img = from_rgb(shade(fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.3))), BASALT, 0.8))
+    for i in range(N):
+        for (x, y) in ((i, 0), (i, 15), (0, i), (15, i)):
+            put(img, x, y, BASALT[0])
+    return img
+
+
+def blackstone():
+    rng = rng_for("blackstone")
+    p = pal("#141216", "#1e1a20", "#28242a", "#343036", "#403c44")
+    img = from_rgb(shade(fbm(rng, ((8, 0.3), (4, 0.35), (2, 0.35), (1, 0.3))), p, 0.8))
+    for _ in range(8):
+        x, y = rng.integers(0, N, 2)
+        put(img, x, y, pal("#5a4a3a")[0])
+    return img
+
+
+def nether_portal():
+    """A deep violet swirl, bright at the rims of each whorl."""
+    rng = rng_for("nether_portal")
+    p = pal("#2a0a5a", "#3e1280", "#561ca6", "#7030c8", "#9a5ae6", "#c89aff")
+    img = canvas()
+    img[..., 3] = 255
+    for y in range(N):
+        for x in range(N):
+            dx, dy = x - 7.5, y - 7.5
+            r = (dx * dx + dy * dy) ** 0.5
+            a = np.arctan2(dy, dx)
+            v = 0.5 + 0.5 * np.sin(r * 1.3 - a * 2.0) + rng.normal(0, 0.08)
+            img[y, x, :3] = p[int(np.clip(v * 5.5, 0, 5))]
+    return img
+
+
+def quartz_block():
+    rng = rng_for("quartz_block")
+    p = pal("#cfc6bc", "#ddd6cc", "#e8e2da", "#f2eee8", "#faf8f4")
+    img = from_rgb(shade(fbm(rng, ((4, 0.2), (2, 0.3), (1, 0.4))), p, 0.4))
+    bevel(img, 1.04, 0.9)
+    return img
+
+
+def nether_registry():
+    quartz = pal("#bdb2a6", "#e2dbd2", "#fffaf2")
+    gold = pal("#b07a10", "#e0b830", "#fff080")
+    return {
+        "netherrack": netherrack,
+        "nether_quartz_ore": lambda: ore("nether_quartz", netherrack("nqo_bg"), quartz),
+        "nether_gold_ore": lambda: ore("nether_gold", netherrack("ngo_bg"), gold),
+        "soul_sand": soul_sand,
+        "soul_soil": soul_soil,
+        "magma_block": magma_block,
+        "nether_bricks": nether_bricks,
+        "crimson_nylium": crimson_nylium_top,
+        "crimson_nylium_side": crimson_nylium_side,
+        "crimson_stem": crimson_stem,
+        "crimson_stem_top": crimson_stem_top,
+        "crimson_planks": crimson_planks,
+        "nether_wart_block": nether_wart_block,
+        "shroomlight": shroomlight,
+        "basalt_side": basalt_side,
+        "basalt_top": basalt_top,
+        "blackstone": blackstone,
+        "nether_portal": nether_portal,
+        "quartz_block": quartz_block,
     }
 
 

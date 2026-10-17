@@ -83,6 +83,8 @@ fn lit(c: vec3<f32>, in: VOut) -> vec3<f32> {
     let b = g.fog.w;
     l = mix(l, sqrt(l), b * 0.5);
     l = max(l, vec3<f32>(0.03 + b * 0.04));
+    // The Nether is never pitch dark: a dim warm glow everywhere.
+    l = max(l, vec3<f32>(0.34, 0.24, 0.2) * g.weather.z);
     var rgb = c * in.color * l;
     if (g.effects.z > 0.0) {
         // Shader packs draw in HDR: bright texels right next to a light (torch flames,

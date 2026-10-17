@@ -22,7 +22,8 @@ fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
     let dir = normalize(wp.xyz / wp.w);
     let s = g.sun_dir.xyz;
     let daylight = g.fog_color.w;
-    if (g.fog.z > 0.5) {
+    // Underwater, or under the Nether's roof: only fog.
+    if (g.fog.z > 0.5 || g.weather.z > 0.5) {
         return vec4<f32>(g.fog_color.rgb, 1.0);
     }
     var col = mix(g.sky_horizon.rgb, g.sky_top.rgb, smoothstep(-0.02, 0.45, dir.y));

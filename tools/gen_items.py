@@ -963,6 +963,65 @@ def brick():
     return outline(from_map(rows, pmap(p)))
 
 
+NUGGET = [
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "......###.......",
+    ".....#####......",
+    "....#######.....",
+    "....########....",
+    ".....#######....",
+    "......####......",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+
+
+def gold_nugget():
+    return lump("gold_nugget", pal("#7a5a08", "#b08a14", "#e0b830", "#f6dc60", "#fff4b0"), rows=NUGGET)
+
+
+def quartz():
+    rows = [
+        "................",
+        "................",
+        "........5.......",
+        ".......554......",
+        "......5544......",
+        ".....55443.4....",
+        "....554433.44...",
+        "...5544333443...",
+        "...5443322433...",
+        "..554432224332..",
+        "..54433222333...",
+        "...443322232....",
+        "....33222.2.....",
+        ".....222........",
+        "................",
+        "................",
+    ]
+    p = pal("#8a8078", "#b8aea4", "#d8d0c6", "#ece6de", "#fcfaf6")
+    return outline(from_map(rows, pmap(p)))
+
+
+def nether_brick_item():
+    return nether_tint(brick())
+
+
+def nether_tint(img):
+    out = img.copy()
+    rgb = out[..., :3].astype(np.float32)
+    l = rgb.mean(axis=2, keepdims=True)
+    out[..., :3] = np.clip(np.concatenate([l * 0.75 + 10, l * 0.28, l * 0.3], axis=2), 0, 255)
+    return out
+
+
 # --------------------------------------------------------------------------
 # Food
 # --------------------------------------------------------------------------
@@ -1619,6 +1678,7 @@ def item_registry():
         "redstone": redstone, "flint": flint, "string": string_item,
         "flint_and_steel": flint_and_steel,
         "honeycomb": honeycomb, "minecart": minecart_item,
+        "gold_nugget": gold_nugget, "quartz": quartz, "nether_brick": nether_brick_item,
         "leather_backpack": lambda: backpack(("#5a3a1a", "#a0703a")),
         "iron_backpack": lambda: backpack(("#7a7a80", "#d0d0d6")),
         "gold_backpack": lambda: backpack(("#a07810", "#f4d050")),

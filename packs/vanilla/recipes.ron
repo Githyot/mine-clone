@@ -175,6 +175,11 @@
         (pattern: ["I", "I", "I"], key: {'I': "iron_ingot"}, result: "chain", count: 3),
         (pattern: ["III", "III"], key: {'I': "iron_ingot"}, result: "iron_bars", count: 16),
         (pattern: ["S S", "PPP"], key: {'S': "string", 'P': "#planks"}, result: "rope_bridge", count: 6),
+        // The Nether.
+        (pattern: ["##", "##"], key: {'#': "nether_brick"}, result: "nether_bricks"),
+        (pattern: ["##", "##"], key: {'#': "quartz"}, result: "quartz_block"),
+        (pattern: ["#"], key: {'#': "crimson_stem"}, result: "crimson_planks", count: 4),
+        (pattern: ["###", "###", "###"], key: {'#': "gold_nugget"}, result: "gold_ingot"),
         (pattern: [" # ", "# #"], key: {'#': "oak_planks"}, result: "oak_roof", count: 6),
         (pattern: ["# #", " # "], key: {'#': "iron_ingot"}, result: "bucket", count: 1),
         (pattern: ["  #", " #s", "# s"], key: {'#': "stick", 's': "string"}, result: "fishing_rod", count: 1),
@@ -336,6 +341,9 @@
     ],
     smelting: [
         (input: "stone", result: "smooth_stone", xp: 0.1),
+        (input: "netherrack", result: "nether_brick", xp: 0.1),
+        (input: "nether_quartz_ore", result: "quartz", xp: 0.2),
+        (input: "nether_gold_ore", result: "gold_ingot", xp: 1.0),
         (input: "raw_iron", result: "iron_ingot", xp: 0.7),
         (input: "raw_gold", result: "gold_ingot", xp: 1.0),
         (input: "raw_copper", result: "copper_ingot", xp: 0.7),

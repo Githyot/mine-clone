@@ -231,6 +231,7 @@ pub struct Lod {
     jobs: Sender<(u32, IVec2, i32)>,
     done: Receiver<(u32, IVec2, i32, TileMesh)>,
     colors: Arc<std::sync::RwLock<Arc<LodColors>>>,
+    gen: Arc<std::sync::RwLock<Arc<Generator>>>,
     pub tiles: HashMap<IVec2, GpuTile>,
     pending: HashSet<IVec2>,
     /// Tiles wanted now, nearest first, with their step.
@@ -247,6 +248,7 @@ impl Lod {
         let (jobs, job_rx) = unbounded::<(u32, IVec2, i32)>();
         let (done_tx, done) = unbounded();
         let colors = Arc::new(std::sync::RwLock::new(Arc::new(colors)));
+        let gen = Arc::new(std::sync::RwLock::new(gen));
         // Few threads: chunk generation near the player matters more.
         let workers = (thread::available_parallelism().map(|n| n.get()).unwrap_or(4) / 4).clamp(1, 3);
         for i in 0..workers {
@@ -255,6 +257,8 @@ impl Lod {
                 while let Ok((epoch, tile, step)) = rx.recv() {
                     let c = colors.read().map(|c| c.clone()).ok();
                     let Some(c) = c else { break };
+                    let g = gen.read().map(|g| g.clone()).ok();
+                    let Some(gen) = g else { break };
                     if tx.send((epoch, tile, step, build_tile(&gen, &c, tile, step))).is_err() {
                         break;
                     }
@@ -265,6 +269,7 @@ impl Lod {
             jobs,
             done,
             colors,
+            gen,
             tiles: HashMap::new(),
             pending: HashSet::new(),
             wanted: Vec::new(),
@@ -279,6 +284,15 @@ impl Lod {
     pub fn set_colors(&mut self, colors: LodColors) {
         if let Ok(mut c) = self.colors.write() {
             *c = Arc::new(colors);
+        }
+        self.epoch += 1;
+        self.clear();
+    }
+
+    /// Another world (or dimension): drop every tile and build new ones from its generator.
+    pub fn set_gen(&mut self, gen: Arc<Generator>) {
+        if let Ok(mut g) = self.gen.write() {
+            *g = gen;
         }
         self.epoch += 1;
         self.clear();

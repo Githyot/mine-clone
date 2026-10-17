@@ -99,7 +99,7 @@ impl Game {
         self.held_stack().map(|s| self.items.get(s.item).name.as_str())
     }
 
-    fn glow_layer(&self) -> u16 {
+    pub(crate) fn glow_layer(&self) -> u16 {
         self.block_look(self.reg.id_or_air("white_wool")).0
     }
 
