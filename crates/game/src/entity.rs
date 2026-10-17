@@ -247,6 +247,10 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
     let (iw, ih) = ((p.width * 16) as i32, (p.height * 16) as i32);
     let fs = faces(Vec3::ZERO, Vec3::new(w, h, 1.0), (0, 0), (iw, ih, 1));
     for (k, f) in fs.into_iter().enumerate() {
+        // A see-through painting is only its picture, with no wooden board behind it.
+        if p.alpha && k != 0 {
+            continue;
+        }
         let rect = if k == 0 { (0, 0, iw, ih) } else { (0, 64, 16, 16) };
         let shade = if k == 0 { 1.0 } else { f.shade };
         mb.face(&Face { rect, shade, ..f }, 0);

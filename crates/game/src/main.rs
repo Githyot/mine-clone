@@ -1798,7 +1798,8 @@ impl Game {
             })
             .map(|t| t.distance)
             .unwrap_or(f32::MAX);
-            if let Some((i, t)) = self.mobs.pick(self.body.eye(), self.forward(), 3.5) {
+            if self.combat_swing(block_dist) {
+            } else if let Some((i, t)) = self.mobs.pick(self.body.eye(), self.forward(), 3.5) {
                 if t < block_dist {
                     self.attack_cd = if self.survival { 0.1 } else { 0.45 };
                     self.break_cd = 0.3;
@@ -2235,7 +2236,7 @@ impl Game {
         if self.body.on_ground || self.body.in_water {
             let fall = self.fall_peak - self.body.pos.y;
             if fall > 3.5 && !self.body.in_water {
-                self.damage((fall - 3.0).floor(), None);
+                self.damage(((fall - 3.0) * self.snow_fall_factor()).floor(), None);
             }
             self.fall_peak = self.body.pos.y;
         } else {
@@ -2459,9 +2460,9 @@ impl Game {
             return self.placed(hit.block, id);
         }
         // Plants are replaced instead of placed against.
-        let pos = if cb.shape == Shape::Cross && clicked != id { hit.block } else { hit.block + hit.normal };
+        let pos = if (cb.shape == Shape::Cross || self.snow_replaceable(clicked)) && clicked != id { hit.block } else { hit.block + hit.normal };
         let cur = self.world.block_or_air(pos);
-        if cur != AIR && !self.world.is_liquid(cur) && self.reg.get(cur).shape != Shape::Cross {
+        if cur != AIR && !self.world.is_liquid(cur) && self.reg.get(cur).shape != Shape::Cross && !self.snow_replaceable(cur) {
             return None;
         }
         let b = self.reg.get(id);
@@ -2477,6 +2478,7 @@ impl Game {
             Shape::Slab => upper as u8,
             Shape::Stairs | Shape::Roof => facing(f.x, f.z) | if upper { 4 } else { 0 },
             Shape::Door => facing(f.x, f.z),
+            Shape::FenceGate => facing(f.x, f.z),
             // A chair turns to face the player who puts it down.
             Shape::Chair => facing(-f.x, -f.z),
             // A bench runs across your view.
@@ -2612,7 +2614,7 @@ impl Game {
         }
         let id = self.world.block_or_air(hit.block);
         let b = self.reg.get(id);
-        if !matches!(b.shape, Shape::Door | Shape::Trapdoor) {
+        if !matches!(b.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate) {
             return false;
         }
         let (base, v, door) = (b.base, b.variant ^ 4, b.shape == Shape::Door);
@@ -2797,6 +2799,9 @@ impl Game {
             let z = c.z + self.surv.rng.range(-24, 25);
             let Some(y) = self.world.surface_y(x, z) else { continue };
             let p = IVec3::new(x, y, z);
+            if self.snow_settle_extra(p) {
+                continue;
+            }
             let id = self.world.block_or_air(p);
             let b = self.reg.get(id);
             if b.base == layer {

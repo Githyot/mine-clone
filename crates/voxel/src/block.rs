@@ -85,6 +85,8 @@ pub enum Shape {
     /// A hollow log (Distant Lands idea): four walls round a hole, standing up (variant 0) or
     /// lying along x (1) or z (2).
     Hollow,
+    /// A fence gate (Macaw's Fences idea): two posts and a swinging leaf; right click opens it.
+    FenceGate,
 }
 
 impl Shape {
@@ -122,6 +124,7 @@ impl Shape {
                 | Shape::Bench
                 | Shape::Shelf
                 | Shape::Hollow
+                | Shape::FenceGate
         )
     }
 }

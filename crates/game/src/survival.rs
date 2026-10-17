@@ -493,6 +493,9 @@ impl Game {
 
     /// Seconds a weapon needs between full-strength swings (the hand is quick, an axe slow).
     pub(crate) fn attack_cooldown(&self) -> f32 {
+        if let Some(c) = self.weapon_cooldown() {
+            return c / self.gem_attack_speed();
+        }
         (match self.held_tool().map(|t| t.kind) {
             None => 0.25,
             Some(ToolKind::Sword) => 0.625,
@@ -905,7 +908,7 @@ impl Game {
             // Eating is handled while the button is held (update).
             return false;
         }
-        if item.name == "fishing_rod" {
+        if crate::mods::aquaculture::is_rod(&item.name) {
             return self.use_rod();
         }
         if crate::magic::is_caster(&item.name) {

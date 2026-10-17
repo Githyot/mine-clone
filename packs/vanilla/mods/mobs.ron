@@ -1433,4 +1433,19 @@
         layers: [(part: 1, inflate: 0.5)],
     ),
     // ---- end of creatures ----
+    // ---- bomd (tools/gen_bomd.py) ----
+    (
+        name: "nether_gauntlet", display_name: "Manopla do Nether", kind: Hostile, health: 520, speed: 2.2, width: 2.0, height: 4.2, spawn: Never, drops: [(item: "blaze_rod", min: 6, max: 12), (item: "gold_block", min: 2, max: 4), (item: "magma_block", min: 4, max: 8), (item: "life_crystal", min: 1, max: 1)], xp: 180, attack: 11, scale: 2.0, boss: true, flies: true,
+        parts: [
+            (size: (10, 6, 8), origin: (-5, 2, -4), uv: (0, 0)),
+            (size: (14, 16, 6), origin: (-7, 8, -3), uv: (0, 14)),
+            (size: (3, 9, 3), origin: (-7, 24, -2), uv: (40, 14), anim: Arm(0), pivot: (-6, 24, 0)),
+            (size: (3, 9, 3), origin: (-3, 24, -2), uv: (40, 14), anim: Arm(1), pivot: (-2, 24, 0)),
+            (size: (3, 9, 3), origin: (1, 24, -2), uv: (40, 14), anim: Arm(0), pivot: (2, 24, 0)),
+            (size: (3, 9, 3), origin: (4, 24, -2), uv: (40, 14), anim: Arm(1), pivot: (5, 24, 0)),
+            (size: (3, 8, 3), origin: (7, 12, -1), uv: (52, 14), anim: Arm(1), pivot: (8, 18, 0)),
+            (size: (6, 6, 1), origin: (-3, 13, 3), uv: (0, 36), anim: Head, pivot: (0, 16, 0)),
+        ],
+    ),
+    // ---- end of bomd ----
 ])

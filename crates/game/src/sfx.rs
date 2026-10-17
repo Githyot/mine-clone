@@ -119,6 +119,7 @@ pub fn synth(sfx: Sfx, seed: u32) -> Vec<f32> {
         Sfx::Portal => portal(&mut rng),
         Sfx::Melody(i, t) => melody(&mut rng, i, t),
         Sfx::Engine(k, t) => engine(&mut rng, k, t),
+        Sfx::Tune(i, t) => crate::mods::melodies::synth_tune(i, t, seed),
     };
     out.into_iter().map(|s| s.clamp(-1.0, 1.0)).collect()
 }

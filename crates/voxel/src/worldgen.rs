@@ -12,6 +12,7 @@ pub const SEA_LEVEL: i32 = 62;
 mod aether;
 mod caves;
 mod distant_lands;
+mod ecologics;
 mod end;
 mod nether;
 mod otherside;
@@ -357,6 +358,7 @@ pub struct Generator {
     nether: nether::NetherPalette,
     end: end::EndPalette,
     caves: caves::CavePalette,
+    ecologics: ecologics::EcoPalette,
     aether: aether::AetherPalette,
     otherside: otherside::OthersidePalette,
     distant: distant_lands::DistantPalette,
@@ -452,6 +454,7 @@ impl Generator {
             nether: nether::NetherPalette::new(reg),
             end: end::EndPalette::new(reg),
             caves: caves::CavePalette::new(reg),
+            ecologics: ecologics::EcoPalette::new(reg),
             aether: aether::AetherPalette::new(reg),
             otherside: otherside::OthersidePalette::new(reg),
             distant: distant_lands::DistantPalette::new(reg),
@@ -740,6 +743,7 @@ impl Generator {
         self.place_ores(&mut chunk, &mut rng, &cols);
         self.decorate_caves(&mut chunk, &mut rng, &cols, pos);
         self.decorate(&mut chunk, &mut rng, &cols, pos);
+        self.decorate_ecologics(&mut chunk, &cols, pos);
         self.place_structures(&mut chunk);
         chunk
     }

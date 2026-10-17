@@ -119,6 +119,8 @@ pub enum Sfx {
     /// One beat of an aircraft's engine (Immersive Aircraft idea): 0 piston engine, 1 rotor,
     /// 2 airship's slow chug. The second value is the throttle in quarters (0..4).
     Engine(u8, u8),
+    /// A whole melody on an instrument (mods/melodies.rs): instrument, melody number.
+    Tune(u8, u16),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
