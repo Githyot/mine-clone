@@ -2493,6 +2493,9 @@ def farming_registry():
            "botany_pot_side": botany_pot_side, "botany_pot_top": botany_pot_top, "botany_pot_empty": botany_pot_empty,
            "cobblestone_bricks": cobblestone_bricks,
            "mossy_cobblestone_bricks": lambda: cobblestone_bricks("mossy_cobblestone_bricks", True),
+           "moss_block": moss_block, "cave_vines_lit": cave_vines_lit, "packed_ice": packed_ice,
+           "dripstone_block": dripstone_block, "pointed_dripstone_up_tip": lambda: pointed_dripstone(True),
+           "pointed_dripstone_down_tip": lambda: pointed_dripstone(False),
            "rocky_dirt": rocky_dirt, "thatch": thatch, "lattice": lattice, "chandelier": chandelier_side,
            "brazier": brazier_side, "brazier_top": brazier_top, "twig": twig, "pebble": pebble,
            "red_curtain": lambda: curtain(pal("#5a1010", "#7a1818", "#962222", "#ae2c2c")),
@@ -2677,6 +2680,66 @@ def curtain(cloth):
     for x in range(N):
         put(img, x, 0, rod[1])
         put(img, x, 1, rod[0])
+    return img
+
+
+def moss_block():
+    rng = rng_for("moss_block")
+    return from_rgb(shade(fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.3))), pal("#3a5a1e", "#4a6e26", "#5a8230", "#6a943a", "#7aa444"), 0.9))
+
+
+def cave_vines_lit():
+    """A hanging vine with glowing orange berries."""
+    img = canvas()
+    leaf = MOSS
+    for y in range(N):
+        x = 7 + (1 if (y // 3) % 2 else 0)
+        put(img, x, y, leaf[1])
+        put(img, x + 1, y, leaf[2])
+        if y % 4 == 1:
+            put(img, x - 1, y, leaf[3])
+            put(img, x + 2, y + 1 if y < 15 else y, leaf[2])
+    for (x, y) in ((5, 4), (10, 9), (6, 13)):
+        for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1)):
+            put(img, x + dx, y + dy, (255, 180, 60) if dx + dy else (255, 230, 140))
+    return img
+
+
+def packed_ice():
+    rng = rng_for("packed_ice")
+    f = fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.3)))
+    img = from_rgb(shade(f, pal("#7a9ccc", "#8aaad8", "#9ab8e2", "#acc6ea", "#c0d6f2"), 0.8))
+    for k in range(5):
+        y0 = int(rng.integers(0, N))
+        for x in range(N):
+            if rng.random() < 0.7:
+                put(img, x, (y0 + x // 3) % N, (214, 230, 250))
+    return img
+
+
+DRIP = pal("#6a5444", "#7c6452", "#8c7460", "#9c846e", "#ac947c")
+
+
+def dripstone_block():
+    rng = rng_for("dripstone_block")
+    img = canvas()
+    img[..., 3] = 255
+    for y in range(N):
+        for x in range(N):
+            v = 2 + rng.normal(0, 0.5) + (0.9 if (x * 2 + y // 3) % 7 == 0 else 0) - (0.8 if y % 5 == 4 else 0)
+            img[y, x, :3] = DRIP[int(np.clip(v, 0, 4))]
+    return img
+
+
+def pointed_dripstone(up):
+    """A stone spike narrowing to a point (up from the floor, or down from the roof)."""
+    img = canvas()
+    for y in range(N):
+        t = y if up else 15 - y  # distance from the tip
+        half = t / 15 * 3.5
+        for x in range(N):
+            if abs(x - 7.5) <= half + 0.5:
+                put(img, x, y, DRIP[1 + (x + y) % 3 if abs(x - 7.5) < half else 0])
     return img
 
 

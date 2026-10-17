@@ -15,6 +15,39 @@ const SAMPLES: f32 = 260.0;
 const RANGE: i32 = 14;
 
 impl Game {
+    /// Test hook: stand in the nearest open cave of a cave biome (MC_CAVE=lush|frozen|dripstone).
+    pub(crate) fn test_cave(&mut self, kind: &str) {
+        use voxel::worldgen::CaveBiome;
+        let want = match kind {
+            "frozen" => CaveBiome::Frozen,
+            "dripstone" => CaveBiome::Dripstone,
+            _ => CaveBiome::Lush,
+        };
+        let me = self.body.pos.floor().as_ivec3();
+        for r in (0..1200).step_by(8) {
+            for k in 0..(r / 4).max(1) {
+                let a = k as f32 / (r / 4).max(1) as f32 * std::f32::consts::TAU;
+                let (x, z) = (me.x + (a.cos() * r as f32) as i32, me.z + (a.sin() * r as f32) as i32);
+                if self.world.gen.cave_biome(x, z) != want {
+                    continue;
+                }
+                let cp = glam::IVec2::new(x.div_euclid(16), z.div_euclid(16));
+                let chunk = self.world.gen.generate(cp);
+                let (lx, lz) = (x.rem_euclid(16) as usize, z.rem_euclid(16) as usize);
+                let at = |y: i32| chunk.get(lx, y as usize, lz);
+                for y in (14..50).rev() {
+                    let free = (0..3).all(|k| at(y + k) == AIR);
+                    if free && at(y - 1) != AIR && self.reg.get(at(y - 1)).solid {
+                        self.body.pos = Vec3::new(x as f32 + 0.5, y as f32, z as f32 + 0.5);
+                        log::info!("cave {kind} at {x},{y},{z}");
+                        return;
+                    }
+                }
+            }
+        }
+        log::warn!("no {kind} cave found");
+    }
+
     pub(crate) fn update_ambient(&mut self, dt: f32) {
         if dt <= 0.0 {
             return;

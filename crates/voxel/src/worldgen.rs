@@ -9,8 +9,10 @@ use crate::trees::{self, TreeBlocks, TreeKind, TreeSpace, Wood};
 
 pub const SEA_LEVEL: i32 = 62;
 
+mod caves;
 mod end;
 mod nether;
+pub use caves::CaveBiome;
 pub use end::{end_pillars, EndPillar, END_EXIT_Y, END_PLATFORM};
 pub use nether::{NETHER_LAVA, NETHER_ROOF};
 
@@ -290,6 +292,7 @@ pub struct Generator {
     pub dim: Dim,
     nether: nether::NetherPalette,
     end: end::EndPalette,
+    caves: caves::CavePalette,
 }
 
 const BANDS: usize = 48;
@@ -380,6 +383,7 @@ impl Generator {
             dim: Dim::Overworld,
             nether: nether::NetherPalette::new(reg),
             end: end::EndPalette::new(reg),
+            caves: caves::CavePalette::new(reg),
         }
     }
 
@@ -642,6 +646,7 @@ impl Generator {
         }
 
         self.place_ores(&mut chunk, &mut rng, &cols);
+        self.decorate_caves(&mut chunk, &mut rng, &cols, pos);
         self.decorate(&mut chunk, &mut rng, &cols, pos);
         self.place_structures(&mut chunk);
         chunk

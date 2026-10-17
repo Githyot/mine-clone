@@ -267,6 +267,13 @@
     (name: "green_curtain", display_name: Some("Cortina Verde"), shape: Pane, transparency: Cutout, solid: false, hardness: 0.3, textures: (all: Some("green_curtain"))),
     (name: "potted_poppy", display_name: Some("Vaso com Papoula"), shape: Pot, transparency: Cutout, hardness: 0.5, in_inventory: false, drops: Some([(item: "botany_pot"), (item: "poppy")]), textures: (side: Some("botany_pot_side"), top: Some("botany_pot_top"), bottom: Some("poppy"))),
     (name: "potted_dandelion", display_name: Some("Vaso com Dente-de-Leão"), shape: Pot, transparency: Cutout, hardness: 0.5, in_inventory: false, drops: Some([(item: "botany_pot"), (item: "dandelion")]), textures: (side: Some("botany_pot_side"), top: Some("botany_pot_top"), bottom: Some("dandelion"))),
+    // YUNG's Cave Biomes: lush, frozen and dripstone caves.
+    (name: "moss_block", display_name: Some("Bloco de Musgo"), hardness: 0.1, tool: Some(Hoe), textures: (all: Some("moss_block"))),
+    (name: "cave_vines", display_name: Some("Trepadeira das Cavernas"), shape: Cross, transparency: Cutout, solid: false, light: 12, hardness: 0.0, drops: Some([(item: "glow_berries", chance: 0.5)]), textures: (all: Some("cave_vines_lit"))),
+    (name: "packed_ice", display_name: Some("Gelo Compactado"), hardness: 0.5, tool: Some(Pickaxe), drops: Some([]), textures: (all: Some("packed_ice"))),
+    (name: "dripstone_block", display_name: Some("Bloco de Espeleotema"), hardness: 1.5, tool: Some(Pickaxe), tier: 1, textures: (all: Some("dripstone_block"))),
+    (name: "pointed_dripstone", display_name: Some("Estalagmite"), shape: Cross, transparency: Cutout, solid: false, hardness: 1.5, tool: Some(Pickaxe), textures: (all: Some("pointed_dripstone_up_tip"))),
+    (name: "pointed_dripstone_down", display_name: Some("Estalactite"), shape: Cross, transparency: Cutout, solid: false, hardness: 1.5, tool: Some(Pickaxe), drops: Some([(item: "pointed_dripstone")]), in_inventory: false, textures: (all: Some("pointed_dripstone_down_tip"))),
     (name: "hay_block", display_name: Some("Fardo de Feno"), hardness: 0.5, tool: Some(Hoe), textures: (top: Some("hay_block_top"), side: Some("hay_block_side"), bottom: Some("hay_block_top"))),
     (name: "wheat_stage0", display_name: Some("Trigo"), shape: Cross, transparency: Cutout, solid: false, hardness: 0.0, in_inventory: false, drops: Some([(item: "wheat_seeds")])),
     (name: "wheat_stage1", display_name: Some("Trigo"), shape: Cross, transparency: Cutout, solid: false, hardness: 0.0, in_inventory: false, drops: Some([(item: "wheat_seeds")])),

@@ -1349,6 +1349,10 @@ impl Game {
                     // Test hook: a small field in front, some of it ripe.
                     self.test_farm();
                 }
+                if let Ok(kind) = std::env::var("MC_CAVE") {
+                    // Test hook: stand in a cave biome.
+                    self.test_cave(&kind);
+                }
                 if std::env::var("MC_DECOR").is_ok() {
                     // Test hook: the new building blocks.
                     self.test_decor();
