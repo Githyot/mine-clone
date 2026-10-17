@@ -116,6 +116,8 @@ pub enum Sfx {
     Portal,
     /// A tune on an instrument (Immersive Melodies idea): instrument 0 lute, 1 flute, 2 cello.
     Melody(u8, u8),
+    /// The sounds of the immersion stage: voices, ambience, body and interface (sfx_extra.rs).
+    Fx(crate::sfx_extra::Fx),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -186,7 +188,7 @@ impl Material {
 
 pub struct Audio {
     _stream: OutputStream,
-    handle: OutputStreamHandle,
+    pub(crate) handle: OutputStreamHandle,
     music: Sink,
     tracks: Vec<Track>,
     /// Seconds until the next song may start.
@@ -383,7 +385,7 @@ fn serde_json_lite(json: &str) -> Vec<TrackInfo> {
 
 /// Echo off the walls of a cave or a closed room, and the dull muffle of being under water.
 /// The echoes are filtered darker than the sound itself, so nothing gets brighter.
-fn room_sound(mut s: Vec<f32>, room: Room) -> Vec<f32> {
+pub(crate) fn room_sound(mut s: Vec<f32>, room: Room) -> Vec<f32> {
     const RATE: f32 = 44100.0;
     if room.underwater {
         let mut lp = 0.0;
