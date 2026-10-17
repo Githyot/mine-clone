@@ -6,6 +6,7 @@
 //! read after the base game's files.
 
 pub mod aether;
+pub mod aquaculture;
 pub mod combat;
 pub mod dwellers;
 pub mod ecologics;
@@ -29,6 +30,8 @@ pub struct ModSave {
     pub sensors: Vec<[i32; 3]>,
     /// Buildings whose dwellers were already spawned: origin and dimension.
     pub dwellers: Vec<[i32; 4]>,
+    /// The parts fitted to the player's modular fishing rod (Aquaculture).
+    pub rig: aquaculture::Rig,
 }
 
 #[derive(Default)]
@@ -91,7 +94,7 @@ impl Game {
 
     /// Right click: a mod block or item that does something. True when it was used.
     pub(crate) fn mods_use(&mut self) -> bool {
-        self.aether_use() || self.seasons_use()
+        self.aether_use() || self.seasons_use() || self.aquaculture_use()
     }
 
     /// A key went down. True when a mod used it.
@@ -109,5 +112,6 @@ impl Game {
     /// HUD bits drawn over the game view.
     pub(crate) fn draw_mods_hud(&mut self, w: f32, h: f32) {
         self.draw_season_hud(w, h);
+        self.draw_rod_hud(w, h);
     }
 }

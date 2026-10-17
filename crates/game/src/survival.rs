@@ -904,7 +904,7 @@ impl Game {
             // Eating is handled while the button is held (update).
             return false;
         }
-        if item.name == "fishing_rod" {
+        if crate::mods::aquaculture::is_rod(&item.name) {
             return self.use_rod();
         }
         if crate::magic::is_caster(&item.name) {
