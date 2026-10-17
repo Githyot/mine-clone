@@ -4613,7 +4613,7 @@ def bomd_arenas():
     c.set(10, 3, 10, "chest")
     c.set(7, 2, 10, "lantern")
     c.set(13, 2, 10, "lantern")
-    out.append(struct("cripta_do_lich", ["Snowy Plains"], c, 90, 0.5,
+    out.append(struct("cripta_do_lich", ["Snowy Plains"], c, 40, 0.5,
                       loot=rare(("lich_phylactery", 1, 1, 0.3), ("diamond", 1, 3, 0.4), ("blue_ice", 2, 6, 0.6)),
                       sink=1, foundation="packed_ice", rough=6, mobs=[("lich", 1), ("skeleton", 3)]))
     # The gauntlet's forge: a blackstone platform with magma channels, gold-capped pillars
@@ -4654,7 +4654,7 @@ def bomd_arenas():
             if c.get(x, 0, z) == "moss_block" and rng.random() < 0.18:
                 c.set(x, 1, z, rng.choice(["poppy", "short_grass", "moss_carpet"]))
     c.set(8, 1, 8, "chest")
-    out.append(struct("jardim_do_vazio", ["Jungle", "Dark Forest"], c, 60, 0.4,
+    out.append(struct("jardim_do_vazio", ["Jungle", "Dark Forest"], c, 32, 0.45,
                       loot=rare(("void_seed", 1, 1, 0.3), ("emerald", 1, 4, 0.5)),
                       sink=1, foundation="dirt", rough=5, mobs=[("void_blossom", 1), ("spider", 2)]))
     return out

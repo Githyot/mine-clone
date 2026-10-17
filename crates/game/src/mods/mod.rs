@@ -16,6 +16,7 @@ pub mod macaws;
 pub mod melodies;
 pub mod mounts;
 pub mod paintings_pp;
+pub mod scenes;
 pub mod portals;
 pub mod seasons;
 pub mod snow;
@@ -100,6 +101,7 @@ impl Game {
     /// Test hooks run once the world around the player has loaded (MC_* variables).
     pub(crate) fn mods_test_hooks(&mut self) {
         self.seasons_test_hook();
+        self.gameplay_test_hook();
     }
 
     /// Right click: a mod block or item that does something. True when it was used.

@@ -3983,7 +3983,7 @@
     (
         name: "cripta_do_lich",
         biomes: ["Snowy Plains"],
-        spacing: 90,
+        spacing: 40,
         chance: 0.5,
         sink: 1,
         foundation: Some("packed_ice"),
@@ -4105,8 +4105,8 @@
     (
         name: "jardim_do_vazio",
         biomes: ["Jungle", "Dark Forest"],
-        spacing: 60,
-        chance: 0.4,
+        spacing: 32,
+        chance: 0.45,
         sink: 1,
         foundation: Some("dirt"),
         rough: 5,

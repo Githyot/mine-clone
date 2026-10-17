@@ -16,7 +16,9 @@ use crate::Game;
 
 #[derive(Default)]
 pub struct Farmers {
-    t: f32,
+    pub(crate) t: f32,
+    /// Where the last farmer was sent (for the screenshot scene).
+    pub(crate) sent: Option<Vec3>,
 }
 
 /// Blocks around home a farmer looks after.
@@ -108,6 +110,7 @@ impl Game {
             let at = spot.as_vec3() + Vec3::new(0.5, 0.0, 0.5);
             if Vec3::new(at.x - pos.x, 0.0, at.z - pos.z).length() > 1.8 {
                 self.mobs.list[i].go_to(at, 2.0);
+                self.mods.farmers.sent = Some(at);
                 continue;
             }
             let chest = self.chest_near(home);
