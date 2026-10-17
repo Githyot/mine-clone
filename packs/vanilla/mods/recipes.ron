@@ -79,8 +79,13 @@
         (ingredients: ["holystone", "ambrosium_shard"], result: "healing_stone"),
         (ingredients: ["echo_log"], result: "echo_planks", count: 4),
         (ingredients: ["glow_berries", "glow_berries", "wheat", "wheat"], result: "gloom_berry_pie"),
+        (ingredients: ["crocodile_scute", "crocodile_scute", "crocodile_scute", "crocodile_scute"], result: "leather", count: 2),
+        (ingredients: ["snake_skin", "snake_skin"], result: "leather"),
+        (ingredients: ["serpent_tooth"], result: "bone", count: 3),
+        (ingredients: ["mosquito_proboscis", "mosquito_proboscis"], result: "string"),
     ],
     smelting: [
         (input: "quicksoil", result: "quicksoil_glass", xp: 0.1),
+        (input: "banana_slug_slime", result: "clay_ball", xp: 0.1),
     ],
 )

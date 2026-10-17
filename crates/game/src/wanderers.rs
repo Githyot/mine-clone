@@ -81,9 +81,11 @@ impl Game {
             }
         }
         // On a dark night in survival, rarely, a mutant zombie or skeleton comes looking.
-        let none = self.mob_index("mutant_zombie").is_none() && self.mob_index("mutant_skeleton").is_none();
+        // (The mutant stalker and void walker come from the mod pack, when it has them.)
+        const MUTANTS: [&str; 4] = ["mutant_zombie", "mutant_skeleton", "mutant_stalker", "mutant_void_walker"];
+        let none = MUTANTS.iter().all(|n| self.mob_index(n).is_none());
         if self.survival && daylight < 0.2 && none && self.wander.rand() < 0.04 {
-            let which = if self.wander.rand() < 0.5 { "mutant_zombie" } else { "mutant_skeleton" };
+            let which = MUTANTS[((self.wander.rand() * 4.0) as usize).min(3)];
             if let Some(at) = self.spot_near(me, 20.0, 30.0, false) {
                 if self.mobs.spawn(which, at) {
                     self.toast("Algo muito grande ronda por aqui...", 4.0);

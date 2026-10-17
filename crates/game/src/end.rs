@@ -247,7 +247,7 @@ impl Game {
         let glow = self.glow_layer();
         for i in 0..self.mobs.list.len() {
             let m = &self.mobs.list[i];
-            if !m.alive() || !self.mobs.reg.defs[m.def].name.starts_with("void_walker") {
+            if !m.alive() || !self.mobs.reg.defs[m.def].name.contains("void_walker") {
                 continue;
             }
             let (pos, aggro, hit) = (m.body.pos, m.aggro, m.hurt_age < 0.5);
