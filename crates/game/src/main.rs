@@ -3913,7 +3913,8 @@ impl Game {
                 Ok(_) => {
                     log::info!("screenshot saved to {}", path.display());
                     if !exit_after {
-                        self.toast(format!("Foto salva: {}", path.display()), 3.0);
+                        let n = self.gallery_count();
+                        self.toast(format!("Foto salva: {} ({n} na galeria)", path.display()), 3.0);
                     }
                 }
                 Err(e) => log::error!("screenshot failed: {e}"),

@@ -11,6 +11,7 @@ pub mod dwellers;
 pub mod mounts;
 pub mod portals;
 pub mod seasons;
+pub mod social;
 
 use serde::{Deserialize, Serialize};
 use winit::keyboard::KeyCode;
@@ -41,6 +42,7 @@ pub struct Mods {
     pub aether: aether::Aether,
     pub mount: mounts::Mount,
     pub aircraft: aircraft::Aircraft,
+    pub social: social::Social,
     /// How the player arrives in the dimension being loaded, when a mod portal sent them.
     pub arriving: Option<portals::Arrive>,
 }
@@ -78,6 +80,7 @@ impl Game {
             self.update_dwellers(dt);
             self.update_mount(dt);
             self.update_aircraft(dt);
+            self.update_social(dt);
         }
     }
 
