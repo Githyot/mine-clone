@@ -12,6 +12,7 @@ pub mod dwellers;
 pub mod ecologics;
 pub mod macaws;
 pub mod mounts;
+pub mod paintings_pp;
 pub mod portals;
 pub mod seasons;
 pub mod snow;

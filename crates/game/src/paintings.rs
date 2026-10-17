@@ -22,6 +22,14 @@ pub struct PaintingDef {
     pub height: u32,
     /// RGBA, 16 pixels per block (width*16 × height*16).
     pub pixels: Vec<u8>,
+    /// See-through where the picture is (Paintings++ transparency): drawn without its
+    /// wooden back, and clear pixels show the wall.
+    pub alpha: bool,
+}
+
+/// True when a picture has clear pixels (transparent paintings).
+pub fn has_alpha(pixels: &[u8]) -> bool {
+    pixels.chunks_exact(4).filter(|p| p[3] < 128).count() * 50 > pixels.len() / 4
 }
 
 #[derive(Deserialize)]
@@ -37,7 +45,7 @@ struct PaintingEntry {
     height: u32,
 }
 
-fn load_png(bytes: &[u8], w: u32, h: u32) -> Option<Vec<u8>> {
+pub(crate) fn load_png(bytes: &[u8], w: u32, h: u32) -> Option<Vec<u8>> {
     let img = image::load_from_memory(bytes).ok()?.to_rgba8();
     let (tw, th) = (w * 16, h * 16);
     let img = if img.width() != tw || img.height() != th { image::imageops::resize(&img, tw, th, image::imageops::FilterType::Triangle) } else { img };
@@ -57,7 +65,7 @@ pub fn load_defs(base: &Path) -> Vec<PaintingDef> {
                     .ok()
                     .or_else(|| embedded::PAINTING_TEXTURES.iter().find(|(n, _)| *n == e.name).map(|(_, b)| b.to_vec()));
                 match bytes.and_then(|b| load_png(&b, w, h)) {
-                    Some(pixels) => out.push(PaintingDef { name: e.name, title: e.title, width: w, height: h, pixels }),
+                    Some(pixels) => out.push(PaintingDef { alpha: has_alpha(&pixels), name: e.name, title: e.title, width: w, height: h, pixels }),
                     None => log::warn!("painting '{}' has no texture", e.name),
                 }
             }
@@ -77,16 +85,18 @@ pub fn load_defs(base: &Path) -> Vec<PaintingDef> {
             let (w, h) = fit_blocks(iw, ih);
             let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
             if let Some(pixels) = load_png(&bytes, w, h) {
-                out.push(PaintingDef { name: format!("custom:{stem}"), title: stem, width: w, height: h, pixels });
+                out.push(PaintingDef { alpha: has_alpha(&pixels), name: format!("custom:{stem}"), title: stem, width: w, height: h, pixels });
             }
         }
     }
+    // Painting packs (Paintings++ and data-pack style) in paintings/packs.
+    out.extend(crate::mods::paintings_pp::import_packs(&dir.join("packs")));
     log::info!("{} paintings", out.len());
     out
 }
 
 /// Pick a size in blocks (1..4 each way) that keeps the picture's shape.
-fn fit_blocks(w: u32, h: u32) -> (u32, u32) {
+pub(crate) fn fit_blocks(w: u32, h: u32) -> (u32, u32) {
     let aspect = w as f32 / h.max(1) as f32;
     let mut best = (1, 1);
     let mut best_err = f32::MAX;
@@ -114,7 +124,9 @@ pub fn skin_pixels(def: &PaintingDef, back: &[u8]) -> Vec<u8> {
             let s = (y * w + x) * 4;
             let d = (y * sw + x) * 4;
             px[d..d + 4].copy_from_slice(&def.pixels[s..s + 4]);
-            px[d + 3] = 255;
+            if !def.alpha {
+                px[d + 3] = 255;
+            }
         }
     }
     for y in 0..16 {
