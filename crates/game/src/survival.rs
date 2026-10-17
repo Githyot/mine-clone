@@ -845,6 +845,11 @@ impl Game {
             if !sneaking || self.held_stack().is_none() {
                 match name.as_str() {
                     n if n.ends_with("_sign") => return self.edit_sign(hit.block),
+                    "composter" | "composter_ready" => {
+                        if self.use_composter(hit.block, name == "composter_ready") {
+                            return true;
+                        }
+                    }
                     "crafting_table" => {
                         self.open_container(Open::Table);
                         return true;
@@ -886,6 +891,12 @@ impl Game {
         }
         if self.pot_plant(item.places) {
             return true;
+        }
+        if item.name == "bone_meal" {
+            return self.use_bone_meal();
+        }
+        if item.name == "sugar_cane" {
+            return self.plant_cane();
         }
         if let Some(tool) = &item.tool {
             if tool.kind == ToolKind::Hoe && self.till() {

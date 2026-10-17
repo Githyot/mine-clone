@@ -169,6 +169,8 @@ impl Game {
                             }
                             if self.farm.is_crop(id) {
                                 self.crop_tick(p, id, (r >> 24) as u32);
+                            } else if id == self.farm.cane {
+                                self.cane_tick(p, (r >> 24) as u32);
                             } else if self.pots.is_planted(id) {
                                 self.pot_tick(p, id, (r >> 24) as u32);
                             }

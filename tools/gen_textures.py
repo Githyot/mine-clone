@@ -2553,6 +2553,59 @@ def drawer_front(wood):
     return img
 
 
+def stem(kind, stage):
+    """A pumpkin or melon stem: a thin stalk that bends and yellows as it ripens."""
+    img = canvas()
+    young = pal("#2e5a14", "#3e7418", "#52901e", "#6aa826")
+    old = pal("#6a5a14", "#8a7a1e", "#a8962a", "#c4b03a")
+    p = old if stage == 7 else young
+    h = 3 + stage * 12 // 7
+    for k in range(h):
+        y = 15 - k
+        x = 7 + (1 if k > h * 0.6 else 0)
+        put(img, x, y, p[2 if k % 3 else 1])
+        if k % 4 == 2:
+            put(img, x - 1, y, p[3])
+            put(img, x + 1, y - 1, p[1])
+    return img
+
+
+def sugar_cane_block():
+    img = canvas()
+    p = pal("#4a6a20", "#6a9a30", "#8aba48", "#a8d468")
+    for x0 in (3, 7, 12):
+        for y in range(16):
+            put(img, x0, y, p[1 if y % 5 == 0 else 2])
+            put(img, x0 + 1, y, p[0 if y % 5 == 0 else 1])
+        put(img, x0 + 2, 2 + x0 % 5, p[3])
+        put(img, x0 - 1, 9 - x0 % 4, p[3])
+    return img
+
+
+def composter_side():
+    img = planks("oak")
+    rgb = img[..., :3]
+    dark = WOODS["oak"]["plank"][0]
+    rgb[:, 0] = dark
+    rgb[:, 15] = dark
+    rgb[0, :] = dark
+    rgb[15, :] = dark
+    for x in (5, 10):
+        rgb[1:15, x] = scale_rgb(rgb[1:15, x], 0.75)
+    return img
+
+
+def composter_top(ready=False):
+    img = composter_side()
+    rgb = img[..., :3]
+    rng = rng_for("compost" + str(ready))
+    fill = pal("#d8d4c4", "#ecead8", "#f8f6ec") if ready else pal("#2a1e10", "#3a2a16", "#4e3a1e")
+    for y in range(2, 14):
+        for x in range(2, 14):
+            rgb[y, x] = fill[int(rng.integers(0, 3))]
+    return img
+
+
 def farming_registry():
     reg = {"farmland": farmland, "hay_block_side": hay_block_side, "hay_block_top": hay_block_top,
            "botany_pot_side": botany_pot_side, "botany_pot_top": botany_pot_top, "botany_pot_empty": botany_pot_empty,
@@ -2568,6 +2621,13 @@ def farming_registry():
            "green_curtain": lambda: curtain(pal("#1e3a14", "#2a4e1c", "#386226", "#467630"))}
     for wood in ("oak", "birch", "spruce") + NEW_WOODS:
         reg[f"{wood}_drawer_front"] = lambda w=wood: drawer_front(w)
+    reg["sugar_cane"] = sugar_cane_block
+    reg["composter_side"] = composter_side
+    reg["composter_top"] = composter_top
+    reg["composter_ready"] = lambda: composter_top(True)
+    for kind in ("pumpkin", "melon"):
+        for k in range(8):
+            reg[f"{kind}_stem_stage{k}"] = lambda kind=kind, k=k: stem(kind, k)
     for k in range(4):
         reg[f"nether_wart_stage{k}"] = lambda k=k: nether_wart(k)
     for kind, n in (("wheat", 8), ("carrots", 4), ("potatoes", 4), ("beetroots", 4)):

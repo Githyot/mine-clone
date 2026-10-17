@@ -189,6 +189,7 @@ struct Palette {
     red_sand: BlockId,
     terracotta: BlockId,
     lily_pad: BlockId,
+    sugar_cane: BlockId,
     red_mushroom: BlockId,
     brown_mushroom: BlockId,
     cobblestone: BlockId,
@@ -264,6 +265,7 @@ impl Palette {
             red_sand: g("red_sand"),
             terracotta: g("terracotta"),
             lily_pad: g("lily_pad"),
+            sugar_cane: g("sugar_cane"),
             red_mushroom: g("red_mushroom"),
             brown_mushroom: g("brown_mushroom"),
             cobblestone: g("cobblestone"),
@@ -857,6 +859,18 @@ impl Generator {
                     continue;
                 }
                 let ground = chunk.get(x, uy, z);
+                // Sugar cane on the banks, one to three tall.
+                let wet = [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dz)| {
+                    let (nx, nz) = (x as i32 + dx, z as i32 + dz);
+                    (0..16).contains(&nx) && (0..16).contains(&nz) && chunk.get(nx as usize, uy, nz as usize) == p.water
+                });
+                if wet && p.sugar_cane != AIR && (ground == p.grass || ground == p.sand) && rng.chance(0.18) {
+                    let h = 1 + (rng.f32() * 3.0) as usize;
+                    for k in 0..h.min(CHUNK_HEIGHT - above) {
+                        chunk.set(x, above + k, z, p.sugar_cane);
+                    }
+                    continue;
+                }
                 if ground == p.grass {
                     let r = rng.f32();
                     let grass_p = match col.biome {
