@@ -283,6 +283,35 @@ LOTE DE MODS (17/10)
     pedra; tijolos de pedregulho, terra pedregosa, palha e telhado de palha, treliça, lustre,
     braseiro e cortinas.
 
+  Mundo vivo (17/10):
+    Vilas: praça com poço, casas, fazendas, ferreiro e biblioteca em volta. Os colonos
+      (fazendeiro, ferreiro, bibliotecário e pastor) abrem a loja com o botão direito; com o
+      que eles compram na mão (20 trigo, 15 carvão, 24 papel ou 18 lã branca) pagam esmeraldas.
+      A Sentinela protege a vila dos monstros.
+    Invasões: em algumas noites, perto de uma cidade com 3 moradores, saqueadores atacam em
+      3 ondas. Vença todas para ganhar esmeraldas.
+    Placas: coloque e digite até 4 linhas (Enter = nova linha). Botão direito edita.
+    Montaria: sela (couro + ferro) num cavalo, burro, lhama ou camelo e botão direito monta;
+      Shift desce. Lobo (osso) e gato (peixe cru) ficam mansos e seguem você.
+    Barco: botão direito na água coloca; botão direito entra; ele vai para onde você olha;
+      Shift sai.
+    Laço (barbante + bola de gosma): botão direito num animal para levá-lo; numa cerca para
+      amarrar. Etiqueta (loja do bibliotecário): botão direito num bicho e digite o nome.
+    Abelhas moram em ninhos nas árvores dos campos. Ninho ou colmeia (tábuas + favos) cheio de
+      mel: frasco de vidro pega mel, mão vazia tira 3 favos (sem fogueira embaixo, elas atacam).
+    Corantes de flores (e farinha de osso, bolsa de tinta, cacto na fornalha); misture para as
+      16 cores. Tingem lã e tapetes, fazem vidro colorido (8 vidros + corante), concreto
+      (corante + 4 areia + 4 cascalho) e estandartes (6 lãs + graveto).
+    Bússola aponta para casa, relógio mostra a hora, luneta dá zoom, mapa desenha o terreno.
+    Farinha de osso faz plantas crescerem; composteira transforma plantas em farinha de osso.
+    Novos lugares: templos do deserto (cuidado com a TNT) e da selva, iglu, mina abandonada,
+      naufrágio, geodos de ametista e veios grandes de cobre e ferro no subsolo.
+    Novos biomas: rio, campo de cogumelos, prado, picos nevados, oceano congelado, floresta
+      distorcida no Nether.
+    Novos bichos: cavalo, burro, lhama, camelo, lobo, gato, cabra, panda, papagaio, sapo,
+      tartaruga, abelha, lula, golfinho, axolote; monstros: gosma, múmia, afogado, arqueiro
+      gélido, Asa-Noturna (voa à noite) e Vigia das Profundezas (atira no mar).
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)
