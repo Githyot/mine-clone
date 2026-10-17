@@ -224,6 +224,13 @@ struct Palette {
     ores: Vec<(BlockId, i32, i32, u32, u32)>,
     emerald: BlockId,
     life_crystal: BlockId,
+    /// Geode shells from outside in: basalt, calcite, amethyst; then budding amethyst and its clusters.
+    geode: [BlockId; 5],
+    granite: BlockId,
+    tuff: BlockId,
+    /// Big ore veins: (ore, raw block) for copper and iron.
+    vein_copper: (BlockId, BlockId),
+    vein_iron: (BlockId, BlockId),
 }
 
 /// The metal pairs of the ore ladder (Terraria's idea): each world makes one of each pair
@@ -258,6 +265,11 @@ impl Palette {
             (g("sapphire_ore"), 0, 24, 1, 4),
             (g("topaz_ore"), 0, 32, 1, 4),
             (g("amethyst_ore"), 0, 32, 1, 4),
+            // Stones of their own colour in blobs.
+            (g("granite"), 0, 128, 3, 32),
+            (g("diorite"), 0, 128, 3, 32),
+            (g("andesite"), 0, 128, 3, 32),
+            (g("tuff"), 1, 24, 2, 32),
             (g("gravel"), 0, 128, 6, 24),
             (g("dirt"), 0, 128, 6, 24),
         ]);
@@ -310,6 +322,17 @@ impl Palette {
             ores,
             emerald: g("emerald_ore"),
             life_crystal: g("life_crystal"),
+            geode: [
+                Some(g("smooth_basalt")).filter(|&b| b != AIR).unwrap_or(g("basalt")),
+                g("calcite"),
+                g("amethyst_block"),
+                g("budding_amethyst"),
+                g("amethyst_cluster"),
+            ],
+            granite: g("granite"),
+            tuff: g("tuff"),
+            vein_copper: (g("copper_ore"), g("raw_copper_block")),
+            vein_iron: (g("iron_ore"), g("raw_iron_block")),
         }
     }
 }
@@ -735,6 +758,7 @@ impl Generator {
         }
 
         self.place_ores(&mut chunk, &mut rng, &cols);
+        self.geodes_and_veins(&mut chunk, pos);
         self.decorate_caves(&mut chunk, &mut rng, &cols, pos);
         self.decorate(&mut chunk, &mut rng, &cols, pos);
         self.place_structures(&mut chunk);
@@ -810,6 +834,88 @@ impl Generator {
                     chunk.set(x, y, z, p.life_crystal);
                     break;
                 }
+            }
+        }
+    }
+
+    /// Now and then deep down: an amethyst geode (a hollow ball lined with calcite and
+    /// amethyst, crystals growing inside) or a big ore vein (a long ribbon of copper ore in
+    /// granite, or iron ore in tuff, with lumps of raw ore here and there).
+    fn geodes_and_veins(&self, chunk: &mut Chunk, pos: ChunkPos) {
+        let p = &self.pal;
+        let mut rng = Rng::for_pos(self.seed, pos.x, pos.y, 7300);
+        if p.geode.iter().all(|&b| b != AIR) && rng.below(28) == 0 {
+            let r = 4.0 + rng.f32() * 1.2;
+            let (cx, cy, cz) = (rng.range(6, 10), rng.range(12, 40), rng.range(6, 10));
+            let mut lining = Vec::new();
+            for y in cy - 6..=cy + 6 {
+                for z in (cz - 6).max(0)..=(cz + 6).min(15) {
+                    for x in (cx - 6).max(0)..=(cx + 6).min(15) {
+                        let d = (((x - cx) * (x - cx) + (y - cy) * (y - cy) + (z - cz) * (z - cz)) as f32).sqrt();
+                        if d > r || y < 2 {
+                            continue;
+                        }
+                        let (ux, uy, uz) = (x as usize, y as usize, z as usize);
+                        let id = if d > r - 1.0 {
+                            p.geode[0]
+                        } else if d > r - 2.0 {
+                            p.geode[1]
+                        } else if d > r - 3.0 {
+                            lining.push((ux, uy, uz));
+                            if rng.below(10) == 0 { p.geode[3] } else { p.geode[2] }
+                        } else {
+                            AIR
+                        };
+                        chunk.set(ux, uy, uz, id);
+                    }
+                }
+            }
+            // Crystals on the inside of each budding block.
+            for (x, y, z) in lining {
+                if chunk.get(x, y, z) != p.geode[3] {
+                    continue;
+                }
+                let toward = [((cx - x as i32).signum(), 0, 0), (0, (cy - y as i32).signum(), 0), (0, 0, (cz - z as i32).signum())];
+                for (dx, dy, dz) in toward {
+                    let (nx, ny, nz) = (x as i32 + dx, y as i32 + dy, z as i32 + dz);
+                    if (dx, dy, dz) != (0, 0, 0) && (0..16).contains(&nx) && (0..16).contains(&nz) && chunk.get(nx as usize, ny as usize, nz as usize) == AIR {
+                        chunk.set(nx as usize, ny as usize, nz as usize, p.geode[4]);
+                        break;
+                    }
+                }
+            }
+        }
+        if rng.below(14) == 0 {
+            let iron = rng.below(2) == 0;
+            let (filler, (ore, raw)) = if iron { (p.tuff, p.vein_iron) } else { (p.granite, p.vein_copper) };
+            if filler == AIR || ore == AIR {
+                return;
+            }
+            let (mut x, mut y, mut z) = (rng.f32() * 16.0, if iron { rng.range(6, 24) } else { rng.range(20, 50) } as f32, rng.f32() * 16.0);
+            let a = rng.f32() * std::f32::consts::TAU;
+            let (dx, dz) = (a.cos(), a.sin());
+            for _ in 0..40 {
+                for oy in -1..=1 {
+                    for oz in -1..=1 {
+                        for ox in -1..=1 {
+                            let (bx, by, bz) = (x as i32 + ox, y as i32 + oy, z as i32 + oz);
+                            if !(0..16).contains(&bx) || !(0..16).contains(&bz) || by < 2 {
+                                continue;
+                            }
+                            let (ux, uy, uz) = (bx as usize, by as usize, bz as usize);
+                            let here = chunk.get(ux, uy, uz);
+                            if here != p.stone && here != filler {
+                                continue;
+                            }
+                            let roll = rng.below(100);
+                            let id = if roll < 2 && raw != AIR { raw } else if roll < 26 { ore } else { filler };
+                            chunk.set(ux, uy, uz, id);
+                        }
+                    }
+                }
+                x += dx * 0.6;
+                z += dz * 0.6;
+                y += (rng.f32() - 0.5) * 0.8;
             }
         }
     }
@@ -1317,5 +1423,55 @@ mod tests {
         for (i, b) in best.iter().enumerate() {
             println!("{:>14}: {:?}", Biome::from_u8(i as u8).name(), b);
         }
+    }
+}
+
+#[cfg(test)]
+mod geode_tests {
+    use super::*;
+
+    #[test]
+    fn geodes_and_veins_appear() {
+        let reg = BlockRegistry::from_ron(include_str!("../../../packs/vanilla/blocks.ron")).unwrap();
+        let gen = Generator::new(1234, &reg);
+        let (bud, raw) = (reg.id("budding_amethyst").unwrap(), reg.id("raw_copper_block").unwrap());
+        let (mut geodes, mut veins) = (0, 0);
+        for cz in -6..6 {
+            for cx in -6..6 {
+                let c = gen.generate(ChunkPos::new(cx, cz));
+                let mut found = (false, false);
+                for y in 1..60 {
+                    for z in 0..16 {
+                        for x in 0..16 {
+                            let b = c.get(x, y, z);
+                            if b == bud && !found.0 {
+                                found.0 = true;
+                                if std::env::var("MC_PRINT").is_ok() {
+                                    println!("geode near {} {} {}", cx * 16 + x as i32, y, cz * 16 + z as i32);
+                                    for yy in (y.saturating_sub(5)..y + 6).rev() {
+                                        let row: String = (0..16)
+                                            .map(|xx| match reg.get(c.get(xx, yy, z)).name.as_str() {
+                                                "air" => '.',
+                                                "calcite" => 'c',
+                                                "amethyst_block" => 'A',
+                                                "budding_amethyst" => 'B',
+                                                "amethyst_cluster" => '*',
+                                                "basalt" | "smooth_basalt" => '#',
+                                                _ => ' ',
+                                            })
+                                            .collect();
+                                        println!("  {row}");
+                                    }
+                                }
+                            }
+                            found.1 |= b == raw;
+                        }
+                    }
+                }
+                geodes += found.0 as u32;
+                veins += found.1 as u32;
+            }
+        }
+        assert!(geodes > 0 && veins > 0, "geodes {geodes}, veins {veins}");
     }
 }

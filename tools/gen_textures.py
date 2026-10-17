@@ -2716,6 +2716,69 @@ def cobweb():
     return img
 
 
+def speckled_stone(name, base, specks, n_specks=14, blobs=0):
+    """A stone of its own colour (granite, diorite, andesite, tuff, calcite): soft noise in
+    the base palette with scattered specks, and for some, bigger grains."""
+    rng = rng_for(name)
+    f = fbm(rng, ((8, 0.3), (4, 0.35), (2, 0.35)))
+    img = from_rgb(shade(f, base))
+    for _ in range(blobs):
+        x, y = rng.integers(0, N, 2)
+        c = specks[int(rng.integers(0, len(specks)))]
+        for (dx, dy) in ((0, 0), (1, 0), (0, 1)):
+            put(img, x + dx, y + dy, c)
+    for _ in range(n_specks):
+        x, y = rng.integers(0, N, 2)
+        put(img, x, y, specks[int(rng.integers(0, len(specks)))])
+    return img
+
+
+def budding_amethyst():
+    pp, facets = METAL_BLOCKS["amethyst_block"]
+    img = metal_block("budding_amethyst", pp, facets)
+    rng = rng_for("budding_amethyst")
+    for _ in range(6):
+        x, y = rng.integers(2, 14, 2)
+        put(img, x, y, hexrgb("#f0d8ff"))
+        put(img, x + 1, y, hexrgb("#c08ae8"))
+        put(img, x, y + 1, hexrgb("#4a1a7a"))
+    return img
+
+
+def amethyst_cluster():
+    """Purple crystal points growing out of a geode wall."""
+    img = canvas()
+    p = pal("#2a0c4a", "#5a2490", "#8a46c8", "#b47ae6", "#f0d8ff")
+    for (cx, top, hw) in [(7, 1, 3), (3, 6, 2), (12, 4, 2), (10, 9, 1)]:
+        for y in range(top, 16):
+            t = (y - top) / max(1, 15 - top)
+            w = max(0, int(round(hw * min(1.0, t * 1.5))))
+            for x in range(cx - w, cx + w + 1):
+                if 0 <= x < N:
+                    side = (x - cx) / (w + 0.5) if w else 0
+                    k = 1 if side < -0.3 else (2 if side < 0.4 else 3)
+                    if y == top or (y < top + 3 and x == cx):
+                        k = 4
+                    put(img, x, y, p[k])
+    return img
+
+
+def raw_block(name, p):
+    """A block of packed raw ore lumps: rounded nuggets with dark gaps between."""
+    rng = rng_for(name)
+    img = from_rgb(shade(fbm(rng, ((4, 0.4), (2, 0.6))), p[:3]))
+    for _ in range(9):
+        cx, cy = rng.integers(0, N, 2)
+        r = int(rng.integers(2, 4))
+        for y in range(cy - r, cy + r + 1):
+            for x in range(cx - r, cx + r + 1):
+                d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+                if d <= r:
+                    k = 5 if (x - cx + y - cy) < -r * 0.6 else (4 if d < r * 0.6 else 3)
+                    put(img, x, y, p[k])
+    return img
+
+
 def farming_registry():
     reg = {"farmland": farmland, "hay_block_side": hay_block_side, "hay_block_top": hay_block_top,
            "botany_pot_side": botany_pot_side, "botany_pot_top": botany_pot_top, "botany_pot_empty": botany_pot_empty,
@@ -2741,6 +2804,16 @@ def farming_registry():
     reg["brown_mushroom_block"] = lambda: mushroom_block("brown_mushroom_block", pal("#6a5038", "#7a5e44", "#8a6c50", "#9a7a5c"))
     for fname, (petal, center, hy, big) in FLOWERS.items():
         reg[fname] = lambda fname=fname, petal=petal, center=center, hy=hy, big=big: flower(fname, petal, hexrgb(center), hy, big)
+    reg["granite"] = lambda: speckled_stone("granite", pal("#7a4a3a", "#8c5644", "#9a6250", "#a86e5a", "#b47a66"), [hexrgb("#c49a88"), hexrgb("#5a3428"), hexrgb("#d4b0a0")], 18, 6)
+    reg["diorite"] = lambda: speckled_stone("diorite", pal("#9a9a98", "#acacaa", "#bcbcba", "#cacac8", "#d8d8d6"), [hexrgb("#4a4a48"), hexrgb("#6a6a68"), hexrgb("#eeeeec")], 22, 5)
+    reg["andesite"] = lambda: speckled_stone("andesite", pal("#626262", "#6e6e6e", "#7a7a7a", "#868686", "#929292"), [hexrgb("#a4a4a4"), hexrgb("#4e4e4e")], 20, 3)
+    reg["tuff"] = lambda: speckled_stone("tuff", pal("#4a4a42", "#55554c", "#606056", "#6a6a60", "#74746a"), [hexrgb("#8a8a7e"), hexrgb("#3a3a34"), hexrgb("#6a5e4a")], 26, 4)
+    reg["calcite"] = lambda: speckled_stone("calcite", pal("#c8c8c2", "#d2d2cc", "#dcdcd6", "#e4e4de", "#ececE6"), [hexrgb("#b4b4ae"), hexrgb("#f6f6f2")], 10, 0)
+    reg["budding_amethyst"] = budding_amethyst
+    reg["amethyst_cluster"] = amethyst_cluster
+    reg["raw_iron_block"] = lambda: raw_block("raw_iron_block", pal("#4a3a30", "#6a5446", "#8a7060", "#a48a78", "#c4a894", "#dcc4b0"))
+    reg["raw_copper_block"] = lambda: raw_block("raw_copper_block", pal("#5a2a16", "#7a3c20", "#9a5030", "#b8663e", "#d4824e", "#eca068"))
+    reg["raw_gold_block"] = lambda: raw_block("raw_gold_block", pal("#6a4a08", "#8a640e", "#aa8014", "#c89a1c", "#e2b830", "#f8dc6a"))
     reg["composter_side"] = composter_side
     reg["composter_top"] = composter_top
     reg["composter_ready"] = lambda: composter_top(True)
