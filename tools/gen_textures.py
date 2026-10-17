@@ -2850,6 +2850,37 @@ def honeycomb_block():
     return img
 
 
+def stained_glass(color):
+    """Glass tinted through: a see-through wash of the colour inside a darker frame."""
+    img = glass()
+    c = np.array(hexrgb(WOOL[color]), dtype=float)
+    rng = rng_for(color + "_stained_glass")
+    for y in range(N):
+        for x in range(N):
+            edge = x in (0, 15) or y in (0, 15)
+            k = 0.7 if edge else 1.0 + (rng.random() - 0.5) * 0.08
+            img[y, x, :3] = np.clip(c * k + (40 if not edge else 0), 0, 255)
+            img[y, x, 3] = 230 if edge else 120
+    for (x0, y0, ln) in ((3, 6, 4), (9, 13, 5)):
+        for i in range(ln):
+            img[y0 - i, x0 + i, :3] = np.clip(c * 1.0 + 90, 0, 255)
+            img[y0 - i, x0 + i, 3] = 170
+    return img
+
+
+def concrete(color):
+    """Smooth poured concrete: the flat colour with a faint grain."""
+    rng = rng_for(color + "_concrete")
+    c = np.array(hexrgb(WOOL[color]), dtype=float)
+    img = canvas()
+    f = fbm(rng, ((4, 0.5), (1, 0.5)))
+    for y in range(N):
+        for x in range(N):
+            img[y, x, :3] = np.clip(c * (0.94 + 0.08 * f[y, x]), 0, 255)
+            img[y, x, 3] = 255
+    return img
+
+
 def farming_registry():
     reg = {"farmland": farmland, "hay_block_side": hay_block_side, "hay_block_top": hay_block_top,
            "botany_pot_side": botany_pot_side, "botany_pot_top": botany_pot_top, "botany_pot_empty": botany_pot_empty,
@@ -2893,6 +2924,9 @@ def farming_registry():
     reg["beehive_front"] = lambda: beehive("front")
     reg["beehive_front_honey"] = lambda: beehive("front", True)
     reg["honeycomb_block"] = honeycomb_block
+    for color in WOOL:
+        reg[f"{color}_stained_glass"] = lambda c=color: stained_glass(c)
+        reg[f"{color}_concrete"] = lambda c=color: concrete(c)
     reg["composter_side"] = composter_side
     reg["composter_top"] = composter_top
     reg["composter_ready"] = lambda: composter_top(True)
