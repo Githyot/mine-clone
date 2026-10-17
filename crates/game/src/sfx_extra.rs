@@ -10,8 +10,9 @@ const RATE: f32 = 44100.0;
 /// An extra sound (played through `Sfx::Fx`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Fx {
-    /// A creature's voice: how it sounds, what it is saying, and how deep (1 = normal size).
-    Voice(Voice, Call, f32),
+    /// A real recorded creature sound (mob_sounds.rs): which clip, and how fast to play it
+    /// (below 1 is slower and deeper).
+    Clip(u16, f32),
     /// A long, low swell deep under ground.
     CaveDrone,
     /// Stones tumbling somewhere far off in the dark.
@@ -36,12 +37,6 @@ pub enum Fx {
     SoulWind,
     /// The End's empty hum.
     EndHum,
-    /// An owl at night.
-    Owl,
-    /// A dove cooing by day.
-    Dove,
-    /// A frog in a swamp.
-    Frog,
     /// "Lub-dub", at low health.
     Heartbeat,
     /// A deep breath after a long time under water.
@@ -151,7 +146,7 @@ pub fn synth(fx: Fx, seed: u32) -> Vec<f32> {
     let mut rng = Rng(seed.wrapping_mul(2654435761).wrapping_add(0x9e37_79b9) | 1);
     let r = &mut rng;
     let out = match fx {
-        Fx::Voice(v, c, depth) => voice(r, v, c, depth.clamp(0.5, 1.6)),
+        Fx::Clip(i, rate) => crate::mob_sounds::render(i, rate),
         Fx::CaveDrone => cave_drone(r),
         Fx::CaveRumble => cave_rumble(r),
         Fx::Drip => drip(r),
@@ -164,9 +159,6 @@ pub fn synth(fx: Fx, seed: u32) -> Vec<f32> {
         Fx::NetherDrone => nether_drone(r),
         Fx::SoulWind => soul_wind(r),
         Fx::EndHum => end_hum(r),
-        Fx::Owl => owl(r),
-        Fx::Dove => dove(r),
-        Fx::Frog => frog(r),
         Fx::Heartbeat => heartbeat(),
         Fx::Gasp => gasp(r),
         Fx::Land(s) => land(r, s.clamp(0.0, 1.0)),
@@ -293,280 +285,6 @@ fn edges(v: &mut [f32], fade: f32) {
     }
 }
 
-/// How a voice is built: a buzzing throat (pulses) and breath, shaped by mouth resonances.
-struct Vox {
-    f0: f32,
-    f0_end: f32,
-    dur: f32,
-    /// Formants: (frequency, bandwidth, gain).
-    formants: &'static [(f32, f32, f32)],
-    breath: f32,
-    /// How unsteady the throat is (growl, rasp).
-    rough: f32,
-    /// Vibrato (rate Hz, depth).
-    vibrato: (f32, f32),
-    /// Separate bursts in one call ("oink-oink", "bok bok bok").
-    syllables: usize,
-    /// How hard the start of each syllable punches up in pitch.
-    kick: f32,
-    voiced: f32,
-}
-
-fn vocal(rng: &mut Rng, v: &Vox) -> Vec<f32> {
-    let n = samples(v.dur);
-    let mut res: Vec<(Resonator, f32)> = v
-        .formants
-        .iter()
-        .map(|&(f, bw, g)| (Resonator::new(f, bw), g))
-        .collect();
-    let mut breath_lp = LowPass::new(1400.0);
-    let mut rough_lp = LowPass::new(30.0);
-    let mut phase = 0.0f32;
-    let syl = v.syllables.max(1);
-    let slot = v.dur / syl as f32;
-    // Each burst is most of its slot, the rest a gap.
-    let on = if syl == 1 { 1.0 } else { 0.62 };
-    let mut out = Vec::with_capacity(n);
-    for i in 0..n {
-        let t = i as f32 / RATE;
-        let k = t / v.dur;
-        let s = ((t / slot) as usize).min(syl - 1);
-        let ts = t - s as f32 * slot;
-        let u = ts / (slot * on);
-        let env = if u < 1.0 {
-            (ts / 0.012).min(1.0) * (1.0 - u).powf(0.8) * (u * PI).sin().max(0.0).powf(0.25)
-        } else {
-            0.0
-        };
-        let wobble = rough_lp.run(rng.noise()) * v.rough * 18.0;
-        let vib = 1.0 + (t * v.vibrato.0 * TAU).sin() * v.vibrato.1;
-        let pitch = (v.f0 + (v.f0_end - v.f0) * k)
-            * (1.0 + v.kick * (-ts / 0.035).exp())
-            * vib
-            * (1.0 + wobble);
-        phase += pitch.max(20.0) / RATE;
-        let p = phase.fract();
-        let pulse = ((1.0 - p).powf(6.0) - 0.14) * v.voiced;
-        let breath = breath_lp.run(rng.noise()) * v.breath;
-        let src = pulse + breath;
-        let mut y = 0.0;
-        for (r, g) in res.iter_mut() {
-            y += r.run(src) * *g;
-        }
-        // Roughness also shakes the loudness, like a growl.
-        let am = 1.0 + wobble.abs() * 2.0;
-        out.push(y * env * am * 2.0);
-    }
-    edges(&mut out, 0.006);
-    // Keep every voice at a similar loudness.
-    let peak = out.iter().fold(0.0f32, |a, x| a.max(x.abs())).max(1e-4);
-    let gain = 0.8 / peak;
-    out.iter_mut().for_each(|x| *x *= gain);
-    out
-}
-
-fn voice(rng: &mut Rng, v: Voice, call: Call, depth: f32) -> Vec<f32> {
-    match v {
-        Voice::Rattle => return rattle(rng, call),
-        Voice::Hiss => return hiss(rng, call),
-        Voice::Snort => return snort(rng, call),
-        _ => {}
-    }
-    let jitter = rng.range(0.93, 1.07);
-    let mut x = match v {
-        Voice::Groan => Vox {
-            f0: 92.0,
-            f0_end: 78.0,
-            dur: 1.1,
-            formants: &[
-                (480.0, 120.0, 1.3),
-                (820.0, 150.0, 0.55),
-                (180.0, 80.0, 0.8),
-            ],
-            breath: 0.3,
-            rough: 0.18,
-            vibrato: (4.0, 0.03),
-            syllables: 1,
-            kick: 0.08,
-            voiced: 1.0,
-        },
-        Voice::Moo => Vox {
-            f0: 118.0,
-            f0_end: 98.0,
-            dur: 1.35,
-            formants: &[(400.0, 90.0, 1.3), (780.0, 140.0, 0.35), (230.0, 80.0, 0.8)],
-            breath: 0.1,
-            rough: 0.05,
-            vibrato: (3.5, 0.015),
-            syllables: 1,
-            kick: 0.12,
-            voiced: 1.0,
-        },
-        Voice::Grunt => Vox {
-            f0: 135.0,
-            f0_end: 112.0,
-            dur: 0.42,
-            formants: &[
-                (620.0, 150.0, 1.2),
-                (1050.0, 200.0, 0.35),
-                (290.0, 100.0, 0.7),
-            ],
-            breath: 0.35,
-            rough: 0.3,
-            vibrato: (0.0, 0.0),
-            syllables: 2,
-            kick: 0.15,
-            voiced: 1.0,
-        },
-        Voice::Bleat => Vox {
-            f0: 168.0,
-            f0_end: 150.0,
-            dur: 0.85,
-            formants: &[
-                (680.0, 130.0, 1.2),
-                (1100.0, 180.0, 0.4),
-                (300.0, 90.0, 0.5),
-            ],
-            breath: 0.15,
-            rough: 0.05,
-            vibrato: (7.5, 0.07),
-            syllables: 1,
-            kick: 0.1,
-            voiced: 1.0,
-        },
-        Voice::Cluck => Vox {
-            f0: 220.0,
-            f0_end: 200.0,
-            dur: 0.42,
-            formants: &[(780.0, 200.0, 1.0), (430.0, 120.0, 0.7)],
-            breath: 0.4,
-            rough: 0.2,
-            vibrato: (0.0, 0.0),
-            syllables: 3,
-            kick: 0.2,
-            voiced: 1.0,
-        },
-        Voice::Quack => Vox {
-            f0: 200.0,
-            f0_end: 175.0,
-            dur: 0.4,
-            formants: &[
-                (860.0, 260.0, 1.0),
-                (1250.0, 300.0, 0.3),
-                (420.0, 150.0, 0.5),
-            ],
-            breath: 0.5,
-            rough: 0.35,
-            vibrato: (0.0, 0.0),
-            syllables: 2,
-            kick: 0.1,
-            voiced: 1.0,
-        },
-        Voice::Coo => Vox {
-            f0: 420.0,
-            f0_end: 380.0,
-            dur: 0.9,
-            formants: &[(430.0, 70.0, 1.5)],
-            breath: 0.06,
-            rough: 0.0,
-            vibrato: (5.0, 0.01),
-            syllables: 3,
-            kick: 0.06,
-            voiced: 1.0,
-        },
-        Voice::Growl => Vox {
-            f0: 68.0,
-            f0_end: 58.0,
-            dur: 1.0,
-            formants: &[
-                (380.0, 150.0, 1.0),
-                (680.0, 200.0, 0.45),
-                (140.0, 80.0, 1.0),
-            ],
-            breath: 0.45,
-            rough: 0.6,
-            vibrato: (0.0, 0.0),
-            syllables: 1,
-            kick: 0.05,
-            voiced: 1.0,
-        },
-        Voice::Wail => Vox {
-            f0: 108.0,
-            f0_end: 86.0,
-            dur: 1.7,
-            formants: &[(560.0, 100.0, 1.0), (300.0, 90.0, 1.0)],
-            breath: 0.7,
-            rough: 0.05,
-            vibrato: (5.0, 0.06),
-            syllables: 1,
-            kick: 0.0,
-            voiced: 0.8,
-        },
-        Voice::Cackle => Vox {
-            f0: 175.0,
-            f0_end: 150.0,
-            dur: 0.6,
-            formants: &[
-                (680.0, 150.0, 1.2),
-                (1150.0, 200.0, 0.35),
-                (320.0, 100.0, 0.5),
-            ],
-            breath: 0.4,
-            rough: 0.15,
-            vibrato: (0.0, 0.0),
-            syllables: 4,
-            kick: 0.15,
-            voiced: 1.0,
-        },
-        Voice::Murmur => Vox {
-            f0: 135.0,
-            f0_end: 120.0,
-            dur: 0.5,
-            formants: &[(320.0, 80.0, 1.0), (900.0, 150.0, 0.3), (520.0, 110.0, 0.5)],
-            breath: 0.15,
-            rough: 0.05,
-            vibrato: (0.0, 0.0),
-            syllables: 2,
-            kick: 0.1,
-            voiced: 1.0,
-        },
-        Voice::Rumble => Vox {
-            f0: 46.0,
-            f0_end: 40.0,
-            dur: 1.8,
-            formants: &[(240.0, 100.0, 1.0), (120.0, 60.0, 1.2), (420.0, 160.0, 0.4)],
-            breath: 0.25,
-            rough: 0.35,
-            vibrato: (0.0, 0.0),
-            syllables: 1,
-            kick: 0.04,
-            voiced: 1.0,
-        },
-        Voice::Rattle | Voice::Hiss | Voice::Snort => unreachable!(),
-    };
-    // Bigger creatures sound deeper.
-    x.f0 *= jitter / depth;
-    x.f0_end *= jitter / depth;
-    match call {
-        Call::Idle => {}
-        Call::Hurt => {
-            // Short and punchy, pitched up at the start.
-            x.dur = (x.dur * 0.45).max(0.2);
-            x.syllables = 1;
-            x.kick = 0.3;
-            x.f0 *= 1.2;
-            x.rough += 0.1;
-        }
-        Call::Death => {
-            x.dur *= 1.6;
-            x.syllables = 1;
-            x.f0_end = x.f0 * 0.55;
-            x.breath += 0.15;
-        }
-    }
-    vocal(rng, &x)
-}
-
 /// A dry wooden knock, the building block of bone rattles.
 fn knock(out: &mut [f32], at: usize, freq: f32, amp: f32, rng: &mut Rng) {
     let mut r = Resonator::new(freq, 160.0);
@@ -577,83 +295,6 @@ fn knock(out: &mut [f32], at: usize, freq: f32, amp: f32, rng: &mut Rng) {
         let x = if k < 60 { rng.noise() } else { 0.0 };
         *o += lp.run(r.run(x) * 6.0) * amp * (-t / 0.012).exp();
     }
-}
-
-fn rattle(rng: &mut Rng, call: Call) -> Vec<f32> {
-    let (dur, count) = match call {
-        Call::Idle => (0.45, 7),
-        Call::Hurt => (0.25, 9),
-        Call::Death => (1.0, 22),
-    };
-    let mut out = vec![0.0; samples(dur + 0.06)];
-    for i in 0..count {
-        let t = if call == Call::Death {
-            (i as f32 / count as f32).powf(1.6) * dur
-        } else {
-            rng.next() * dur
-        };
-        let f = rng.range(380.0, 820.0);
-        let amp = rng.range(0.4, 0.9)
-            * if call == Call::Death {
-                1.0 - t / (dur + 0.2)
-            } else {
-                1.0
-            };
-        knock(&mut out, samples(t), f, amp, rng);
-    }
-    edges(&mut out, 0.004);
-    out
-}
-
-fn hiss(rng: &mut Rng, call: Call) -> Vec<f32> {
-    let dur = match call {
-        Call::Idle => 0.65,
-        Call::Hurt => 0.25,
-        Call::Death => 1.1,
-    };
-    let n = samples(dur);
-    let mut band = Band::new(380.0, 1050.0);
-    let chitter = rng.range(18.0, 26.0);
-    let mut out: Vec<f32> = (0..n)
-        .map(|i| {
-            let t = i as f32 / RATE;
-            let k = t / dur;
-            if call == Call::Death {
-                band.set(380.0 - 200.0 * k, 1050.0 - 600.0 * k);
-            }
-            let trem = 0.55 + 0.45 * (t * chitter * TAU).sin();
-            let env = (t / 0.02).min(1.0) * (1.0 - k).powf(1.3);
-            band.run(rng.noise()) * trem * env * 2.4
-        })
-        .collect();
-    edges(&mut out, 0.005);
-    out
-}
-
-fn snort(rng: &mut Rng, call: Call) -> Vec<f32> {
-    let (count, len) = match call {
-        Call::Idle => (if rng.next() < 0.5 { 1 } else { 2 }, 0.16),
-        Call::Hurt => (1, 0.14),
-        Call::Death => (3, 0.22),
-    };
-    let gap = len + 0.06;
-    let mut out = vec![0.0; samples(count as f32 * gap + 0.05)];
-    for c in 0..count {
-        let mut lp = LowPass::new(rng.range(520.0, 700.0));
-        let start = samples(c as f32 * gap);
-        let fall = if call == Call::Death {
-            1.0 - c as f32 * 0.25
-        } else {
-            1.0
-        };
-        for k in 0..samples(len) {
-            let t = k as f32 / RATE;
-            let e = (t / 0.008).min(1.0) * (1.0 - t / len).powf(1.5);
-            out[start + k] += lp.run(rng.noise()) * e * 2.4 * fall;
-        }
-    }
-    edges(&mut out, 0.004);
-    out
 }
 
 fn cave_drone(rng: &mut Rng) -> Vec<f32> {
@@ -908,62 +549,6 @@ fn end_hum(rng: &mut Rng) -> Vec<f32> {
     out
 }
 
-/// A soft hooted note: a sine with a breathy start.
-fn hoot(out: &mut [f32], at: usize, f: f32, len: f32, amp: f32, rng: &mut Rng) {
-    let mut lp = LowPass::new(900.0);
-    for k in 0..samples(len) {
-        let Some(o) = out.get_mut(at + k) else { break };
-        let t = k as f32 / RATE;
-        let e = (t / 0.04).min(1.0) * (1.0 - t / len).powf(1.4);
-        let bend = 1.0 + 0.04 * (-t / 0.05).exp() - 0.03 * t / len;
-        *o += lp.run((t * f * bend * TAU).sin() + rng.noise() * 0.15 * (-t / 0.05).exp()) * e * amp;
-    }
-}
-
-fn owl(rng: &mut Rng) -> Vec<f32> {
-    let f = rng.range(330.0, 390.0);
-    let mut out = vec![0.0; samples(1.6)];
-    // "Hoo... hoo-hoo".
-    hoot(&mut out, 0, f, 0.45, 0.7, rng);
-    hoot(&mut out, samples(0.7), f * 0.9, 0.22, 0.55, rng);
-    hoot(&mut out, samples(0.98), f * 0.9, 0.5, 0.65, rng);
-    edges(&mut out, 0.01);
-    out
-}
-
-fn dove(rng: &mut Rng) -> Vec<f32> {
-    let f = rng.range(380.0, 440.0);
-    let mut out = vec![0.0; samples(1.5)];
-    // "coo-COO-coo".
-    hoot(&mut out, 0, f, 0.25, 0.45, rng);
-    hoot(&mut out, samples(0.32), f * 1.12, 0.42, 0.65, rng);
-    hoot(&mut out, samples(0.85), f * 0.95, 0.35, 0.45, rng);
-    edges(&mut out, 0.01);
-    out
-}
-
-fn frog(rng: &mut Rng) -> Vec<f32> {
-    let croaks = if rng.next() < 0.5 { 1 } else { 2 };
-    let mut out = vec![0.0; samples(croaks as f32 * 0.55 + 0.1)];
-    for c in 0..croaks {
-        let at = samples(c as f32 * 0.55);
-        let len = rng.range(0.3, 0.42);
-        let mut res = Resonator::new(rng.range(260.0, 340.0), 90.0);
-        let mut body = Resonator::new(110.0, 60.0);
-        // A croak is a fast train of pulses, around 25 a second.
-        let rate = rng.range(22.0, 30.0);
-        for k in 0..samples(len) {
-            let t = k as f32 / RATE;
-            let p = (t * rate).fract();
-            let x = if p < 0.12 { (p / 0.12 * PI).sin() } else { 0.0 } * (t * 120.0 * TAU).sin();
-            let e = (t / 0.02).min(1.0) * (1.0 - t / len).powf(0.7);
-            out[at + k] += (res.run(x) * 10.0 + body.run(x) * 8.0) * e;
-        }
-    }
-    edges(&mut out, 0.005);
-    out
-}
-
 fn heartbeat() -> Vec<f32> {
     let mut out = vec![0.0; samples(0.6)];
     for (start, amp, f) in [(0.0, 1.0, 55.0), (0.24, 0.7, 50.0)] {
@@ -1111,8 +696,7 @@ mod tests {
     }
 
     pub fn every_fx() -> Vec<Fx> {
-        use Voice::*;
-        let mut all = vec![
+        let all = vec![
             Fx::CaveDrone,
             Fx::CaveRumble,
             Fx::Drip,
@@ -1126,9 +710,6 @@ mod tests {
             Fx::NetherDrone,
             Fx::SoulWind,
             Fx::EndHum,
-            Fx::Owl,
-            Fx::Dove,
-            Fx::Frog,
             Fx::Heartbeat,
             Fx::Gasp,
             Fx::Land(0.0),
@@ -1141,16 +722,6 @@ mod tests {
             Fx::Armor(true),
             Fx::Armor(false),
         ];
-        for v in [
-            Groan, Rattle, Hiss, Moo, Grunt, Bleat, Cluck, Quack, Coo, Snort, Growl, Wail, Cackle,
-            Murmur, Rumble,
-        ] {
-            for c in [Call::Idle, Call::Hurt, Call::Death] {
-                for d in [0.6, 1.0, 1.5] {
-                    all.push(Fx::Voice(v, c, d));
-                }
-            }
-        }
         all
     }
 
