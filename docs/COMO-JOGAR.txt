@@ -349,6 +349,12 @@ LOTE DE MODS (17/10)
     pedra; tijolos de pedregulho, terra pedregosa, palha e telhado de palha, treliça, lustre,
     braseiro e cortinas.
 
+  Tudo junto (17/10): esta versão reúne todas as etapas: Nether e End completos, Terraria e
+    magia, encantamentos e poções (mesa de ferraria para a netherita; o molde vem dos baús de
+    bastiões e fortalezas), multijogador, sons e efeitos, texturas 64x64, progressão com o Guia,
+    os mods (estações do ano, dimensões Aether e Otherside, livros de feitiços, gemas) e a
+    música nova com piano e xilofone. Teclas: J = progresso, L = conquistas.
+
   Mundo vivo (17/10):
     Vilas: praça com poço, casas, fazendas, ferreiro e biblioteca em volta. Os colonos
       (fazendeiro, ferreiro, bibliotecário e pastor) abrem a loja com o botão direito; com o
