@@ -451,7 +451,7 @@ def witch_hut():
     layers[6][1][4] = "h"
     return {
         "name": "cabana_da_bruxa",
-        "biomes": ["Swamp"],
+        "biomes": ["Swamp", "Mangrove Swamp"],
         "spacing": 10,
         "chance": 0.4,
         "foundation": "spruce_log",

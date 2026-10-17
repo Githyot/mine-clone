@@ -240,9 +240,18 @@ WOODS = {
         plank=pal("#c08a80", "#cf998e", "#dba79b", "#e5b3a7", "#efc0b4"),
         leaves=pal("#c25e8e", "#d673a2", "#e488b4", "#ef9fc5", "#f8bcd9"),
     ),
+    "mangrove": dict(
+        bark=pal("#2a1c14", "#36251a", "#433022", "#4f3a29", "#5c4532"),
+        inner=pal("#7a2e24", "#8c382c", "#9c4234", "#aa4c3c"),
+        plank=pal("#5e2219", "#722a20", "#833227", "#933a2e", "#a14435"),
+        leaves=pal("#183c12", "#214d17", "#2c5f1d", "#387024", "#45812c"),
+    ),
 }
 
-NEW_WOODS = ("jungle", "acacia", "dark_oak", "cherry")
+NEW_WOODS = ("jungle", "acacia", "dark_oak", "cherry", "mangrove")
+MUD = pal("#2c2826", "#35302d", "#3d3834", "#46403b", "#4f4842")
+PACKED_MUD = pal("#7a5c48", "#866652", "#92705b", "#9c7a64", "#a6846c")
+MUD_BRICK = pal("#7e604a", "#8c6c55", "#987660", "#a3816a", "#ae8b73")
 RED_SAND = pal("#ae5824", "#b75f28", "#c0662d", "#c96e33", "#d1763a")
 TERRACOTTA = {
     "terracotta": "#985e44",
@@ -656,6 +665,16 @@ def log_side(wood):
             y0 = rng.integers(0, N)
             for i in range(rng.integers(3, 7)):
                 put(img, x, y0 + i, w["bark"][4])
+    elif wood == "mangrove":
+        # stringy fibres, with the red wood showing through here and there
+        for x in rng.choice(N, 5, replace=False):
+            y0 = rng.integers(0, N)
+            for i in range(rng.integers(4, 9)):
+                put(img, x + (i // 4) % 2, y0 + i, w["bark"][4])
+        for _ in range(4):
+            x, y = rng.integers(0, N, 2)
+            put(img, x, y, w["inner"][1])
+            put(img, x, y + 1, w["inner"][0])
     return img
 
 
@@ -731,6 +750,104 @@ def leaves(wood):
         for _ in range(6):
             x, y = rng.integers(0, N, 2)
             line(img, x, y, x + 2, y + 2, p[4])
+    elif wood == "mangrove":
+        # long narrow leaves in pairs, pointing down-left and down-right
+        for _ in range(7):
+            x, y = rng.integers(0, N, 2)
+            d = 1 if rng.random() < 0.5 else -1
+            put(img, x, y, p[4])
+            put(img, x + d, y + 1, p[3])
+            put(img, x + 2 * d, y + 2, p[2])
+    return img
+
+
+# --------------------------------------------------------------------------
+# Mangrove swamp: mud and roots
+# --------------------------------------------------------------------------
+
+
+def mud():
+    """Dark wet mud: smooth, with glossy wet spots and a few bits of root."""
+    rng = rng_for("mud")
+    f = fbm(rng, ((8, 0.35), (4, 0.4), (2, 0.3)))
+    img = from_rgb(shade(0.15 + 0.7 * f, MUD, 0.5))
+    rgb = img[..., :3]
+    wet = fbm(rng, ((4, 0.6), (2, 0.4))) > 0.78
+    rgb[wet] = scale_rgb(rgb[wet], 1.25)
+    for _ in range(7):
+        x, y = rng.integers(0, N, 2)
+        put(img, x, y, hexrgb("#5e5650"))
+    for _ in range(3):
+        x, y = rng.integers(0, N, 2)
+        put(img, x, y, hexrgb("#1c1816"))
+        put(img, x + 1, y, hexrgb("#1c1816"))
+    return img
+
+
+def packed_mud():
+    """Mud pressed with straw: a dry earthen block with pale fibres."""
+    rng = rng_for("packed_mud")
+    f = 0.6 * fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.3))) + 0.4 * rng.random((N, N))
+    img = from_rgb(shade(f, PACKED_MUD, 0.5))
+    straw = pal("#b89a64", "#cbb07a")
+    for _ in range(9):
+        x, y = rng.integers(0, N, 2)
+        dx = 1 if rng.random() < 0.5 else -1
+        put(img, x, y, straw[1])
+        put(img, x + dx, y + (1 if rng.random() < 0.3 else 0), straw[0])
+    return img
+
+
+def mud_bricks():
+    """Small sun-dried bricks in running bond, joined with dark mortar."""
+    rng = rng_for("mud_bricks")
+    f = fbm(rng, ((4, 0.4), (2, 0.4), (1, 0.3)))
+    img = from_rgb(shade(0.2 + 0.6 * f, MUD_BRICK, 0.5))
+    rgb = img[..., :3]
+    mortar = pal("#5a4434", "#664e3c")
+    for y in range(N):
+        row = y // 4
+        off = 4 if row % 2 else 0
+        for x in range(N):
+            if y % 4 == 3:
+                rgb[y, x] = mortar[0]
+            elif (x + off) % 8 == 7:
+                rgb[y, x] = mortar[1]
+            elif y % 4 == 0:
+                rgb[y, x] = scale_rgb(rgb[y, x], 1.08)
+            elif y % 4 == 2:
+                rgb[y, x] = scale_rgb(rgb[y, x], 0.93)
+    return img
+
+
+def mangrove_roots():
+    """A tangle of thin roots crossing every way, with gaps you can see through."""
+    rng = rng_for("mangrove_roots")
+    bark = WOODS["mangrove"]["bark"]
+    img = canvas()
+    for _ in range(9):
+        x0, y0 = rng.integers(0, N, 2)
+        ang = rng.random() * np.pi
+        ln = rng.integers(8, 16)
+        x1 = int(round(x0 + np.cos(ang) * ln))
+        y1 = int(round(y0 + np.sin(ang) * ln))
+        c = bark[rng.integers(2, 5)]
+        for k in range(ln + 1):
+            t = k / ln
+            x = int(round(x0 + (x1 - x0) * t))
+            y = int(round(y0 + (y1 - y0) * t))
+            put(img, x, y, c)
+    # a frame of roots on the edges so neighbouring blocks join up
+    for i in range(N):
+        if rng.random() < 0.55:
+            put(img, i, 0, bark[3])
+        if rng.random() < 0.55:
+            put(img, 0, i, bark[2])
+    # darker undersides
+    a = img[..., 3] > 0
+    below = np.roll(a, 1, axis=0) & ~a
+    img[below, :3] = bark[0]
+    img[below, 3] = 255
     return img
 
 
@@ -1399,6 +1516,8 @@ def build_registry():
         "red_sand": red_sand, "red_mushroom": red_mushroom,
         "brown_mushroom": brown_mushroom, "vine": vine,
         "lily_pad": lily_pad, "lily_pad_side": lily_pad_side,
+        "mud": mud, "packed_mud": packed_mud, "mud_bricks": mud_bricks,
+        "mangrove_roots": mangrove_roots,
     })
     for name in TERRACOTTA:
         reg[name] = lambda n=name: terracotta(n)

@@ -76,10 +76,11 @@ pub enum Biome {
     Meadow = 22,
     SnowyPeaks = 23,
     FrozenOcean = 24,
+    MangroveSwamp = 25,
 }
 
 impl Biome {
-    pub const COUNT: usize = 25;
+    pub const COUNT: usize = 26;
 
     pub fn from_u8(v: u8) -> Biome {
         match v {
@@ -107,6 +108,7 @@ impl Biome {
             22 => Biome::Meadow,
             23 => Biome::SnowyPeaks,
             24 => Biome::FrozenOcean,
+            25 => Biome::MangroveSwamp,
             _ => Biome::Plains,
         }
     }
@@ -138,6 +140,7 @@ impl Biome {
             Biome::Meadow => "Meadow",
             Biome::SnowyPeaks => "Snowy Peaks",
             Biome::FrozenOcean => "Frozen Ocean",
+            Biome::MangroveSwamp => "Mangrove Swamp",
         }
     }
 
@@ -163,6 +166,7 @@ impl Biome {
             Biome::MushroomFields => [0.95, 1.05, 0.85],
             Biome::Meadow => [0.9, 1.06, 0.82],
             Biome::SnowyPeaks | Biome::FrozenOcean => [0.85, 0.95, 1.0],
+            Biome::MangroveSwamp => [0.8, 0.95, 0.62],
         }
     }
 
@@ -170,6 +174,7 @@ impl Biome {
     pub fn water_tint(self) -> [f32; 3] {
         match self {
             Biome::Swamp => [0.52, 0.74, 0.4],
+            Biome::MangroveSwamp => [0.5, 0.78, 0.62],
             Biome::Jungle => [0.88, 1.04, 0.96],
             _ => [1.0, 1.0, 1.0],
         }
@@ -215,6 +220,7 @@ struct Palette {
     red_sand: BlockId,
     terracotta: BlockId,
     lily_pad: BlockId,
+    mud: BlockId,
     sugar_cane: BlockId,
     red_mushroom: BlockId,
     brown_mushroom: BlockId,
@@ -315,6 +321,7 @@ impl Palette {
             red_sand: g("red_sand"),
             terracotta: g("terracotta"),
             lily_pad: g("lily_pad"),
+            mud: g("mud"),
             sugar_cane: g("sugar_cane"),
             red_mushroom: g("red_mushroom"),
             brown_mushroom: g("brown_mushroom"),
@@ -495,14 +502,17 @@ impl Generator {
         }
         // Swamps: wet, mild lowlands flatten out around sea level into pools and mud flats.
         let swamp = smoothstep(0.26, 0.36, hum) * smoothstep(-0.2, -0.1, climate) * smoothstep(0.3, 0.2, climate);
-        if swamp > 0.0 {
+        // Mangrove swamps: the same, in the warm wet lowlands; lower, so mud lies under
+        // a block or two of water.
+        let mangrove = smoothstep(0.24, 0.34, hum) * smoothstep(0.16, 0.24, climate) * smoothstep(0.5, 0.42, climate);
+        for (wet, target) in [(swamp, sea - 0.3 + detail * 3.0), (mangrove, sea - 1.2 + detail * 2.5)] {
             let (lo, hi) = (sea - 8.0, sea + 16.0);
-            if h > lo && h < hi {
+            if wet > 0.0 && h > lo && h < hi {
                 let edge = ((h - lo) / 4.0).min((hi - h) / 6.0).min(1.0);
-                let target = sea - 0.3 + detail * 3.0;
-                h += (target - h) * swamp * edge;
+                h += (target - h) * wet * edge;
             }
         }
+        let wetland = swamp.max(mangrove);
         // Mushroom islands: rare low humps far out in the deep ocean.
         let mush = smoothstep(-0.38, -0.46, cont) * smoothstep(0.38, 0.46, self.humidity.fbm2(x / 260.0 - 900.0, z / 260.0 + 400.0, 2));
         if mush > 0.0 {
@@ -511,7 +521,7 @@ impl Generator {
         }
         // Rivers: long winding channels across the land, cut down to just under sea level.
         let rv = self.variant.fbm2(x / 640.0 + 900.0, z / 640.0 - 900.0, 3).abs();
-        let river = smoothstep(0.05, 0.015, rv) * smoothstep(sea + 45.0, sea + 25.0, h) * (1.0 - swamp) * (1.0 - mush);
+        let river = smoothstep(0.05, 0.015, rv) * smoothstep(sea + 45.0, sea + 25.0, h) * (1.0 - wetland) * (1.0 - mush);
         if river > 0.0 && h > sea - 4.0 {
             let target = sea - 3.0 + detail;
             h += (target - h) * river.min(1.0).powf(0.7);
@@ -519,7 +529,9 @@ impl Generator {
         let height = (h as i32).clamp(4, CHUNK_HEIGHT as i32 - 20);
 
         let temp = climate - (height - 90).max(0) as f32 / 120.0;
-        let biome = if swamp > 0.5 && (SEA_LEVEL - 5..=SEA_LEVEL + 4).contains(&height) {
+        let biome = if mangrove > 0.5 && (SEA_LEVEL - 4..=SEA_LEVEL + 3).contains(&height) {
+            Biome::MangroveSwamp
+        } else if swamp > 0.5 && (SEA_LEVEL - 5..=SEA_LEVEL + 4).contains(&height) {
             Biome::Swamp
         } else if mush > 0.5 && height >= SEA_LEVEL {
             Biome::MushroomFields
@@ -531,7 +543,7 @@ impl Generator {
             } else {
                 Biome::Ocean
             }
-        } else if height <= SEA_LEVEL + 1 && temp > -0.25 && swamp < 0.25 {
+        } else if height <= SEA_LEVEL + 1 && temp > -0.25 && wetland < 0.25 {
             Biome::Beach
         } else if bad > 0.5 {
             Biome::Badlands
@@ -623,6 +635,14 @@ impl Generator {
                 }
             }
             Biome::MushroomFields if p.mycelium != AIR => (p.mycelium, p.dirt, 3),
+            // Mud flats; the odd grassy hummock above the water.
+            Biome::MangroveSwamp if p.mud != AIR => {
+                if h > SEA_LEVEL + 1 && (wx * 31 + wz * 17).rem_euclid(5) != 0 {
+                    (p.grass, p.mud, 3)
+                } else {
+                    (p.mud, p.mud, 4)
+                }
+            }
             // Red sand over deep layers of terracotta (the layers are picked in `generate`).
             Biome::Badlands if p.red_sand != AIR => (p.red_sand, p.terracotta, (h - SEA_LEVEL + 14).max(3)),
             Biome::Badlands => (p.sand, p.sandstone, 4),
@@ -646,7 +666,7 @@ impl Generator {
         let top = if h < SEA_LEVEL && (top == p.grass || top == p.snow_grass) { p.dirt } else { top };
         let liquid = (h < SEA_LEVEL).then_some(if matches!(col.biome, Biome::Snowy | Biome::Taiga | Biome::FrozenOcean | Biome::SnowyPeaks) { p.ice } else { p.water });
         // Tree attempts per chunk in `decorate`, out of the forest's 9.
-        let trees = if !(SEA_LEVEL..=200).contains(&h) {
+        let trees = if !(SEA_LEVEL..=200).contains(&h) && !(col.biome == Biome::MangroveSwamp && h >= SEA_LEVEL - 2) {
             None
         } else {
             match col.biome {
@@ -660,6 +680,7 @@ impl Generator {
                 Biome::Savanna => Some((self.trees.leaves(Wood::Acacia), 0.25)),
                 Biome::CherryGrove => Some((self.trees.leaves(Wood::Cherry), 0.5)),
                 Biome::Swamp => Some((p.oak_leaves, 0.4)),
+                Biome::MangroveSwamp => Some((self.trees.leaves(Wood::Mangrove), 0.7)),
                 Biome::Meadow => Some((p.birch_leaves, 0.05)),
                 _ => None,
             }
@@ -981,6 +1002,7 @@ impl Generator {
             Biome::Jungle => 14,
             Biome::DarkForest => 16,
             Biome::Swamp => 4,
+            Biome::MangroveSwamp => 5,
             Biome::Savanna => 2,
             Biome::CherryGrove => 5,
             Biome::Badlands => 2,
@@ -993,8 +1015,8 @@ impl Generator {
             let z = rng.range(2, 13) as usize;
             let col = &cols[x + z * 16];
             let y = col.height;
-            // Swamp trees may stand in a block of water.
-            let wading = col.biome == Biome::Swamp && y == SEA_LEVEL - 1;
+            // Swamp trees may stand in a block of water, mangroves in two.
+            let wading = (col.biome == Biome::Swamp && y == SEA_LEVEL - 1) || (col.biome == Biome::MangroveSwamp && y >= SEA_LEVEL - 2 && y < SEA_LEVEL);
             if (y < SEA_LEVEL && !wading) || y > 200 {
                 continue;
             }
@@ -1014,7 +1036,8 @@ impl Generator {
                 }
                 continue;
             }
-            if ground != p.grass && ground != p.snow_grass && !(wading && ground == p.dirt) {
+            let muddy = ground == p.mud && ground != AIR;
+            if ground != p.grass && ground != p.snow_grass && !(wading && ground == p.dirt) && !muddy {
                 continue;
             }
             let kind = match col.biome {
@@ -1052,6 +1075,8 @@ impl Generator {
                     }
                 }
                 Biome::Swamp => TreeKind::SwampOak,
+                Biome::MangroveSwamp if self.trees.has(Wood::Mangrove) => TreeKind::Mangrove,
+                Biome::MangroveSwamp => TreeKind::SwampOak,
                 Biome::Savanna => {
                     if rng.chance(0.8) {
                         TreeKind::Acacia
@@ -1075,7 +1100,7 @@ impl Generator {
             if (tx, tz) != (x as i32, z as i32) {
                 let c2 = &cols[tx as usize + tz as usize * 16];
                 let g2 = chunk.get(tx as usize, c2.height as usize, tz as usize);
-                if c2.height != y || (g2 != p.grass && !(wading && g2 == p.dirt)) {
+                if c2.height != y || (g2 != p.grass && !(wading && g2 == p.dirt) && !(muddy && g2 == p.mud)) {
                     continue;
                 }
             }
@@ -1100,7 +1125,7 @@ impl Generator {
             for x in 0..16usize {
                 let col = &cols[x + z * 16];
                 let y = col.height;
-                if col.biome == Biome::Swamp && y < SEA_LEVEL {
+                if matches!(col.biome, Biome::Swamp | Biome::MangroveSwamp) && y < SEA_LEVEL {
                     // Lily pads on the shallow pools.
                     let s = SEA_LEVEL as usize;
                     if y >= SEA_LEVEL - 3 && p.lily_pad != AIR && chunk.get(x, s, z) == p.water && chunk.get(x, s + 1, z) == AIR && rng.chance(0.06) {
@@ -1136,7 +1161,7 @@ impl Generator {
                         Biome::Savanna => 0.42,
                         Biome::Jungle => 0.32,
                         Biome::CherryGrove => 0.2,
-                        Biome::Swamp => 0.14,
+                        Biome::Swamp | Biome::MangroveSwamp => 0.14,
                         Biome::DarkForest => 0.08,
                         Biome::Meadow => 0.4,
                         _ => 0.06,
@@ -1172,7 +1197,7 @@ impl Generator {
                         if b != AIR {
                             chunk.set(x, above, z, b);
                         }
-                    } else if r > 0.97 && matches!(col.biome, Biome::DarkForest | Biome::Swamp) {
+                    } else if r > 0.97 && matches!(col.biome, Biome::DarkForest | Biome::Swamp | Biome::MangroveSwamp) {
                         let m = if rng.chance(0.5) { p.red_mushroom } else { p.brown_mushroom };
                         if m != AIR {
                             chunk.set(x, above, z, m);
@@ -1394,7 +1419,7 @@ mod tests {
     fn new_biomes_grow_their_trees() {
         let reg = registry();
         let g = Generator::new(77, &reg);
-        for (biome, log) in [(Biome::Jungle, "jungle_log"), (Biome::Savanna, "acacia_log"), (Biome::DarkForest, "dark_oak_log"), (Biome::CherryGrove, "cherry_log")] {
+        for (biome, log) in [(Biome::Jungle, "jungle_log"), (Biome::Savanna, "acacia_log"), (Biome::DarkForest, "dark_oak_log"), (Biome::CherryGrove, "cherry_log"), (Biome::MangroveSwamp, "mangrove_log")] {
             let log = reg.id(log).unwrap();
             let mut found = false;
             'search: for cz in -100..100 {

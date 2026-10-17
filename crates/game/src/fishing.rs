@@ -27,8 +27,8 @@ pub struct Bobber {
 const FISH: &[(&str, u32)] = &[("cod", 40), ("salmon", 22), ("trout", 14), ("catfish", 9), ("tilapia", 10)];
 /// Extra fish that only live in some biomes (Aquaculture idea): (biomes, item, weight).
 const LOCAL_FISH: &[(&[&str], &str, u32)] = &[
-    (&["Jungle", "Swamp"], "piranha", 18),
-    (&["Jungle", "Swamp"], "pirarucu", 8),
+    (&["Jungle", "Swamp", "Mangrove Swamp"], "piranha", 18),
+    (&["Jungle", "Swamp", "Mangrove Swamp"], "pirarucu", 8),
     (&["Snowy Plains", "Taiga", "Mountains"], "arctic_char", 22),
     (&["Plains", "Forest", "Birch Forest", "Dark Forest", "Cherry Grove", "Savanna"], "perch", 18),
     (&["Ocean", "Beach"], "tuna", 16),

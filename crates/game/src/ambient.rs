@@ -167,7 +167,7 @@ impl Game {
                 self.particles.glow(p.as_vec3() + Vec3::new(jit.x, 1.0, jit.z), v, glow, [1.0, 0.55, 0.15], 0.04, 1.4);
             } else if night && self.dim == Dim::Overworld && (b.shape == Shape::Cross || b.name == "grass_block") && above == AIR && roll < 0.035 {
                 let biome = self.world.gen.biome_at(p.x, p.z);
-                let warm = matches!(biome, Biome::Plains | Biome::Forest | Biome::Swamp | Biome::DarkForest | Biome::Jungle | Biome::BirchForest | Biome::CherryGrove);
+                let warm = matches!(biome, Biome::Plains | Biome::Forest | Biome::Swamp | Biome::DarkForest | Biome::Jungle | Biome::BirchForest | Biome::CherryGrove | Biome::MangroveSwamp);
                 if warm && !self.weather.state.raining {
                     // A firefly, blinking on for a moment and wandering off.
                     let v = Vec3::new(jit.x - 0.5, jit.y * 0.4, jit.z - 0.5) * 1.6;

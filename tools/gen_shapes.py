@@ -3,7 +3,7 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent / "packs" / "vanilla" / "textures"
-WOODS = ["oak", "birch", "spruce", "jungle", "acacia", "dark_oak", "cherry", "crimson", "warped"]
+WOODS = ["oak", "birch", "spruce", "jungle", "acacia", "dark_oak", "cherry", "mangrove", "crimson", "warped"]
 iron = (70, 70, 74)
 
 

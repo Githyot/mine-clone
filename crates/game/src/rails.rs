@@ -553,7 +553,7 @@ impl Game {
         put(w, 4, 1, 9, "copper_lantern", 0);
         put(w, -4, 1, 9, "paper_lamp", 0);
         // A wall of windows behind the table, a lantern hanging under a beam.
-        for (k, wood) in ["oak", "birch", "spruce", "jungle", "acacia", "dark_oak", "cherry"].iter().enumerate() {
+        for (k, wood) in ["oak", "birch", "spruce", "jungle", "acacia", "dark_oak", "cherry", "mangrove"].iter().enumerate() {
             put(w, k as i32 - 3, 0, 11, &format!("{wood}_window"), 0);
             put(w, k as i32 - 3, 1, 11, &format!("{wood}_window"), 0);
         }

@@ -998,7 +998,7 @@ impl Game {
                 let sel = self.selected;
                 self.surv.inv.take(sel, 1);
             }
-            if self.reg.get(block).name.ends_with("_sapling") {
+            if trees::is_sapling(&self.reg.get(block).name) {
                 let t = 60.0 + self.surv.rng.f32() * 120.0;
                 self.surv.saplings.push((pos, t));
             }

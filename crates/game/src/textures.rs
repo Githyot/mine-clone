@@ -229,6 +229,7 @@ fn minecraft_tint(name: &str) -> Option<[u8; 3]> {
         "birch_leaves" => Some([0x80, 0xA7, 0x55]),
         "jungle_leaves" | "vine" => Some([0x4A, 0xB0, 0x2A]),
         "acacia_leaves" | "dark_oak_leaves" => Some([0x5C, 0xA8, 0x34]),
+        "mangrove_leaves" => Some([0x8D, 0xB1, 0x27]),
         "lily_pad" => Some([0x2E, 0x80, 0x30]),
         "water" => Some([0x3F, 0x76, 0xE4]),
         _ => None,

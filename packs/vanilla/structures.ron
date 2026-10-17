@@ -353,7 +353,7 @@
     ),
     (
         name: "cabana_da_bruxa",
-        biomes: ["Swamp"],
+        biomes: ["Swamp", "Mangrove Swamp"],
         spacing: 10,
         chance: 0.4,
         foundation: Some("spruce_log"),
