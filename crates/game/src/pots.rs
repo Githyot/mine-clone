@@ -188,6 +188,13 @@ impl Game {
         let wall = self.reg.id_or_air("spruce_sign");
         self.world.set_block(c + IVec3::new(3, 2, 3), self.reg.variant(wall, 4));
         self.signs.insert((c + IVec3::new(3, 2, 3)).to_array(), "Loja\naberta".to_string());
+        // Banners: three on poles, one on the wall.
+        for (dx, n) in [(-6, "red_banner"), (-7, "blue_banner"), (-8, "yellow_banner")] {
+            let id = self.reg.id_or_air(n);
+            self.world.set_block(c + IVec3::new(dx, 0, 4), self.reg.variant(id, 0));
+        }
+        let green = self.reg.id_or_air("green_banner");
+        self.world.set_block(c + IVec3::new(5, 1, 3), self.reg.variant(green, 4));
         for (dx, n) in [(-5, "red_carpet"), (-4, "blue_carpet"), (-3, "yellow_carpet")] {
             self.world.set_block(c + IVec3::new(dx, 0, 5), self.reg.id_or_air(n));
         }

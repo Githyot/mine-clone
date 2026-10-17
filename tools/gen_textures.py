@@ -2881,6 +2881,32 @@ def concrete(color):
     return img
 
 
+def banner(color):
+    """A banner's cloth with a woven border and a pale diamond, on oak bar and pole (the
+    shape's boxes take the parts of the picture under them)."""
+    img = canvas()
+    c = np.array(hexrgb(WOOL[color]), dtype=float)
+    rng = rng_for(color + "_banner")
+    wood = WOODS["oak"]["plank"]
+    light = np.clip(c * 0.6 + 110, 0, 255) if color != "white" else np.array(hexrgb("#a8a8a4"), dtype=float)
+    for y in range(N):
+        for x in range(N):
+            k = 0.92 + 0.12 * rng.random()
+            col = c * k
+            if x in (1, 14) or y == 12:
+                col = c * 0.7
+            if abs(x - 7.5) + abs(y - 7.0) < 3.6:
+                col = light * k
+            put(img, x, y, np.clip(col, 0, 255))
+    # The bar on top (row 0) and the pole below the cloth (rows 13-15).
+    for x in range(N):
+        put(img, x, 0, wood[1 + (x % 3 == 0)])
+    for y in range(13, 16):
+        for x in range(N):
+            put(img, x, y, wood[2] if x in (7, 8) else c * 0.7)
+    return img
+
+
 def farming_registry():
     reg = {"farmland": farmland, "hay_block_side": hay_block_side, "hay_block_top": hay_block_top,
            "botany_pot_side": botany_pot_side, "botany_pot_top": botany_pot_top, "botany_pot_empty": botany_pot_empty,
@@ -2925,6 +2951,7 @@ def farming_registry():
     reg["beehive_front_honey"] = lambda: beehive("front", True)
     reg["honeycomb_block"] = honeycomb_block
     for color in WOOL:
+        reg[f"{color}_banner"] = lambda c=color: banner(c)
         reg[f"{color}_stained_glass"] = lambda c=color: stained_glass(c)
         reg[f"{color}_concrete"] = lambda c=color: concrete(c)
     reg["composter_side"] = composter_side

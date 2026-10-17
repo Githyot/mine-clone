@@ -2497,7 +2497,7 @@ impl Game {
             // A bench runs across your view.
             Shape::Bench => facing(f.x, f.z) ^ 1,
             // A sign hangs on the wall clicked, or stands facing you.
-            Shape::Sign => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) | 4 } else if hit.normal.y > 0 { facing(f.x, f.z) } else { return None },
+            Shape::Sign | Shape::Banner => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) | 4 } else if hit.normal.y > 0 { facing(f.x, f.z) } else { return None },
             // A shelf goes on the wall you clicked.
             Shape::Shelf => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) } else { facing(f.x, f.z) },
             // Under a block it hangs on a chain.

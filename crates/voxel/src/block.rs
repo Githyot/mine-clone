@@ -84,6 +84,8 @@ pub enum Shape {
     Shelf,
     /// A sign: a board on a post (variant facing 0-3) or on a wall (4-7).
     Sign,
+    /// A banner: a cloth hanging from a bar on a pole (variant facing 0-3) or on a wall (4-7).
+    Banner,
 }
 
 impl Shape {
@@ -121,6 +123,7 @@ impl Shape {
                 | Shape::Bench
                 | Shape::Shelf
                 | Shape::Sign
+                | Shape::Banner
         )
     }
 }
