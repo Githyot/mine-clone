@@ -252,7 +252,11 @@ pub struct Mob {
     pub counted: bool,
     fire_tick: f32,
     rng: Rng,
+    /// Unique for the life of the program: how multiplayer names this mob.
+    pub net_id: u32,
 }
+
+static NEXT_NET_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
 pub const DEATH_TIME: f32 = 0.9;
 
@@ -305,6 +309,7 @@ impl Mob {
             counted: false,
             fire_tick: 0.0,
             rng,
+            net_id: NEXT_NET_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         }
     }
 

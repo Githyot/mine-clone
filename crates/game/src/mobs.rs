@@ -24,6 +24,9 @@ pub struct Mobs {
     pub peaceful: bool,
     /// Blocks each mob may spawn on (from `MobDef::ground`), resolved on first use.
     ground: Vec<Vec<BlockId>>,
+    /// Multiplayer: the other players in this dimension (where, creative), so monsters hunt
+    /// them too and mobs spawn around them.
+    pub others: Vec<(Vec3, bool)>,
 }
 
 /// What happened to the player this tick.
@@ -39,6 +42,8 @@ pub struct MobOutcome {
     pub fireballs: Vec<(Vec3, Vec3, f32, u8)>,
     /// Mobs that died this tick: (def index, where).
     pub deaths: Vec<(usize, Vec3)>,
+    /// Multiplayer: hits on other players (index in `Mobs::others`, damage, from where).
+    pub remote_hits: Vec<(usize, f32, Vec3)>,
 }
 
 pub const ARROW_GRAVITY: f32 = 20.0;
@@ -87,7 +92,7 @@ impl Mobs {
     }
 
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, arrows: Vec::new(), ground: Vec::new() }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, arrows: Vec::new(), ground: Vec::new(), others: Vec::new() }
     }
 
     fn next_rand(&mut self) -> u64 {
@@ -228,6 +233,10 @@ impl Mobs {
         if self.spawn_cd <= 0.0 {
             self.spawn_cd = 1.0;
             self.natural_spawn(world, player, daylight);
+            for k in 0..self.others.len() {
+                let p = self.others[k].0;
+                self.natural_spawn(world, p, daylight);
+            }
         }
         let mut events = Vec::new();
         let day = daylight > 0.5;
@@ -264,9 +273,24 @@ impl Mobs {
             let head = (m.body.pos + Vec3::Y * def.height).floor().as_ivec3();
             let sky = world.light(head) >> 4;
             events.clear();
-            m.tick(def, world, player, creative, sky, day, dt, &mut events);
+            // The player it goes after: the closest one that can be hurt (else the closest).
+            let mut who: Option<usize> = None;
+            let (mut tp, mut tc) = (player, creative);
+            let score = |p: Vec3, c: bool| (p - m.body.pos).length() + if c { 1000.0 } else { 0.0 };
+            for (k, &(p, c)) in self.others.iter().enumerate() {
+                if score(p, c) < score(tp, tc) {
+                    (tp, tc, who) = (p, c, Some(k));
+                }
+            }
+            m.tick(def, world, tp, tc, sky, day, dt, &mut events);
             for e in &events {
                 match *e {
+                    MobEvent::Hit { damage, from } if who.is_some() => out.remote_hits.push((who.unwrap(), damage, from)),
+                    MobEvent::Shoot { damage, from, hit, .. } if who.is_some() => {
+                        if hit {
+                            out.remote_hits.push((who.unwrap(), damage, from));
+                        }
+                    }
                     MobEvent::Hit { damage, from } => out.damage.push((damage, Some(from))),
                     MobEvent::Shoot { damage, from, at, hit } => {
                         // A real arrow: aimed at the player's middle (a little off on a miss),
@@ -316,10 +340,12 @@ impl Mobs {
         }
         self.update_arrows(world, player, dt, &mut out);
         let reg = &self.reg;
+        let others = &self.others;
         self.list.retain(|m| {
             let gone = !m.alive() && m.dead_age > DEATH_TIME;
             let keep = m.name.is_some() || m.leashed;
-            let far = (m.body.pos - player).length() > if keep { DESPAWN_DIST + 48.0 } else { DESPAWN_DIST } && !reg.defs[m.def].town;
+            let reach = if keep { DESPAWN_DIST + 48.0 } else { DESPAWN_DIST };
+            let far = (m.body.pos - player).length() > reach && !reg.defs[m.def].town && others.iter().all(|(p, _)| (m.body.pos - *p).length() > reach);
             let fell = m.body.pos.y < -64.0;
             !(gone || far || fell)
         });

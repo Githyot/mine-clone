@@ -78,6 +78,10 @@ pub struct World {
     /// Collision height of each block (1.0 except slabs, beds).
     top: Vec<f32>,
     pub meshed_count: usize,
+    /// Multiplayer: every block change, for the network to pass on (None = not recording).
+    pub net_log: Option<Vec<(IVec3, BlockId)>>,
+    /// Multiplayer host: other players' chunks, kept loaded and lit (not meshed) around them.
+    pub extra_centers: Vec<(ChunkPos, i32)>,
 }
 
 impl World {
@@ -156,6 +160,8 @@ impl World {
             solid,
             top,
             meshed_count: 0,
+            net_log: None,
+            extra_centers: Vec::new(),
         }
     }
 
@@ -205,7 +211,10 @@ impl World {
             match done {
                 Done::Generated(pos, c) => {
                     if let Some(s) = self.slots.get_mut(&pos) {
-                        s.chunk = Some(Arc::new(c));
+                        // A chunk that came over the network meanwhile wins.
+                        if s.chunk.is_none() {
+                            s.chunk = Some(Arc::new(c));
+                        }
                         s.gen_pending = false;
                     }
                 }
@@ -301,6 +310,38 @@ impl World {
                 }
             }
         }
+        // Other players' surroundings (multiplayer host): generated and lit, never meshed.
+        for (c, r) in self.extra_centers.clone() {
+            for k in 0..self.spiral.len() {
+                let off = self.spiral[k];
+                if off.x * off.x + off.y * off.y > lim(r + 1) {
+                    break;
+                }
+                if self.in_flight >= self.max_in_flight {
+                    break;
+                }
+                let p = c + off;
+                let slot = self.slots.entry(p).or_insert_with(|| Slot { light_ver: 1, mesh_ver: 1, ..Default::default() });
+                if slot.chunk.is_none() {
+                    if !slot.gen_pending {
+                        slot.gen_pending = true;
+                        self.in_flight += 1;
+                        let _ = self.jobs.send(Job::Generate(p));
+                    }
+                    continue;
+                }
+                if off.x * off.x + off.y * off.y <= lim(r) && slot.light_done != slot.light_ver && !slot.light_pending {
+                    if let Some(n) = self.neighbours(p) {
+                        let s = self.slots.get_mut(&p).unwrap();
+                        s.light_pending = true;
+                        s.urgent = false;
+                        self.in_flight += 1;
+                        let _ = self.jobs.send(Job::Light(p, s.light_ver, n));
+                    }
+                }
+            }
+        }
+
         // 4. Mesh chunks whose neighbours are lit (edits first, nearest first).
         for k in 0..self.spiral.len() {
             let p = center + self.spiral[k];
@@ -328,7 +369,14 @@ impl World {
 
         // 5. Unload far chunks (saving edits).
         let unload = lim(load_r + 2);
-        let far: Vec<ChunkPos> = self.slots.keys().copied().filter(|&p| r2(p) > unload).collect();
+        let extra = &self.extra_centers;
+        let near_other = |p: ChunkPos| {
+            extra.iter().any(|&(c, r)| {
+                let d = p - c;
+                d.x * d.x + d.y * d.y <= (r + 3) * (r + 3)
+            })
+        };
+        let far: Vec<ChunkPos> = self.slots.keys().copied().filter(|&p| r2(p) > unload && !near_other(p)).collect();
         for p in far {
             let s = self.slots.get(&p).unwrap();
             if s.gen_pending || s.light_pending || s.mesh_pending {
@@ -344,6 +392,23 @@ impl World {
                 self.events.push(MeshEvent::Remove(p));
             }
             self.slots.remove(&p);
+        }
+    }
+
+    /// Put in a whole chunk (sent by a multiplayer host), relighting and remeshing around it.
+    pub fn replace_chunk(&mut self, chunk: Chunk) {
+        let cp = chunk.pos;
+        let slot = self.slots.entry(cp).or_insert_with(|| Slot { light_ver: 1, mesh_ver: 1, ..Default::default() });
+        slot.chunk = Some(Arc::new(chunk));
+        self.unsaved.insert(cp);
+        for i in 0..9 {
+            let n = cp + IVec2::new(i % 3 - 1, i / 3 - 1);
+            if let Some(s) = self.slots.get_mut(&n) {
+                if s.chunk.is_some() {
+                    s.light_ver += 1;
+                    s.urgent = true;
+                }
+            }
         }
     }
 
@@ -382,6 +447,9 @@ impl World {
         let c = Arc::make_mut(c);
         c.set(x, p.y as usize, z, id);
         c.modified = true;
+        if let Some(log) = self.net_log.as_mut() {
+            log.push((p, id));
+        }
         if self.changed.len() < 100_000 {
             self.changed.push(p);
         }

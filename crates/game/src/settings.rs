@@ -99,6 +99,9 @@ pub struct Settings {
     pub lod_distance: i32,
     /// Buildings farther apart in new chunks (Sparse Structures idea).
     pub sparse_structures: bool,
+    /// Multiplayer guest: the host's structure spacing, while connected (never saved).
+    #[serde(skip)]
+    pub spread_override: Option<i32>,
 }
 
 impl Default for Settings {
@@ -132,6 +135,7 @@ impl Default for Settings {
             shader_quality: ShaderQuality::Fancy,
             lod_distance: 0,
             sparse_structures: false,
+            spread_override: None,
         }
     }
 }
@@ -139,7 +143,9 @@ impl Default for Settings {
 impl Settings {
     /// Percent spacing for buildings.
     pub fn structure_spread(&self) -> i32 {
-        if self.sparse_structures {
+        if let Some(s) = self.spread_override {
+            s
+        } else if self.sparse_structures {
             170
         } else {
             100
