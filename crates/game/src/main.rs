@@ -18,6 +18,7 @@ mod bosses;
 mod npcs;
 mod pets;
 mod raids;
+mod explore;
 mod signs;
 mod fluids;
 mod redstone;
@@ -455,6 +456,7 @@ struct Game {
     boss: bosses::BossState,
     town: npcs::Town,
     raid: raids::Raid,
+    map: explore::MapCache,
     /// Saved tame animals not back in the world yet.
     pets_waiting: Vec<pets::PetSave>,
     signs: std::collections::HashMap<[i32; 3], String>,
@@ -794,6 +796,7 @@ impl Game {
             boss: bosses::BossState::new(bosses_beaten),
             town: npcs::Town::new(town_npcs),
             raid: raids::Raid::default(),
+            map: explore::MapCache::default(),
             pets_waiting: pets::load(&save.dir),
             signs: signs::load(&save.dir),
             sign_edit: None,
@@ -1523,6 +1526,7 @@ impl Game {
                 // Townsfolk live at home.
                 self.update_npcs(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_raids(dt);
+                self.update_map(dt);
                 self.update_pets(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
         }
@@ -3032,6 +3036,9 @@ impl Game {
             }
             self.draw_mob_health_bars(w, h);
             self.draw_sign_texts(w, h);
+            if self.screen == Screen::Playing {
+                self.draw_explore_hud(w, h);
+            }
             // Hotbar.
             let cell = 20.0 * s;
             let hx = (w - cell * 9.0) / 2.0;
@@ -3671,7 +3678,7 @@ impl Game {
             block,
             frac: Vec3::from_slice(&g.cam_pos[..3]),
             forward: view_fwd,
-            fov_y: (self.settings.fov * (1.0 + 0.12 * self.fov_kick)).to_radians(),
+            fov_y: (self.settings.fov * (1.0 + 0.12 * self.fov_kick) * if self.spyglass_up() { 0.2 } else { 1.0 }).to_radians(),
             far: view_end + 32.0,
         };
 

@@ -70,7 +70,7 @@ impl Game {
         }
     }
 
-    fn held_name(&self) -> Option<String> {
+    pub(crate) fn held_name(&self) -> Option<String> {
         self.held_stack().map(|s| self.items.get(s.item).name.clone())
     }
 
