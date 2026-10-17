@@ -83,6 +83,9 @@ pub struct Settings {
     pub mobs: bool,
     /// Textures get a little carved relief near the camera.
     pub relief: bool,
+    /// Largest texture size in pixels per block face (16, 32, 64, 128). The game's own art is 64;
+    /// lower it on computers with little video memory.
+    pub texture_resolution: u32,
     /// 0 peaceful (no monsters, health comes back), 1 easy, 2 normal, 3 hard.
     pub difficulty: u8,
     pub gui_scale: u32,
@@ -110,6 +113,7 @@ impl Default for Settings {
             music_volume: 0.6,
             difficulty: 2,
             relief: true,
+            texture_resolution: crate::textures::BASE_RESOLUTION,
             sound_volume: 0.8,
             music_folder: "music".into(),
             music_delay_min: 600.0,

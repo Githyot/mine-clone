@@ -242,7 +242,9 @@ impl Renderer {
             address_mode_v: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            // Blend between mip levels: with 64x textures the switch from one level to the next
+            // would otherwise show as a line on the ground.
+            mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
         let (block_view, texture_size) = Self::upload_blocks(&device, &queue, textures);

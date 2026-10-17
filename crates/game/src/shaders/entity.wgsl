@@ -48,7 +48,7 @@ fn vs_entity(
 
 @fragment
 fn fs_entity(in: EOut) -> @location(0) vec4<f32> {
-    let c = textureSampleLevel(skins, skin_samp, in.uv, in.layer, 0.0);
+    let c = textureSample(skins, skin_samp, in.uv, in.layer);
     if (c.a < 0.5) {
         discard;
     }

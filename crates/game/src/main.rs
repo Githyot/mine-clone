@@ -656,7 +656,7 @@ impl Game {
         let reg_for_fluids = reg.clone();
         let world = World::new(reg.clone(), gen.clone(), save.clone(), tables);
 
-        let tex = textures::load(&texture_names, &base, &settings.resource_packs);
+        let tex = textures::load(&texture_names, &base, &settings.resource_packs, settings.texture_resolution);
         let textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
         let lod = lod::Lod::new(gen.clone(), lod::LodColors::new(&reg, &tex));
         let font = FontAtlas::new();
@@ -675,7 +675,7 @@ impl Game {
         let painting_defs = paintings::load_defs(&base);
         let paintings = paintings::load(&save.dir, &painting_defs);
         let surv = survival::Survival::load(&save.dir, &items);
-        let entities = entity::EntityRenderer::new(&renderer, &mob_reg, &painting_defs, &base);
+        let entities = entity::EntityRenderer::new(&renderer, &mob_reg, &painting_defs, &base, settings.texture_resolution);
         let mut mobs = mobs::Mobs::new(mob_reg, reg.id_or_air("grass_block"), seed);
         mobs.enabled = settings.mobs;
         mobs.peaceful = settings.difficulty == 0;
@@ -1116,7 +1116,7 @@ impl Game {
 
     fn reload_textures(&mut self) {
         let names: Vec<String> = self.reg.textures.iter().chain(self.items.textures.iter()).cloned().chain(extra_textures()).collect();
-        let tex = textures::load(&names, &self.base, &self.settings.resource_packs);
+        let tex = textures::load(&names, &self.base, &self.settings.resource_packs, self.settings.texture_resolution);
         self.textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
         self.renderer.reload_textures(&tex);
         self.ui.gui = tex.gui.sprites.clone();

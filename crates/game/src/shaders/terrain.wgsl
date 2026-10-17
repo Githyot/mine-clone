@@ -105,24 +105,32 @@ fn shade(c: vec3<f32>, in: VOut) -> vec3<f32> {
 
 // Pixel relief: each texel is treated as a little bump as high as it is bright, lit from
 // the top-left, so stone, bark and bricks look carved instead of painted. Two extra texture
-// reads, only near the camera.
-fn relief(c: vec4<f32>, in: VOut) -> f32 {
+// reads, only near the camera. `texels` is how many texels one screen pixel covers: further
+// away the bumps are read from a smaller mip level, so 64x textures don't shimmer.
+fn relief(c: vec4<f32>, in: VOut, texels: f32) -> f32 {
     let strength = g.sun_dir.w * (1.0 - smoothstep(16.0, 32.0, in.dist));
     if (strength <= 0.0) {
         return 1.0;
     }
-    let size = f32(textureDimensions(tex).x);
+    let full = textureDimensions(tex).x;
+    let level = u32(clamp(floor(log2(max(texels, 1.0))), 0.0, 3.0));
+    let size = f32(max(full >> level, 1u));
+    let lv = f32(level);
     let px = fract(in.uv) * size;
     let cell = (floor(px) + 0.5) / size;
-    let up = textureSampleLevel(tex, samp, cell - vec2<f32>(0.0, 1.0 / size), in.layer, 0.0);
-    let left = textureSampleLevel(tex, samp, cell - vec2<f32>(1.0 / size, 0.0), in.layer, 0.0);
+    let here = textureSampleLevel(tex, samp, cell, in.layer, lv);
+    let up = textureSampleLevel(tex, samp, cell - vec2<f32>(0.0, 1.0 / size), in.layer, lv);
+    let left = textureSampleLevel(tex, samp, cell - vec2<f32>(1.0 / size, 0.0), in.layer, lv);
     let lum = vec3<f32>(0.3, 0.59, 0.11);
-    let h = dot(c.rgb, lum);
+    let h = select(dot(here.rgb, lum), dot(c.rgb, lum), level == 0u);
     // Texels at the picture's edge have no neighbour there: leave them flat.
     let hu = select(dot(up.rgb, lum), h, floor(px.y) < 0.5 || up.a < 0.5);
     let hl = select(dot(left.rgb, lum), h, floor(px.x) < 0.5 || left.a < 0.5);
+    // Finer textures have smaller steps between texels: scale the slope so the relief keeps
+    // the same depth at 16x and 64x.
+    let k = 1.1 * clamp(size / 16.0, 1.0, 4.0) * 0.5 + 0.55;
     let slope = (h - hu) + (h - hl);
-    return clamp(1.0 + slope * 1.1 * strength, 0.72, 1.22);
+    return clamp(1.0 + slope * k * strength, 0.72, 1.22);
 }
 
 // Connected textures: on a side that continues into the same block (glass), the outer
@@ -145,11 +153,12 @@ fn ctm_sample(in: VOut) -> vec4<f32> {
 
 @fragment
 fn fs_solid(in: VOut) -> @location(0) vec4<f32> {
+    let fw = fwidth(in.uv) * f32(textureDimensions(tex).x);
     let c = ctm_sample(in);
     if (c.a < 0.5) {
         discard;
     }
-    return vec4<f32>(shade(c.rgb * relief(c, in), in), 1.0);
+    return vec4<f32>(shade(c.rgb * relief(c, in, max(fw.x, fw.y)), in), 1.0);
 }
 
 // Slope of a few travelling waves at a world position (for rippling water).
