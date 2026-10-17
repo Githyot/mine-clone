@@ -25,7 +25,7 @@ pub struct Pots {
     planted: Vec<BlockId>,
 }
 
-const TREES: [&str; 7] = ["oak", "birch", "spruce", "jungle", "acacia", "dark_oak", "cherry"];
+const TREES: [&str; 8] = ["oak", "birch", "spruce", "jungle", "acacia", "dark_oak", "cherry", "mangrove"];
 
 impl Pots {
     pub fn new(reg: &BlockRegistry) -> Pots {
@@ -37,7 +37,7 @@ impl Pots {
             p.planted[seed as usize] = pot;
         }
         for t in TREES {
-            let (Some(pot), Some(sapling)) = (reg.id(&format!("botany_pot_{t}")), reg.id(&format!("{t}_sapling"))) else { continue };
+            let (Some(pot), Some(sapling)) = (reg.id(&format!("botany_pot_{t}")), reg.id(&voxel::trees::sapling_of(t))) else { continue };
             p.yields[pot as usize] = Some(Yield::Tree(t));
             p.planted[sapling as usize] = pot;
         }
@@ -94,7 +94,7 @@ impl Game {
                     v.push(ItemStack::new(log, 1 + (rng.f32() < 0.4) as u8));
                 }
                 if rng.f32() < 0.1 {
-                    if let Some(s) = it(format!("{t}_sapling")) {
+                    if let Some(s) = it(voxel::trees::sapling_of(t)) {
                         v.push(ItemStack::new(s, 1));
                     }
                 }

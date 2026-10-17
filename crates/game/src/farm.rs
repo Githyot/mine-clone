@@ -220,7 +220,7 @@ impl Game {
                 self.set_fruit(p, self.farm.fruit[id as usize], r);
                 used = true;
             }
-        } else if name.ends_with("_sapling") {
+        } else if voxel::trees::is_sapling(&name) {
             if self.surv.rng.f32() < 0.45 {
                 for s in self.surv.saplings.iter_mut().filter(|(q, _)| *q == p) {
                     s.1 = 0.0;
@@ -281,7 +281,7 @@ impl Game {
         let name = self.items.get(stack.item).name.clone();
         let chance = if name.ends_with("_seeds") || name.ends_with("_leaves") || name == "short_grass" || name == "sugar_cane" || name == "kelp" {
             0.3
-        } else if name.ends_with("_sapling") || name == "melon_slice" || name == "cactus" || name == "vine" || name == "glow_berries" {
+        } else if voxel::trees::is_sapling(&name) || name == "melon_slice" || name == "cactus" || name == "vine" || name == "glow_berries" {
             0.5
         } else if matches!(name.as_str(), "wheat" | "carrot" | "potato" | "beetroot" | "apple" | "melon" | "pumpkin" | "nether_wart" | "poppy" | "dandelion" | "hay_block" | "bread" | "baked_potato") {
             0.65

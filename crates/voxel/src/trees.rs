@@ -21,10 +21,11 @@ pub enum Wood {
     Acacia,
     DarkOak,
     Cherry,
+    Mangrove,
 }
 
 impl Wood {
-    pub const ALL: [Wood; 7] = [Wood::Oak, Wood::Birch, Wood::Spruce, Wood::Jungle, Wood::Acacia, Wood::DarkOak, Wood::Cherry];
+    pub const ALL: [Wood; 8] = [Wood::Oak, Wood::Birch, Wood::Spruce, Wood::Jungle, Wood::Acacia, Wood::DarkOak, Wood::Cherry, Wood::Mangrove];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -35,8 +36,28 @@ impl Wood {
             Wood::Acacia => "acacia",
             Wood::DarkOak => "dark_oak",
             Wood::Cherry => "cherry",
+            Wood::Mangrove => "mangrove",
         }
     }
+
+    /// The block this wood grows from: a sapling, or the mangrove's propagule.
+    pub fn sapling(self) -> String {
+        sapling_of(self.name())
+    }
+}
+
+/// The sapling block of a wood by name ("oak" -> "oak_sapling", "mangrove" -> "mangrove_propagule").
+pub fn sapling_of(wood: &str) -> String {
+    if wood == "mangrove" {
+        "mangrove_propagule".to_string()
+    } else {
+        format!("{wood}_sapling")
+    }
+}
+
+/// Whether a block or item name is something that grows into a tree.
+pub fn is_sapling(name: &str) -> bool {
+    name.ends_with("_sapling") || name == "mangrove_propagule"
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,6 +77,8 @@ pub enum TreeKind {
     Cherry,
     /// A wide, low oak dripping with vines; it can stand in shallow water.
     SwampOak,
+    /// A trunk held up on arching roots over mud or shallow water, under a leafy crown.
+    Mangrove,
     /// One log hidden in a mound of leaves.
     Bush(Wood),
 }
@@ -63,6 +86,9 @@ pub enum TreeKind {
 impl TreeKind {
     /// What a sapling grows into.
     pub fn from_sapling(name: &str) -> Option<TreeKind> {
+        if name == "mangrove_propagule" {
+            return Some(TreeKind::Mangrove);
+        }
         Some(match name.strip_suffix("_sapling")? {
             "oak" => TreeKind::Round(Wood::Oak),
             "birch" => TreeKind::Round(Wood::Birch),
@@ -80,7 +106,7 @@ impl TreeKind {
     pub fn reach(self) -> i32 {
         match self {
             TreeKind::Round(_) | TreeKind::Spruce | TreeKind::Jungle | TreeKind::Bush(_) => 2,
-            TreeKind::SwampOak => 3,
+            TreeKind::SwampOak | TreeKind::Mangrove => 3,
             TreeKind::Acacia | TreeKind::DarkOak | TreeKind::Cherry => 4,
             TreeKind::MegaJungle => 5,
         }
@@ -97,6 +123,7 @@ impl TreeKind {
             TreeKind::Acacia => 5,
             TreeKind::Round(_) | TreeKind::Cherry => 6,
             TreeKind::SwampOak | TreeKind::Jungle | TreeKind::DarkOak => 7,
+            TreeKind::Mangrove => 9,
             TreeKind::Spruce => 8,
             TreeKind::MegaJungle => 12,
         }
@@ -106,9 +133,11 @@ impl TreeKind {
 /// Block ids trees are made of, resolved once.
 #[derive(Clone)]
 pub struct TreeBlocks {
-    logs: [BlockId; 7],
-    leaves: [BlockId; 7],
+    logs: [BlockId; 8],
+    leaves: [BlockId; 8],
     vine: BlockId,
+    roots: BlockId,
+    propagule: BlockId,
     dirt: BlockId,
     grass: BlockId,
     snow_grass: BlockId,
@@ -122,6 +151,8 @@ impl TreeBlocks {
             logs: Wood::ALL.map(|w| g(&format!("{}_log", w.name()))),
             leaves: Wood::ALL.map(|w| g(&format!("{}_leaves", w.name()))),
             vine: g("vine"),
+            roots: g("mangrove_roots"),
+            propagule: g("mangrove_propagule"),
             dirt: g("dirt"),
             grass: g("grass_block"),
             snow_grass: g("snowy_grass_block"),
@@ -139,11 +170,11 @@ impl TreeBlocks {
 
     /// Whether this wood's blocks exist (a pack may lack them).
     pub fn has(&self, w: Wood) -> bool {
-        self.log(w) != AIR && self.leaves(w) != AIR
+        self.log(w) != AIR && self.leaves(w) != AIR && (w != Wood::Mangrove || self.roots != AIR)
     }
 
     fn soft(&self, id: BlockId) -> bool {
-        id == AIR || id == self.water || id == self.vine || self.leaves.contains(&id)
+        id == AIR || id == self.water || id == self.vine || id == self.propagule || self.leaves.contains(&id)
     }
 }
 
@@ -159,6 +190,7 @@ pub fn grow<W: TreeSpace>(kind: TreeKind, b: &TreeBlocks, w: &mut W, rng: &mut R
         TreeKind::DarkOak => t.dark_oak(rng, x, y, z),
         TreeKind::Cherry => t.cherry(rng, x, y, z),
         TreeKind::SwampOak => t.swamp_oak(rng, x, y, z),
+        TreeKind::Mangrove => t.mangrove(rng, x, y, z),
         TreeKind::Bush(wood) => t.bush(rng, x, y, z, wood),
     }
 }
@@ -461,6 +493,75 @@ impl<W: TreeSpace> Tree<'_, W> {
         self.root(x, y, z, log);
     }
 
+    fn mangrove(&mut self, rng: &mut Rng, x: i32, y: i32, z: i32) {
+        let (log, leaves, roots) = (self.b.log(Wood::Mangrove), self.b.leaves(Wood::Mangrove), self.b.roots);
+        if roots == AIR {
+            return;
+        }
+        // Standing water over the ground: the roots lift the trunk clear of it.
+        let mut wet = 0;
+        while wet < 3 && self.w.get(x, y + 1 + wet, z) == self.b.water {
+            wet += 1;
+        }
+        let lift = wet + rng.range(1, 2);
+        let base = y + lift;
+        let h = rng.range(4, 6);
+        let top = base + h;
+        if top + 2 > TOP {
+            return;
+        }
+        // A column of roots under the trunk, down into the mud.
+        for ly in (y + 1)..=base {
+            self.log(x, ly, z, roots);
+        }
+        // Arching roots: out one block from the trunk's foot, then a second step that bends
+        // down, then straight down until they reach the mud.
+        let dirs = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)];
+        let n = rng.range(4, 6) as usize;
+        let start = rng.below(8) as usize;
+        for k in 0..n {
+            let (dx, dz) = dirs[(start + k * 3) % 8];
+            let hy = base + rng.range(0, 1);
+            self.log(x + dx, hy, z + dz, roots);
+            let (ex, ez, ey) = if rng.chance(0.6) { (x + 2 * dx, z + 2 * dz, hy - 1) } else { (x + dx, z + dz, hy - 1) };
+            let mut ly = ey;
+            while ly > y - 2 && self.b.soft(self.w.get(ex, ly, ez)) {
+                self.w.set(ex, ly, ez, roots);
+                ly -= 1;
+            }
+        }
+        // The trunk, sometimes with a stub of a branch.
+        for ly in (base + 1)..top {
+            self.log(x, ly, z, log);
+        }
+        if rng.chance(0.5) {
+            let (dx, dz) = dirs[rng.below(4) as usize];
+            self.log(x + dx, top - 1, z + dz, log);
+        }
+        let (cx, cz) = (x as f32 + 0.5, z as f32 + 0.5);
+        self.disc(rng, cx, top - 2, cz, 2.4, leaves, 0.5, 0.0);
+        self.disc(rng, cx, top - 1, cz, 3.2, leaves, 0.4, 0.0);
+        self.disc(rng, cx, top, cz, 2.8, leaves, 0.35, 0.0);
+        self.disc(rng, cx, top + 1, cz, 1.6, leaves, 0.3, 0.0);
+        // Strands of leaves and the odd propagule hanging under the crown.
+        for dz in -2..=2i32 {
+            for dx in -2..=2i32 {
+                let (px, pz) = (x + dx, z + dz);
+                if self.w.get(px, top - 1, pz) != leaves || self.w.get(px, top - 2, pz) != AIR {
+                    continue;
+                }
+                if rng.chance(0.18) {
+                    self.leaf(px, top - 2, pz, leaves);
+                    if rng.chance(0.5) {
+                        self.leaf(px, top - 3, pz, leaves);
+                    }
+                } else if self.b.propagule != AIR && rng.chance(0.08) {
+                    self.leaf(px, top - 2, pz, self.b.propagule);
+                }
+            }
+        }
+    }
+
     fn bush(&mut self, rng: &mut Rng, x: i32, y: i32, z: i32, wood: Wood) {
         let (log, leaves) = (self.b.log(wood), self.b.leaves(wood));
         if y + 3 > TOP {
@@ -497,10 +598,13 @@ mod tests {
         let b = TreeBlocks::new(&reg);
         for wood in Wood::ALL {
             assert!(b.has(wood), "{} blocks missing", wood.name());
-            let kind = TreeKind::from_sapling(&format!("{}_sapling", wood.name())).unwrap();
+            let kind = TreeKind::from_sapling(&wood.sapling()).unwrap();
             let mut s = Space(HashMap::new(), reg.id("grass_block").unwrap());
             grow(kind, &b, &mut s, &mut Rng::new(5), 0, 10, 0);
-            assert_eq!(s.get(0, 11, 0), b.log(wood), "{} trunk", wood.name());
+            let kind_name = wood.sapling();
+            assert_eq!(TreeKind::from_sapling(&kind_name), Some(kind));
+            // The mangrove's trunk stands on its roots, a block or two up.
+            assert!((11..14).any(|y| s.get(0, y, 0) == b.log(wood)), "{} trunk", wood.name());
             assert!(s.0.values().any(|&id| id == b.leaves(wood)), "{} leaves", wood.name());
         }
     }
@@ -518,6 +622,7 @@ mod tests {
             TreeKind::DarkOak,
             TreeKind::Cherry,
             TreeKind::SwampOak,
+            TreeKind::Mangrove,
             TreeKind::Bush(Wood::Oak),
         ];
         for kind in kinds {

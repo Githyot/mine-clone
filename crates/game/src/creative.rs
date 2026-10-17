@@ -147,8 +147,8 @@ impl Game {
             return Some(Tab::Functional);
         }
         let natural = bl.shape == Shape::Cross
-            || ["_ore", "_log", "_leaves", "_sapling"].iter().any(|s| name.ends_with(s))
-            || ["grass_block", "dirt", "stone", "sand", "red_sand", "lily_pad", "gravel", "clay", "ice", "snow", "snow_block", "cactus", "pumpkin", "melon", "obsidian", "bedrock", "sandstone", "mossy_cobblestone", "podzol", "coarse_dirt"].contains(&name);
+            || ["_ore", "_log", "_leaves", "_sapling", "_roots"].iter().any(|s| name.ends_with(s))
+            || ["grass_block", "dirt", "stone", "sand", "red_sand", "mud", "lily_pad", "gravel", "clay", "ice", "snow", "snow_block", "cactus", "pumpkin", "melon", "obsidian", "bedrock", "sandstone", "mossy_cobblestone", "podzol", "coarse_dirt"].contains(&name);
         Some(if natural { Tab::Natural } else { Tab::Building })
     }
 

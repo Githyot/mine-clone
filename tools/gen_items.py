@@ -2097,6 +2097,32 @@ def sapling(wood):
     return img
 
 
+def propagule():
+    """The mangrove's seedling: a long green spindle under a small tuft of leaves."""
+    leaves = WOODS["mangrove"]["leaves"]
+    rows = [
+        "................",
+        "......4..4......",
+        ".....443344.....",
+        "....44322334....",
+        ".....3s.s32.....",
+        ".......ss.......",
+        ".......gg.......",
+        ".......GG.......",
+        ".......Gg.......",
+        ".......GG.......",
+        ".......Gg.......",
+        ".......GG.......",
+        ".......Gg.......",
+        "........G.......",
+        "........g.......",
+        "................",
+    ]
+    cols = {"2": leaves[1], "3": leaves[2], "4": leaves[3], "s": WOODS["mangrove"]["bark"][3],
+            "g": hexrgb("#4f7a26"), "G": hexrgb("#6a9632")}
+    return from_map(rows, cols)
+
+
 # --------------------------------------------------------------------------
 # New block textures
 # --------------------------------------------------------------------------
@@ -2468,7 +2494,7 @@ def item_registry():
         "flint_and_steel": flint_and_steel,
         "honeycomb": honeycomb, "minecart": minecart_item,
         "gold_nugget": gold_nugget, "quartz": quartz, "nether_brick": nether_brick_item,
-        "oak_boat": lambda: boat_item(('#4a3018', '#7a5430', '#a07848', '#c09a62')), "spruce_boat": lambda: boat_item(('#2e1e0e', '#4e3418', '#6e4c26', '#8a6436')), "birch_boat": lambda: boat_item(('#7a6c48', '#b4a46e', '#d0c28a', '#e6daa6')), "jungle_boat": lambda: boat_item(('#4a2c1a', '#7a4c30', '#9a6644', '#b6805a')), "acacia_boat": lambda: boat_item(('#6a2e14', '#a24a24', '#c46434', '#dc804a')), "dark_oak_boat": lambda: boat_item(('#1e140a', '#3a2612', '#52381e', '#6a4a2a')), "cherry_boat": lambda: boat_item(('#7a4a48', '#c8908a', '#e0aca4', '#f2c8c0')), "ink_sac": ink_sac, "lead": lead_item, "name_tag": name_tag, "bone_meal": bone_meal, **{f"{c}_dye": (lambda c=c: dye(c)) for c in DYES}, "compass": compass_item, "clock": clock_item, "spyglass": spyglass_item, "map": map_item, "nether_wart": nether_wart_item, "saddle": saddle, "pumpkin_seeds": pumpkin_seeds, "melon_seeds": melon_seeds, "melon_slice": melon_slice,
+        "oak_boat": lambda: boat_item(('#4a3018', '#7a5430', '#a07848', '#c09a62')), "spruce_boat": lambda: boat_item(('#2e1e0e', '#4e3418', '#6e4c26', '#8a6436')), "birch_boat": lambda: boat_item(('#7a6c48', '#b4a46e', '#d0c28a', '#e6daa6')), "jungle_boat": lambda: boat_item(('#4a2c1a', '#7a4c30', '#9a6644', '#b6805a')), "acacia_boat": lambda: boat_item(('#6a2e14', '#a24a24', '#c46434', '#dc804a')), "dark_oak_boat": lambda: boat_item(('#1e140a', '#3a2612', '#52381e', '#6a4a2a')), "cherry_boat": lambda: boat_item(('#7a4a48', '#c8908a', '#e0aca4', '#f2c8c0')), "mangrove_boat": lambda: boat_item(('#3e160f', '#6a271d', '#86352a', '#a04436')), "ink_sac": ink_sac, "lead": lead_item, "name_tag": name_tag, "bone_meal": bone_meal, **{f"{c}_dye": (lambda c=c: dye(c)) for c in DYES}, "compass": compass_item, "clock": clock_item, "spyglass": spyglass_item, "map": map_item, "nether_wart": nether_wart_item, "saddle": saddle, "pumpkin_seeds": pumpkin_seeds, "melon_seeds": melon_seeds, "melon_slice": melon_slice,
         "sugar_cane": sugar_cane_item, "sugar": sugar, "paper": paper,
         "slime_ball": lambda: lump("slime_ball", pal("#2a7a1e", "#3a9a2a", "#52b23a", "#6cc84e", "#8ade6a")),
         "turtle_scute": lambda: lump("turtle_scute", pal("#1e3a14", "#2a4e1c", "#3a6426", "#4a7a30", "#5e9040")),
@@ -2491,6 +2517,7 @@ def item_registry():
     })
     for wood in ("oak", "birch", "spruce", "jungle", "acacia", "dark_oak", "cherry"):
         reg[f"{wood}_sapling"] = lambda w=wood: sapling(w)
+    reg["mangrove_propagule"] = propagule
     for mat in ARMOR_MATERIALS:
         for kind in ARMOR_KINDS:
             reg[f"{mat}_{kind}"] = lambda m=mat, k=kind: armor(m, k)
@@ -2507,6 +2534,7 @@ def block_registry():
     }
     for wood in ("oak", "birch", "spruce", "jungle", "acacia", "dark_oak", "cherry"):
         reg[f"{wood}_sapling"] = lambda w=wood: sapling(w)
+    reg["mangrove_propagule"] = propagule
     return reg
 
 

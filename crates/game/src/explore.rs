@@ -43,11 +43,13 @@ impl Game {
             "stone" | "gravel" => [125, 125, 125],
             "mycelium" => [130, 110, 130],
             "clay" => [150, 155, 170],
+            "mud" => [70, 62, 58],
             _ => match s.biome {
                 Biome::Swamp => [80, 100, 50],
                 Biome::Savanna => [150, 160, 70],
                 Biome::Jungle => [50, 140, 40],
                 Biome::CherryGrove => [200, 160, 180],
+                Biome::MangroveSwamp => [70, 95, 45],
                 _ => [90, 150, 60],
             },
         };

@@ -144,9 +144,9 @@ impl Material {
             Material::Ore
         } else if name.ends_with("iron_block") || name.ends_with("gold_block") || name.ends_with("diamond_block") || has("anvil") || has("iron_door") {
             Material::Metal
-        } else if has("leaves") || has("sapling") || has("mushroom") || name == "vine" || name == "lily_pad" {
+        } else if has("leaves") || has("sapling") || has("propagule") || has("mushroom") || name == "vine" || name == "lily_pad" {
             Material::Leaves
-        } else if has("log") || has("planks") || has("crafting") || name == "bookshelf" || has("oak_") || has("chest") || has("door") || has("fence") || has("ladder") {
+        } else if has("log") || has("planks") || has("mangrove_") || has("crafting") || name == "bookshelf" || has("oak_") || has("chest") || has("door") || has("fence") || has("ladder") {
             Material::Wood
         } else if has("wool") || name == "sponge" || has("_bed") || has("carpet") {
             Material::Cloth
@@ -158,7 +158,7 @@ impl Material {
             Material::Sand
         } else if has("leaves") || name == "poppy" || name == "dandelion" || name == "dead_bush" || has("sapling") || has("short_grass") || name == "melon" || name == "pumpkin" || name == "cactus" {
             Material::Leaves
-        } else if name == "dirt" || name == "farmland" || name == "coarse_dirt" || name == "mud" {
+        } else if name == "dirt" || name == "farmland" || name == "coarse_dirt" || name == "mud" || name == "packed_mud" {
             Material::Dirt
         } else if has("grass") || name == "tnt" {
             Material::Grass
