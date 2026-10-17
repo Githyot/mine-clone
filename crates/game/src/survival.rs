@@ -8,7 +8,7 @@ use std::path::Path;
 use glam::{IVec3, Vec3};
 use serde::{Deserialize, Serialize};
 use voxel::block::{Shape, ToolKind};
-use voxel::item::{FoodDef, Inventory, ItemId, ItemRegistry, ItemStack, Look, ToolDef};
+use voxel::item::{FoodDef, Inventory, ItemId, ItemRegistry, ItemStack, Look, SavedItem, ToolDef};
 use voxel::physics::{Body, Input, Terrain};
 use voxel::rng::Rng;
 use voxel::trees::{self, TreeBlocks, TreeKind, TreeSpace};
@@ -241,7 +241,7 @@ fn xp_for_level(l: u32) -> u32 {
 // ---------------------------------------------------------------------------------------------
 // Saving: by item name, so adding items to the game never breaks old worlds.
 
-type SavedStack = Option<(String, u8, u16)>;
+type SavedStack = Option<SavedItem>;
 
 #[derive(Serialize, Deserialize, Default)]
 struct SavedContainer {
@@ -278,16 +278,14 @@ struct Saved {
 }
 
 fn save_stacks(items: &ItemRegistry, inv: &Inventory) -> Vec<SavedStack> {
-    inv.slots.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect()
+    inv.slots.iter().map(|s| s.map(|s| SavedItem::of(items, &s))).collect()
 }
 
 fn load_stacks(items: &ItemRegistry, v: &[SavedStack], n: usize) -> Inventory {
     let mut inv = Inventory::new(n);
     for (i, s) in v.iter().enumerate().take(n) {
-        if let Some((name, count, damage)) = s {
-            if let Some(id) = items.id(name) {
-                inv.slots[i] = Some(ItemStack { item: id, count: *count, damage: *damage });
-            }
+        if let Some(st) = s.as_ref().and_then(|s| s.stack(items)) {
+            inv.slots[i] = Some(st);
         }
     }
     inv
@@ -310,13 +308,13 @@ impl Survival {
             spawn: self.spawn.map(|p| p.to_array()),
             containers,
             saplings: self.saplings.iter().map(|(p, t)| (p.to_array(), *t)).collect(),
-            armor: self.armor.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect(),
-            offhand: self.offhand.map(|s| (items.get(s.item).name.clone(), s.count, s.damage)),
+            armor: self.armor.iter().map(|s| s.map(|s| SavedItem::of(items, &s))).collect(),
+            offhand: self.offhand.map(|s| SavedItem::of(items, &s)),
             carts: self.carts.iter().map(|c| (c.body.pos.to_array(), c.yaw)).collect(),
             corpses: self
                 .corpses
                 .iter()
-                .map(|c| (c.pos.to_array(), c.yaw, c.items.iter().map(|s| Some((items.get(s.item).name.clone(), s.count, s.damage))).collect()))
+                .map(|c| (c.pos.to_array(), c.yaw, c.items.iter().map(|s| Some(SavedItem::of(items, s))).collect()))
                 .collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
@@ -386,6 +384,11 @@ pub fn item_icon(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRegistry,
             let c = [((1.0 - k) * 255.0) as u8, (k * 255.0) as u8, 0, 255];
             ui.rect(x + s, by, (bw * k).max(s), s, c);
         }
+    }
+    if let Some(r) = voxel::gems::rarity(stack.sockets) {
+        // Ranked gear: a corner in its rarity's colour.
+        ui.rect(x, y, 3.0 * s, s, voxel::gems::RARITY_COLORS[r]);
+        ui.rect(x, y + s, s, 2.0 * s, voxel::gems::RARITY_COLORS[r]);
     }
     if stack.count > 1 {
         let t = stack.count.to_string();
@@ -466,7 +469,7 @@ impl Game {
     }
 
     pub(crate) fn armor_points(&self) -> u32 {
-        self.surv.armor.iter().flatten().filter_map(|s| self.items.get(s.item).armor).map(|a| a.points as u32).sum()
+        self.surv.armor.iter().flatten().filter_map(|s| self.items.get(s.item).armor).map(|a| a.points as u32).sum::<u32>() + self.gem_armor()
     }
 
     /// Armor takes a share of a hit (4% per point, up to 80%) and wears a little.
@@ -490,14 +493,14 @@ impl Game {
 
     /// Seconds a weapon needs between full-strength swings (the hand is quick, an axe slow).
     pub(crate) fn attack_cooldown(&self) -> f32 {
-        match self.held_tool().map(|t| t.kind) {
+        (match self.held_tool().map(|t| t.kind) {
             None => 0.25,
             Some(ToolKind::Sword) => 0.625,
             Some(ToolKind::Axe) => 1.0,
             Some(ToolKind::Pickaxe) => 0.83,
             Some(ToolKind::Shovel) => 1.0,
             Some(ToolKind::Hoe) => 0.5,
-        }
+        }) / self.gem_attack_speed()
     }
 
     /// 0..1, how ready the next swing is.
@@ -631,6 +634,7 @@ impl Game {
             let order = (0..CHEST_SIZE).map(move |i| (i + slot) % CHEST_SIZE);
             let _ = inv.add_in(&self.items, ItemStack::new(id, n.max(1)), order);
         }
+        self.apoth_chest_loot(&mut inv);
         inv
     }
 
@@ -776,7 +780,7 @@ impl Game {
             }
             None => 1.0,
         };
-        base * (0.2 + 0.8 * k * k)
+        self.gem_attack(base * (0.2 + 0.8 * k * k))
     }
 
     pub(crate) fn surv_died(&mut self) {
@@ -1684,6 +1688,7 @@ impl Game {
                     slots.push((Slot::Cont(i), x0 + (8 + (i % 9) * 18) as f32 * s, y0 + (18 + (i / 9) * 18) as f32 * s));
                 }
             }
+            Open::Chest(p) if self.apoth_table(p).is_some() => slots.extend(self.draw_apoth_table(p, x0, y0, mouse)),
             Open::Chest(p) => {
                 let n = self.open_container_inv().map(|i| i.slots.len()).unwrap_or(CHEST_SIZE);
                 let id = self.world.block_or_air(p);
@@ -1797,7 +1802,7 @@ impl Game {
                     let price = self.surv.shop_prices.get(i).copied().unwrap_or(0);
                     name = format!("{name} x{}: {price} esmeralda(s)", st.count);
                 }
-                let mut lines = vec![(name, WHITE)];
+                let mut lines = vec![(name, self.gem_name_color(&st))];
                 lines.extend(self.item_details(&st));
                 self.draw_tooltip_lines(&lines, mouse);
             }
@@ -1830,6 +1835,7 @@ impl Game {
         if let Some(f) = &it.food {
             out.push((format!("Fome: +{}  Saturação: +{:.1}", f.hunger, f.saturation), GRAY));
         }
+        out.extend(self.gem_tooltip(st));
         out
     }
 
@@ -1920,6 +1926,9 @@ impl Game {
     }
 
     pub(crate) fn click_slot(&mut self, slot: Slot, right: bool, shift: bool) {
+        if self.apoth_socket_click(slot, right) {
+            return;
+        }
         if let (Slot::Cont(i), Open::Shop) = (slot, self.surv.open) {
             self.buy(i);
             return;
@@ -2142,7 +2151,7 @@ impl Game {
     pub(crate) fn test_kit(&mut self) {
         let give = |g: &mut Game, slot: usize, name: &str, count: u8, damage: u16| {
             if let Some(id) = g.items.id(name) {
-                g.surv.inv.slots[slot] = Some(ItemStack { item: id, count, damage });
+                g.surv.inv.slots[slot] = Some(ItemStack { damage, ..ItemStack::new(id, count) });
             }
         };
         give(self, 0, "iron_pickaxe", 1, 60);

@@ -251,6 +251,10 @@ pub struct Mob {
     pub chill: f32,
     /// Where a town NPC lives; it wanders near here.
     pub home: Option<Vec3>,
+    /// Set by the game's Apotheosis mod: elite rank (see mods/apotheosis.rs) and how much
+    /// harder this mob hits than its kind (world tier, elites).
+    pub elite: u8,
+    pub power: f32,
     fire_tick: f32,
     rng: Rng,
 }
@@ -298,6 +302,8 @@ impl Mob {
             on_fire: 0.0,
             chill: 0.0,
             home: None,
+            elite: 0,
+            power: 1.0,
             fire_tick: 0.0,
             rng,
         }

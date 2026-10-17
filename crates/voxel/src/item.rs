@@ -287,16 +287,72 @@ pub struct ItemStack {
     /// Wear on tools.
     #[serde(default)]
     pub damage: u16,
+    /// Loot rarity, sockets and the gems set in them, packed in one number (see `gems.rs`);
+    /// 0 for plain items. A field of its own, so it never mixes with wear, affixes or enchantments.
+    #[serde(default)]
+    pub sockets: u32,
 }
 
 impl ItemStack {
     pub fn new(item: ItemId, count: u8) -> ItemStack {
-        ItemStack { item, count, damage: 0 }
+        ItemStack { item, count, damage: 0, sockets: 0 }
     }
 
     /// Same item, so the two can sit in one stack.
     pub fn stacks_with(&self, o: &ItemStack) -> bool {
-        self.item == o.item && self.damage == 0 && o.damage == 0
+        self.item == o.item && self.damage == 0 && o.damage == 0 && self.sockets == o.sockets
+    }
+}
+
+/// A stack as saved: item name, count, wear and sockets. Written as `("name", count, wear)` like
+/// before sockets existed, with the sockets as a fourth number only when there are any, so old
+/// saves load and plain items look the same in new ones.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SavedItem(pub String, pub u8, pub u16, pub u32);
+
+impl SavedItem {
+    pub fn of(reg: &ItemRegistry, s: &ItemStack) -> SavedItem {
+        SavedItem(reg.get(s.item).name.clone(), s.count, s.damage, s.sockets)
+    }
+
+    /// Back to a stack; None when the item no longer exists.
+    pub fn stack(&self, reg: &ItemRegistry) -> Option<ItemStack> {
+        Some(ItemStack { item: reg.id(&self.0)?, count: self.1, damage: self.2, sockets: self.3 })
+    }
+}
+
+impl Serialize for SavedItem {
+    fn serialize<S: serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeTuple;
+        let mut t = ser.serialize_tuple(if self.3 != 0 { 4 } else { 3 })?;
+        t.serialize_element(&self.0)?;
+        t.serialize_element(&self.1)?;
+        t.serialize_element(&self.2)?;
+        if self.3 != 0 {
+            t.serialize_element(&self.3)?;
+        }
+        t.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for SavedItem {
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> serde::de::Visitor<'de> for V {
+            type Value = SavedItem;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("(name, count, wear) or (name, count, wear, sockets)")
+            }
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<SavedItem, A::Error> {
+                use serde::de::Error;
+                let name = seq.next_element()?.ok_or_else(|| A::Error::invalid_length(0, &self))?;
+                let count = seq.next_element()?.ok_or_else(|| A::Error::invalid_length(1, &self))?;
+                let damage = seq.next_element()?.ok_or_else(|| A::Error::invalid_length(2, &self))?;
+                let sockets = seq.next_element()?.unwrap_or(0);
+                Ok(SavedItem(name, count, damage, sockets))
+            }
+        }
+        de.deserialize_tuple(4, V)
     }
 }
 
@@ -400,6 +456,30 @@ mod tests {
         assert!(items.dig_time(&blocks, stone, Some(&pick)) < items.dig_time(&blocks, stone, None) / 4.0);
         let dirt = blocks.id("dirt").unwrap();
         assert_eq!(items.get(items.drops(&blocks, dirt, None, &mut rng)[0].item).name, "dirt");
+    }
+
+    #[test]
+    fn old_saves_load_and_sockets_round_trip() {
+        let (_, items) = regs();
+        let pick = items.id("wooden_pickaxe").unwrap();
+        // A stack written before sockets existed, alone and inside a list of optional slots.
+        let old: SavedItem = ron::from_str(r#"("wooden_pickaxe", 1, 12)"#).unwrap();
+        assert_eq!(old.stack(&items), Some(ItemStack { item: pick, count: 1, damage: 12, sockets: 0 }));
+        let list: Vec<Option<SavedItem>> = ron::from_str(r#"[Some(("stick", 5, 0)), None, Some(("wooden_pickaxe", 1, 3))]"#).unwrap();
+        assert_eq!(list.len(), 3);
+        assert_eq!(list[2].as_ref().unwrap().3, 0);
+        // Plain stacks are still written the old way; socketed ones carry a fourth number.
+        let plain = SavedItem::of(&items, &ItemStack::new(pick, 1));
+        assert_eq!(ron::to_string(&plain).unwrap(), r#"("wooden_pickaxe",1,0)"#);
+        let st = ItemStack { item: pick, count: 1, damage: 7, sockets: crate::gems::set_gem(crate::gems::ranked(3), 1, Some(crate::gems::Gem { kind: 2, cut: 1 })) };
+        let text = ron::to_string(&Some(SavedItem::of(&items, &st))).unwrap();
+        let back: Option<SavedItem> = ron::from_str(&text).unwrap();
+        assert_eq!(back.unwrap().stack(&items), Some(st));
+        // A stack serialized whole (older struct form) still loads with no sockets.
+        let s: ItemStack = ron::from_str("(item: 3, count: 2, damage: 0)").unwrap();
+        assert_eq!(s.sockets, 0);
+        // Socketed gear never stacks with plain gear.
+        assert!(!st.stacks_with(&ItemStack { sockets: 0, ..st }));
     }
 
     #[test]

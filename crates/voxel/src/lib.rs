@@ -4,6 +4,7 @@
 
 pub mod block;
 pub mod chunk;
+pub mod gems;
 pub mod item;
 pub mod light;
 pub mod mesh;
