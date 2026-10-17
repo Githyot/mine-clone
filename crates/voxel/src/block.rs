@@ -82,6 +82,8 @@ pub enum Shape {
     Bench,
     /// A shelf board on a wall, with two brackets under it.
     Shelf,
+    /// A sign: a board on a post (variant facing 0-3) or on a wall (4-7).
+    Sign,
 }
 
 impl Shape {
@@ -118,6 +120,7 @@ impl Shape {
                 | Shape::Pot
                 | Shape::Bench
                 | Shape::Shelf
+                | Shape::Sign
         )
     }
 }

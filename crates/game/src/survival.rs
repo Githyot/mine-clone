@@ -844,6 +844,7 @@ impl Game {
             let sneaking = self.crouch > 0.5;
             if !sneaking || self.held_stack().is_none() {
                 match name.as_str() {
+                    n if n.ends_with("_sign") => return self.edit_sign(hit.block),
                     "crafting_table" => {
                         self.open_container(Open::Table);
                         return true;
