@@ -1689,6 +1689,8 @@ impl Game {
                 let id = self.world.block_or_air(p);
                 let title = if crate::backpacks::is_backpack(p) {
                     "Mochila".to_string()
+                } else if p.x == crate::mods::aircraft::CARGO_X {
+                    "Porão".to_string()
                 } else if n == CHEST_SIZE { "Baú".to_string() } else { self.reg.get(self.reg.get(id).base).display_name.clone() };
                 self.ui.label(x0 + 8.0 * s, y0 + 6.0 * s, &title, dark, s);
                 for i in 0..n {

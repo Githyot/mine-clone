@@ -64,6 +64,10 @@ def paint(look, face, i, j, fw, fh, g, seed):
         t = 0.5 + 0.3 * n + (0.3 if j == 0 or i == 0 else 0.0) - (0.3 if j == fh - 1 else 0.0)
     elif pat == "petals":
         t = 0.3 + 0.6 * (abs((i - fw / 2) * (j - fh / 2)) % 5) / 5
+    elif pat == "planks":
+        t = 0.3 + 0.35 * n + 0.15 * jit - (0.3 if int(g[1] + 64) % 4 == 0 else 0.0)
+    elif pat == "cloth":
+        t = 0.45 + 0.25 * n + 0.1 * jit - (0.2 if int(g[2] + 64) % 6 == 0 or int(g[0] + 64) % 6 == 0 else 0.0)
     elif pat == "leaves":
         t = 0.2 + 0.7 * fbm(seed + 17, g[0], g[1], g[2], 1.5)
     if face == "top":

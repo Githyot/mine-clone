@@ -22,10 +22,17 @@ class Model:
         self.layers.append((part, inflate))
 
     def pack(self):
-        """Shelf-pack every part's unwrap into the skin; same size and look share pixels."""
+        """Shelf-pack every part's unwrap into the skin; same size and look share pixels. When
+        the parts don't fit in their own order, the tallest go first."""
+        try:
+            self._pack(self.parts)
+        except AssertionError:
+            self._pack(sorted(self.parts, key=lambda p: -(p["size"][2] + p["size"][1])))
+
+    def _pack(self, parts):
         x = y = shelf = 0
         seen = {}
-        for p in self.parts:
+        for p in parts:
             w, h, d = p["size"]
             key = (p["size"], p["look"]["key"])
             if key in seen:
@@ -308,6 +315,111 @@ m = biped(look("sthead", ["#0a1418", "#10222a"], eyes=((70, 230, 220), "glow"), 
           look("stleg", ["#081216", "#0e1f26"], pattern="sculk"), tall=18, slim=True, arms_forward=True)
 mob("otherside_stalker", "Espreitador", m, kind="Hostile", health=300, speed=3.0, size=(0.8, 3.0), spawn="Never",
     attack=14, boss=True, scale=1.2, drops=[("heart_of_the_deep", 1, 1), ("echo_crystal", 3, 6)], xp=60)
+
+# ---------------------------------------------------------------- Aircraft (Immersive Aircraft's idea)
+# Not creatures: the models of the aircraft in crates/game/src/mods/aircraft.rs, drawn like mobs.
+# Parts with Wing(0) spin about the forward axis (propellers), Wing(1) about the up axis (rotors),
+# Head turns with the warship's aim.
+wood = look("acwood", ["#4a2e16", "#6a4422", "#8a6034", "#a87c48"], pattern="planks")
+dark_wood = look("acdark", ["#2e1c0e", "#43291a", "#5a3a1c"], pattern="planks")
+metal = look("acmetal", ["#2c2f36", "#454951", "#666b74", "#8a9099"], pattern="plate")
+canvas_ = look("accloth", ["#a89c82", "#c4b89c", "#dcd2b8", "#ece4d0"], pattern="cloth")
+red = look("acred", ["#6a1e18", "#8a2a20", "#a8382a", "#c44a34"], pattern="cloth")
+blade = look("acblade", ["#3a2614", "#5a3a1c", "#7a5028"], pattern="noise")
+rope = look("acrope", ["#6a5a3a", "#8a7a52"], pattern="noise")
+bamboo = look("acbamboo", ["#4e6a2a", "#62822e", "#7a9a3a", "#94b450"], pattern="rings")
+chest = look("acchest", ["#5a3a1c", "#8a5a2a", "#b07a3a"], pattern="carved")
+
+
+def biplane():
+    m = Model()
+    m.box((6, 6, 20), (-3, 2, -10), wood)
+    m.box((6, 6, 2), (-3, 2, 8), metal)
+    for x in (-17, 3):
+        m.box((14, 1, 6), (x, 2, 1), red)
+        m.box((14, 1, 6), (x, 10, 1), red)
+    m.box((6, 1, 6), (-3, 10, 1), red)
+    for x in (-12, 11):
+        m.box((1, 8, 1), (x, 3, 3), metal)
+    m.box((1, 6, 4), (0, 8, -10), red)
+    m.box((12, 1, 4), (-6, 6, -10), red)
+    m.box((14, 2, 1), (-7, 4, 10), blade, "Wing(0)", (0, 5, 10))
+    for x in (-4, 3):
+        m.box((1, 2, 2), (x, 0, 4), metal)
+    return m
+
+
+def airship(cargo=False):
+    m = Model()
+    m.box((12, 10, 12), (-6, 18, 0), canvas_)
+    m.box((12, 10, 12), (-6, 18, -12), canvas_)
+    m.box((8, 6, 2), (-4, 20, 12), canvas_)
+    m.box((8, 6, 2), (-4, 20, -14), canvas_)
+    m.box((8, 4, 12), (-4, 0, -6), wood)
+    for x, z in ((-4, -5), (3, -5), (-4, 4), (3, 4)):
+        m.box((1, 14, 1), (x, 4, z), rope)
+    m.box((1, 8, 5), (0, 22, -19), red)
+    m.box((10, 1, 5), (-5, 23, -19), red)
+    m.box((4, 4, 2), (-2, 0, -8), metal)
+    m.box((10, 2, 1), (-5, 1, -9), blade, "Wing(0)", (0, 2, -9))
+    if cargo:
+        m.box((6, 4, 6), (-3, 4, -3), chest)
+    return m
+
+
+def gyrodyne():
+    m = Model()
+    m.box((6, 6, 14), (-3, 1, -7), wood)
+    m.box((2, 8, 2), (-1, 7, -1), metal)
+    m.box((28, 1, 2), (-14, 15, -1), blade, "Wing(1)", (0, 15, 0))
+    m.box((2, 2, 10), (-1, 4, -17), wood)
+    m.box((1, 5, 3), (0, 4, -20), red)
+    m.box((10, 2, 1), (-5, 4, 7), blade, "Wing(0)", (0, 5, 7))
+    for x in (-4, 3):
+        m.box((1, 1, 12), (x, 0, -6), metal)
+    m.box((6, 4, 1), (-3, 7, -5), dark_wood)
+    return m
+
+
+def quadrocopter():
+    m = Model()
+    m.box((8, 3, 8), (-4, 2, -4), bamboo)
+    m.box((20, 1, 2), (-10, 4, -1), bamboo)
+    m.box((2, 1, 20), (-1, 4, -10), bamboo)
+    centers = ((-9, 0), (9, 0), (0, -9), (0, 9))
+    for cx, cz in centers:
+        m.box((2, 3, 2), (cx - 1, 5, cz - 1), metal)
+    for cx, cz in centers:
+        m.box((8, 1, 1), (cx - 4, 8, cz), blade, "Wing(1)", (cx, 8, cz))
+    for x in (-4, 3):
+        m.box((1, 2, 8), (x, 0, -4), bamboo)
+    return m
+
+
+def warship():
+    m = Model()
+    m.box((14, 6, 12), (-7, 0, 0), dark_wood)
+    m.box((14, 6, 12), (-7, 0, -12), dark_wood)
+    m.box((8, 4, 4), (-4, 1, 12), dark_wood)
+    m.box((8, 6, 8), (-4, 6, -10), wood)
+    m.box((12, 8, 14), (-6, 18, 0), red)
+    m.box((12, 8, 14), (-6, 18, -14), red)
+    for x, z in ((-6, -10), (5, -10), (-6, 9), (5, 9)):
+        m.box((1, 12, 1), (x, 6, z), rope)
+    m.box((4, 2, 4), (-2, 6, 4), metal)
+    m.box((2, 2, 8), (-1, 8, 4), metal, "Head", (0, 9, 6))
+    m.box((8, 2, 1), (-12, 2, -13), blade, "Wing(0)", (-8, 3, -13))
+    m.box((8, 2, 1), (4, 2, -13), blade, "Wing(0)", (8, 3, -13))
+    return m
+
+
+AIRCRAFT = dict(health=20, speed=0.0, spawn="Never")
+mob("biplane", "Biplano", biplane(), size=(2.0, 1.2), scale=1.5, **AIRCRAFT)
+mob("airship", "Dirigível", airship(), size=(1.6, 3.4), scale=2.0, **AIRCRAFT)
+mob("cargo_airship", "Dirigível de Carga", airship(True), size=(1.6, 3.4), scale=2.0, **AIRCRAFT)
+mob("gyrodyne", "Girodino", gyrodyne(), size=(1.4, 1.6), scale=1.5, **AIRCRAFT)
+mob("quadrocopter", "Quadricóptero", quadrocopter(), size=(1.4, 0.9), scale=1.3, **AIRCRAFT)
+mob("warship", "Navio de Guerra Aéreo", warship(), size=(2.2, 3.2), scale=2.0, **AIRCRAFT)
 
 # Egg colours: (base, spots).
 EGGS = {

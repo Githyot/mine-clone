@@ -6,6 +6,7 @@
 //! read after the base game's files.
 
 pub mod aether;
+pub mod aircraft;
 pub mod dwellers;
 pub mod mounts;
 pub mod portals;
@@ -26,6 +27,8 @@ pub struct ModSave {
     pub sensors: Vec<[i32; 3]>,
     /// Buildings whose dwellers were already spawned: origin and dimension.
     pub dwellers: Vec<[i32; 4]>,
+    /// Aircraft in every dimension except the loaded one (those live in `Mods::aircraft`).
+    pub aircraft: Vec<aircraft::Plane>,
 }
 
 #[derive(Default)]
@@ -37,6 +40,7 @@ pub struct Mods {
     dwell_t: f32,
     pub aether: aether::Aether,
     pub mount: mounts::Mount,
+    pub aircraft: aircraft::Aircraft,
     /// How the player arrives in the dimension being loaded, when a mod portal sent them.
     pub arriving: Option<portals::Arrive>,
 }
@@ -56,7 +60,8 @@ impl Game {
         if !self.world_open {
             return;
         }
-        if let Ok(text) = ron::ser::to_string_pretty(&self.mods.save, ron::ser::PrettyConfig::default()) {
+        let save = ModSave { aircraft: self.aircraft_to_save(), ..self.mods.save.clone() };
+        if let Ok(text) = ron::ser::to_string_pretty(&save, ron::ser::PrettyConfig::default()) {
             let _ = std::fs::write(self.mods_file(), text);
         }
     }
@@ -72,17 +77,19 @@ impl Game {
         if dt > 0.0 {
             self.update_dwellers(dt);
             self.update_mount(dt);
+            self.update_aircraft(dt);
         }
     }
 
     /// Test hooks run once the world around the player has loaded (MC_* variables).
     pub(crate) fn mods_test_hooks(&mut self) {
         self.seasons_test_hook();
+        self.aircraft_test_hook();
     }
 
     /// Right click: a mod block or item that does something. True when it was used.
     pub(crate) fn mods_use(&mut self) -> bool {
-        self.aether_use() || self.seasons_use()
+        self.aircraft_use() || self.aether_use() || self.seasons_use()
     }
 
     /// A key went down. True when a mod used it.
@@ -98,5 +105,6 @@ impl Game {
     /// HUD bits drawn over the game view.
     pub(crate) fn draw_mods_hud(&mut self, w: f32, h: f32) {
         self.draw_season_hud(w, h);
+        self.draw_aircraft_hud(w, h);
     }
 }

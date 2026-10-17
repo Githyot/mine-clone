@@ -116,6 +116,9 @@ pub enum Sfx {
     Portal,
     /// A tune on an instrument (Immersive Melodies idea): instrument 0 lute, 1 flute, 2 cello.
     Melody(u8, u8),
+    /// One beat of an aircraft's engine (Immersive Aircraft idea): 0 piston engine, 1 rotor,
+    /// 2 airship's slow chug. The second value is the throttle in quarters (0..4).
+    Engine(u8, u8),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

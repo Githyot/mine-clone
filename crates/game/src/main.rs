@@ -1662,7 +1662,7 @@ impl Game {
         let was_ground = self.body.on_ground;
         // The camera pass for screenshots holds still.
         if self.args.screenshot.is_none() {
-            if !self.seat_step(input.sneak) && !self.ride_step(wish, input.sneak) {
+            if !self.seat_step(input.sneak) && !self.ride_step(wish, input.sneak) && !self.pilot_step(wish, input.sneak, dt) {
                 self.body.step(&self.world, &input, dt);
             }
         } else {
@@ -1771,7 +1771,7 @@ impl Game {
         let attack = self.mouse_held[0] || self.pad_held.contains(&Action::Attack);
         let use_ = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
         self.attack_cd -= dt;
-        if attack && self.attack_cd <= 0.0 && self.break_cd <= 0.0 && self.cart_attack() {
+        if attack && self.attack_cd <= 0.0 && self.break_cd <= 0.0 && (self.aircraft_attack() || self.cart_attack()) {
             self.attack_cd = 0.3;
             self.break_cd = 0.3;
         }
@@ -2177,7 +2177,7 @@ impl Game {
             sprinting: self.sprinting,
             burning,
             hurt: self.survival && self.hurt_age < 0.3,
-            sitting: self.riding.is_some() || self.seat.is_some(),
+            sitting: self.riding.is_some() || self.seat.is_some() || self.mods.aircraft.pilot.is_some(),
         }
     }
 
@@ -3790,6 +3790,7 @@ impl Game {
             items.push((self.entities.painting_mesh(p.def), p.bones(block, &self.world)));
         }
         items.extend(self.cart_instances(block));
+        items.extend(self.aircraft_instances(block));
         // The player figure in the inventory, in 3D, turning its head toward the mouse.
         let mut figure_backdrop = None;
         if let (Some((bx, by, bw, bh)), Some(pd)) = (self.surv.figure_box.take(), self.mobs.reg.id("player")) {
