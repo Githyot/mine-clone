@@ -2215,6 +2215,8 @@ def item_registry():
         "gold_nugget": gold_nugget, "quartz": quartz, "nether_brick": nether_brick_item,
         "bone_meal": bone_meal, "pumpkin_seeds": pumpkin_seeds, "melon_seeds": melon_seeds, "melon_slice": melon_slice,
         "sugar_cane": sugar_cane_item, "sugar": sugar, "paper": paper,
+        "slime_ball": lambda: lump("slime_ball", pal("#2a7a1e", "#3a9a2a", "#52b23a", "#6cc84e", "#8ade6a")),
+        "turtle_scute": lambda: lump("turtle_scute", pal("#1e3a14", "#2a4e1c", "#3a6426", "#4a7a30", "#5e9040")),
         "wheat_seeds": wheat_seeds, "wheat": wheat_item, "bread": bread, "carrot": carrot, "potato": potato,
         "baked_potato": lambda: potato(True), "beetroot": beetroot, "beetroot_seeds": beetroot_seeds,
         "ender_pearl": ender_pearl, "ender_eye": ender_eye, "chorus_fruit": chorus_fruit, "popped_chorus_fruit": popped_chorus_fruit,

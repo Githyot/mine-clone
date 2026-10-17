@@ -153,6 +153,8 @@
     (name: "lute", display_name: Some("Alaúde"), max_stack: Some(1)),
     (name: "flute", display_name: Some("Flauta"), max_stack: Some(1)),
     (name: "cello", display_name: Some("Violoncelo"), max_stack: Some(1)),
+    (name: "slime_ball", display_name: Some("Bola de Gosma")),
+    (name: "turtle_scute", display_name: Some("Escama de Tartaruga")),
     (name: "bone_meal", display_name: Some("Farinha de Osso")),
     (name: "pumpkin_seeds", display_name: Some("Sementes de Abóbora"), places: Some("pumpkin_stem_stage0")),
     (name: "melon_seeds", display_name: Some("Sementes de Melancia"), places: Some("melon_stem_stage0")),

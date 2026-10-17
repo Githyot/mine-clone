@@ -70,6 +70,9 @@ ROLES = {
     "bear": ["body", "head", "snout", "ear", "ear", "hump", "leg", "leg", "leg", "leg"],
     "duck": ["body", "head", "bill", "tail", "wing", "wing", "leg", "leg"],
     "forest_guardian": ["head", "body", "arm", "arm", "leg", "leg", "branch", "branch"],
+    "horse": ["body", "neck", "head", "ear", "ear", "mane", "tail", "leg", "leg", "leg", "leg"],
+    "ooze": ["body"],
+    "turtle": ["shell", "body", "head", "leg", "leg", "leg", "leg"],
     "npc_guide": ["head", "body", "arm", "arm", "leg", "leg"],
     "npc_merchant": ["head", "body", "arm", "arm", "leg", "leg"],
     "npc_nurse": ["head", "body", "arm", "arm", "leg", "leg"],
@@ -81,6 +84,9 @@ ROLES = {
 
 # (size, origin, uv) per part, mirroring mobs.ron.
 HARDCODED = {
+    "horse": [((10, 10, 22), (-5, 11, -11), (0, 0)), ((4, 12, 6), (-2, 17, 8), (0, 32)), ((6, 6, 10), (-3, 25, 9), (20, 32)), ((2, 3, 1), (-3, 31, 10), (52, 32)), ((2, 3, 1), (1, 31, 10), (52, 32)), ((2, 12, 4), (-1, 19, 5), (52, 36)), ((3, 10, 3), (-1, 8, -13), (0, 50)), ((3, 11, 3), (-4, 0, -9), (12, 50)), ((3, 11, 3), (1, 0, -9), (12, 50)), ((3, 11, 3), (-4, 0, 6), (12, 50)), ((3, 11, 3), (1, 0, 6), (12, 50))],
+    "ooze": [((8, 8, 8), (-4, 0, -4), (0, 0))],
+    "turtle": [((12, 4, 14), (-6, 4, -7), (0, 0)), ((10, 3, 12), (-5, 1, -6), (0, 18)), ((4, 4, 5), (-2, 2, 6), (0, 34)), ((3, 2, 3), (-6, 0, -6), (20, 34)), ((3, 2, 3), (3, 0, -6), (20, 34)), ((3, 2, 3), (-6, 0, 3), (20, 34)), ((3, 2, 3), (3, 0, 3), (20, 34))],
     "pig": [((10, 8, 16), (-5, 6, -8), (0, 0)), ((8, 8, 8), (-4, 8, 7), (0, 24)),
             ((4, 3, 1), (-2, 9, 15), (32, 24)), ((4, 6, 4), (-5, 0, -7), (0, 40)),
             ((4, 6, 4), (1, 0, -7), (0, 40)), ((4, 6, 4), (-5, 0, 3), (0, 40)),
@@ -151,6 +157,7 @@ for _n in ("npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", 
 
 # `layers` per mob as (part index, inflate), mirroring mobs.ron (checked).
 HARDCODED_LAYERS = {
+    "horse": [], "ooze": [], "turtle": [],
     "pig": [(0, 0.5), (1, 0.5)],
     "cow": [(0, 0.6), (1, 0.5)],
     "sheep": [(0, 1.5), (1, 1.0), (2, 0.6), (3, 0.6), (4, 0.6), (5, 0.6)],
@@ -1497,6 +1504,38 @@ TOWNSFOLK = {
 }
 
 
+HORSE = pal("#4a2c16", "#5a361c", "#6a4022", "#7a4a2a", "#8a5632", "#9a623a")
+HORSE_MANE = pal("#1a120c", "#241810", "#2e2016", "#38281c")
+HORSE_HOOF = pal("#1e1814", "#2a221c", "#36302a")
+OOZE = pal("#3a8a2a", "#4aa034", "#5ab43e", "#6ac84a", "#7ad858")
+OOZE_DARK = pal("#1a4a12", "#24601a")
+TURTLE_SHELL = pal("#1e3a14", "#2a4e1c", "#3a6426", "#4a7a30")
+TURTLE_SKIN = pal("#4a7a3a", "#5a8e48", "#6aa058", "#7ab268")
+
+
+def simple_painter(roles, eyes="head"):
+    """A plain painter: each role takes a palette (by global name, so recolours work), with
+    a little noise, darker undersides and two eyes on the front of the head."""
+    def paint(c):
+        g = globals()
+        palette = g[roles.get(c.role, roles["*"])]
+        n = fbm(c.seed, c.gx, c.gy, c.gz, 4.0)
+        t = 0.2 + 0.6 * n + 0.25 * (c.jit - 0.5)
+        if c.face == "bottom":
+            t -= 0.25
+        elif c.face == "top":
+            t += 0.1
+        col = pick(palette, t)
+        if c.role == eyes and c.face == "front":
+            ey = max(1, c.fh // 3)
+            if c.j == ey and c.i in (1, c.fw - 2):
+                return (16, 12, 10)
+            if c.j == ey and c.i in (2, c.fw - 3) and c.fw >= 6:
+                return (220, 214, 200)
+        return col
+    return paint
+
+
 def townsfolk(name, base, colours=None):
     colours = colours or TOWNSFOLK[name]
 
@@ -1651,6 +1690,52 @@ RECOLORED = {
         ROOT_C=pal("#bdb889", "#cdc898", "#dbd6a6"),
         GLOW=(230, 140, 255),
         GLOW_DIM=(140, 60, 180))),
+    # Vanilla animals and monsters (our own names for the monsters).
+    "donkey": ("horse", dict(HORSE=pal("#5a5450", "#686260", "#76706c", "#847e7a", "#928c88", "#a09a96"),
+                             HORSE_MANE=pal("#2a2420", "#36302a", "#423a34", "#4e463e"))),
+    "llama": ("horse", dict(HORSE=pal("#b4a080", "#c4b090", "#d2c0a0", "#ded0b2", "#e8dcc2", "#f0e6d0"),
+                            HORSE_MANE=pal("#a08a6a", "#b09a7a", "#c0aa8a", "#ceba9a"))),
+    "camel": ("cow", dict(
+        COW_BROWN=pal("#9a7440", "#aa824a", "#ba9256", "#c8a062"),
+        COW_WHITE=pal("#b08a52", "#be985e", "#cca66a", "#d8b476"),
+        COW_MUZZLE=pal("#8a6a40", "#9a784a", "#aa8654"),
+        COW_HORN=pal("#9a7440", "#aa824a", "#ba9256"))),
+    "wolf": ("fox", dict(
+        FOX=pal("#5a5650", "#6a665e", "#7a766e", "#8a867e", "#9a968e", "#aaa69e"),
+        FOX_WHITE=pal("#bcb8b0", "#ccc8c0", "#dcd8d0", "#e8e4dc"),
+        FOX_BLACK=pal("#1e1c1a", "#2a2826", "#363432"))),
+    "cat": ("fox", dict(
+        FOX=pal("#2a2622", "#36302a", "#423a32", "#4e463c", "#5a5046", "#665a50"),
+        FOX_WHITE=pal("#d0ccc4", "#dcd8d0", "#e8e4dc", "#f2eee8"),
+        FOX_BLACK=pal("#141210", "#1e1a18", "#282420"))),
+    "goat": ("deer", dict(
+        DEER=pal("#b8b2a6", "#c6c0b4", "#d2ccc0", "#dcd8cc", "#e6e2d8", "#eeeae2"),
+        DEER_PALE=pal("#d8d4cc", "#e2ded6", "#eae6e0", "#f4f0ea"),
+        DEER_DARK=pal("#5a5650", "#6a665e"),
+        ANTLER=pal("#5a5246", "#6e6656", "#827a68", "#968e7a"))),
+    "panda": ("bear", dict(
+        BEAR=pal("#c8c4bc", "#d4d0c8", "#dedad2", "#e6e2dc", "#eeeae4", "#f6f4ee"),
+        BEAR_MUZZLE=pal("#1a1816", "#24221e", "#2e2c28", "#383632"))),
+    "parrot": ("duck", dict(
+        DUCK_GRAY=pal("#a01414", "#b81c1c", "#cc2626", "#dc3030", "#e83c3c"),
+        DUCK_BACK=pal("#1a5a9a", "#226ab0", "#2a7ac4"),
+        DUCK_CHEST=pal("#d0a020", "#e0b02a", "#ecc036", "#f6d044"),
+        DUCK_GREEN=pal("#a01414", "#b81c1c", "#cc2626", "#dc3030", "#e83c3c"),
+        DUCK_BILL=pal("#2a2a2e", "#36363a", "#424246", "#4e4e52"),
+        SPECULUM=pal("#1a8a3a", "#22a046", "#2ab452"))),
+    "frog": ("rabbit", dict(
+        RABBIT=pal("#3a5a1a", "#466a20", "#527a28", "#5e8a30", "#6a9a3a", "#76aa44"),
+        RABBIT_PALE=pal("#a8b878", "#b8c888", "#c8d898", "#d8e6aa"),
+        RABBIT_PINK=pal("#2a3a14", "#36481a", "#425620"))),
+    "mummy": ("zombie", dict(
+        ZSKIN=pal("#8a7450", "#9a845c", "#aa9468", "#b8a274", "#c6b080"),
+        ZSHIRT=pal("#b0a488", "#c0b498", "#cec4a8", "#dad2b8"),
+        ZPANTS=pal("#9a8e72", "#aa9e82", "#b8ae92", "#c6bca2"))),
+    "sunken": ("zombie", dict(
+        ZSKIN=pal("#2a5a5a", "#326a68", "#3a7a76", "#448a84", "#4e9a92"),
+        ZSHIRT=pal("#2a3a5a", "#32466a", "#3a527a", "#445e8a"),
+        ZPANTS=pal("#1a2a3a", "#223446", "#2a3e52", "#32485e"))),
+    "frost_archer": ("skeleton", dict(BONE=pal("#7a9aa8", "#98b6c2", "#b4ced8", "#cce2ea", "#e2f2f8"))),
 }
 for _n, (_b, _) in RECOLORED.items():
     ROLES[_n] = ROLES[_b]
@@ -1667,6 +1752,9 @@ PAINTERS = {
     "player": paint_player,
     "deer": paint_deer, "fox": paint_fox, "rabbit": paint_rabbit, "bear": paint_bear,
     "duck": paint_duck, "forest_guardian": paint_forest_guardian,
+    "horse": simple_painter({"*": "HORSE", "mane": "HORSE_MANE", "tail": "HORSE_MANE"}),
+    "ooze": simple_painter({"*": "OOZE"}, eyes="body"),
+    "turtle": simple_painter({"*": "TURTLE_SKIN", "shell": "TURTLE_SHELL"}),
 }
 for _n in TOWNSFOLK:
     PAINTERS[_n] = townsfolk(_n, paint_player)
@@ -2011,6 +2099,7 @@ OVERLAYS = {
     "player": overlay_player,
     "deer": overlay_deer, "fox": overlay_fox, "rabbit": overlay_rabbit, "bear": overlay_bear,
     "duck": overlay_duck, "forest_guardian": overlay_forest_guardian,
+    "horse": lambda c: None, "ooze": lambda c: None, "turtle": lambda c: None,
 }
 for _n in TOWNSFOLK:
     OVERLAYS[_n] = townsfolk(_n, overlay_player)
@@ -2104,7 +2193,8 @@ def main():
              "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian",
              "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
              "goblin_trader", "mutant_zombie", "npc_guard", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton",
-             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay", "lich", "obsidilith", "void_blossom", "marauder", "invoker", "brute", "ember_wraith", "void_walker_desert", "void_walker_snowy", "void_walker_swamp", "void_walker_savanna", "void_walker_crimson", "void_walker_soul"]
+             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay", "lich", "obsidilith", "void_blossom", "marauder", "invoker", "brute", "ember_wraith", "void_walker_desert", "void_walker_snowy", "void_walker_swamp", "void_walker_savanna", "void_walker_crimson", "void_walker_soul",
+             "horse", "donkey", "llama", "camel", "wolf", "cat", "goat", "panda", "parrot", "frog", "turtle", "ooze", "mummy", "sunken", "frost_archer"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols
