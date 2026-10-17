@@ -2606,6 +2606,55 @@ def composter_top(ready=False):
     return img
 
 
+MYCELIUM = pal("#5a4a5a", "#6a5868", "#7a6676", "#8a7484", "#9a8494")
+
+
+def mycelium_top():
+    rng = rng_for("mycelium_top")
+    f = 0.6 * fbm(rng, ((4, 0.4), (2, 0.6))) + 0.4 * rng.random((N, N))
+    img = from_rgb(shade(f, MYCELIUM, 0.6))
+    for _ in range(10):
+        x, y = rng.integers(0, N, 2)
+        put(img, x, y, hexrgb("#b8a8b4"))
+    return img
+
+
+def mushroom_block(name, p, spots=None):
+    rng = rng_for(name)
+    f = fbm(rng, ((4, 0.4), (2, 0.6)))
+    img = from_rgb(shade(f, p, 0.6))
+    if spots:
+        for _ in range(5):
+            x, y = rng.integers(1, N - 2, 2)
+            for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1)):
+                put(img, x + dx, y + dy, spots[int(rng.integers(0, len(spots)))])
+    return img
+
+
+def mushroom_stem():
+    rng = rng_for("mushroom_stem")
+    p = pal("#bab2a0", "#c8c0ae", "#d6cebc", "#e2dccc")
+    f = 0.5 * fbm(rng, ((8, 0.3), (2, 0.7))) + 0.5 * rng.random((N, N)) * 0.4
+    img = from_rgb(shade(f, p, 0.5))
+    for x in (3, 9, 13):
+        img[:, x, :3] = scale_rgb(img[:, x, :3], 0.9)
+    return img
+
+
+FLOWERS = {
+    "cornflower": (pal("#22408a", "#3a5cb8", "#5a7cd8"), "#1a2a5a", 7, False),
+    "allium": (pal("#7a3aa0", "#9a52c4", "#b874dc"), "#5a2a7a", 5, True),
+    "azure_bluet": (pal("#b8bcc8", "#d8dce4", "#f0f2f6"), "#e8c840", 9, False),
+    "oxeye_daisy": (pal("#c8c8c0", "#e0e0d8", "#f6f6f0"), "#e8b820", 7, True),
+    "red_tulip": (pal("#8a1210", "#b82018", "#d83424"), "#5a0e0a", 6, False),
+    "orange_tulip": (pal("#b04a10", "#d8661a", "#f08428"), "#7a300a", 6, False),
+    "white_tulip": (pal("#b8b8b0", "#d4d4cc", "#ececE4"), "#8a8a80", 6, False),
+    "pink_tulip": (pal("#c06a84", "#dc8aa2", "#f0a8bc"), "#8a4a5c", 6, False),
+    "blue_orchid": (pal("#1a6aa8", "#2a8ad0", "#48aaec"), "#0e3a6a", 6, True),
+    "lily_of_the_valley": (pal("#c8ccc4", "#e0e4dc", "#f8faf4"), "#a8aca4", 8, False),
+}
+
+
 def farming_registry():
     reg = {"farmland": farmland, "hay_block_side": hay_block_side, "hay_block_top": hay_block_top,
            "botany_pot_side": botany_pot_side, "botany_pot_top": botany_pot_top, "botany_pot_empty": botany_pot_empty,
@@ -2622,6 +2671,13 @@ def farming_registry():
     for wood in ("oak", "birch", "spruce") + NEW_WOODS:
         reg[f"{wood}_drawer_front"] = lambda w=wood: drawer_front(w)
     reg["sugar_cane"] = sugar_cane_block
+    reg["mycelium_top"] = mycelium_top
+    reg["mycelium_side"] = lambda: fringe_side("mycelium_side", MYCELIUM)
+    reg["mushroom_stem"] = mushroom_stem
+    reg["red_mushroom_block"] = lambda: mushroom_block("red_mushroom_block", pal("#8a1410", "#a81c16", "#c0241c", "#d02e24"), [hexrgb("#e8e4dc"), hexrgb("#d4d0c8")])
+    reg["brown_mushroom_block"] = lambda: mushroom_block("brown_mushroom_block", pal("#6a5038", "#7a5e44", "#8a6c50", "#9a7a5c"))
+    for fname, (petal, center, hy, big) in FLOWERS.items():
+        reg[fname] = lambda fname=fname, petal=petal, center=center, hy=hy, big=big: flower(fname, petal, hexrgb(center), hy, big)
     reg["composter_side"] = composter_side
     reg["composter_top"] = composter_top
     reg["composter_ready"] = lambda: composter_top(True)

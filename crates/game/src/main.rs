@@ -1396,6 +1396,10 @@ impl Game {
                     // Test hook: a small field in front, some of it ripe.
                     self.test_farm();
                 }
+                if let Ok(name) = std::env::var("MC_BIOME") {
+                    // Test hook: stand in the nearest biome of that name (e.g. "Meadow").
+                    self.test_biome(&name);
+                }
                 if let Ok(kind) = std::env::var("MC_CAVE") {
                     // Test hook: stand in a cave biome.
                     self.test_cave(&kind);

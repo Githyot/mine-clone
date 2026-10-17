@@ -15,6 +15,26 @@ const SAMPLES: f32 = 260.0;
 const RANGE: i32 = 14;
 
 impl Game {
+    /// Test hook: stand on the surface of the nearest biome named `name`, a little up in the air.
+    pub(crate) fn test_biome(&mut self, name: &str) {
+        let me = self.body.pos.floor().as_ivec3();
+        for r in (0..6000).step_by(24) {
+            for k in 0..(r / 12).max(1) {
+                let a = k as f32 / (r / 12).max(1) as f32 * std::f32::consts::TAU;
+                let (x, z) = (me.x + (a.cos() * r as f32) as i32, me.z + (a.sin() * r as f32) as i32);
+                if self.world.gen.biome_at(x, z).name() != name {
+                    continue;
+                }
+                let h = self.world.gen.height_at(x, z).max(voxel::worldgen::SEA_LEVEL);
+                self.body.pos = Vec3::new(x as f32 + 0.5, h as f32 + 6.0, z as f32 + 0.5);
+                self.body.flying = true;
+                log::info!("biome {name} at {x},{h},{z}");
+                return;
+            }
+        }
+        log::warn!("no {name} found");
+    }
+
     /// Test hook: stand in the nearest open cave of a cave biome (MC_CAVE=lush|frozen|dripstone).
     pub(crate) fn test_cave(&mut self, kind: &str) {
         use voxel::worldgen::CaveBiome;

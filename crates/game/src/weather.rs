@@ -176,5 +176,5 @@ impl Weather {
 }
 
 fn cold(b: Biome) -> bool {
-    matches!(b, Biome::Snowy | Biome::Taiga)
+    matches!(b, Biome::Snowy | Biome::Taiga | Biome::SnowyPeaks | Biome::FrozenOcean)
 }
