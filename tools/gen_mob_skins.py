@@ -2208,7 +2208,7 @@ def checker(size, cell=8):
 def main():
     parsed, parsed_layers = parse_mobs(MOBS_RON)
     # Models painted by their own scripts (tools/gen_minecart.py).
-    for other in ("minecart",):
+    for other in ("minecart", "boat"):
         parsed.pop(other, None)
         parsed_layers.pop(other, None)
     assert set(parsed) == set(ROLES), f"mob list differs: {sorted(parsed)}"

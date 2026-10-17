@@ -181,6 +181,13 @@
     // Wax for copper. Until there are bees, flowers drop it now and then.
     (name: "honeycomb", display_name: Some("Favo de Mel")),
     (name: "minecart", display_name: Some("Carrinho de Mina"), max_stack: Some(1)),
+    (name: "oak_boat", display_name: Some("Barco de Carvalho"), max_stack: Some(1)),
+    (name: "spruce_boat", display_name: Some("Barco de Pinheiro"), max_stack: Some(1)),
+    (name: "birch_boat", display_name: Some("Barco de Bétula"), max_stack: Some(1)),
+    (name: "jungle_boat", display_name: Some("Barco de Selva"), max_stack: Some(1)),
+    (name: "acacia_boat", display_name: Some("Barco de Acácia"), max_stack: Some(1)),
+    (name: "dark_oak_boat", display_name: Some("Barco de Carvalho Escuro"), max_stack: Some(1)),
+    (name: "cherry_boat", display_name: Some("Barco de Cerejeira"), max_stack: Some(1)),
     // Backpacks (ideas from Sophisticated Backpacks): right click opens them; upgrades keep the contents.
     (name: "leather_backpack", display_name: Some("Mochila de Couro"), max_stack: Some(1)),
     (name: "iron_backpack", display_name: Some("Mochila de Ferro"), max_stack: Some(1)),

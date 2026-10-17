@@ -436,6 +436,13 @@
         (pattern: ["I I", "IPI", "IRI"], key: {'I': "iron_ingot", 'P': "stone_pressure_plate", 'R': "redstone"}, result: "detector_rail", count: 6),
         (pattern: ["ISI", "ITI", "ISI"], key: {'I': "iron_ingot", 'S': "stick", 'T': "redstone_torch"}, result: "activator_rail", count: 6),
         (pattern: ["I I", "III"], key: {'I': "iron_ingot"}, result: "minecart"),
+        (pattern: ["P P", "PPP"], key: {'P': "oak_planks"}, result: "oak_boat"),
+        (pattern: ["P P", "PPP"], key: {'P': "spruce_planks"}, result: "spruce_boat"),
+        (pattern: ["P P", "PPP"], key: {'P': "birch_planks"}, result: "birch_boat"),
+        (pattern: ["P P", "PPP"], key: {'P': "jungle_planks"}, result: "jungle_boat"),
+        (pattern: ["P P", "PPP"], key: {'P': "acacia_planks"}, result: "acacia_boat"),
+        (pattern: ["P P", "PPP"], key: {'P': "dark_oak_planks"}, result: "dark_oak_boat"),
+        (pattern: ["P P", "PPP"], key: {'P': "cherry_planks"}, result: "cherry_boat"),
         // Backpacks.
         (pattern: ["LSL", "LCL", "LLL"], key: {'L': "leather", 'S': "string", 'C': "chest"}, result: "leather_backpack"),
         (pattern: ["III", "IBI", "III"], key: {'I': "iron_ingot", 'B': "leather_backpack"}, result: "iron_backpack"),

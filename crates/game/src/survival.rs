@@ -108,6 +108,8 @@ pub struct Survival {
     pub corpses: Vec<Corpse>,
     /// Minecarts in the world.
     pub carts: Vec<crate::rails::Minecart>,
+    /// Boats in the world.
+    pub boats: Vec<crate::boats::Boat>,
     /// The second hand's slot (holds anything; nothing uses it yet).
     pub offhand: Option<ItemStack>,
     /// Creative inventory: open tab, first row shown, and the search text.
@@ -174,6 +176,7 @@ impl Survival {
             orbs: Vec::new(),
             corpses: Vec::new(),
             carts: Vec::new(),
+            boats: Vec::new(),
             offhand: None,
             ctab: 0,
             cscroll: 0,
@@ -275,6 +278,9 @@ struct Saved {
     /// Minecarts: where and which way.
     #[serde(default)]
     carts: Vec<([f32; 3], f32)>,
+    /// Boats: where, which way and which wood.
+    #[serde(default)]
+    boats: Vec<([f32; 3], f32, String)>,
 }
 
 fn save_stacks(items: &ItemRegistry, inv: &Inventory) -> Vec<SavedStack> {
@@ -313,6 +319,7 @@ impl Survival {
             armor: self.armor.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect(),
             offhand: self.offhand.map(|s| (items.get(s.item).name.clone(), s.count, s.damage)),
             carts: self.carts.iter().map(|c| (c.body.pos.to_array(), c.yaw)).collect(),
+            boats: self.boats.iter().map(|b| (b.pos.to_array(), b.yaw, b.item.clone())).collect(),
             corpses: self
                 .corpses
                 .iter()
@@ -356,6 +363,7 @@ impl Survival {
             sv.armor[i] = a;
         }
         sv.carts = s.carts.iter().map(|(p, yaw)| crate::rails::Minecart::new(Vec3::from(*p), *yaw)).collect();
+        sv.boats = s.boats.iter().map(|(p, yaw, item)| crate::boats::Boat::new(Vec3::from(*p), *yaw, item)).collect();
         sv.saplings = s.saplings.into_iter().map(|(p, t)| (IVec3::from(p), t)).collect();
         sv.offhand = load_stacks(items, std::slice::from_ref(&s.offhand), 1).slots[0];
         sv

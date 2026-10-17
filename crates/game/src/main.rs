@@ -18,6 +18,7 @@ mod bosses;
 mod npcs;
 mod pets;
 mod raids;
+mod boats;
 mod villages;
 mod explore;
 mod signs;
@@ -494,6 +495,8 @@ struct Game {
     hopper_t: f32,
     /// The cart the player sits in.
     riding: Option<usize>,
+    /// The boat the player sits in.
+    boating: Option<usize>,
     /// The chair the player sits on.
     seat: Option<IVec3>,
     /// Which dimension is loaded, time spent standing in a portal, and where a trip lands.
@@ -823,6 +826,7 @@ impl Game {
             tnt: Vec::new(),
             hopper_t: 0.0,
             riding: None,
+            boating: None,
             seat: None,
             dim: voxel::worldgen::Dim::Overworld,
             portal_t: 0.0,
@@ -1323,6 +1327,7 @@ impl Game {
             self.update_fishing(dt);
             self.update_redstone(dt);
             self.update_carts(dt);
+            self.update_boats(dt);
             self.update_random_ticks(dt);
             self.update_farmers(dt);
             self.update_walkers(dt);
@@ -1664,7 +1669,7 @@ impl Game {
         let was_ground = self.body.on_ground;
         // The camera pass for screenshots holds still.
         if self.args.screenshot.is_none() {
-            if !self.seat_step(input.sneak) && !self.ride_step(wish, input.sneak) && !self.mount_step(wish, input.jump, input.sneak, dt) {
+            if !self.seat_step(input.sneak) && !self.ride_step(wish, input.sneak) && !self.boat_step(wish, input.sneak, dt) && !self.mount_step(wish, input.jump, input.sneak, dt) {
                 self.body.step(&self.world, &input, dt);
             }
         } else {
@@ -1773,7 +1778,7 @@ impl Game {
         let attack = self.mouse_held[0] || self.pad_held.contains(&Action::Attack);
         let use_ = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
         self.attack_cd -= dt;
-        if attack && self.attack_cd <= 0.0 && self.break_cd <= 0.0 && self.cart_attack() {
+        if attack && self.attack_cd <= 0.0 && self.break_cd <= 0.0 && (self.cart_attack() || self.boat_attack()) {
             self.attack_cd = 0.3;
             self.break_cd = 0.3;
         }
@@ -1903,7 +1908,7 @@ impl Game {
             }
         }
         if use_ && self.place_cd <= 0.0 {
-            if self.cart_use() || self.sit_use() {
+            if self.cart_use() || self.boat_use() || self.sit_use() {
                 self.place_cd = 0.3;
             } else if self.crouch <= 0.5 && self.toggle_shaped() {
                 self.place_cd = 0.25;
@@ -3791,6 +3796,7 @@ impl Game {
             items.push((self.entities.painting_mesh(p.def), p.bones(block, &self.world)));
         }
         items.extend(self.cart_instances(block));
+        items.extend(self.boat_instances(block));
         // The player figure in the inventory, in 3D, turning its head toward the mouse.
         let mut figure_backdrop = None;
         if let (Some((bx, by, bw, bh)), Some(pd)) = (self.surv.figure_box.take(), self.mobs.reg.id("player")) {

@@ -37,6 +37,7 @@ impl Game {
         self.fluids = crate::fluids::Fluids::new(&self.reg);
         self.redstone = crate::redstone::Redstone::new(self.reg.clone());
         self.riding = None;
+        self.boating = None;
         self.seat = None;
         self.tnt.clear();
         self.bobber = None;
@@ -51,6 +52,7 @@ impl Game {
             self.surv.containers = there.containers;
             self.surv.corpses = there.corpses;
             self.surv.carts = there.carts;
+            self.surv.boats = there.boats;
             self.surv.saplings = there.saplings;
             self.surv.drops.clear();
             self.surv.orbs.clear();
