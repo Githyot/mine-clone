@@ -254,6 +254,35 @@ SHADERS
   Para criar o seu, copie shaderpacks/sepia com outro nome, edite post.wgsl e clique em
   "Recarregar pacotes". Se o shader tiver erro, o jogo mostra a linha e desliga o shader.
 
+LOTE DE MODS (17/10)
+  Dicas nos itens: passe o mouse para ver durabilidade em cores, dano, armadura e comida.
+  Ambiente: folhas caindo, vaga-lumes à noite, borboletas nas flores, brasas da lava, poeira
+    nas cavernas, fumaça de tocha, cinzas no Nether. Sons ecoam em cavernas e ficam abafados
+    debaixo d'água.
+  Plantação: enxada transforma grama/terra em terra arada; plante sementes de trigo, cenoura,
+    batata e beterraba (crescem mais rápido com água a até 4 blocos). Carregue sementes e um
+    Fazendeiro se muda para uma casa livre: ele colhe, replanta e guarda a colheita num baú
+    perto da casa.
+  Vaso de Cultivo (2 tijolos + terra): plante semente ou muda, ponha um funil ou baú embaixo
+    e a colheita cai sozinha. Papoula e dente-de-leão viram vasos de enfeite.
+  Ferramentas de área: martelo (3x3 de pedra), escavadeira (3x3 de terra), foice (5x5 de
+    plantas), de ferro, diamante, platina e tungstênio. Agachado quebra um bloco só.
+  Instrumentos: alaúde, flauta e violoncelo tocam uma melodia com o botão direito.
+  Chefes novos: Lich (Filactério: ossos, safiras, cristal de mana; à noite), Obsidilito
+    (Coração de Obsidiana: obsidiana, ouro, diamante) e Flor do Vazio (Semente do Vazio:
+    folhas da selva, pérolas, cristal de vida).
+  Olho do Ender no ar voa para a fortaleza subterrânea mais próxima (às vezes quebra).
+  Opções > Construções: Espaçadas deixa as construções mais longe umas das outras (vale para
+    terreno novo).
+  Novidades no mundo: cabana da bruxa no pântano, posto dos saqueadores, fortaleza
+    subterrânea, fortaleza do Nether, ruínas do Nether, cavernas exuberantes, geladas e de
+    espeleotemas, gravetos e pedrinhas no chão, leões, rinocerontes, elefantes, zebras,
+    hipopótamos, cardeais, gaios-azuis, andarilhos do vazio de cada bioma, espectros de brasa,
+    ilha do End com cristais em gaiolas.
+  Blocos: lajes, escadas, cercas, portas e alçapões de todas as madeiras; escadas e lajes de
+    pedra; tijolos de pedregulho, terra pedregosa, palha e telhado de palha, treliça, lustre,
+    braseiro e cortinas.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)
