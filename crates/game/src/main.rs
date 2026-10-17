@@ -8,6 +8,7 @@ mod audio;
 mod backpacks;
 mod controller;
 mod copper;
+mod commands;
 mod creative;
 mod dimension;
 mod end;
@@ -1496,7 +1497,7 @@ impl Game {
         // Singleplayer: the pause menu (and the option screens opened from it) stop the world.
         // With friends in it, it keeps going.
         let paused = self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Options | Screen::Controls | Screen::Packs | Screen::Shaders);
-        if !paused {
+        if !paused && self.net.rules.daylight_cycle {
             self.time_of_day = (self.time_of_day + dt * 20.0) % 24000.0;
         }
         if self.args.time.is_some() && self.args.screenshot.is_some() {

@@ -100,6 +100,8 @@ pub enum ToGuest {
         from: String,
         text: String,
     },
+    /// Made (or no longer) an operator.
+    Op(bool),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -117,6 +119,8 @@ pub struct Welcome {
     pub thunder: bool,
     /// What the host kept of this player last time (None = first visit).
     pub player: Option<String>,
+    /// May use the commands that change things (/op).
+    pub op: bool,
 }
 
 /// Block changes in one dimension. Names travel once per message in `names`, changes point

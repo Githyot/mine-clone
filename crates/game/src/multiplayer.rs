@@ -130,6 +130,11 @@ pub struct Net {
     skip_text: bool,
     /// Test hook MC_NET_BUILD: a guest builds a small pillar once it is in.
     test_build: bool,
+    /// Test hook MC_CMD: chat lines to send once playing (";" between them).
+    test_cmds: Vec<String>,
+    /// The open world's rules (commands.rs), and which world they belong to.
+    pub rules: crate::commands::Rules,
+    rules_for: String,
 }
 
 #[derive(Default)]
@@ -177,6 +182,8 @@ struct HostState {
     /// Guest index for each entry of `Mobs::others`.
     others: Vec<ConnId>,
     bans: Vec<String>,
+    /// Lower-case names of guests who may use the commands that change things.
+    ops: Vec<String>,
 }
 
 struct GuestState {
@@ -199,6 +206,8 @@ struct GuestState {
     addr: String,
     /// Our own difficulty, back when we leave (the host's applies while we visit).
     own_difficulty: u8,
+    /// The host lets us use the commands that change things.
+    op: bool,
 }
 
 fn hash_text(s: &str) -> u64 {
@@ -489,6 +498,19 @@ impl Game {
         } else if !self.net.is_host() {
             self.net.lan = None;
         }
+        if self.world_open && self.net.rules_for != self.world_name && !self.net.is_guest() {
+            self.net.rules_for = self.world_name.clone();
+            self.net.rules = std::fs::read_to_string(self.rules_path()).ok().and_then(|t| ron::from_str(&t).ok()).unwrap_or_default();
+        }
+        if !self.net.rules.weather_cycle && !self.net.is_guest() {
+            self.weather.state.timer = self.weather.state.timer.max(600.0);
+        }
+        let joined = !self.net.is_guest() || matches!(&self.net.mode, Mode::Guest(g) if g.joined);
+        if !self.net.test_cmds.is_empty() && self.world_open && self.screen == Screen::Playing && joined {
+            for c in std::mem::take(&mut self.net.test_cmds) {
+                self.send_chat(&c);
+            }
+        }
         match self.net.mode {
             Mode::Off => {}
             Mode::Host(_) => self.host_update(dt),
@@ -552,9 +574,12 @@ impl Game {
         let port = host.port;
         let beacon = Beacon::start(&self.world_name, &self.net.cfg.name, port);
         let upnp = self.net.cfg.upnp.then(|| net::upnp::open(port));
-        let bans = std::fs::read_to_string(level_path_hint(&self.base, &self.world_name).join("bans.txt"))
-            .map(|t| t.lines().map(|l| l.trim().to_lowercase()).filter(|l| !l.is_empty()).collect())
-            .unwrap_or_default();
+        let list = |f: &str| -> Vec<String> {
+            std::fs::read_to_string(level_path_hint(&self.base, &self.world_name).join(f))
+                .map(|t| t.lines().map(|l| l.trim().to_lowercase()).filter(|l| !l.is_empty()).collect())
+                .unwrap_or_default()
+        };
+        let (bans, ops) = (list("bans.txt"), list("ops.txt"));
         self.world.net_log = Some(Vec::new());
         self.net.mode = Mode::Host(Box::new(HostState {
             host,
@@ -572,6 +597,7 @@ impl Game {
             credit: HashMap::new(),
             others: Vec::new(),
             bans,
+            ops,
         }));
         let lan = self.net_lan_line();
         self.net_say(format!("Mundo aberto para amigos. Na mesma rede: {lan}"), YELLOW);
@@ -733,7 +759,7 @@ impl Game {
                 } else if !self.net.cfg.password.is_empty() && password != self.net.cfg.password {
                     Some("senha errada".to_string())
                 } else if self.host_ref().bans.contains(&clean_name(&name).to_lowercase()) {
-                    Some("você foi banido deste mundo".to_string())
+                    Some("banido deste mundo".to_string())
                 } else {
                     None
                 };
@@ -764,6 +790,7 @@ impl Game {
                     raining: self.weather.state.raining,
                     thunder: self.weather.state.thunder,
                     player,
+                    op: self.host_ref().ops.contains(&name.to_lowercase()),
                 };
                 let h = self.host();
                 h.host.send(id, &ToGuest::Welcome(w));
@@ -865,9 +892,23 @@ impl Game {
 
     /// Chat commands a guest may use.
     fn guest_command(&mut self, id: ConnId, text: &str) {
-        let reply = match text.split_whitespace().next().unwrap_or("") {
+        let name = self.host_ref().guests.get(&id).map(|g| g.name.to_lowercase()).unwrap_or_default();
+        let op = self.host_ref().ops.contains(&name);
+        let cmd = text.split_whitespace().next().unwrap_or("").to_lowercase();
+        let reply = match cmd.as_str() {
             "/lista" | "/list" => self.player_list_line(),
-            _ => "Comandos: /lista, /tp <nome>".to_string(),
+            _ if crate::commands::scope(&cmd) == crate::commands::Scope::World => {
+                let r = self.run_command(text, op);
+                if op {
+                    // Everyone sees the new sky right away, and who changed it.
+                    self.host().sky_t = 1.0;
+                    let t = format!("{name}: {r}");
+                    self.host_broadcast(&ToGuest::Chat { from: String::new(), text: t.clone() }, Some(id));
+                    self.net_say(t, YELLOW);
+                }
+                r
+            }
+            _ => crate::commands::HELP.to_string(),
         };
         self.host_ref().host.send(id, &ToGuest::Chat { from: String::new(), text: reply });
     }
@@ -1204,6 +1245,7 @@ impl Game {
             containers: HashMap::new(),
             addr,
             own_difficulty: self.settings.difficulty,
+            op: false,
         }));
     }
 
@@ -1495,6 +1537,11 @@ impl Game {
                 let h = data.as_deref().map(hash_text).unwrap_or(0);
                 self.guest().containers.insert(p, h);
             }
+            ToGuest::Op(op) => {
+                self.guest().op = op;
+                let t = if op { "Agora pode usar comandos (/ajuda)" } else { "Comandos desligados pelo anfitrião" };
+                self.net_say(t, YELLOW);
+            }
             ToGuest::Chat { from, text } => {
                 if from.is_empty() {
                     self.net_say(text, YELLOW);
@@ -1534,6 +1581,7 @@ impl Game {
         self.set_screen(Screen::Loading);
         let g = self.guest();
         g.joined = true;
+        g.op = w.op;
         g.my_id = w.id;
         g.host_name = w.host_name.clone();
         self.net.status.clear();
@@ -1697,7 +1745,7 @@ impl Game {
             }
         }
         // Chat: recent lines fade out; all of them while typing.
-        if self.world_open && self.net.active() || self.net.typing.is_some() {
+        if self.world_open || self.net.typing.is_some() {
             let open = self.net.typing.is_some();
             let line_h = 10.0 * s;
             let mut y = h - 40.0 * s - line_h;
@@ -1763,7 +1811,11 @@ impl Game {
             self.keys.clear();
             return true;
         }
-        if self.screen == Screen::Playing && self.world_open && self.net.active() && matches!(code, KeyCode::KeyT | KeyCode::Enter | KeyCode::Slash) {
+        if self.screen == Screen::Playing
+            && self.world_open
+            && matches!(code, KeyCode::KeyT | KeyCode::Enter | KeyCode::Slash)
+            && !self.keys.contains(&KeyCode::F3)
+        {
             self.net.typing = Some(if code == KeyCode::Slash { "/".into() } else { String::new() });
             self.keys.clear();
             self.set_grab(false);
@@ -1837,7 +1889,30 @@ impl Game {
         if text.is_empty() {
             return;
         }
-        if text.starts_with('/') && self.local_command(text) {
+        if text.starts_with('/') {
+            if self.local_command(text) {
+                return;
+            }
+            let cmd = text.split_whitespace().next().unwrap_or("").to_lowercase();
+            let world = crate::commands::scope(&cmd) == crate::commands::Scope::World;
+            let (guest, cheats) = match &self.net.mode {
+                Mode::Guest(g) => (true, g.op),
+                _ => (false, true),
+            };
+            if guest && world {
+                // The world's clock and sky live on the host.
+                if let Mode::Guest(g) = &self.net.mode {
+                    g.guest.send(&ToHost::Chat(text.to_string()));
+                }
+                return;
+            }
+            let r = self.run_command(text, cheats);
+            if !r.is_empty() {
+                self.net_say(r, YELLOW);
+            }
+            if world && self.net.is_host() {
+                self.host().sky_t = 1.0;
+            }
             return;
         }
         match &self.net.mode {
@@ -1847,7 +1922,10 @@ impl Game {
                 self.host_broadcast(&ToGuest::Chat { from: name.clone(), text: text.to_string() }, None);
                 self.net_say(format!("<{name}> {text}"), WHITE);
             }
-            Mode::Off => {}
+            Mode::Off => {
+                let name = self.net.cfg.name.clone();
+                self.net_say(format!("<{name}> {text}"), WHITE);
+            }
         }
     }
 
@@ -1857,7 +1935,7 @@ impl Game {
         let cmd = parts.next().unwrap_or("");
         let arg = parts.next().unwrap_or("").to_string();
         match cmd {
-            "/tp" => {
+            "/tp" if !arg.is_empty() && arg.parse::<f32>().is_err() => {
                 let target = self.net.remotes.values().find(|r| r.name.eq_ignore_ascii_case(&arg)).map(|r| (r.state.dim, Vec3::from(r.state.pos)));
                 match target {
                     Some((d, p)) if d == self.dim.as_u8() => {
@@ -1900,9 +1978,32 @@ impl Game {
                 }
                 true
             }
+            "/op" | "/deop" if self.net.is_host() => {
+                let low = arg.to_lowercase();
+                if low.is_empty() {
+                    self.net_say("Use: /op <nome>", YELLOW);
+                    return true;
+                }
+                let give = cmd == "/op";
+                let h = self.host();
+                h.ops.retain(|o| *o != low);
+                if give {
+                    h.ops.push(low.clone());
+                }
+                let who = h.guests.iter().find(|(_, g)| g.welcomed && g.name.eq_ignore_ascii_case(&low)).map(|(id, _)| *id);
+                if let Some(id) = who {
+                    h.host.send(id, &ToGuest::Op(give));
+                }
+                let file = level_path_hint(&self.base, &self.world_name).join("ops.txt");
+                let _ = std::fs::write(&file, self.host_ref().ops.join("\n"));
+                self.net_say(format!("{arg} {} usar comandos", if give { "agora pode" } else { "não pode mais" }), YELLOW);
+                true
+            }
             "/ajuda" | "/help" => {
-                let host = if self.net.is_host() { ", /kick <nome>, /ban <nome>, /desbanir <nome>" } else { "" };
-                self.net_say(format!("Comandos: /lista, /tp <nome>{host}"), YELLOW);
+                self.net_say(crate::commands::HELP, YELLOW);
+                if self.net.is_host() {
+                    self.net_say("Anfitrião: /op <nome>, /deop <nome>, /kick <nome>, /ban <nome>, /desbanir <nome>", YELLOW);
+                }
                 true
             }
             _ => false,
@@ -2100,6 +2201,7 @@ impl Game {
             self.net.host_when_ready = true;
         }
         self.net.test_build = std::env::var("MC_NET_BUILD").is_ok();
+        self.net.test_cmds = std::env::var("MC_CMD").map(|c| c.split(';').map(|l| l.trim().to_string()).collect()).unwrap_or_default();
         if std::env::var("MC_MP_MENU").is_ok() {
             // Test hook: open the multiplayer screen (with --title).
             self.set_screen(Screen::Multiplayer);
