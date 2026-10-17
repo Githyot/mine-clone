@@ -6,9 +6,11 @@
 //! read after the base game's files.
 
 pub mod aether;
+pub mod distant_lands;
 pub mod dwellers;
 pub mod mounts;
 pub mod portals;
+pub mod saplings;
 pub mod seasons;
 
 use serde::{Deserialize, Serialize};
@@ -39,6 +41,8 @@ pub struct Mods {
     pub mount: mounts::Mount,
     /// How the player arrives in the dimension being loaded, when a mod portal sent them.
     pub arriving: Option<portals::Arrive>,
+    /// What the carpenter table makes (Distant Lands), an index into its list.
+    pub carpenter: u8,
 }
 
 impl Game {
@@ -82,7 +86,7 @@ impl Game {
 
     /// Right click: a mod block or item that does something. True when it was used.
     pub(crate) fn mods_use(&mut self) -> bool {
-        self.aether_use() || self.seasons_use()
+        self.carpenter_use() || self.aether_use() || self.seasons_use()
     }
 
     /// A key went down. True when a mod used it.

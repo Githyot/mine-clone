@@ -82,6 +82,9 @@ pub enum Shape {
     Bench,
     /// A shelf board on a wall, with two brackets under it.
     Shelf,
+    /// A hollow log (Distant Lands idea): four walls round a hole, standing up (variant 0) or
+    /// lying along x (1) or z (2).
+    Hollow,
 }
 
 impl Shape {
@@ -118,6 +121,7 @@ impl Shape {
                 | Shape::Pot
                 | Shape::Bench
                 | Shape::Shelf
+                | Shape::Hollow
         )
     }
 }

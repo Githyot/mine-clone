@@ -411,7 +411,7 @@ mob("capuchin_monkey", "Macaco-Prego", "Passive", 8, 3.6,
          bp=[("tail", (1, 1, 10), (0, 4, -10))]),
     L(["#2a1c12", "#34221a", "#3e2a20", "#4a3226", "#563a2c"], skin=["#c8a080", "#d8b090", "#e6c0a0"],
       eyes="front", face_mask=True),
-    biomes=["Jungle"], drops=[], xp=1, flee=6.0, group=(2, 4), weight=3, scale=0.8, climbs=True)
+    biomes=["Jungle", "Mata Atlântica"], drops=[], xp=1, flee=6.0, group=(2, 4), weight=3, scale=0.8, climbs=True)
 
 mob("raccoon", "Guaxinim", "Passive", 10, 3.0,
     quad((7, 6, 10), (2, 4, 2), (6, 5, 5), head_dy=0,
@@ -490,7 +490,7 @@ mob("toucan", "Tucano", "Passive", 4, 2.4,
     bird((4, 5, 6), (1, 2, 1), (4, 4, 4), ((2, 3, 6), 0), wing=(1, 4, 5), tail=((2, 1, 4), 1)),
     L(BLACK, eyes="side", eye_ring=(80, 160, 220), throat=(240, 220, 120), beak=["#d06010", "#e88018", "#f8a020"],
       beak_tip=(30, 20, 20), toucan=True),
-    biomes=["Jungle"], drops=[("feather", 0, 2)], xp=1, flee=6.0, group=(1, 2), weight=3, scale=0.8, flies=True)
+    biomes=["Jungle", "Mata Atlântica", "Cerrado"], drops=[("feather", 0, 2)], xp=1, flee=6.0, group=(1, 2), weight=3, scale=0.8, flies=True)
 
 mob("flamingo", "Flamingo", "Passive", 8, 2.4,
     bird((5, 5, 8), (1, 12, 1), (3, 3, 4), ((2, 2, 3), -1), neck=(2, 9, 2), wing=(1, 4, 6), tail=((3, 1, 2), 0),
@@ -545,7 +545,7 @@ mob("anaconda", "Sucuri", "Neutral", 30, 2.2,
             hp=[("snout", (3, 2, 2), (0, 0, 6)), ("tongue", (1, 1, 2), (0, 0, 8))]),
     L(["#2a3418", "#34401e", "#3e4c24", "#48582a", "#526430"], belly=["#9a9a5a", "#aaa86a"], eyes="side",
       eye=(220, 180, 40), pattern=("spots", ["#141a0c", "#1c2212"], 1.6, 0.58), tongue=["#b02020", "#d03030"]),
-    biomes=["Jungle", "Swamp"], drops=[("snake_skin", 0, 2), ("leather", 0, 1)], xp=5, attack=6, group=(1, 1),
+    biomes=["Jungle", "Swamp", "Pantanal"], drops=[("snake_skin", 0, 2), ("leather", 0, 1)], xp=5, attack=6, group=(1, 1),
     weight=2, scale=1.4, swims=True, prey=["chicken", "rabbit", "capuchin_monkey"])
 
 mob("tarantula_hawk", "Vespa-Caçadora", "Neutral", 14, 3.0,

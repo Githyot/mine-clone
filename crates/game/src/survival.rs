@@ -1432,7 +1432,10 @@ impl Game {
         for p in grow {
             let id = self.world.block_or_air(p);
             let name = self.reg.get(id).name.clone();
-            let Some(kind) = TreeKind::from_sapling(&name) else { continue };
+            let Some(kind) = TreeKind::from_sapling(&name) else {
+                self.grow_mod_sapling(p, id, &name);
+                continue;
+            };
             let blocks = TreeBlocks::new(&self.reg);
             // Needs room to grow (the 2x2 trunks also need the three blocks beside the sapling).
             let h = kind.min_height();
@@ -2880,7 +2883,7 @@ impl Game {
 const YELLOWISH: [u8; 4] = [255, 255, 160, 255];
 
 /// The live world as a place for a sapling to grow into a tree.
-struct WorldTrees<'a>(&'a mut crate::world::World);
+pub(crate) struct WorldTrees<'a>(pub(crate) &'a mut crate::world::World);
 
 impl TreeSpace for WorldTrees<'_> {
     fn get(&self, x: i32, y: i32, z: i32) -> voxel::BlockId {

@@ -11,10 +11,12 @@ pub const SEA_LEVEL: i32 = 62;
 
 mod aether;
 mod caves;
+mod distant_lands;
 mod end;
 mod nether;
 mod otherside;
 pub use caves::CaveBiome;
+pub use distant_lands::is_distant;
 pub use end::{end_pillars, EndPillar, END_EXIT_Y, END_PLATFORM};
 pub use aether::AETHER_ARRIVAL_Y;
 pub use otherside::OTHERSIDE_ROOF;
@@ -357,6 +359,7 @@ pub struct Generator {
     caves: caves::CavePalette,
     aether: aether::AetherPalette,
     otherside: otherside::OthersidePalette,
+    distant: distant_lands::DistantPalette,
 }
 
 const BANDS: usize = 48;
@@ -451,6 +454,7 @@ impl Generator {
             caves: caves::CavePalette::new(reg),
             aether: aether::AetherPalette::new(reg),
             otherside: otherside::OthersidePalette::new(reg),
+            distant: distant_lands::DistantPalette::new(reg),
         }
     }
 
@@ -506,6 +510,7 @@ impl Generator {
                 h += (target - h) * swamp * edge;
             }
         }
+        let pantanal = self.pantanal_shape(x, z, climate, hum, detail, &mut h);
         let height = (h as i32).clamp(4, CHUNK_HEIGHT as i32 - 20);
 
         let temp = climate - (height - 90).max(0) as f32 / 120.0;
@@ -546,6 +551,7 @@ impl Generator {
         } else {
             Biome::Plains
         };
+        let biome = self.distant_biome(biome, x, z, temp, height, pantanal);
         Column { height, biome }
     }
 
@@ -586,6 +592,7 @@ impl Generator {
             // Red sand over deep layers of terracotta (the layers are picked in `generate`).
             Biome::Badlands if p.red_sand != AIR => (p.red_sand, p.terracotta, (h - SEA_LEVEL + 14).max(3)),
             Biome::Badlands => (p.sand, p.sandstone, 4),
+            b if is_distant(b) => self.distant_top_blocks(col, wx, wz),
             _ => (p.grass, p.dirt, 3),
         }
     }
@@ -626,7 +633,7 @@ impl Generator {
                 Biome::Savanna => Some((self.trees.leaves(Wood::Acacia), 0.25)),
                 Biome::CherryGrove => Some((self.trees.leaves(Wood::Cherry), 0.5)),
                 Biome::Swamp => Some((p.oak_leaves, 0.4)),
-                _ => None,
+                b => self.distant_tree_cover(b),
             }
         };
         Surface { height: h, biome: col.biome, top, liquid, trees }
@@ -913,6 +920,7 @@ impl Generator {
             trees::grow(kind, &self.trees, &mut ChunkSpace(chunk), rng, tx, y, tz);
         }
 
+        self.decorate_distant(chunk, cols, pos);
         self.scatter(chunk, cols, pos);
 
         // Ground plants.
@@ -1174,8 +1182,9 @@ mod tests {
         count[Generator::new(1234, &reg).with_dim(Dim::End).biome_at(0, 0) as usize] += 1;
         let total: usize = count.iter().sum();
         for (i, &c) in count.iter().enumerate() {
-            // Unused numbers, and the mod pack's biomes (tested with their dimensions).
-            if Biome::from_u8(i as u8) as usize != i || i >= 40 {
+            // Unused numbers, and the mod pack's dimensions' biomes (tested with their dimensions);
+            // Distant Lands' biomes are in the Overworld, so they must turn up here.
+            if Biome::from_u8(i as u8) as usize != i || (40..46).contains(&i) {
                 continue;
             }
             println!("{:>14}: {:.1}%", Biome::from_u8(i as u8).name(), c as f32 * 100.0 / total as f32);
