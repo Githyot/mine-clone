@@ -23,7 +23,7 @@
     (name: "candle", display_name: Some("Vela"), shape: Torch, transparency: Cutout, solid: false, light: 6, hardness: 0.1, textures: (all: Some("candle"))),
     (name: "soul_lantern", display_name: Some("Lanterna de Almas"), shape: Lantern, transparency: Cutout, light: 10, hardness: 1.5, tool: Some(Pickaxe), textures: (side: Some("soul_lantern"), top: Some("soul_lantern_top"), bottom: Some("soul_lantern_top"))),
     // Deep dark
-    (name: "sculk", display_name: Some("Sculk"), hardness: 0.2, tool: Some(Hoe), xp: (1, 1), textures: (all: Some("sculk"))),
+    (name: "sculk", display_name: Some("Sculk"), hardness: 0.2, tool: Some(Hoe), xp: (1, 1), drops: Some([]), textures: (all: Some("sculk"))),
     (name: "sculk_vein", display_name: Some("Veio de Sculk"), shape: Layer, transparency: Cutout, solid: false, hardness: 0.2, tool: Some(Hoe), textures: (all: Some("sculk_vein"))),
     (name: "sculk_sensor", display_name: Some("Sensor de Sculk"), hardness: 1.5, tool: Some(Hoe), height: Some(8), transparency: Cutout, light: 1, xp: (5, 5), textures: (top: Some("sculk_sensor_top"), side: Some("sculk_sensor_side"), bottom: Some("sculk"))),
     (name: "sculk_sensor_active", display_name: Some("Sensor de Sculk"), hardness: 1.5, tool: Some(Hoe), height: Some(8), transparency: Cutout, light: 8, in_inventory: false, drops: Some([(item: "sculk_sensor")]), textures: (top: Some("sculk_sensor_top_active"), side: Some("sculk_sensor_side"), bottom: Some("sculk"))),

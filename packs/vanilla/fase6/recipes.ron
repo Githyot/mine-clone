@@ -8,6 +8,7 @@
         (pattern: [" B ", "D#D", "###"], key: {'B': "book", 'D': "diamond", '#': "obsidian"}, result: "enchanting_table"),
         (pattern: ["III", " i ", "iii"], key: {'I': "iron_block", 'i': "iron_ingot"}, result: "anvil"),
         (pattern: ["/S/", "P P"], key: {'/': "stick", 'S': "stone_slab", 'P': "#planks"}, result: "grindstone"),
+        (pattern: ["PPP", "BBB", "PPP"], key: {'P': "#planks", 'B': "book"}, result: "bookshelf"),
         (pattern: ["II", "PP", "PP"], key: {'I': "iron_ingot", 'P': "#planks"}, result: "smithing_table"),
         (pattern: [" B ", "###"], key: {'B': "blaze_rod", '#': "cobblestone"}, result: "brewing_stand"),
         (pattern: ["GGG", "GNG", "OOO"], key: {'G': "glass", 'N': "nether_star", 'O': "obsidian"}, result: "beacon"),

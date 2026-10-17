@@ -38,12 +38,14 @@ pub struct Pose {
     pub hurt: bool,
     /// In a cart or on a chair.
     pub sitting: bool,
+    /// Something in the right hand: the arm is held a little forward, as in the classic game.
+    pub holding: bool,
 }
 
 /// Smoothed animation state that lives between frames.
 #[derive(Default)]
 pub struct Animator {
-    body_yaw: f32,
+    pub body_yaw: f32,
     walk: f32,
     amount: f32,
     time: f32,
@@ -59,7 +61,7 @@ pub struct Animator {
     was_ground: bool,
     fall_speed: f32,
     /// 0..1 head under water, and the breaststroke phase for the first-person arms.
-    underwater: f32,
+    pub underwater: f32,
     stroke: f32,
 }
 
@@ -87,6 +89,10 @@ impl Animator {
     }
 
     pub fn update(&mut self, p: &Pose, dt: f32) {
+        if self.time == 0.0 {
+            // The first frame: the body starts out facing where the player looks.
+            self.body_yaw = p.look_yaw + PI;
+        }
         self.time += dt;
         if self.swing > 0.0 {
             self.swing += dt * 3.6;
@@ -175,7 +181,9 @@ impl Animator {
         // Arms swing against the legs, a little outward; idle breathing sways them.
         let arm = -leg * 0.85;
         let sway = 0.04 + breathe * 0.03 * idle;
-        rot[R_ARM] = Quat::from_rotation_x(arm + breathe * 0.03 * idle) * Quat::from_rotation_z(-sway);
+        // Holding something, the right arm swings half as far and stays raised 18° forward.
+        let r_arm = if p.holding { arm * 0.5 - PI / 10.0 } else { arm };
+        rot[R_ARM] = Quat::from_rotation_x(r_arm + breathe * 0.03 * idle) * Quat::from_rotation_z(-sway);
         rot[L_ARM] = Quat::from_rotation_x(-arm - breathe * 0.03 * idle) * Quat::from_rotation_z(sway);
         if p.sprinting && a > 0.8 {
             // Running: arms pump harder and the body leans in.
@@ -339,12 +347,34 @@ impl Animator {
             * Mat4::from_rotation_z(0.15)
     }
 
-    /// The point in the world where the first-person right hand holds an item, so the item
-    /// follows the arm through walking and swings.
-    pub fn first_person_hand(&self, eye: Vec3, yaw: f32, pitch: f32) -> Mat4 {
-        // The fist, near the end of the 12-pixel arm. In this frame the arm runs along +Y back
-        // to the shoulder, -Z is the top of the arm and +X its outer side.
-        Self::camera(eye, yaw, pitch) * self.arm_place() * Mat4::from_translation(Vec3::new(0.0, -0.56, 0.0))
+    /// Where a held item sits in first person, in the classic hand place (right of and below
+    /// the eye, a little ahead), with walking sway and the swing: the item turns in from the
+    /// right, chops down 80° and comes back. The swing styles of the combat moves change the
+    /// path. The item model's own placement goes on top of this.
+    pub fn first_person_item_frame(&self, eye: Vec3, yaw: f32, pitch: f32) -> Mat4 {
+        let t = self.swing.max(0.0);
+        let s = (t * PI).sin();
+        let r = (t.sqrt() * PI).sin();
+        let ph = t;
+        let a = self.amount.min(1.0);
+        let sway = Vec3::new(self.walk.sin() * 0.03 * a, -(self.walk.cos().abs()) * 0.035 * a, 0.0);
+        let deg = f32::to_radians;
+        let (off, turn) = match self.swing_style {
+            // Slash: the blade sweeps from the right across to the left.
+            1 => (Vec3::new(0.2 * s - 0.55 * ph * s, 0.12 * s, -0.22 * s), Mat4::from_rotation_y(s * (0.6 - 1.4 * ph)) * Mat4::from_rotation_z(-0.4 * s)),
+            // Thrust: straight into the screen and back.
+            2 => (Vec3::new(-0.12 * s, 0.06 * s, -0.5 * s), Mat4::from_rotation_x(-0.3 * s)),
+            // Uppercut: from low up past the middle.
+            3 => (Vec3::new(-0.15 * s, -0.25 * s + 0.5 * ph * s, -0.2 * s), Mat4::from_rotation_x(s * (0.8 - 1.6 * ph))),
+            _ => {
+                let f = (t * t * PI).sin();
+                (
+                    Vec3::new(-0.4 * r, 0.2 * (t.sqrt() * 2.0 * PI).sin(), -0.2 * s),
+                    Mat4::from_rotation_y(deg(45.0 - 20.0 * f)) * Mat4::from_rotation_z(deg(-20.0 * r)) * Mat4::from_rotation_x(deg(-80.0 * r)) * Mat4::from_rotation_y(deg(-45.0)),
+                )
+            }
+        };
+        Self::camera(eye, yaw, pitch) * Mat4::from_translation(Vec3::new(0.56, -0.52, -0.72) + sway + off) * turn
     }
 
     pub fn first_person_arm(&self, def: &MobDef, eye: Vec3, yaw: f32, pitch: f32, sky: f32, blk: f32) -> Bones {

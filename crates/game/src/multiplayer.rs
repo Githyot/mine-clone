@@ -1679,6 +1679,7 @@ impl Game {
                     burning: s.has(flags::BURNING),
                     hurt: s.has(flags::HURT),
                     sitting: s.has(flags::SITTING),
+                    holding: !s.held.is_empty(),
                 };
                 (pose, s.swing, s.armor.clone(), s.held.clone())
             };

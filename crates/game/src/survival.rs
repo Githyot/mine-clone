@@ -556,13 +556,22 @@ impl Game {
         if let Some(c) = self.weapon_cooldown() {
             return k * c / self.gem_attack_speed();
         }
+        // Seconds per full swing, from the attack speeds of Java Edition (hand 4, sword 1.6,
+        // pickaxe 1.2, shovel 1; axes and hoes depend on the material).
+        let name = self.held_stack().map(|s| self.items.get(s.item).name.as_str()).unwrap_or("");
+        let wood_or_stone = name.starts_with("wooden_") || name.starts_with("stone_");
         k * (match self.held_tool().map(|t| t.kind) {
             None => 0.25,
             Some(ToolKind::Sword) => 0.625,
+            Some(ToolKind::Axe) if wood_or_stone => 1.25,
+            Some(ToolKind::Axe) if name.starts_with("iron_") => 1.0 / 0.9,
             Some(ToolKind::Axe) => 1.0,
-            Some(ToolKind::Pickaxe) => 0.83,
+            Some(ToolKind::Pickaxe) => 1.0 / 1.2,
             Some(ToolKind::Shovel) => 1.0,
-            Some(ToolKind::Hoe) => 0.5,
+            Some(ToolKind::Hoe) if name.starts_with("stone_") => 0.5,
+            Some(ToolKind::Hoe) if name.starts_with("iron_") => 1.0 / 3.0,
+            Some(ToolKind::Hoe) if name.starts_with("diamond_") || name.starts_with("netherite_") => 0.25,
+            Some(ToolKind::Hoe) => 1.0,
         }) / self.gem_attack_speed()
     }
 
@@ -1505,6 +1514,10 @@ impl Game {
                     let secs = items.get(fuel.item).fuel;
                     if secs > 0.0 {
                         f.inv.take(1, 1);
+                        // A lava bucket leaves its empty bucket behind.
+                        if items.get(fuel.item).name == "lava_bucket" && f.inv.slots[1].is_none() {
+                            f.inv.slots[1] = items.id("bucket").map(|b| ItemStack::new(b, 1));
+                        }
                         f.burn = secs;
                         f.burn_max = secs;
                     }
@@ -2452,20 +2465,41 @@ impl Game {
     }
 }
 
+/// Which classic item model a held item uses: "handheld" tools, "generated" flat pictures,
+/// or a block.
+#[derive(Clone, Copy, PartialEq)]
+enum HeldKind {
+    Tool,
+    Flat,
+    Block,
+}
+
+#[derive(Clone, Copy)]
+struct HeldLook {
+    kind: HeldKind,
+    flat: bool,
+    layers: [f32; 3],
+}
+
 impl Game {
-    /// The item in hand, drawn in front of the camera in first person. It is placed in the
-    /// fist of the first-person arm, so it follows walking, swings and attacks with it: tools
-    /// and weapons are gripped by the handle with the blade up and forward, blocks rest on the
-    /// palm, and other items are held up flat.
+    /// The item in hand, drawn in front of the camera in first person the way Java Edition
+    /// shows it (matched against its screenshots): tools and flat items 0.6 of a block in the
+    /// lower right, blocks turned 45° at 0.4. The arm is hidden while something is held.
     pub(crate) fn held_item_instance(&self, eye: Vec3, cam_block: IVec3) -> Option<GpuItem> {
-        let hand = self.anim.first_person_hand(eye, self.yaw, self.pitch);
+        use glam::{Mat4, Quat};
+        let frame = self.anim.first_person_item_frame(eye - cam_block.as_vec3(), self.yaw, self.pitch);
         let l = self.world.light(eye.floor().as_ivec3());
         let eat = if self.surv.eat > 0.0 { (self.surv.eat * 14.0).sin().abs() * 0.04 } else { 0.0 };
-        // In this frame -Z is the top of the forearm and +Y runs back to the shoulder.
-        let face = (Vec3::Y * 0.85 - Vec3::X * 0.5).normalize();
-        // Tools lean away from the eye and to the left, like a sword held ready.
-        let tip = (Vec3::NEG_Z * 0.8 + Vec3::NEG_Y * 0.55 + Vec3::NEG_X * 0.35).normalize();
-        self.item_in_hand(hand, Vec3::NEG_Z, face, 1.0, l, Vec3::Y * eat - cam_block.as_vec3(), tip, 0.82)
+        let look = self.held_look()?;
+        // Tools and flat items stand up out of the lower right corner, edge turned to the eye
+        // and leaning in towards the crosshair, so the picture reads mirrored like in Java.
+        let (place, size) = match look.kind {
+            HeldKind::Block => (Mat4::from_translation(Vec3::new(0.3, -0.04, -0.38)) * Mat4::from_rotation_y(45f32.to_radians()), 0.4),
+            // Food, torches and other upright pictures lean the other way, also towards the middle.
+            HeldKind::Flat => (Mat4::from_translation(Vec3::new(0.22, 0.2, -0.26)) * Mat4::from_quat(Quat::from_rotation_y(105f32.to_radians()) * Quat::from_rotation_z(-15f32.to_radians())), 0.5),
+            HeldKind::Tool => (Mat4::from_translation(Vec3::new(0.22, 0.24, -0.26)) * Mat4::from_quat(Quat::from_rotation_y(105f32.to_radians()) * Quat::from_rotation_z(15f32.to_radians())), 0.52),
+        };
+        self.held_gpu_item(frame * place, size, look, l, Vec3::Y * eat)
     }
 
     /// Skeletons' bows and the arrows in flight or stuck in blocks.
@@ -2538,75 +2572,64 @@ impl Game {
         out
     }
 
-    /// The held item in the right hand of the player model, for the views from outside.
+    /// The held item in the right hand of the player model, for the views from outside: the
+    /// classic "thirdperson_righthand" placement (tools 0.85 of a block pointing forward out of
+    /// the fist, flat items 0.55 standing up, blocks 0.375 tipped 75°).
     pub(crate) fn held_item_third_person(&self, arm: [[f32; 4]; 4], pivot: Vec3) -> Option<GpuItem> {
-        // The bone maps model pixels to the world (relative to `cam_block`); the fist is near
-        // the bottom of the 12-pixel arm. The hanging arm's front (+Z) points the way a held
-        // sword does, and its face looks out to the side.
-        let m = glam::Mat4::from_cols_array_2d(&arm);
-        let fist = m.transform_point3(Vec3::new(pivot.x, pivot.y - 10.0, pivot.z + 1.5));
-        let (_, rot, _) = m.to_scale_rotation_translation();
-        let hand = glam::Mat4::from_rotation_translation(rot, fist);
+        use glam::{Mat4, Quat};
+        let m = Mat4::from_cols_array_2d(&arm);
+        let look = self.held_look()?;
+        // Item model numbers are written for an arm that hangs along +Y with its front at -Z;
+        // ours hangs along -Y with the front at +Z, which is a half turn about X.
+        let deg = f32::to_radians;
+        let (at, turn, size) = match look.kind {
+            // Tipped 25° further up than the model numbers alone give, so the blade rises
+            // ahead of the fist like in the classic screenshots.
+            HeldKind::Tool => (Vec3::new(0.0, -7.0, 5.2), Quat::from_rotation_y(deg(-90.0)) * Quat::from_rotation_z(deg(55.0)), 0.85),
+            HeldKind::Block => (Vec3::new(0.0, -10.0, 4.5), Quat::from_rotation_x(deg(75.0)) * Quat::from_rotation_y(deg(45.0)), 0.375),
+            HeldKind::Flat => (Vec3::new(0.0, -9.0, 5.0), Quat::IDENTITY, 0.55),
+        };
+        let lift = if look.kind == HeldKind::Tool { Quat::from_rotation_x(deg(-25.0)) } else { Quat::IDENTITY };
+        let place = m * Mat4::from_translation(pivot + at) * Mat4::from_quat(lift * Quat::from_rotation_x(deg(90.0)) * Quat::from_rotation_y(deg(180.0)) * turn) * Mat4::from_scale(Vec3::splat(16.0));
         let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
-        // Tools point forward and a little up out of the fist, at full item size like other
-        // players see them; blocks are about a third of a block.
-        // (Found by eye against the classic look: out to the side of the body, up and forward.)
-        let tip = Vec3::new(-1.0, 0.4, -0.4).normalize();
-        self.item_in_hand(hand, Vec3::Z, Vec3::NEG_X, 2.0, l, Vec3::ZERO, tip, 1.0)
+        self.held_gpu_item(place, size, look, l, Vec3::ZERO)
     }
 
-    /// Place the held item in a fist. `hand` is the fist's frame (its arm runs along +Y back to
-    /// the shoulder), `top` the side the item stands out from and `face` roughly where a tool's
-    /// flat side should look.
-    #[allow(clippy::too_many_arguments)]
-    fn item_in_hand(&self, hand: glam::Mat4, top: Vec3, face: Vec3, scale: f32, l: u8, shift: Vec3, tip: Vec3, tool_scale: f32) -> Option<GpuItem> {
-        use glam::{EulerRot, Mat3, Quat};
+    /// What the held item looks like and which classic item model places it.
+    fn held_look(&self) -> Option<HeldLook> {
         let st = self.held_stack()?;
         let it = self.items.get(st.item);
-        let (_, arm_rot, fist) = hand.to_scale_rotation_translation();
-        let along = Vec3::NEG_Y;
-        let upright = Quat::from_mat3(&Mat3::from_cols(Vec3::X, top, Vec3::X.cross(top)));
-        let tool = it.tool.is_some() || it.name.ends_with("_sword") || it.name == "stick" || it.name.ends_with("_rod");
-        let (flat, layers, size, local, offset) = match it.look {
+        let tool = it.tool.is_some() || it.name.ends_with("_sword") || matches!(it.name.as_str(), "stick" | "blaze_rod" | "breeze_rod" | "bone" | "mace" | "trident") || it.name.ends_with("_rod");
+        Some(match it.look {
             Look::Block(b) => {
                 let bl = self.reg.get(b);
                 if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail) {
-                    // Torches and plants stand up out of the fist.
-                    let size = if bl.shape == Shape::Torch { 0.42 } else { 0.32 };
-                    (1.0, [bl.faces[0] as f32; 3], size, upright, top * (size * 0.35))
+                    // Plants and torches are flat item pictures in the hand.
+                    HeldLook { kind: HeldKind::Flat, flat: true, layers: [bl.faces[0] as f32; 3] }
                 } else {
-                    // A small block on top of the fist, turned a little to show two sides.
-                    (0.0, [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32], 0.18, upright * Quat::from_rotation_y(0.8), top * 0.15 + along * 0.02)
+                    HeldLook { kind: HeldKind::Block, flat: false, layers: [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32] }
                 }
             }
             Look::Sprite(l) => {
                 let layer = (self.item_base + l) as f32;
-                if tool {
-                    // The picture's diagonal (handle bottom-left, tip top-right) points out of
-                    // the fist and a little forward along the arm.
-                    let face = (face - tip * face.dot(tip)).normalize();
-                    let side = face.cross(tip);
-                    let x = (tip - side) * std::f32::consts::FRAC_1_SQRT_2;
-                    let y = (tip + side) * std::f32::consts::FRAC_1_SQRT_2;
-                    let rot = Quat::from_mat3(&Mat3::from_cols(x, y, face));
-                    let size = 0.42 * tool_scale;
-                    // Move the picture so its handle (a quarter in from the corner) sits in the fist.
-                    let grip = rot * Vec3::new(-0.3 * size, -0.3 * size, 0.0);
-                    (1.0, [layer; 3], size, rot, -grip + top * 0.05 + tip * 0.05)
-                } else {
-                    // Food and other items: held up, facing the eye.
-                    (1.0, [layer; 3], 0.3, upright * Quat::from_rotation_z(0.3), top * 0.16)
-                }
+                HeldLook { kind: if tool { HeldKind::Tool } else { HeldKind::Flat }, flat: true, layers: [layer; 3] }
             }
-        };
-        let world_rot = arm_rot * local;
-        let p = fist + arm_rot * (offset * scale) + shift;
-        let (yaw, pitch, roll) = world_rot.to_euler(EulerRot::YXZ);
+        })
+    }
+
+    /// A held item drawn with `place`: the frame of the item model's centre, in blocks
+    /// relative to the camera's block; `size` is in the frame's units.
+    fn held_gpu_item(&self, place: glam::Mat4, size: f32, look: HeldLook, l: u8, shift: Vec3) -> Option<GpuItem> {
+        use glam::EulerRot;
+        let (scale, rot, p) = place.to_scale_rotation_translation();
+        let size = size * scale.x.abs();
+        let p = p + shift;
+        let (yaw, pitch, roll) = rot.to_euler(EulerRot::YXZ);
         let blk = ((l & 15) as f32 / 15.0).max(self.hand_light_level());
         Some(GpuItem {
-            pos: [p.x, p.y, p.z, size * scale],
-            info: [yaw, flat, (l >> 4) as f32 / 15.0, blk],
-            layers: [layers[0], layers[1], layers[2], 0.0],
+            pos: [p.x, p.y, p.z, size],
+            info: [yaw, if look.flat { 1.0 } else { 0.0 }, (l >> 4) as f32 / 15.0, blk],
+            layers: [look.layers[0], look.layers[1], look.layers[2], 0.0],
             rot: [pitch, roll, 0.0, 0.0],
         })
     }

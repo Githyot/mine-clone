@@ -63,7 +63,7 @@ impl Game {
             }
             let (lo, hi) = b.aabb();
             if let Some(t) = crate::mobs::ray_box(eye, f, lo, hi) {
-                if t < crate::REACH && t < block + 0.3 && best.map_or(true, |(_, bt)| t < bt) {
+                if t < self.reach() && t < block + 0.3 && best.map_or(true, |(_, bt)| t < bt) {
                     best = Some((i, t));
                 }
             }

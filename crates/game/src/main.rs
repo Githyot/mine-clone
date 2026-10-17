@@ -18,6 +18,8 @@ mod trials;
 mod deepdark;
 mod archaeology;
 mod fase6_test;
+#[cfg(test)]
+mod parity_test;
 mod copper;
 mod commands;
 mod creative;
@@ -113,7 +115,6 @@ use voxel::worldgen::{Biome, Generator};
 use voxel::{BlockId, BlockRegistry, AIR};
 use world::World;
 
-const REACH: f32 = 6.0;
 
 /// Textures loaded after the block and item ones: the experience orb, then the ten cracks
 /// drawn over a block while it is being broken.
@@ -1564,6 +1565,10 @@ impl Game {
                 if let Some(i) = self.args.slot {
                     self.selected = i;
                 }
+                if let Some(it) = std::env::var("MC_HOLD").ok().and_then(|n| self.items.id(&n)) {
+                    // Test hook: hold this item (any item name) in the selected slot.
+                    self.surv.inv.slots[self.selected] = Some(voxel::item::ItemStack::new(it, 1));
+                }
                 if std::env::var("MC_AMBIENT").is_ok() {
                     // Test hook: a few seconds of ambient bits already in the air.
                     for _ in 0..80 {
@@ -1970,7 +1975,8 @@ impl Game {
         // What the player is looking at.
         let world = &self.world;
         let (eye, fwd) = (self.body.eye(), self.forward());
-        self.target = raycast(eye, fwd, REACH, |p| match world.block(p) {
+        let reach = self.reach();
+        self.target = raycast(eye, fwd, reach, |p| match world.block(p) {
             Some(id) => id != AIR && !world.is_liquid(id) && (!self.reg.get(id).shape.is_boxes() || world.ray_shape(eye, fwd, p).is_some()),
             None => false,
         });
@@ -1996,7 +2002,7 @@ impl Game {
         }
         if attack && self.attack_cd <= 0.0 && self.break_cd <= 0.0 {
             let block_dist = self.target.map(|t| t.distance).unwrap_or(f32::MAX);
-            if let Some((i, t)) = paintings::pick(&self.paintings, &self.painting_defs, self.body.eye(), self.forward(), REACH) {
+            if let Some((i, t)) = paintings::pick(&self.paintings, &self.painting_defs, self.body.eye(), self.forward(), self.reach()) {
                 if t < block_dist {
                     self.paintings.remove(i);
                     self.break_cd = 0.3;
@@ -2014,7 +2020,7 @@ impl Game {
             // Plants don't block a swing: the hit goes through grass and flowers to the mob.
             let world = &self.world;
             let reg = &self.reg;
-            let block_dist = raycast(self.body.eye(), self.forward(), REACH, |p| match world.block(p) {
+            let block_dist = raycast(self.body.eye(), self.forward(), self.reach(), |p| match world.block(p) {
                 Some(id) => id != AIR && !world.is_liquid(id) && !matches!(reg.get(id).shape, Shape::Cross),
                 None => false,
             })
@@ -2236,6 +2242,16 @@ impl Game {
         }
     }
 
+    /// How far the player reaches blocks (and boats, carts, paintings), as in Java Edition:
+    /// 4.5 blocks in survival, 5 in creative.
+    pub(crate) fn reach(&self) -> f32 {
+        if self.survival {
+            4.5
+        } else {
+            5.0
+        }
+    }
+
     /// Seconds to dig a block by hand in survival (no tools yet).
     fn dig_time(&self, id: BlockId) -> f32 {
         if self.survival {
@@ -2418,7 +2434,9 @@ impl Game {
             vel: self.body.vel,
             look_yaw: self.yaw,
             look_pitch: self.pitch,
-            on_ground: self.body.on_ground,
+            // Held still in the air (the world around is still loading) counts as standing,
+            // not as a long fall.
+            on_ground: self.body.on_ground || self.body.vel == Vec3::ZERO,
             in_water: self.body.in_water,
             head_in_water: self.body.head_in_water,
             flying: self.body.flying,
@@ -2428,6 +2446,7 @@ impl Game {
             burning,
             hurt: self.survival && self.hurt_age < 0.3,
             sitting: self.riding.is_some() || self.seat.is_some() || self.mods.aircraft.pilot.is_some(),
+            holding: self.held_stack().is_some(),
         }
     }
 
@@ -3929,13 +3948,14 @@ impl Game {
         let eye = if third {
             // Pull the camera back (or around to the front), stopping short of walls.
             let dir = if self.camera_mode == 1 { -view_fwd } else { view_fwd };
+            // Test hook: MC_ORBIT=degrees swings the camera around the player for side shots.
+            let orbit = std::env::var("MC_ORBIT").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0);
+            let dir = glam::Quat::from_rotation_y(orbit.to_radians()) * dir;
             let world = &self.world;
             // Lying down, the camera orbits a bit above the body so it clears the ground.
             let pivot = head + Vec3::Y * 0.6 * self.prone_t;
             let dist = raycast(pivot, dir, 4.0, |p| voxel::physics::Terrain::solid(world, p)).map(|h| (h.distance - 0.3).max(0.2)).unwrap_or(4.0);
-            if self.camera_mode == 2 {
-                view_fwd = -view_fwd;
-            }
+            view_fwd = -dir;
             pivot + dir * dist
         } else if playing_view && self.settings.view_bobbing {
             head + self.anim.view_bob(self.yaw, self.body.on_ground && !self.body.flying)
@@ -4106,7 +4126,9 @@ impl Game {
                 held_third = self.held_item_third_person(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32));
                 items.extend(self.armor_instances(&bones));
                 items.push((pd, bones));
-            } else if self.screen == Screen::Playing && !self.hide_hud {
+            } else if self.screen == Screen::Playing && !self.hide_hud && (self.held_stack().is_none() || self.anim.underwater > 0.05) {
+                // As in Java Edition, the bare arm shows only while the hand is empty (and for
+                // the swimming strokes).
                 let l = self.world.light(head.floor().as_ivec3());
                 items.push((pd, self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, (l >> 4) as f32 / 15.0, ((l & 15) as f32 / 15.0).max(self.hand_light_level()))));
             }

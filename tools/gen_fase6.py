@@ -126,7 +126,7 @@ B(block("slime_block", "Bloco de Slime", hardness=0.0, transparency="Translucent
 B(block("candle", "Vela", shape="Torch", transparency="Cutout", solid=False, light=6, hardness=0.1, tex="candle"))
 B(block("soul_lantern", "Lanterna de Almas", shape="Lantern", transparency="Cutout", light=10, hardness=1.5, tool=PICK, tex={"side": "soul_lantern", "top": "soul_lantern_top", "bottom": "soul_lantern_top"}))
 B("    // Deep dark")
-B(block("sculk", "Sculk", hardness=0.2, tool="Some(Hoe)", xp="(1, 1)", tex="sculk"))
+B(block("sculk", "Sculk", hardness=0.2, tool="Some(Hoe)", xp="(1, 1)", drops="Some([])", tex="sculk"))
 B(block("sculk_vein", "Veio de Sculk", shape="Layer", transparency="Cutout", solid=False, hardness=0.2, tool="Some(Hoe)", tex="sculk_vein"))
 for n, d, extra in (("sculk_sensor", "Sensor de Sculk", {}), ("calibrated_sculk_sensor", "Sensor de Sculk Calibrado", {})):
     B(block(n, d, hardness=1.5, tool="Some(Hoe)", height="Some(8)", transparency="Cutout", light=1, xp="(5, 5)", tex={"top": f"{n}_top", "side": f"{n}_side", "bottom": "sculk"}))
@@ -285,6 +285,7 @@ def smelt(inp, out, xp=0.1):
 shaped([" B ", "D#D", "###"], {"B": "book", "D": "diamond", "#": "obsidian"}, "enchanting_table")
 shaped(["III", " i ", "iii"], {"I": "iron_block", "i": "iron_ingot"}, "anvil")
 shaped(["/S/", "P P"], {"/": "stick", "S": "stone_slab", "P": "#planks"}, "grindstone")
+shaped(["PPP", "BBB", "PPP"], {"P": "#planks", "B": "book"}, "bookshelf")
 shaped(["II", "PP", "PP"], {"I": "iron_ingot", "P": "#planks"}, "smithing_table")
 shaped([" B ", "###"], {"B": "blaze_rod", "#": "cobblestone"}, "brewing_stand")
 shaped(["GGG", "GNG", "OOO"], {"G": "glass", "N": "nether_star", "O": "obsidian"}, "beacon")
@@ -362,7 +363,7 @@ MOBS = """    // The warden: blind guardian of the deep dark, called up by sculk
     (
         name: "warden", display_name: "Warden", kind: Hostile, health: 500, speed: 2.2,
         drops: [], xp: 5,
-        width: 0.9, height: 2.9, spawn: Never, attack: 16, scale: 1.45,
+        width: 0.9, height: 2.9, spawn: Never, attack: 30, scale: 1.45,
         parts: [
             (size: (4, 10, 4), origin: (-4, 0, -2), uv: (32, 18), anim: Leg(0), pivot: (-2, 10, 0)),
             (size: (4, 10, 4), origin: (0, 0, -2), uv: (32, 18), anim: Leg(1), pivot: (2, 10, 0)),

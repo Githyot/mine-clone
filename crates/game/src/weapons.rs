@@ -172,12 +172,15 @@ impl Game {
         self.prog.was_full
     }
 
-    /// Reach of the held weapon (spears reach further).
+    /// Reach for hitting mobs: 3 blocks in survival and 5 in creative, as in Java Edition;
+    /// spears reach further.
     pub(crate) fn weapon_reach(&self) -> f32 {
         if self.held_key().ends_with("_spear") {
             4.5
+        } else if self.survival {
+            3.0
         } else {
-            3.5
+            5.0
         }
     }
 

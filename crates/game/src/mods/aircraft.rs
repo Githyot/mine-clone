@@ -248,7 +248,7 @@ impl Game {
             }
             let (lo, hi) = l.aabb();
             if let Some(t) = crate::mobs::ray_box(eye, f, lo, hi) {
-                if t < crate::REACH + 1.0 && t < block + 0.3 && best.is_none_or(|(_, bt)| t < bt) {
+                if t < self.reach() + 1.0 && t < block + 0.3 && best.is_none_or(|(_, bt)| t < bt) {
                     best = Some((i, t));
                 }
             }

@@ -4,7 +4,7 @@
     (
         name: "warden", display_name: "Warden", kind: Hostile, health: 500, speed: 2.2,
         drops: [], xp: 5,
-        width: 0.9, height: 2.9, spawn: Never, attack: 16, scale: 1.45,
+        width: 0.9, height: 2.9, spawn: Never, attack: 30, scale: 1.45,
         parts: [
             (size: (4, 10, 4), origin: (-4, 0, -2), uv: (32, 18), anim: Leg(0), pivot: (-2, 10, 0)),
             (size: (4, 10, 4), origin: (0, 0, -2), uv: (32, 18), anim: Leg(1), pivot: (2, 10, 0)),
