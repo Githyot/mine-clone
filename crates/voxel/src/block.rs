@@ -86,6 +86,8 @@ pub enum Shape {
     Sign,
     /// A banner: a cloth hanging from a bar on a pole (variant facing 0-3) or on a wall (4-7).
     Banner,
+    /// A head or skull: an 8-pixel cube on the floor.
+    Skull,
 }
 
 impl Shape {
@@ -124,6 +126,7 @@ impl Shape {
                 | Shape::Shelf
                 | Shape::Sign
                 | Shape::Banner
+                | Shape::Skull
         )
     }
 }

@@ -1198,6 +1198,249 @@ def village(style):
     b["loot"] = [("", "paper", 3, 9, 0.8), ("", "compass", 1, 1, 0.2), ("", "map", 1, 1, 0.3)]
     out.append(b)
     return out
+def _h(x, y, z, k=0):
+    """A fixed pseudo-random number 0..99 for a cell, so cracks and gold land the same each run."""
+    return (x * 73856093 ^ y * 19349663 ^ z * 83492791 ^ k * 2654435761) % 100
+
+
+def bastion():
+    """A bastion remnant: a ruined square keep of blackstone bricks with a courtyard, a
+    walkway round the walls on basalt posts, and a treasure room of gold at its heart."""
+    W, H = 19, 13
+    layers = [grid(W, W, ".") for _ in range(H)]
+
+    def wall(x, y, z):
+        r = _h(x, y, z)
+        return "C" if r < 18 else ("g" if r < 24 else "P")
+
+    for z in range(W):
+        for x in range(W):
+            layers[0][z][x] = "B" if _h(x, 0, z, 1) < 80 else "b"
+    for y in range(1, H):
+        broken = y > 8
+        for z in range(W):
+            for x in range(W):
+                edge = x in (0, W - 1) or z in (0, W - 1)
+                if edge and not (broken and _h(x, y, z, 2) < 45):
+                    layers[y][z][x] = wall(x, y, z)
+    # Gates in the middle of two sides.
+    for y in (1, 2, 3):
+        for x in (8, 9, 10):
+            layers[y][0][x] = "."
+            layers[y][W - 1][x] = "."
+    # The walkway round the inside of the walls at level 6, on basalt posts.
+    for z in range(1, W - 1):
+        for x in range(1, W - 1):
+            if x in (1, 2, W - 3, W - 2) or z in (1, 2, W - 3, W - 2):
+                layers[6][z][x] = "P" if _h(x, 6, z, 3) > 10 else "."
+    for (x, z) in ((2, 2), (2, W - 3), (W - 3, 2), (W - 3, W - 3), (9, 2), (9, W - 3), (2, 9), (W - 3, 9)):
+        for y in range(1, 6):
+            layers[y][z][x] = "S"
+    # The treasure room: a 7x7 keep with gold in the middle and chests.
+    k0, k1 = 6, 12
+    for y in range(1, 6):
+        for z in range(k0, k1 + 1):
+            for x in range(k0, k1 + 1):
+                if x in (k0, k1) or z in (k0, k1):
+                    layers[y][z][x] = wall(x, y, z)
+    for z in range(k0, k1 + 1):
+        for x in range(k0, k1 + 1):
+            layers[5][z][x] = "P"
+    for y in (1, 2):
+        layers[y][k0][9] = "."
+    for z in range(8, 11):
+        for x in range(8, 11):
+            layers[1][z][x] = "G"
+    layers[2][9][9] = "G"
+    layers[1][k0 + 1][k0 + 1] = "c"
+    layers[1][k1 - 1][k1 - 1] = "c"
+    layers[1][k1 - 1][k0 + 1] = "L"
+    layers[1][k0 + 1][k1 - 1] = "L"
+    # Chains of light hanging in the courtyard, and a chest on the walkway.
+    layers[7][3][3] = "c"
+    for (x, z) in ((4, 4), (14, 14), (4, 14), (14, 4)):
+        layers[1][z][x] = "M"
+    return {
+        "name": "bastiao",
+        "biomes": ["Nether Wastes", "Crimson Forest", "Warped Forest", "Soul Sand Valley"],
+        "spacing": 14,
+        "chance": 0.6,
+        "foundation": "blackstone",
+        "palette": {"B": "blackstone", "b": "gilded_blackstone", "P": "polished_blackstone_bricks",
+                    "C": "cracked_polished_blackstone_bricks", "g": "gilded_blackstone", "S": "basalt",
+                    "G": "gold_block", "c": "chest", "L": "shroomlight", "M": "magma_block"},
+        "layers": [rows(l) for l in layers],
+        "loot": [("", "gold_ingot", 3, 9, 0.8), ("", "gold_block", 1, 2, 0.25), ("", "netherite_scrap", 1, 1, 0.2),
+                 ("", "ancient_debris", 1, 1, 0.15), ("", "golden_helmet", 1, 1, 0.2), ("", "golden_chestplate", 1, 1, 0.15),
+                 ("", "crying_obsidian", 1, 4, 0.3), ("", "diamond", 1, 2, 0.12), ("", "gold_nugget", 5, 15, 0.6),
+                 ("", "magma_cream", 2, 5, 0.3)],
+    }
+
+
+def _end_tower():
+    """An End city tower: a purpur keep on an end stone brick base, three storeys joined by
+    a ladder well, lit by end rods, with a loot room at the top under a crown of pillars."""
+    W, H = 11, 26
+    layers = [grid(W, W, ".") for _ in range(H)]
+    for z in range(W):
+        for x in range(W):
+            layers[0][z][x] = "E"
+            layers[1][z][x] = "E"
+    floors = (2, 9, 16)
+    top = 23
+    for y in range(2, top + 1):
+        for z in range(1, W - 1):
+            for x in range(1, W - 1):
+                edge = x in (1, W - 2) or z in (1, W - 2)
+                corner = x in (1, W - 2) and z in (1, W - 2)
+                if corner:
+                    layers[y][z][x] = "I"
+                elif y in floors or y == top:
+                    layers[y][z][x] = "Q"
+                elif edge:
+                    layers[y][z][x] = "Q"
+    # Windows of glass-like gaps and the door.
+    for f in floors:
+        for x in (4, 6):
+            layers[f + 3][1][x] = "."
+            layers[f + 3][W - 2][x] = "."
+            layers[f + 3][x][1] = "."
+            layers[f + 3][x][W - 2] = "."
+        layers[f + 1][5][5] = "R"
+    for y in (3, 4):
+        layers[y][1][5] = "."
+    # Stairs of purpur blocks up the inside of the east wall, through a gap in each floor.
+    for f, nxt in zip(floors, floors[1:] + (top,)):
+        for k in range(nxt - f):
+            layers[f + 1 + k][2 + k][W - 3] = "Q"
+        for k in range(1, nxt - f - 1):
+            layers[nxt][2 + k][W - 3] = "."
+    # The loot room at the top.
+    layers[top - 6][3][3] = "c"
+    layers[top - 6][3][7] = "c"
+    layers[top - 5][5][5] = "R"
+    # A crown of purpur pillars and rods on the roof.
+    for (x, z) in ((1, 1), (1, W - 2), (W - 2, 1), (W - 2, W - 2)):
+        layers[top + 1][z][x] = "I"
+        layers[top + 2][z][x] = "R"
+    for x in range(2, W - 2):
+        if x % 2 == 0:
+            layers[top + 1][1][x] = "Q"
+            layers[top + 1][W - 2][x] = "Q"
+            layers[top + 1][x][1] = "Q"
+            layers[top + 1][x][W - 2] = "Q"
+    return {
+        "name": "cidade_do_end",
+        "biomes": ["End Highlands"],
+        "spacing": 12,
+        "chance": 0.5,
+        "foundation": "end_stone_bricks",
+        "palette": {"E": "end_stone_bricks", "Q": "purpur_block", "I": "purpur_pillar", "R": "end_rod", "c": "chest"},
+        "layers": [rows(l) for l in layers],
+        "loot": [("", "diamond", 1, 3, 0.3), ("", "iron_ingot", 3, 8, 0.6), ("", "gold_ingot", 2, 7, 0.6),
+                 ("", "emerald", 2, 6, 0.4), ("", "diamond_sword", 1, 1, 0.12), ("", "diamond_chestplate", 1, 1, 0.1),
+                 ("", "diamond_pickaxe", 1, 1, 0.1), ("", "shulker_shell", 1, 2, 0.3), ("", "ender_pearl", 1, 3, 0.4),
+                 ("", "chorus_fruit", 2, 6, 0.4)],
+    }
+
+
+def end_city():
+    """An End city: the tall tower, a lower tower beside it and a purpur bridge between them."""
+    t = _end_tower()
+    tall = t["layers"]
+    W, D, H = 21, 21, len(tall)
+    layers = [grid(W, D, ".") for _ in range(H)]
+    for y, layer in enumerate(tall):
+        for z, row in enumerate(layer):
+            for x, ch in enumerate(row):
+                layers[y][z][x] = ch
+    # The lower tower in the far corner: 7x7, two storeys, a crown of rods.
+    x0, z0, top = 14, 14, 13
+    for y in range(0, top + 1):
+        for z in range(z0, z0 + 7):
+            for x in range(x0, x0 + 7):
+                edge = x in (x0, x0 + 6) or z in (z0, z0 + 6)
+                corner = x in (x0, x0 + 6) and z in (z0, z0 + 6)
+                if y < 2:
+                    layers[y][z][x] = "E"
+                elif corner:
+                    layers[y][z][x] = "I"
+                elif y in (2, 9, top) or edge:
+                    layers[y][z][x] = "Q"
+    for y in (3, 4):
+        layers[y][z0][x0 + 3] = "."
+    layers[10][z0 + 3][x0 + 3] = "c"
+    layers[3][z0 + 3][x0 + 3] = "R"
+    for (x, z) in ((x0, z0), (x0 + 6, z0), (x0, z0 + 6), (x0 + 6, z0 + 6)):
+        layers[top + 1][z][x] = "R"
+    # The bridge from the big tower's second floor to the small tower's upper floor.
+    for x in range(9, 18):
+        for z in (5, 6):
+            layers[9][z][x] = "Q"
+        layers[10][4][x] = "R" if x % 3 == 0 else "."
+    for z in range(5, z0 + 1):
+        for x in (16, 17):
+            layers[9][z][x] = "Q"
+    for y in (10, 11):
+        for z in (5, 6):
+            layers[y][z][9] = "."
+        for x in (16, 17):
+            layers[y][z0][x] = "."
+    t["layers"] = [rows(l) for l in layers]
+    t["foundation"] = "end_stone"
+    return t
+
+
+def end_ship():
+    """An End ship floating over an island: a purpur hull with a mast and a cabin; the
+    dragon's head on its bow and a pair of elytra in the chest below deck."""
+    W, D, H = 7, 21, 12
+    layers = [grid(W, D, ".") for _ in range(H)]
+    for z in range(D):
+        # The hull narrows toward bow (z=0) and stern.
+        half = 3 if 4 <= z <= D - 4 else (2 if 2 <= z <= D - 2 else 1)
+        for y in range(4):
+            w = max(0, half - (3 - y) if y < 3 else half)
+            for x in range(3 - w, 3 + w + 1):
+                inner = 3 - w < x < 3 + w and 0 < z < D - 1 and y > 0
+                layers[y][z][x] = "." if inner and y < 3 else ("O" if y == 0 else "Q")
+        # The deck.
+        for x in range(3 - half, 3 + half + 1):
+            layers[3][z][x] = "Q"
+        layers[4][z][3 - half] = "f" if 1 < z < D - 2 else "."
+        layers[4][z][3 + half] = "f" if 1 < z < D - 2 else "."
+    # Inside the hull: the chest with the elytra, and a light.
+    layers[1][D // 2][3] = "c"
+    layers[2][D // 2 + 2][3] = "R"
+    layers[3][D // 2 + 3][3] = "."  # a hatch down
+    # The mast and its sail of purple glass-like blocks.
+    for y in range(4, H):
+        layers[y][9][3] = "I"
+    for y in range(6, H - 1):
+        for x in (1, 2, 4, 5):
+            layers[y][9][x] = "M"
+    # The cabin at the stern.
+    for y in range(4, 7):
+        for z in range(D - 6, D - 2):
+            for x in range(1, 6):
+                if x in (1, 5) or z in (D - 6, D - 3) or y == 6:
+                    layers[y][z][x] = "Q"
+    layers[4][D - 6][3] = "."
+    layers[5][D - 6][3] = "."
+    # The dragon's head on the bow.
+    layers[4][0][3] = "Q"
+    layers[5][0][3] = "D"
+    return {
+        "name": "navio_do_end",
+        "biomes": ["End Highlands"],
+        "spacing": 14,
+        "chance": 0.35,
+        "palette": {"Q": "purpur_block", "O": "obsidian", "I": "purpur_pillar", "f": "end_rod", "R": "end_rod",
+                    "M": "magenta_wool", "c": "chest", "D": "dragon_head"},
+        "layers": [rows(l) for l in layers],
+        "loot": [("", "elytra", 1, 1, 1.0), ("", "diamond", 1, 3, 0.4), ("", "ender_pearl", 2, 4, 0.5),
+                 ("", "shulker_shell", 1, 2, 0.4), ("", "gold_ingot", 2, 6, 0.5)],
+    }
 
 
 def ron(structs):
@@ -1260,6 +1503,9 @@ structs = [
     shipwreck(),
     *village("carvalho"),
     *village("pinheiro"),
+    bastion(),
+    end_city(),
+    end_ship(),
 ]
 OUT.write_text(ron(structs))
 print(f"wrote {OUT} ({len(structs)} structures)")

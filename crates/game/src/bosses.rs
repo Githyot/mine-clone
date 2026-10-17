@@ -114,8 +114,8 @@ impl Game {
         if name == crate::end::GUARDIAN {
             self.update_void_guardian(i, dt);
         }
-        if crate::boss_ai::own_ai(&name) {
-            // Worms and flyers of Etapa 5 fight in boss_ai.rs.
+        if crate::boss_ai::own_ai(&name) || crate::nether_end::own_boss(&name) {
+            // Worms and flyers of Etapa 5 fight in boss_ai.rs; the Nether and End bosses in nether_end.rs.
             return;
         }
         let st = style(&name);
@@ -221,6 +221,7 @@ impl Game {
             self.open_end_exit();
         }
         self.t5_boss_defeated(name);
+        self.nether_end_boss_defeated(name);
         self.sfx(Sfx::Thunder(0.3));
     }
 
@@ -228,7 +229,7 @@ impl Game {
     pub(crate) fn draw_boss_bar(&mut self, w: f32) {
         let Some(i) = self.boss_index() else { return };
         let m = &self.mobs.list[i];
-        if (m.body.pos - self.body.pos).length() > 64.0 {
+        if (m.body.pos - self.body.pos).length() > 128.0 {
             return;
         }
         let name = self.mobs.reg.defs[m.def].display_name.clone();

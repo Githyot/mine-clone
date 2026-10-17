@@ -236,6 +236,25 @@ impl Body {
     }
 
     /// Move along one axis, stopping at the first box in the way. Returns the distance moved.
+    /// Free flight for flying creatures: no gravity, moves at `vel`, stops at walls.
+    pub fn fly(&mut self, world: &impl Terrain, vel: Vec3, dt: f32) {
+        let dt = dt.min(0.05);
+        self.vel = vel;
+        self.in_water = false;
+        self.on_ground = false;
+        self.fall_distance = 0.0;
+        for axis in [1usize, 0, 2] {
+            let d = vel[axis] * dt;
+            let moved = self.move_axis(world, axis, d);
+            if moved.abs() + 1e-6 < d.abs() {
+                self.vel[axis] = 0.0;
+                if axis == 1 && d < 0.0 {
+                    self.on_ground = true;
+                }
+            }
+        }
+    }
+
     fn move_axis(&mut self, world: &impl Terrain, axis: usize, d: f32) -> f32 {
         if d == 0.0 {
             return 0.0;

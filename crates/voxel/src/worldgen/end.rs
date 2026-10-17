@@ -3,7 +3,7 @@
 //! way home once the guardian falls, and smaller islands with chorus plants far out past a gap.
 //! Our own take on the idea, from the public descriptions of the game.
 
-use super::Generator;
+use super::{Biome, Generator};
 use crate::block::{BlockId, BlockRegistry, AIR};
 use crate::chunk::{Chunk, ChunkPos};
 use crate::rng::Rng;
@@ -74,7 +74,22 @@ pub fn end_pillars(seed: u64) -> Vec<EndPillar> {
         .collect()
 }
 
+/// The main island and the void around it, or the far islands past the gap.
+pub(super) fn end_biome(wx: i32, wz: i32) -> Biome {
+    let d = ((wx as f32).powi(2) + (wz as f32).powi(2)).sqrt();
+    if d >= OUTER_START {
+        Biome::EndHighlands
+    } else {
+        Biome::TheEnd
+    }
+}
+
 impl Generator {
+    /// The top block of the End's land in a column, if there is any (where to stand).
+    pub fn end_top(&self, wx: i32, wz: i32) -> Option<i32> {
+        self.end_land(wx, wz).map(|(top, _)| top)
+    }
+
     /// Top and bottom of the land in a column, if there is any.
     pub(super) fn end_land(&self, wx: i32, wz: i32) -> Option<(i32, i32)> {
         let (x, z) = (wx as f32, wz as f32);
@@ -251,6 +266,7 @@ impl Generator {
                 set(&mut chunk, x, top + h + 1, z, p.flower);
             }
         }
+        self.place_structures(&mut chunk);
         chunk
     }
 }

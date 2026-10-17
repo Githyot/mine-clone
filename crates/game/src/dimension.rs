@@ -49,6 +49,7 @@ impl Game {
         self.renderer.clear_chunks();
         self.mobs.list.clear();
         self.mobs.arrows.clear();
+        self.nether_end_loaded();
         self.target = None;
         self.mining = None;
         self.paintings = paintings::load(&save.dir, &self.painting_defs);
@@ -258,7 +259,9 @@ impl Game {
             return;
         }
         let Some(at) = self.arrival.take() else { return };
-        let spot = if self.dim == Dim::End {
+        let spot = if std::mem::take(&mut self.ne.gateway_landing) {
+            self.finish_gateway(at)
+        } else if self.dim == Dim::End {
             self.arrive_in_end()
         } else if std::mem::take(&mut self.arrive_plain) {
             if let Some(b) = self.surv.spawn {
@@ -273,6 +276,8 @@ impl Game {
         };
         self.body.pos = spot;
         self.body.vel = Vec3::ZERO;
+        self.unstick();
+        let spot = self.body.pos;
         self.fall_peak = spot.y;
         self.portal_t = -0.5;
         self.set_screen(Screen::Playing);
@@ -284,6 +289,59 @@ impl Game {
         if self.args.mobs && (std::env::var("MC_NETHER").is_ok() || std::env::var("MC_END").is_ok()) {
             // Test hook: the Nether's creatures lined up in front of the portal.
             self.spawn_demo_mobs();
+        }
+        if let Ok(what) = std::env::var("MC_NE") {
+            // Test hook: the Nether and End's fights, right after arriving.
+            self.nether_end_test(&what);
+        }
+    }
+
+    /// Standing inside solid blocks (a closed Nether cave, a chunk that came in late): move to
+    /// the nearest spot with two free blocks, above solid ground if there is one close by.
+    pub(crate) fn unstick(&mut self) {
+        let solid = |g: &Game, p: IVec3| {
+            let id = g.world.block_or_air(p);
+            g.reg.get(id).solid
+        };
+        let fits = |g: &Game, p: IVec3| !solid(g, p) && !solid(g, p + IVec3::Y) && g.world.block(p).is_some();
+        let here = self.body.pos.floor().as_ivec3();
+        let (lo, hi) = self.body.aabb();
+        let blocked = (lo.x.floor() as i32..=hi.x.floor() as i32).any(|x| {
+            (lo.z.floor() as i32..=hi.z.floor() as i32).any(|z| (lo.y.floor() as i32..=(hi.y - 0.01).floor() as i32).any(|y| solid(self, IVec3::new(x, y, z))))
+        });
+        if !blocked {
+            return;
+        }
+        let lava = |g: &Game, p: IVec3| g.world.is_liquid(g.world.block_or_air(p)) && g.reg.get(g.world.block_or_air(p)).name.contains("lava");
+        let mut best: Option<(i32, IVec3)> = None;
+        for r in 0..=12i32 {
+            for dz in -r..=r {
+                for dx in -r..=r {
+                    if dx.abs().max(dz.abs()) != r {
+                        continue;
+                    }
+                    for dy in -16..=16i32 {
+                        let p = here + IVec3::new(dx, dy, dz);
+                        if !fits(self, p) || lava(self, p) {
+                            continue;
+                        }
+                        // Ground under the feet is worth a lot: no falling into the lava sea.
+                        let score = dx * dx + dz * dz + dy * dy + if solid(self, p - IVec3::Y) { 0 } else { 400 };
+                        if best.is_none_or(|(b, _)| score < b) {
+                            best = Some((score, p));
+                        }
+                    }
+                }
+            }
+            if best.is_some_and(|(b, _)| b < (r + 1) * (r + 1)) {
+                break;
+            }
+        }
+        if let Some((_, p)) = best {
+            log::info!("unstuck from {here} to {p}");
+            self.body.pos = p.as_vec3() + Vec3::new(0.5, 0.0, 0.5);
+            self.body.vel = Vec3::ZERO;
+            self.fall_peak = self.body.pos.y;
         }
     }
 

@@ -840,7 +840,7 @@ impl Game {
         if self.loot_corpse() {
             return true;
         }
-        if self.lead_use() || self.pet_use() || self.village_use() || self.talk_to_npc() {
+        if self.lead_use() || self.pet_use() || self.village_use() || self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
             return true;
         }
         if let Some(st) = self.held_stack() {
@@ -857,6 +857,9 @@ impl Game {
             let name = self.reg.get(id).name.clone();
             let sneaking = self.crouch > 0.5;
             if !sneaking || self.held_stack().is_none() {
+                if self.nether_end_block_use(hit.block, &name) {
+                    return true;
+                }
                 match name.as_str() {
                     n if n.ends_with("_sign") => return self.edit_sign(hit.block),
                     "bee_nest_honey" | "beehive_honey" => return self.hive_use(hit.block, &name),
@@ -876,8 +879,8 @@ impl Game {
                         self.open_container(Open::Furnace(hit.block));
                         return true;
                     }
-                    n if n == "hopper" || n == "dropper" || n == "dispenser" || n == "crafter" || n.ends_with("_drawer") => {
-                        let n = if n == "hopper" { 5 } else if n.ends_with("_drawer") { 18 } else { 9 };
+                    n if n == "hopper" || n == "dropper" || n == "dispenser" || n == "crafter" || n.ends_with("_drawer") || n == "shulker_box" => {
+                        let n = if n == "hopper" { 5 } else if n.ends_with("_drawer") { 18 } else if n == "shulker_box" { 27 } else { 9 };
                         self.surv.containers.entry(hit.block).or_insert_with(|| Container::Chest(Inventory::new(n)));
                         self.open_container(Open::Chest(hit.block));
                         return true;
@@ -904,6 +907,9 @@ impl Game {
         let item = self.items.get(stack.item).clone();
         if item.armor.is_some() {
             return self.equip_held();
+        }
+        if self.nether_end_use(&item.name) {
+            return true;
         }
         if self.pot_plant(item.places) {
             return true;
@@ -1008,6 +1014,7 @@ impl Game {
                 let sel = self.selected;
                 self.surv.inv.take(sel, 1);
             }
+            self.after_place(pos);
             if trees::is_sapling(&self.reg.get(block).name) {
                 let t = 60.0 + self.surv.rng.f32() * 120.0;
                 self.surv.saplings.push((pos, t));

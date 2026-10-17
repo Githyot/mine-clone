@@ -255,6 +255,7 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
         }
         Shape::Chain => out.push([7, 0, 7, 9, 16, 9]),
         Shape::Pot => out.push([3, 0, 3, 13, 6, 13]),
+        Shape::Skull => out.push([4, 0, 4, 12, 8, 12]),
         Shape::Bench => {
             // Drawn running east-west: the seat and a leg at each end.
             for b in [[0, 7, 3, 16, 9, 13], [1, 0, 4, 3, 7, 12], [13, 0, 4, 15, 7, 12]] {

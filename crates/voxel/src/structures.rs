@@ -317,6 +317,25 @@ impl Generator {
             }
             return Some(Placement { index: si, origin: IVec3::new(ox, ground + 1 - s.def.sink, oz), turns });
         }
+        if self.dim == crate::worldgen::Dim::End {
+            // On an island's top with land under every corner; ships float high above one.
+            let corners = [(ox, oz), (ox + f.x - 1, oz), (ox, oz + f.y - 1), (ox + f.x - 1, oz + f.y - 1), (cx, cz)];
+            let tops: Vec<i32> = corners.iter().filter_map(|&(x, z)| self.end_top(x, z)).collect();
+            if s.def.name.starts_with("navio") {
+                let ground = self.end_top(cx, cz)?;
+                return Some(Placement { index: si, origin: IVec3::new(ox, ground + 22, oz), turns });
+            }
+            // The middle and at least three corners on land (a keel of rock fills under the rest).
+            if tops.len() < corners.len() - 1 || self.end_top(cx, cz).is_none() {
+                return None;
+            }
+            let (lo, hi) = (*tops.iter().min().unwrap(), *tops.iter().max().unwrap());
+            if hi - lo > 6 {
+                return None;
+            }
+            let ground = self.end_top(cx, cz)?;
+            return Some(Placement { index: si, origin: IVec3::new(ox, ground + 1 - s.def.sink, oz), turns });
+        }
         // Fairly flat dry ground only.
         let hs = [self.height_at(ox, oz), self.height_at(ox + f.x - 1, oz), self.height_at(ox, oz + f.y - 1), self.height_at(ox + f.x - 1, oz + f.y - 1), self.height_at(cx, cz)];
         let lo = *hs.iter().min().unwrap();
@@ -366,7 +385,9 @@ impl Generator {
                     if let (Some(fd), Some(b)) = (s.foundation, s.cell(p.turns, x, 0, z)) {
                         if b != crate::block::AIR {
                             let mut y = p.origin.y - 1;
-                            while y > 0 {
+                            // Over the End's void a foundation is a short rocky keel, not a column.
+                            let floor = if self.dim == crate::worldgen::Dim::End { p.origin.y - 10 } else { 0 };
+                            while y > floor.max(0) {
                                 let cur = chunk.get(lx as usize, y as usize, lz as usize);
                                 if cur != crate::block::AIR && !structs.soft.get(cur as usize).copied().unwrap_or(false) {
                                     break;

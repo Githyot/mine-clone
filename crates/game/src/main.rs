@@ -45,6 +45,7 @@ mod monitor;
 mod multiplayer;
 mod lod;
 mod mobs;
+mod nether_end;
 mod paintings;
 mod particles;
 mod player_model;
@@ -477,6 +478,7 @@ struct Game {
     boss: bosses::BossState,
     /// The Terraria side (Etapa 5): accessories, glyph spells, hard mode and its events.
     t5: terraria::Terraria,
+    ne: nether_end::NetherEnd,
     town: npcs::Town,
     progress: progress::Progress,
     raid: raids::Raid,
@@ -829,6 +831,7 @@ impl Game {
             magic: magic::Magic::new(max_mana),
             boss: bosses::BossState::new(bosses_beaten),
             t5: terraria::Terraria::default(),
+            ne: nether_end::NetherEnd::default(),
             town: npcs::Town::new(town_npcs),
             progress: progress::Progress::new(),
             raid: raids::Raid::default(),
@@ -941,6 +944,15 @@ impl Game {
             game.arrival = Some(game.end_arrival());
             game.body.pos = game.arrival.unwrap();
             game.needs_spawn = false;
+            if let Some(name) = game.args.find.clone() {
+                // Test hook: look at a structure on the far islands.
+                if let Some((o, size)) = game.world.gen.find_structure(&name, 1500, 0, 60) {
+                    game.arrival = None;
+                    game.body.pos = Vec3::new(o.x as f32 + size.x as f32 / 2.0, o.y as f32 + size.y as f32 * 0.6 + 2.0, o.z as f32 + size.z as f32 + 9.0);
+                    game.body.flying = true;
+                    log::info!("found {name} at {o}");
+                }
+            }
         }
         if std::env::var("MC_NETHER").is_ok() && game.dim == voxel::worldgen::Dim::Overworld {
             // Test hook: arrive in the Nether through a fresh portal.
@@ -949,14 +961,19 @@ impl Game {
             game.arrival = Some(Vec3::new(p.x / 8.0, 70.0, p.z / 8.0));
             game.body.pos = game.arrival.unwrap();
             game.needs_spawn = false;
-            if std::env::var("MC_NETHER").as_deref() == Ok("warped") {
-                // Test hook: stand on a floor in the nearest warped forest.
+            let want = match std::env::var("MC_NETHER").as_deref() {
+                Ok("warped") => Some(voxel::worldgen::Biome::WarpedForest),
+                Ok("deltas") => Some(voxel::worldgen::Biome::BasaltDeltas),
+                _ => None,
+            };
+            if let Some(want) = want {
+                // Test hook: stand on a floor in the nearest warped forest (or basalt deltas).
                 let (x0, z0) = (game.body.pos.x as i32, game.body.pos.z as i32);
                 'search: for r in (0..2000).step_by(16) {
                     for k in 0..(r / 8).max(1) {
                         let a = k as f32 / (r / 8).max(1) as f32 * std::f32::consts::TAU;
                         let (x, z) = (x0 + (a.cos() * r as f32) as i32, z0 + (a.sin() * r as f32) as i32);
-                        if game.world.gen.biome_at(x, z) != voxel::worldgen::Biome::WarpedForest {
+                        if game.world.gen.biome_at(x, z) != want {
                             continue;
                         }
                         if let Some(y) = game.world.gen.nether_floor_near(x, 40, z) {
@@ -1425,6 +1442,8 @@ impl Game {
                     self.body.pos = Vec3::new(sx as f32 + 0.5, y as f32, sz as f32 + 0.5);
                     self.needs_spawn = false;
                 }
+                // Never start the game inside rock (the Nether test shortcuts land in closed caves).
+                self.unstick();
                 if self.args.demo {
                     self.build_demo();
                 }
@@ -1524,6 +1543,10 @@ impl Game {
                             self.particles.update(&self.world, 0.03);
                         }
                     }
+                }
+                if let Ok(what) = std::env::var("MC_NE") {
+                    // Test hook: the Nether and End's fights (shots, wither, dragon, glide, gateway).
+                    self.nether_end_test(&what);
                 }
                 if let Ok(spell) = std::env::var("MC_CAST") {
                     // Test hook: a caster in hand, a few spells frozen in flight.
@@ -1625,6 +1648,7 @@ impl Game {
             }
             // Screenshots hold the world still so the picture is stable.
             let mdt = if self.args.screenshot.is_some() { 0.0 } else { dt };
+            self.before_mobs();
             let out = self.mobs.update(&self.world, self.body.pos, creative, daylight, mdt);
             for (dmg, from) in out.damage {
                 self.damage(dmg, from);
@@ -1637,6 +1661,7 @@ impl Game {
                 self.enemy_bolt(from, vel, school, dmg);
                 self.sfx(Sfx::Cast(school));
             }
+            self.update_nether_end(mdt, &out.special, &out.deaths);
             // A soft thrum when a bow is loosed, a wooden thunk when an arrow lands.
             if out.shots > 0 {
                 self.sfx(Sfx::Place(Material::Cloth));
@@ -1753,7 +1778,13 @@ impl Game {
         let was_ground = self.body.on_ground;
         // The camera pass for screenshots holds still.
         if self.args.screenshot.is_none() {
-            if !self.seat_step(input.sneak) && !self.ride_step(wish, input.sneak) && !self.boat_step(wish, input.sneak, dt) && !self.mount_step(wish, input.jump, input.sneak, dt) {
+            if !self.seat_step(input.sneak)
+                && !self.ride_step(wish, input.sneak)
+                && !self.boat_step(wish, input.sneak, dt)
+                && !self.mount_step(wish, input.jump, input.sneak, dt)
+                && !self.strider_step(wish, input.sneak, dt)
+                && !self.elytra_step(input.jump, dt)
+            {
                 self.body.step(&self.world, &input, dt);
             }
         } else {
@@ -1876,6 +1907,9 @@ impl Game {
         }
         // Survival swings land when the weapon is ready again, or on a fresh click (weaker).
         let ready = !self.survival || self.attack_pressed || self.attack_charge() >= 1.0;
+        if attack && self.attack_cd <= 0.0 && ready && self.deflect_shot() {
+            self.attack_cd = 0.3;
+        }
         if attack && self.attack_cd <= 0.0 && ready {
             // Plants don't block a swing: the hit goes through grass and flowers to the mob.
             let world = &self.world;
@@ -2478,6 +2512,9 @@ impl Game {
     }
 
     fn respawn(&mut self) {
+        if self.respawn_at_anchor() {
+            return;
+        }
         if self.dim != voxel::worldgen::Dim::Overworld {
             // Death in the Nether sends you home: load the Overworld first.
             self.travel_home_after_death();
@@ -2498,6 +2535,10 @@ impl Game {
 
     /// Test scene: one of every mob in a row in front of the player.
     fn spawn_demo_mobs(&mut self) {
+        if let Ok(floor) = std::env::var("MC_ARENA") {
+            // Test hook: a flat floor for the line-up (the Nether's slopes hide the mobs).
+            self.test_arena(&floor);
+        }
         let f = self.forward();
         let fwd = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
         let side = Vec3::new(-fwd.z, 0.0, fwd.x);
