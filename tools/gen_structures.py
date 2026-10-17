@@ -848,6 +848,240 @@ def windmill():
     }
 
 
+def desert_temple():
+    """A sandstone pyramid (idea from the desert temples): a stepped body with an orange and
+    terracotta star on the floor, and under it a hidden room with four chests over a TNT
+    trap set off by the plate in the middle."""
+    W = 15
+    layers = []
+    # The trap room, three layers below the floor (sink keeps it underground).
+    for y in range(4):
+        g = grid(W, W, " ")
+        for z in range(4, 11):
+            for x in range(4, 11):
+                edge = x in (4, 10) or z in (4, 10)
+                if y == 0:
+                    g[z][x] = "S"
+                elif y == 3:
+                    g[z][x] = "S"
+                else:
+                    g[z][x] = "S" if edge else "."
+        if y == 0:
+            g[7][7] = "X"  # TNT under the plate
+        if y == 1:
+            g[7][7] = "p"
+            for (x, z) in ((7, 5), (7, 9), (5, 7), (9, 7)):
+                g[z][x] = "c"
+        if y == 3:
+            g[7][7] = "."  # the hole down from the hall
+        layers.append(g)
+    # The pyramid: each layer a step in.
+    for k in range(7):
+        g = grid(W, W, " ")
+        lo, hi = k, W - 1 - k
+        for z in range(lo, hi + 1):
+            for x in range(lo, hi + 1):
+                edge = x in (lo, hi) or z in (lo, hi)
+                g[z][x] = "C" if edge and k % 2 == 1 else "S"
+        if k <= 2:
+            # The hall inside: open from layer 1 to 2, the hole in the middle of its floor.
+            for z in range(lo + 1, hi):
+                for x in range(lo + 1, hi):
+                    if k > 0:
+                        g[z][x] = "."
+            if k == 0:
+                for z in range(4, 11):
+                    for x in range(4, 11):
+                        d = abs(x - 7) + abs(z - 7)
+                        g[z][x] = "O" if d in (1, 3) else ("T" if d == 2 else "S")
+                g[7][7] = "."
+            # Doorway in the south wall, chiseled blocks either side.
+            if k in (0, 1, 2):
+                g[hi][7] = "." if k > 0 else "S"
+                if k == 1:
+                    g[hi][6] = "H"
+                    g[hi][8] = "H"
+        layers.append(g)
+    return {
+        "name": "templo_do_deserto",
+        "biomes": ["Desert"],
+        "spacing": 14,
+        "chance": 0.45,
+        "sink": 4,
+        "foundation": "sandstone",
+        "palette": {"S": "sandstone", "C": "cut_sandstone", "H": "chiseled_sandstone", "O": "orange_terracotta", "T": "terracotta",
+                    "X": "tnt", "p": "stone_pressure_plate", "c": "chest"},
+        "layers": [rows(l) for l in layers],
+        "loot": [("", "gold_ingot", 2, 7, 0.6), ("", "emerald", 1, 3, 0.4), ("", "bone", 3, 8, 0.6), ("", "rotten_flesh", 2, 6, 0.5),
+                 ("", "diamond", 1, 3, 0.2), ("", "iron_ingot", 1, 5, 0.5), ("", "saddle", 1, 1, 0.25), ("", "topaz", 1, 2, 0.3)],
+    }
+
+
+def jungle_temple():
+    """A mossy stone temple in the jungle: two floors joined by a stair, a hidden chest
+    behind the stair and vines hanging off the roof."""
+    W, D, H = 11, 13, 9
+    layers = []
+    for y in range(H):
+        g = grid(W, D, " ")
+        for z in range(D):
+            for x in range(W):
+                edge = x in (0, W - 1) or z in (0, D - 1)
+                mossy = (x * 3 + z * 5 + y) % 4 == 0
+                stone = "M" if mossy else "C"
+                if y in (0, 4, 8):
+                    g[z][x] = stone
+                else:
+                    g[z][x] = stone if edge else "."
+        if y in (1, 2):
+            g[D - 1][5] = "."  # entrance
+        if y in (5, 6) and True:
+            for z in (3, 6, 9):
+                g[z][0] = "."  # windows upstairs
+                g[z][W - 1] = "."
+        # Stair up along the east wall, rising to the north.
+        for n in range(4):
+            if y == n + 1:
+                g[9 - n][8] = "s"
+            if y == 4:
+                g[9 - n][8] = "."
+                g[9 - n][9] = "."
+        if y == 1:
+            g[10][9] = "c"  # tucked behind the foot of the stair
+            g[2][2] = "c"
+            g[6][5] = "l"
+        if y == 5:
+            g[2][8] = "c"
+            g[6][2] = "h"
+        if y == 8:
+            for x in (1, 4, 7, 9):
+                g[0][x] = "M"
+        layers.append(g)
+    # Vines over the walls.
+    vines = grid(W, D, " ")
+    layers.append(vines)
+    return {
+        "name": "templo_da_selva",
+        "biomes": ["Jungle"],
+        "spacing": 14,
+        "chance": 0.5,
+        "sink": 1,
+        "foundation": "cobblestone",
+        "palette": {"C": "cobblestone", "M": "mossy_cobblestone", "s": "cobblestone_stairs", "c": "chest", "l": "lantern",
+                    "h": "lantern:1"},
+        "layers": [rows(l) for l in layers],
+        "loot": [("", "gold_ingot", 2, 6, 0.6), ("", "emerald", 1, 4, 0.5), ("", "diamond", 1, 2, 0.25), ("", "bone", 2, 6, 0.5),
+                 ("", "saddle", 1, 1, 0.25), ("", "ruby", 1, 2, 0.3), ("", "arrow", 4, 12, 0.5)],
+    }
+
+
+def igloo():
+    """A snow dome with an ice window, a bed, a furnace, a table and a chest."""
+    layers = [
+        [" SSSSS ", "SSSSSSS", "SSSSSSS", "SSSSSSS", "SSSSSSS", "SSSSSSS", " SSSSS "],
+        [" SSSSS ", "SbfwwKS", "SwwwwwS", "SwwwwwS", "SwwwwwS", "SwcwwtS", " SS.SS "],
+        [" SSSSS ", "S.....S", "S.....S", "I.....I", "S.....S", "S.....S", " SS.SS "],
+        ["  SSS  ", " S...S ", "S.....S", "S.....S", "S.....S", " S...S ", "  SSS  "],
+        ["       ", "  SSS  ", " SSSSS ", " SSSSS ", " SSSSS ", "  SSS  ", "       "],
+    ]
+    return {
+        "name": "iglu",
+        "biomes": ["Snowy Plains", "Snowy Peaks"],
+        "spacing": 10,
+        "chance": 0.4,
+        "foundation": "snow",
+        "palette": {"S": "snow", "I": "ice", "w": "white_carpet", "b": "red_bed", "f": "furnace", "K": "crafting_table",
+                    "c": "chest", "t": "torch"},
+        "layers": layers,
+        "loot": [("", "coal", 2, 6, 0.6), ("", "apple", 1, 3, 0.5), ("", "gold_ingot", 1, 2, 0.3), ("", "emerald", 1, 2, 0.3),
+                 ("", "salmon", 1, 4, 0.5)],
+    }
+
+
+def mineshaft():
+    """An old mine deep in the stone: two crossing tunnels held up by oak frames every few
+    blocks, with rails, cobwebs, lanterns and a chest or two."""
+    W = 25
+    layers = []
+    for y in range(5):
+        g = grid(W, W, " ")
+        for i in range(W):
+            for (x, z) in ((i, 12), (12, i)):
+                for side in (-1, 0, 1):
+                    xx, zz = (x, z + side) if z == 12 and x != 12 else (x + side, z)
+                    if not (0 <= xx < W and 0 <= zz < W):
+                        continue
+                    if y == 0:
+                        g[zz][xx] = "P" if (i % 5 == 0 and side == 0) else (g[zz][xx] if g[zz][xx] not in " " else "D")
+                    elif y in (1, 2):
+                        g[zz][xx] = "."
+                        if i % 5 == 0 and side != 0:
+                            g[zz][xx] = "f"
+                    elif y == 3:
+                        g[zz][xx] = "P" if i % 5 == 0 else "."
+        layers.append(g)
+    # Rails down the east-west tunnel, webs and light.
+    for x in range(W):
+        if x != 12:
+            layers[1][12][x] = "r"
+    for (x, z) in ((3, 11), (20, 13), (11, 4), (13, 21), (12, 12)):
+        layers[2][z][x] = "w"
+    for (x, z) in ((5, 12), (12, 5), (12, 19), (19, 12)):
+        layers[3][z][x] = "h"
+    layers[1][2][11] = "c"
+    layers[1][13][22] = "c"
+    return {
+        "name": "mina_abandonada",
+        "biomes": ["Plains", "Forest", "Birch Forest", "Taiga", "Dark Forest", "Mountains", "Snowy Plains", "Savanna", "Desert",
+                   "Jungle", "Badlands", "Meadow", "Cherry Grove"],
+        "spacing": 10,
+        "chance": 0.35,
+        "sink": 28,
+        "palette": {"P": "oak_planks", "D": "cobblestone", "f": "oak_fence", "r": "rail", "w": "cobweb", "h": "lantern:1", "c": "chest"},
+        "layers": [rows(l) for l in layers],
+        "loot": [("", "raw_iron", 2, 6, 0.6), ("", "coal", 3, 10, 0.7), ("", "redstone", 2, 8, 0.5), ("", "rail", 4, 12, 0.5),
+                 ("", "torch", 4, 12, 0.6), ("", "diamond", 1, 2, 0.15), ("", "gold_ingot", 1, 3, 0.35), ("", "bread", 1, 3, 0.4)],
+    }
+
+
+def shipwreck():
+    """A sunken ship on the sea floor: a broken spruce hull lying over, a stub of a mast and
+    two chests. The water stays inside."""
+    W, L = 7, 17
+    layers = []
+    for y in range(6):
+        g = grid(W, L, " ")
+        for z in range(1, L - 1):
+            taper = 2 if z < 4 or z > L - 5 else (1 if z < 6 or z > L - 7 else 0)
+            lo, hi = taper, W - 1 - taper
+            for x in range(lo, hi + 1):
+                if y == 0:
+                    g[z][x] = "P" if lo < x < hi else "L"
+                elif y <= 2:
+                    if x in (lo, hi):
+                        # Broken planks here and there.
+                        g[z][x] = " " if (z * 7 + x + y) % 5 == 0 else "P"
+                elif y == 3 and z > L // 2:
+                    if x in (lo, hi) or z == L // 2 + 1:
+                        g[z][x] = "s"
+        if y == 1:
+            g[3][3] = "c"
+            g[L - 4][3] = "c"
+        if 1 <= y <= 5:
+            g[L // 2][3] = "L"  # what is left of the mast
+        layers.append(g)
+    return {
+        "name": "naufragio",
+        "biomes": ["Ocean", "Frozen Ocean"],
+        "spacing": 12,
+        "chance": 0.45,
+        "palette": {"P": "spruce_planks", "L": "spruce_log", "s": "spruce_slab", "c": "chest"},
+        "layers": [rows(l) for l in layers],
+        "loot": [("", "gold_ingot", 1, 4, 0.5), ("", "emerald", 1, 3, 0.4), ("", "iron_ingot", 1, 5, 0.5), ("", "paper", 1, 6, 0.6),
+                 ("", "diamond", 1, 1, 0.12), ("", "carrot", 1, 4, 0.4), ("", "gold_nugget", 2, 8, 0.4)],
+    }
+
+
 def ron(structs):
     out = ["// Generated by tools/gen_structures.py: edit that script, not this file.", "(structures: ["]
     for s in structs:
@@ -897,6 +1131,11 @@ structs = [
     raider_outpost(),
     nether_fortress(),
     stronghold(),
+    desert_temple(),
+    jungle_temple(),
+    igloo(),
+    mineshaft(),
+    shipwreck(),
 ]
 OUT.write_text(ron(structs))
 print(f"wrote {OUT} ({len(structs)} structures)")

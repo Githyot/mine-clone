@@ -2655,6 +2655,67 @@ FLOWERS = {
 }
 
 
+def mossy_stone_bricks():
+    img = stone_bricks()
+    rng = rng_for("mossy_stone_bricks")
+    moss = pal("#3a5a24", "#4a6e2c", "#5a8234", "#6a963e")
+    f = fbm(rng, ((4, 0.4), (2, 0.6)))
+    for y in range(N):
+        for x in range(N):
+            if f[y, x] > 0.55 + 0.15 * (y / N):
+                put(img, x, y, moss[int(rng.integers(0, 4))])
+    return img
+
+
+def cracked_stone_bricks():
+    img = stone_bricks()
+    rng = rng_for("cracked_stone_bricks")
+    dark = hexrgb("#3e3e3e")
+    for _ in range(4):
+        x, y = int(rng.integers(1, 15)), int(rng.integers(1, 15))
+        for i in range(5):
+            put(img, int(np.clip(x + i, 0, 15)), int(np.clip(y + (i * 7 % 3) - 1, 0, 15)), dark)
+    return img
+
+
+def cut_sandstone():
+    img = sandstone_bottom()
+    rgb = img[..., :3]
+    rgb[0, :] = SANDSTONE[3]
+    rgb[1, :] = SANDSTONE[2]
+    rgb[15, :] = SANDSTONE[0]
+    rgb[14, :] = SANDSTONE[1]
+    rgb[7, 1:15] = SANDSTONE[1]
+    return img
+
+
+def chiseled_sandstone():
+    img = cut_sandstone()
+    rgb = img[..., :3]
+    # A carved face: eyes and a mouth inside a frame.
+    for x in range(3, 13):
+        rgb[3, x] = SANDSTONE[0]
+        rgb[12, x] = SANDSTONE[0]
+    for y in range(3, 13):
+        rgb[y, 3] = SANDSTONE[0]
+        rgb[y, 12] = SANDSTONE[0]
+    for (x, y) in ((5, 6), (6, 6), (9, 6), (10, 6), (6, 9), (7, 10), (8, 10), (9, 9)):
+        rgb[y, x] = SANDSTONE[0]
+    return img
+
+
+def cobweb():
+    img = canvas()
+    c = hexrgb("#dcdcdc")
+    for (x0, y0, x1, y1) in ((0, 0, 15, 15), (15, 0, 0, 15), (8, 0, 8, 15), (0, 8, 15, 8)):
+        line(img, x0, y0, x1, y1, c, 200)
+    for r in (3, 6):
+        for k in range(16):
+            a = k / 16 * 2 * np.pi
+            put(img, int(8 + r * np.cos(a)), int(8 + r * np.sin(a)), c)
+    return img
+
+
 def farming_registry():
     reg = {"farmland": farmland, "hay_block_side": hay_block_side, "hay_block_top": hay_block_top,
            "botany_pot_side": botany_pot_side, "botany_pot_top": botany_pot_top, "botany_pot_empty": botany_pot_empty,
@@ -2671,6 +2732,8 @@ def farming_registry():
     for wood in ("oak", "birch", "spruce") + NEW_WOODS:
         reg[f"{wood}_drawer_front"] = lambda w=wood: drawer_front(w)
     reg["sugar_cane"] = sugar_cane_block
+    reg.update({"mossy_stone_bricks": mossy_stone_bricks, "cracked_stone_bricks": cracked_stone_bricks,
+                "cut_sandstone": cut_sandstone, "chiseled_sandstone": chiseled_sandstone, "cobweb": cobweb})
     reg["mycelium_top"] = mycelium_top
     reg["mycelium_side"] = lambda: fringe_side("mycelium_side", MYCELIUM)
     reg["mushroom_stem"] = mushroom_stem

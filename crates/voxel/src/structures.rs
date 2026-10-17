@@ -239,7 +239,9 @@ impl Generator {
         let hs = [self.height_at(ox, oz), self.height_at(ox + f.x - 1, oz), self.height_at(ox, oz + f.y - 1), self.height_at(ox + f.x - 1, oz + f.y - 1), self.height_at(cx, cz)];
         let lo = *hs.iter().min().unwrap();
         let hi = *hs.iter().max().unwrap();
-        if lo < SEA_LEVEL || hi - lo > 4 {
+        // Wrecks and the like sit on the sea floor, everything else on dry land.
+        let sea_floor = s.def.biomes.iter().any(|b| b == "Ocean" || b == "Frozen Ocean");
+        if (if sea_floor { hi > SEA_LEVEL - 6 } else { lo < SEA_LEVEL }) || hi - lo > 4 {
             return None;
         }
         let ground = hs[4];
