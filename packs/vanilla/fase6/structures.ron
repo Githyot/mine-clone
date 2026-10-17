@@ -102,21 +102,6 @@
         ],
     ),
     (
-        name: "poco_do_deserto",
-        biomes: ["Desert"],
-        spacing: 9,
-        chance: 0.45,
-        sink: 2,
-        palette: [('s', "sandstone"), ('S', "suspicious_sand"), ('w', "water"), ('l', "sandstone_slab")],
-        layers: [
-            ["sssss", "ssSss", "sSwSs", "ssSss", "sssss"],
-            ["sssss", "s...s", "s.w.s", "s...s", "sssss"],
-            ["l...l", ".....", ".....", ".....", "l...l"],
-            ["l...l", ".....", ".....", ".....", "l...l"],
-            ["lllll", "lllll", "lllll", "lllll", "lllll"],
-        ],
-    ),
-    (
         name: "ruina_da_praia",
         biomes: ["Beach"],
         spacing: 8,

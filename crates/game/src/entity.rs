@@ -39,9 +39,21 @@ pub struct Bones {
 
 impl Default for Bones {
     fn default() -> Self {
-        Bones { m: [Mat4::IDENTITY.to_cols_array_2d(); MAX_PARTS], light: [1.0, 0.0, 0.0, 0.0] }
+        let mut m = [Mat4::IDENTITY.to_cols_array_2d(); MAX_PARTS];
+        // The last slot carries the eyelids (see `add_eyelids`): folded to a point = eyes open.
+        m[EYELID_PART] = [[0.0; 4]; 4];
+        Bones { m, light: [1.0, 0.0, 0.0, 0.0] }
     }
 }
+
+/// Test hook for screenshots: MC_BLINK=1 keeps every mob's eyes shut.
+fn eyes_shut_test() -> bool {
+    static SHUT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *SHUT.get_or_init(|| std::env::var("MC_BLINK").is_ok())
+}
+
+/// Part slot of the eyelid quads, for models with fewer parts than that.
+const EYELID_PART: usize = MAX_PARTS - 1;
 
 struct MobMesh {
     vbuf: wgpu::Buffer,
@@ -280,6 +292,7 @@ fn build_mesh(def: &MobDef, skin: &Skin, layer: u32) -> (Vec<EntityVertex>, Vec<
             mb.face(f, pi as u32);
         }
     }
+    add_eyelids(&mut mb, def, skin);
     for l in &def.layers {
         let p = &def.parts[l.part];
         let inflate = l.inflate.max(0.1);
@@ -293,6 +306,111 @@ fn build_mesh(def: &MobDef, skin: &Skin, layer: u32) -> (Vec<EntityVertex>, Vec<
     (mb.verts, mb.indices)
 }
 
+/// Eyelids (Fresh Animations idea): the eye pixels on the front of the head are found in the
+/// skin, and each gets a little quad just in front of it, textured with the skin right above
+/// the eye. They ride on their own part slot, which is folded away except while blinking, so
+/// blinking costs nothing but one matrix.
+fn add_eyelids(mb: &mut MeshBuilder, def: &MobDef, skin: &Skin) {
+    if def.parts.len() > EYELID_PART || def.name == "player" {
+        return;
+    }
+    let Some(hi) = def.parts.iter().position(|p| p.anim == Anim::Head) else { return };
+    let p = &def.parts[hi];
+    let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32);
+    let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32);
+    let tex = (p.size.0 as i32, p.size.1 as i32, p.size.2 as i32);
+    let f = &faces(origin, size, p.uv, tex)[0];
+    // A relief layer on the head (3D skin layer) shows in front of the base face where it has
+    // pixels; lids for those pixels sit on the layer.
+    let layer = def.layers.iter().find(|l| l.part == hi).map(|l| {
+        let inf = l.inflate.max(0.1);
+        let fl = &faces(origin - Vec3::splat(inf), size + Vec3::splat(2.0 * inf), p.uv, tex)[0];
+        (fl.corner, fl.u, fl.v)
+    });
+    let (rx, ry, rw, rh) = f.rect;
+    if rw < 3 || rh < 3 {
+        return;
+    }
+    let raw = |x: i32, y: i32| -> [f32; 4] {
+        if x < 0 || y < 0 || x >= SKIN_W as i32 || y >= SKIN_H as i32 {
+            return [0.0; 4];
+        }
+        let k = ((y as u32 * SKIN_W + x as u32) * 4) as usize;
+        let c = &skin.pixels[k..k + 4];
+        [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, c[3] as f32 / 255.0]
+    };
+    // What shows at face pixel (i, j): (colour, skin row it comes from).
+    let px = |i: i32, j: i32| -> ([f32; 4], i32) {
+        if i < 0 || j < 0 || i >= rw || j >= rh {
+            return ([0.0; 4], ry + j);
+        }
+        if layer.is_some() {
+            let o = raw(rx + i, ry + 64 + j);
+            if o[3] > 0.5 {
+                return (o, ry + 64 + j);
+            }
+        }
+        (raw(rx + i, ry + j), ry + j)
+    };
+    let luma = |c: [f32; 4]| c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
+    // The face's usual colour.
+    let mut avg = [0.0f32; 3];
+    let mut n = 0.0;
+    for j in 0..rh {
+        for i in 0..rw {
+            let c = px(i, j).0;
+            if c[3] > 0.5 {
+                for k in 0..3 {
+                    avg[k] += c[k];
+                }
+                n += 1.0;
+            }
+        }
+    }
+    if n < 4.0 {
+        return;
+    }
+    avg = avg.map(|v| v / n);
+    // Eye pixels: very dark, or white, unlike the face, in the upper part of the head.
+    let eye = |i: i32, j: i32| -> bool {
+        let c = px(i, j).0;
+        if c[3] < 0.5 || j as f32 > rh as f32 * 0.6 {
+            return false;
+        }
+        let d = ((c[0] - avg[0]).powi(2) + (c[1] - avg[1]).powi(2) + (c[2] - avg[2]).powi(2)).sqrt();
+        let sat = c[0].max(c[1]).max(c[2]) - c[0].min(c[1]).min(c[2]);
+        let l = luma(c);
+        d > 0.25 && (l < 0.2 || (l > 0.78 && sat < 0.15))
+    };
+    // Eyes come in pairs: keep pixels mirrored across the face.
+    let cells: Vec<(i32, i32)> = (0..rh).flat_map(|j| (0..rw).map(move |i| (i, j))).filter(|&(i, j)| eye(i, j) && eye(rw - 1 - i, j)).collect();
+    if cells.len() < 2 || cells.len() as f32 > n * 0.2 {
+        return;
+    }
+    for &(i, j) in &cells {
+        // Lid colour: the nearest face pixel above the eye.
+        let mut lj = j - 1;
+        while lj >= 0 && (eye(i, lj) || px(i, lj).0[3] < 0.5) {
+            lj -= 1;
+        }
+        if lj < 0 {
+            lj = (j + 1..rh).find(|&b| !eye(i, b) && px(i, b).0[3] >= 0.5).unwrap_or(0);
+        }
+        let row = px(i, lj).1;
+        let t = [(rx + i) as f32 + 0.5, row as f32 + 0.5];
+        let uv = [t[0] / SKIN_W as f32, t[1] / SKIN_H as f32];
+        // On the layer when the eye pixel is drawn by it, else on the head itself.
+        let (corner, fu, fv) = match layer {
+            Some(l) if px(i, j).1 >= ry + 64 => l,
+            _ => (f.corner, f.u, f.v),
+        };
+        let su = fu / rw as f32;
+        let sv = fv / rh as f32;
+        let c = corner + su * i as f32 + sv * j as f32 + f.n * 0.04;
+        mb.quad([c, c + su, c + su + sv, c + sv], [uv; 4], f.n, f.shade, EYELID_PART as u32);
+    }
+}
+
 /// A painting: a canvas one pixel thick, picture on the front, wood everywhere else.
 fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
     let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
@@ -300,6 +418,10 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
     let (iw, ih) = ((p.width * 16) as i32, (p.height * 16) as i32);
     let fs = faces(Vec3::ZERO, Vec3::new(w, h, 1.0), (0, 0), (iw, ih, 1));
     for (k, f) in fs.into_iter().enumerate() {
+        // A see-through painting is only its picture, with no wooden board behind it.
+        if p.alpha && k != 0 {
+            continue;
+        }
         let rect = if k == 0 { (0, 0, iw, ih) } else { (0, 64, 16, 16) };
         let shade = if k == 0 { 1.0 } else { f.shade };
         mb.face(&Face { rect, shade, ..f }, 0);
@@ -308,7 +430,7 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
 }
 
 /// Armour materials, by the item-name prefix, with their colour.
-pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 21] = [
+pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 34] = [
     ("leather", [134, 82, 46]),
     ("chainmail", [150, 150, 156]),
     ("iron", [206, 206, 206]),
@@ -331,6 +453,21 @@ pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 21] = [
     ("radiant", [240, 214, 110]),
     ("verdite", [96, 206, 70]),
     ("lumite", [120, 236, 220]),
+    // The mod pack's dimensions (tools/moddata/aether.py, otherside.py).
+    ("zanite", [128, 72, 200]),
+    ("gravitite", [200, 74, 180]),
+    ("valkyrie", [208, 210, 216]),
+    ("phoenix", [232, 100, 26]),
+    ("resonarium", [30, 138, 154]),
+    // Wizard robes, one set per school (tools/moddata/spellbooks.py).
+    ("pyromancer", [176, 52, 22]),
+    ("cryomancer", [92, 160, 214]),
+    ("electromancer", [214, 184, 50]),
+    ("priest", [228, 214, 160]),
+    ("voidwalker", [120, 46, 168]),
+    ("bloodmage", [130, 18, 30]),
+    ("cultist", [18, 110, 116]),
+    ("archevoker", [140, 120, 72]),
 ];
 
 /// The boxes of one armour piece (helmet, chestplate, leggings, boots) on the player model:
@@ -895,6 +1032,16 @@ pub fn bones_for(mob: &Mob, def: &MobDef, cam_block: IVec3, sky: f32, blk: f32) 
         };
         let part = Mat4::from_translation(pivot) * Mat4::from_quat(rot) * Mat4::from_translation(-pivot);
         b.m[i] = (model * part).to_cols_array_2d();
+        // Blinking: every few seconds (each mob on its own beat) for a tenth of a second, and
+        // always while asleep or dead.
+        if p.anim == Anim::Head && def.parts.len() <= EYELID_PART {
+            let period = 3.2 + mob.phase.fract() * 3.0;
+            let beat = (mob.age + mob.phase * 7.0) % period;
+            let double = mob.phase.fract() > 0.7 && (0.25..0.37).contains(&beat);
+            if beat < 0.12 || double || mob.sleeping || !mob.alive() || eyes_shut_test() {
+                b.m[EYELID_PART] = b.m[i];
+            }
+        }
     }
     b
 }

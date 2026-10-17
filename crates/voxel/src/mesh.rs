@@ -20,6 +20,25 @@ pub const FLAG_CTM_U0: u32 = 8;
 pub const FLAG_CTM_U1: u32 = 16;
 pub const FLAG_CTM_V0: u32 = 32;
 pub const FLAG_CTM_V1: u32 = 64;
+/// Top bit of the 12-bit layer field (texture arrays stay under 2048 layers): the texture has
+/// glowing pixels (Continuity's emissive textures) that the shader draws at full brightness.
+pub const LAYER_EMISSIVE: u32 = 2048;
+
+/// Blocks whose textures have glowing parts: gem and precious ores, amethyst, crying obsidian.
+pub fn is_emissive(name: &str) -> bool {
+    const GLOW: [&str; 14] = ["diamond", "emerald", "redstone", "lapis", "gold", "quartz", "ruby", "sapphire", "topaz", "platinum", "ambrosium", "zanite", "gravitite", "resonarium"];
+    (name.ends_with("_ore") && GLOW.iter().any(|g| name.contains(g))) || matches!(name, "amethyst_block" | "budding_amethyst" | "crying_obsidian" | "ancient_debris")
+}
+
+/// How a block's texture joins its neighbours (Continuity's connected textures).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Connect {
+    None,
+    /// Every side (glass): no frame lines anywhere in a window.
+    Full,
+    /// Only sideways on the side faces (bookshelves): a long shelf, top and bottom kept.
+    Horizontal,
+}
 
 /// A face that looks the same as its neighbours can merge with them: same texture, tint and
 /// flags, no ambient occlusion and the same light at every corner.
@@ -138,7 +157,9 @@ pub struct MeshTables {
     wave: Vec<bool>,
     height: Vec<u32>,
     variant: Vec<u8>,
-    connected: Vec<bool>,
+    connected: Vec<Connect>,
+    /// Layer bits added for blocks with glowing pixels (`LAYER_EMISSIVE` or 0).
+    emissive: Vec<u32>,
     /// Same id for every level of a liquid (and for every shape variant).
     base: Vec<BlockId>,
     /// Liquid surface height in pixels (source 14, falling 16, lower for each step of flow).
@@ -179,16 +200,19 @@ impl MeshTables {
             height: vec![],
             variant: vec![],
             connected: vec![],
+            emissive: vec![],
             base: vec![],
             liquid_h: vec![],
             biome_tints: biome_tints
                 .iter()
-                .map(|c| [(c[0] * 200.0).min(255.0) as u8, (c[1] * 200.0).min(255.0) as u8, (c[2] * 200.0).min(255.0) as u8])
+                // The lowest bit of red marks foliage (odd), so the shader can turn it with the
+                // seasons; untinted faces and water keep it even.
+                .map(|c| [(c[0] * 200.0).min(255.0) as u8 | 1, (c[1] * 200.0).min(255.0) as u8, (c[2] * 200.0).min(255.0) as u8])
                 .collect(),
             water: vec![],
             rs: vec![],
             water_tints: (0..crate::worldgen::Biome::COUNT)
-                .map(|i| crate::worldgen::Biome::from_u8(i as u8).water_tint().map(|c| (c * 200.0).min(255.0) as u8))
+                .map(|i| crate::worldgen::Biome::from_u8(i as u8).water_tint().map(|c| (c * 200.0).min(255.0) as u8 & !1))
                 .collect(),
         };
         for (i, b) in reg.blocks.iter().enumerate() {
@@ -217,7 +241,16 @@ impl MeshTables {
             // Glass joins up with its neighbours: no frame lines between panes of a window.
             t.base.push(b.base);
             t.liquid_h.push(if b.shape == Shape::Liquid { crate::shapes::liquid_height(b.variant) } else { 0 });
-            t.connected.push(b.shape == Shape::Cube && (b.name == "glass" || b.name.ends_with("_glass")));
+            t.connected.push(if b.shape != Shape::Cube {
+                Connect::None
+            } else if b.name == "glass" || b.name.ends_with("_glass") {
+                Connect::Full
+            } else if b.name == "bookshelf" || b.name.ends_with("_bookshelf") {
+                Connect::Horizontal
+            } else {
+                Connect::None
+            });
+            t.emissive.push(if is_emissive(&b.name) { LAYER_EMISSIVE } else { 0 });
         }
         if t.biome_tints.is_empty() {
             t.biome_tints.push([200, 200, 200]);
@@ -598,7 +631,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     if liquid && t.shape[nid as usize] == Shape::Liquid && (f != 2 || t.base[nid as usize] == t.base[idu]) {
                         continue;
                     }
-                    let layer = t.faces[idu][f] as u32;
+                    let layer = t.faces[idu][f] as u32 | t.emissive[idu];
                     let tint = if t.tint[idu] & (1 << f) != 0 {
                         biome_tint
                     } else if t.water[idu] {
@@ -606,7 +639,13 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     } else {
                         white
                     };
-                    let ctm = if t.connected[idu] { connected_edges(blocks, i, id, f) } else { 0 };
+                    let ctm = match t.connected[idu] {
+                        Connect::None => 0,
+                        Connect::Full => connected_edges(blocks, i, id, f),
+                        // Side faces only, and only the left/right edges.
+                        Connect::Horizontal if f != 2 && f != 3 => connected_edges(blocks, i, id, f) & (FLAG_CTM_U0 | FLAG_CTM_U1),
+                        Connect::Horizontal => 0,
+                    };
                     let mut verts = [Vertex::default(); 4];
                     let mut aos = [3u32; 4];
                     let mut lights = [(0u32, 0u32); 4];
@@ -671,7 +710,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     // Plain full faces with even light go to the merge masks instead.
                     let uniform = aos.iter().all(|&a| a == 3) && lights.iter().all(|&l| l == lights[0]);
                     let flat = !liquid || (f == 2 && (lh == [14; 4] || lh == [16; 4]));
-                    if uniform && hgt == 16 && flat && !t.connected[idu] {
+                    if uniform && hgt == 16 && flat && t.connected[idu] == Connect::None {
                         let (na, aa, ba) = face_axes(f);
                         let lp = [lx, ly, lz];
                         masks[f * 16 + lp[na]][lp[aa] + lp[ba] * 16] = Some(FaceKey {

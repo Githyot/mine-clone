@@ -65,6 +65,11 @@ impl Farm {
         self.first.get(id as usize).is_some_and(|&b| b != AIR)
     }
 
+    /// First stage of a crop that grows on farmland (what a seed plants).
+    pub fn sows_on_farmland(&self, id: BlockId) -> bool {
+        self.first.get(id as usize) == Some(&id) && id != AIR && self.soil[id as usize] == self.farmland
+    }
+
     fn ripe(&self, id: BlockId) -> bool {
         self.ripe.get(id as usize).copied().unwrap_or(false)
     }
@@ -128,7 +133,7 @@ impl Game {
             return;
         }
         let next = self.farm.next[id as usize];
-        if next == AIR {
+        if next == AIR || !self.season_lets_grow(p, id, r) {
             return;
         }
         let wet = soil != self.farm.farmland || (-4..=4).any(|dx| (-4..=4).any(|dz| self.world.fluid(self.world.block_or_air(p + IVec3::new(dx, -1, dz))) == 1));
@@ -312,6 +317,9 @@ impl Game {
             return;
         }
         self.farm.t = 1.0;
+        if self.farmers_resting() {
+            return;
+        }
         let farmers: Vec<usize> =
             self.mobs.list.iter().enumerate().filter(|(_, m)| m.alive() && self.mobs.reg.defs[m.def].name == FARMER).map(|(i, _)| i).collect();
         for i in farmers {

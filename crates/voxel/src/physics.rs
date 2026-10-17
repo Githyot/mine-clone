@@ -228,6 +228,37 @@ impl Body {
         }
     }
 
+    /// Move by the current velocity without steering it (vehicles): stops against blocks and
+    /// steps up onto low ones while on the ground.
+    pub fn travel(&mut self, world: &impl Terrain, dt: f32) {
+        let dt = dt.min(0.05);
+        let delta = self.vel * dt;
+        let was_on_ground = self.on_ground;
+        self.on_ground = false;
+        for axis in [1usize, 0, 2] {
+            let mut moved = self.move_axis(world, axis, delta[axis]);
+            if axis != 1 && was_on_ground && moved.abs() + 1e-6 < delta[axis].abs() {
+                let blocked = self.pos;
+                let up = self.move_axis(world, 1, STEP_HEIGHT);
+                let side = self.move_axis(world, axis, delta[axis] - moved);
+                let down = self.move_axis(world, 1, -up);
+                if side.abs() > 1e-4 && up + down > 1e-4 {
+                    moved += side;
+                } else {
+                    self.pos = blocked;
+                }
+            }
+            if moved.abs() + 1e-6 < delta[axis].abs() {
+                if axis == 1 && delta[1] < 0.0 {
+                    self.on_ground = true;
+                }
+                self.vel[axis] = 0.0;
+            }
+        }
+        let feet = self.pos.floor().as_ivec3();
+        self.in_water = world.liquid(feet);
+    }
+
     fn has_ground_below(&self, world: &impl Terrain) -> bool {
         let (lo, hi) = self.aabb();
         let probe_lo = Vec3::new(lo.x, lo.y - 0.6, lo.z);

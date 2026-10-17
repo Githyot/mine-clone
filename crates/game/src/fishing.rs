@@ -40,7 +40,7 @@ impl Game {
     fn wait_for_bite(&mut self) -> f32 {
         // Rain brings the fish up.
         let rain = if self.weather.rain > 0.5 { 0.7 } else { 1.0 };
-        (5.0 + self.surv.rng.f32() * 20.0) * rain
+        (5.0 + self.surv.rng.f32() * 20.0) * rain * self.rod_bite_factor()
     }
 
     /// Right click with the rod: cast, or reel in.
@@ -66,7 +66,7 @@ impl Game {
 
     fn wear_rod(&mut self, n: u16) {
         if self.survival && self.held_name().as_deref() == Some("fishing_rod") {
-            self.wear_held(n);
+            self.wear_held(self.rod_wear(n));
         }
     }
 
@@ -89,8 +89,11 @@ impl Game {
     fn catch_fish(&mut self, at: Vec3) {
         let roll = self.surv.rng.f32();
         let biome = self.world.gen.biome_at(at.x.floor() as i32, at.z.floor() as i32).name();
-        let fish: Vec<(&'static str, u32)> = FISH.iter().copied().chain(LOCAL_FISH.iter().filter(|f| f.0.contains(&biome)).map(|f| (f.1, f.2))).collect();
-        let table: &[(&'static str, u32)] = if roll < 0.85 { &fish } else if roll < 0.95 { JUNK } else { TREASURE };
+        let more = crate::mods::aquaculture::MORE_FISH.iter().filter(|f| f.0.contains(&biome)).map(|f| (f.1, f.2));
+        let fish: Vec<(&'static str, u32)> = FISH.iter().copied().chain(LOCAL_FISH.iter().filter(|f| f.0.contains(&biome)).map(|f| (f.1, f.2))).chain(more).map(|(n, w)| (n, self.rod_fish_weight(n, w))).collect();
+        let junk: Vec<(&'static str, u32)> = JUNK.iter().chain(crate::mods::aquaculture::MORE_JUNK).copied().collect();
+        let (fish_p, junk_p) = self.rod_odds();
+        let table: &[(&'static str, u32)] = if roll < fish_p { &fish } else if roll < fish_p + junk_p { &junk } else { TREASURE };
         let Some(name) = self.pick(table) else { return };
         let Some(id) = self.items.id(name) else { return };
         // The catch flies to the player.
@@ -104,13 +107,14 @@ impl Game {
             self.spawn_orbs(self.body.pos + Vec3::Y, n);
         }
         self.wear_rod(1);
+        self.rod_caught(Some(name).filter(|_| roll < fish_p), at);
     }
 
     pub(crate) fn update_fishing(&mut self, dt: f32) {
         if self.bobber.is_none() {
             return;
         }
-        if self.held_name().as_deref() != Some("fishing_rod") {
+        if !self.held_name().as_deref().is_some_and(crate::mods::aquaculture::is_rod) {
             self.bobber = None;
             return;
         }
@@ -151,7 +155,7 @@ impl Game {
         } else {
             b.wait -= dt;
             if b.wait <= 0.0 {
-                b.bite = 0.9;
+                b.bite = self.rod_bite_window();
                 self.sfx(Sfx::Splash(0.22));
                 let water = self.reg.get(self.reg.id_or_air("water")).faces[2];
                 self.particles.splash(b.pos, water, 0.2);

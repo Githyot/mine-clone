@@ -9,11 +9,18 @@ use crate::trees::{self, TreeBlocks, TreeKind, TreeSpace, Wood};
 
 pub const SEA_LEVEL: i32 = 62;
 
+mod aether;
 mod caves;
+mod distant_lands;
+mod ecologics;
 mod end;
 mod nether;
+mod otherside;
 pub use caves::CaveBiome;
+pub use distant_lands::is_distant;
 pub use end::{end_pillars, EndPillar, END_EXIT_Y, END_PLATFORM};
+pub use aether::AETHER_ARRIVAL_Y;
+pub use otherside::OTHERSIDE_ROOF;
 pub use nether::{NETHER_LAVA, NETHER_ROOF};
 
 /// Which world a generator makes. Each dimension is saved in its own folder.
@@ -23,6 +30,10 @@ pub enum Dim {
     Overworld,
     Nether,
     End,
+    /// The mod pack's sky islands (worldgen/aether.rs).
+    Aether,
+    /// The mod pack's dark world under the Deep Dark (worldgen/otherside.rs).
+    Otherside,
 }
 
 impl Dim {
@@ -30,6 +41,8 @@ impl Dim {
         match v {
             1 => Dim::Nether,
             2 => Dim::End,
+            3 => Dim::Aether,
+            4 => Dim::Otherside,
             _ => Dim::Overworld,
         }
     }
@@ -44,6 +57,8 @@ impl Dim {
             Dim::Overworld => "",
             Dim::Nether => "nether",
             Dim::End => "end",
+            Dim::Aether => "aether",
+            Dim::Otherside => "otherside",
         }
     }
 }
@@ -79,10 +94,22 @@ pub enum Biome {
     BasaltDeltas = 25,
     EndHighlands = 26,
     MangroveSwamp = 27,
+    // Biomes of the mod content pack (crates/voxel/src/worldgen/moddims.rs and Distant Lands).
+    Aether = 40,
+    GoldenGrove = 41,
+    Deeplands = 42,
+    EchoingForest = 43,
+    OvercastColumns = 44,
+    BloomingCaverns = 45,
+    MataAtlantica = 46,
+    Cerrado = 47,
+    Pantanal = 48,
+    Araucaria = 49,
+    Caatinga = 50,
 }
 
 impl Biome {
-    pub const COUNT: usize = 28;
+    pub const COUNT: usize = 51;
 
     pub fn from_u8(v: u8) -> Biome {
         match v {
@@ -113,6 +140,17 @@ impl Biome {
             25 => Biome::BasaltDeltas,
             26 => Biome::EndHighlands,
             27 => Biome::MangroveSwamp,
+            40 => Biome::Aether,
+            41 => Biome::GoldenGrove,
+            42 => Biome::Deeplands,
+            43 => Biome::EchoingForest,
+            44 => Biome::OvercastColumns,
+            45 => Biome::BloomingCaverns,
+            46 => Biome::MataAtlantica,
+            47 => Biome::Cerrado,
+            48 => Biome::Pantanal,
+            49 => Biome::Araucaria,
+            50 => Biome::Caatinga,
             _ => Biome::Plains,
         }
     }
@@ -147,6 +185,17 @@ impl Biome {
             Biome::MangroveSwamp => "Mangrove Swamp",
             Biome::BasaltDeltas => "Basalt Deltas",
             Biome::EndHighlands => "End Highlands",
+            Biome::Aether => "Aether",
+            Biome::GoldenGrove => "Golden Grove",
+            Biome::Deeplands => "Deeplands",
+            Biome::EchoingForest => "Echoing Forest",
+            Biome::OvercastColumns => "Overcast Columns",
+            Biome::BloomingCaverns => "Blooming Caverns",
+            Biome::MataAtlantica => "Mata Atlântica",
+            Biome::Cerrado => "Cerrado",
+            Biome::Pantanal => "Pantanal",
+            Biome::Araucaria => "Mata de Araucárias",
+            Biome::Caatinga => "Caatinga",
         }
     }
 
@@ -173,6 +222,17 @@ impl Biome {
             Biome::Meadow => [0.9, 1.06, 0.82],
             Biome::SnowyPeaks | Biome::FrozenOcean => [0.85, 0.95, 1.0],
             Biome::MangroveSwamp => [0.8, 0.95, 0.62],
+            Biome::Aether => [0.9, 1.08, 0.95],
+            Biome::GoldenGrove => [1.18, 1.08, 0.62],
+            Biome::Deeplands => [0.62, 0.7, 0.78],
+            Biome::EchoingForest => [0.55, 0.85, 0.9],
+            Biome::OvercastColumns => [0.75, 0.78, 0.82],
+            Biome::BloomingCaverns => [0.85, 0.7, 1.0],
+            Biome::MataAtlantica => [0.74, 1.1, 0.62],
+            Biome::Cerrado => [1.12, 1.0, 0.62],
+            Biome::Pantanal => [0.8, 0.98, 0.66],
+            Biome::Araucaria => [0.78, 0.94, 0.8],
+            Biome::Caatinga => [1.14, 0.96, 0.66],
         }
     }
 
@@ -375,6 +435,10 @@ pub struct Generator {
     nether: nether::NetherPalette,
     end: end::EndPalette,
     caves: caves::CavePalette,
+    ecologics: ecologics::EcoPalette,
+    aether: aether::AetherPalette,
+    otherside: otherside::OthersidePalette,
+    distant: distant_lands::DistantPalette,
 }
 
 const BANDS: usize = 48;
@@ -467,6 +531,10 @@ impl Generator {
             nether: nether::NetherPalette::new(reg),
             end: end::EndPalette::new(reg),
             caves: caves::CavePalette::new(reg),
+            ecologics: ecologics::EcoPalette::new(reg),
+            aether: aether::AetherPalette::new(reg),
+            otherside: otherside::OthersidePalette::new(reg),
+            distant: distant_lands::DistantPalette::new(reg),
         }
     }
 
@@ -476,6 +544,12 @@ impl Generator {
         }
         if self.dim == Dim::End {
             return Column { height: self.end_land(wx, wz).map(|l| l.0).unwrap_or(0), biome: end::end_biome(wx, wz) };
+        }
+        if self.dim == Dim::Otherside {
+            return Column { height: OTHERSIDE_ROOF, biome: self.otherside_biome(wx, wz) };
+        }
+        if self.dim == Dim::Aether {
+            return Column { height: self.aether_land(wx, wz).map(|l| l.0).unwrap_or(0), biome: self.aether_biome(wx, wz) };
         }
         let x = wx as f32;
         let z = wz as f32;
@@ -532,6 +606,7 @@ impl Generator {
             let target = sea - 3.0 + detail;
             h += (target - h) * river.min(1.0).powf(0.7);
         }
+        let pantanal = self.pantanal_shape(x, z, climate, hum, detail, &mut h);
         let height = (h as i32).clamp(4, CHUNK_HEIGHT as i32 - 20);
 
         let temp = climate - (height - 90).max(0) as f32 / 120.0;
@@ -586,6 +661,7 @@ impl Generator {
         } else {
             Biome::Plains
         };
+        let biome = self.distant_biome(biome, x, z, temp, height, pantanal);
         Column { height, biome }
     }
 
@@ -652,6 +728,7 @@ impl Generator {
             // Red sand over deep layers of terracotta (the layers are picked in `generate`).
             Biome::Badlands if p.red_sand != AIR => (p.red_sand, p.terracotta, (h - SEA_LEVEL + 14).max(3)),
             Biome::Badlands => (p.sand, p.sandstone, 4),
+            b if is_distant(b) => self.distant_top_blocks(col, wx, wz),
             _ => (p.grass, p.dirt, 3),
         }
     }
@@ -666,6 +743,12 @@ impl Generator {
         }
         if self.dim == Dim::End {
             return Surface { height: col.height, biome: col.biome, top: self.end.end_stone, liquid: None, trees: None };
+        }
+        if self.dim == Dim::Otherside {
+            return Surface { height: OTHERSIDE_ROOF, biome: col.biome, top: p.bedrock, liquid: None, trees: None };
+        }
+        if self.dim == Dim::Aether {
+            return Surface { height: col.height, biome: col.biome, top: self.aether.grass_id(), liquid: None, trees: None };
         }
         let (top, _, _) = self.top_blocks(&col, wx, wz);
         let h = col.height;
@@ -688,7 +771,7 @@ impl Generator {
                 Biome::Swamp => Some((p.oak_leaves, 0.4)),
                 Biome::MangroveSwamp => Some((self.trees.leaves(Wood::Mangrove), 0.7)),
                 Biome::Meadow => Some((p.birch_leaves, 0.05)),
-                _ => None,
+                b => self.distant_tree_cover(b),
             }
         };
         Surface { height: h, biome: col.biome, top, liquid, trees }
@@ -723,6 +806,12 @@ impl Generator {
         }
         if self.dim == Dim::End {
             return self.generate_end(pos);
+        }
+        if self.dim == Dim::Otherside {
+            return self.generate_otherside(pos);
+        }
+        if self.dim == Dim::Aether {
+            return self.generate_aether(pos);
         }
         let p = &self.pal;
         let mut chunk = Chunk::new(pos);
@@ -790,6 +879,7 @@ impl Generator {
         self.geodes_and_veins(&mut chunk, pos);
         self.decorate_caves(&mut chunk, &mut rng, &cols, pos);
         self.decorate(&mut chunk, &mut rng, &cols, pos);
+        self.decorate_ecologics(&mut chunk, &cols, pos);
         self.place_structures(&mut chunk);
         chunk
     }
@@ -810,7 +900,7 @@ impl Generator {
         self
     }
 
-    pub(crate) fn structures(&self) -> &crate::structures::Structures {
+    pub fn structures(&self) -> &crate::structures::Structures {
         &self.structures
     }
 
@@ -1124,6 +1214,7 @@ impl Generator {
             }
         }
 
+        self.decorate_distant(chunk, cols, pos);
         self.scatter(chunk, cols, pos);
 
         // Ground plants.
@@ -1417,9 +1508,32 @@ mod tests {
         count[Generator::new(1234, &reg).with_dim(Dim::End).biome_at(2000, 0) as usize] += 1;
         let total: usize = count.iter().sum();
         for (i, &c) in count.iter().enumerate() {
+            // Unused numbers, and the mod pack's dimensions' biomes (tested with their dimensions);
+            // Distant Lands' biomes are in the Overworld, so they must turn up here.
+            if Biome::from_u8(i as u8) as usize != i || (40..46).contains(&i) {
+                continue;
+            }
             println!("{:>14}: {:.1}%", Biome::from_u8(i as u8).name(), c as f32 * 100.0 / total as f32);
             assert!(c > 0, "{} never appears", Biome::from_u8(i as u8).name());
         }
+    }
+
+    #[test]
+    fn aether_has_islands_in_both_biomes() {
+        let reg = registry();
+        let g = Generator::new(42, &reg).with_dim(Dim::Aether);
+        let (mut land, mut golden, mut n) = (0, 0, 0);
+        for z in (-3000..3000).step_by(48) {
+            for x in (-3000..3000).step_by(48) {
+                n += 1;
+                land += usize::from(g.aether_land(x, z).is_some());
+                golden += usize::from(g.biome_at(x, z) == Biome::GoldenGrove);
+            }
+        }
+        assert!(land * 10 > n && land * 10 < n * 8, "islands cover {land} of {n} columns");
+        assert!(golden > 0, "no golden groves");
+        let c = g.generate(ChunkPos::new(0, 0));
+        assert!((0..256).all(|y| c.get(5, y, 5) != reg.id_or_air("bedrock")), "no bedrock in the sky");
     }
 
     #[test]

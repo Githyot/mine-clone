@@ -119,6 +119,8 @@ pub fn synth(sfx: Sfx, seed: u32) -> Vec<f32> {
         Sfx::Portal => portal(&mut rng),
         Sfx::Melody(i, t) => melody(&mut rng, i, t),
         Sfx::Fx(fx) => crate::sfx_extra::synth(fx, seed),
+        Sfx::Engine(k, t) => engine(&mut rng, k, t),
+        Sfx::Tune(i, t) => crate::mods::melodies::synth_tune(i, t, seed),
     };
     out.into_iter().map(|s| s.clamp(-1.0, 1.0)).collect()
 }
@@ -506,6 +508,34 @@ fn portal(rng: &mut Rng) -> Vec<f32> {
         .collect()
 }
 
+/// Half a second of an engine: low pulses (cylinders firing, or rotor blades beating the air)
+/// over a dark rumble, quicker and a little louder with more throttle. Played back to back.
+fn engine(rng: &mut Rng, kind: u8, throttle: u8) -> Vec<f32> {
+    let dur = 0.5;
+    let n = (dur * RATE) as usize;
+    let th = throttle.min(4) as f32 / 4.0;
+    let (base, rate, cut) = match kind {
+        0 => (38.0 + 22.0 * th, 14.0 + 22.0 * th, 320.0),
+        1 => (30.0 + 10.0 * th, 6.0 + 8.0 * th, 220.0),
+        _ => (32.0 + 8.0 * th, 5.0 + 6.0 * th, 200.0),
+    };
+    let mut lp = LowPass::new(cut);
+    let mut rumble = LowPass::new(90.0);
+    let mut phase = 0.0f32;
+    (0..n)
+        .map(|i| {
+            let t = i as f32 / RATE;
+            phase += rate / RATE;
+            let pulse = (1.0 - phase.fract()).powf(6.0);
+            let tone = (t * base * TAU).sin() * 0.5 + (t * base * 1.5 * TAU).sin() * 0.15;
+            let x = rng.noise();
+            let body = lp.run(x * pulse * 2.5) + rumble.run(x) * 0.8;
+            let fade = (t / 0.03).min(1.0) * ((dur - t) / 0.03).min(1.0);
+            (tone * (0.4 + 0.6 * pulse) + body) * fade * (0.25 + 0.2 * th)
+        })
+        .collect()
+}
+
 /// A spell: a low breathy whoosh over a soft hum whose note depends on the school; the hit is
 /// a shorter thump. Kept deep like the rest of the game's sounds.
 fn cast(rng: &mut Rng, school: u8, hit: bool) -> Vec<f32> {
@@ -671,6 +701,7 @@ mod tests {
         all.extend([Sfx::Click, Sfx::Hurt, Sfx::Death, Sfx::Respawn, Sfx::MobHit, Sfx::Explode, Sfx::Splash(1.0), Sfx::Swim, Sfx::WaterExit, Sfx::Bubbles, Sfx::Pickup, Sfx::Xp, Sfx::Eat, Sfx::Fizz, Sfx::Thunder(1.0), Sfx::Thunder(0.2), Sfx::Rain, Sfx::Piston(true), Sfx::Piston(false), Sfx::Portal]);
         all.extend((0..3).flat_map(|i| (0..4).map(move |t| Sfx::Melody(i, t))));
         all.extend((0..6).flat_map(|k| [Sfx::Cast(k), Sfx::SpellHit(k)]));
+        all.extend((0..3).flat_map(|k| [Sfx::Engine(k, 0), Sfx::Engine(k, 4)]));
         for sfx in all {
             let v = synth(sfx, 7);
             assert!(!v.is_empty() && v.iter().all(|x| x.is_finite()), "{sfx:?}");

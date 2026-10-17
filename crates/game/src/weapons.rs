@@ -656,7 +656,7 @@ impl Game {
                 s.vel = to.normalize_or_zero() * (20.0 + 6.0 * s.loyalty as f32);
                 s.pos += s.vel * dt;
                 if to.length() < 1.2 {
-                    self.give_back(stack);
+                    self.give_back_stack(stack);
                     remove = true;
                 }
             } else if !self.prog.shots[i].stuck {
@@ -719,7 +719,7 @@ impl Game {
                         }
                     }
                     ShotKind::Trident { stack, .. } => {
-                        self.give_back(stack);
+                        self.give_back_stack(stack);
                         remove = true;
                     }
                     ShotKind::Arrow { pickup: false, .. } if s.age > 1.0 => remove = true,
@@ -734,7 +734,7 @@ impl Game {
         }
     }
 
-    fn give_back(&mut self, stack: ItemStack) {
+    fn give_back_stack(&mut self, stack: ItemStack) {
         if !self.survival {
             return;
         }

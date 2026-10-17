@@ -108,9 +108,6 @@ pub struct MobDef {
     /// Moves in hops (rabbits).
     #[serde(default = "d_false")]
     pub hops: bool,
-    /// Lives under water: swims about below the surface and flops about on land (squid, dolphins, axolotls).
-    #[serde(default = "d_false")]
-    pub aquatic: bool,
     /// Naps on the ground in the daytime.
     #[serde(default = "d_false")]
     pub sleeps: bool,
@@ -147,6 +144,10 @@ pub struct MobDef {
     /// How far a ranged mob shoots from.
     #[serde(default = "d_range")]
     pub range: f32,
+    /// Lives under water (fish, whales): swims about below the surface, never climbs out onto
+    /// the bank, and flops about when stranded. See `Mob::aquatic_steer`.
+    #[serde(default = "d_false")]
+    pub aquatic: bool,
 }
 
 fn d_range() -> f32 {
@@ -176,7 +177,16 @@ pub struct MobRegistry {
 
 impl MobRegistry {
     pub fn from_ron(text: &str) -> Result<Self, String> {
-        let f: MobFile = ron::from_str(text).map_err(|e| format!("mobs.ron: {e}"))?;
+        Self::from_ron_many(&[text])
+    }
+
+    /// Several mob files read as one list (the base game, then mod packs).
+    pub fn from_ron_many(texts: &[&str]) -> Result<Self, String> {
+        let mut f = MobFile { mobs: Vec::new() };
+        for text in texts.iter().filter(|t| !t.trim().is_empty()) {
+            let g: MobFile = ron::from_str(text).map_err(|e| format!("mobs.ron: {e}"))?;
+            f.mobs.extend(g.mobs);
+        }
         for m in &f.mobs {
             if m.parts.len() > 16 {
                 return Err(format!("mob '{}' has more than 16 parts", m.name));
@@ -258,6 +268,10 @@ pub struct Mob {
     /// On a lead: held by the player, or tied to the fence post at `post`.
     pub leashed: bool,
     pub post: Option<glam::IVec3>,
+    /// Set by the game's Apotheosis mod: elite rank (see mods/apotheosis.rs) and how much
+    /// harder this mob hits than its kind (world tier, elites).
+    pub elite: u8,
+    pub power: f32,
     /// Its death was handed to the game (drops, bosses); set once.
     pub counted: bool,
     fire_tick: f32,
@@ -316,6 +330,8 @@ impl Mob {
             name: None,
             leashed: false,
             post: None,
+            elite: 0,
+            power: 1.0,
             counted: false,
             fire_tick: 0.0,
             rng,
@@ -573,24 +589,7 @@ impl Mob {
         if def.hops && wish != Vec3::ZERO && self.body.on_ground {
             jump = true;
         }
-        if def.aquatic {
-            if self.body.in_water {
-                // Stay under: dive when near the surface, rise from the bottom.
-                jump = false;
-                let near_top = !world.liquid((self.body.pos + Vec3::Y * (def.height + 0.4)).floor().as_ivec3());
-                let near_floor = world.solid((self.body.pos - Vec3::Y * 0.6).floor().as_ivec3());
-                let bob = (self.age * 0.5 + self.phase).sin();
-                self.body.vel.y = if near_top { -1.0 } else if near_floor { 1.0 } else { bob * 0.6 };
-                if wish == Vec3::ZERO {
-                    wish = Vec3::new((self.age * 0.3 + self.phase).cos(), 0.0, (self.age * 0.3 + self.phase).sin()) * 0.5;
-                    self.yaw = turn_towards(self.yaw, wish.x.atan2(wish.z), dt * 2.0);
-                }
-            } else {
-                // Out of the water: flop about.
-                jump = self.body.on_ground && self.rng.chance(0.05);
-                wish = Vec3::ZERO;
-            }
-        } else if self.body.in_water {
+        if self.body.in_water && !def.aquatic {
             if def.swims {
                 // Float: paddle up only while the waterline is above the belly.
                 if world.liquid((self.body.pos + Vec3::Y * 0.35).floor().as_ivec3()) {
@@ -600,8 +599,15 @@ impl Mob {
                 jump = true;
             }
         }
-        let input = Input { wish, jump, sneak: false, sprint: run, crawl: false };
-        if def.flies {
+        let mut sneak = false;
+        if def.flies && def.hover <= 0.0 {
+            (wish, jump, sneak) = self.fly(def, world, player, fights, wish);
+        }
+        if def.aquatic {
+            self.aquatic_steer(world, &mut wish, &mut jump);
+        }
+        let input = Input { wish, jump, sneak, sprint: run, crawl: false };
+        if def.flies && def.hover > 0.0 {
             self.fly_step(def, world, wish, if fights { Some(player) } else { None }, run, dt);
         } else {
             self.body.step(world, &input, dt);
@@ -642,6 +648,50 @@ impl Mob {
         let k = (dt * 4.0).min(1.0);
         let vel = self.body.vel + (v - self.body.vel) * k;
         self.body.fly(world, vel, dt);
+    }
+
+    /// Flying: climb or sink toward the wanted height (a few blocks over the ground, bobbing,
+    /// or level with the player when fighting) and slow the wish down to the mob's own speed.
+    fn fly(&mut self, def: &MobDef, world: &impl Terrain, player: Vec3, fights: bool, wish: Vec3) -> (Vec3, bool, bool) {
+        self.body.flying = true;
+        let ground = (0..40).map(|k| (self.body.pos - Vec3::Y * k as f32).floor().as_ivec3()).find(|&p| world.solid(p)).map(|p| p.y as f32 + 1.0);
+        let want = if fights {
+            player.y + if def.ranged { 4.0 } else { 0.5 }
+        } else {
+            let hover = 3.0 + (self.phase.sin() * 0.5 + 0.5) * 5.0 + (self.age * 0.4 + self.phase).sin();
+            ground.map(|g| g + hover).unwrap_or(self.body.pos.y)
+        };
+        let dy = want - self.body.pos.y;
+        let k = def.speed / crate::physics::FLY_SPEED;
+        (wish * k, dy > 0.5, dy < -0.5)
+    }
+
+    /// Water creatures (`MobDef::aquatic`): in the water they keep off the bottom and away from
+    /// the surface, and never swim out onto land (a wander goal or chase that leads out of the
+    /// water is dropped); stranded on land they flop about until they reach water again.
+    fn aquatic_steer(&mut self, world: &impl Terrain, wish: &mut Vec3, jump: &mut bool) {
+        let at = |p: Vec3| p.floor().as_ivec3();
+        if self.body.in_water {
+            if *wish != Vec3::ZERO {
+                let ahead = self.body.pos + Vec3::Y * 0.3 + wish.normalize() * 1.2;
+                if !world.liquid(at(ahead)) {
+                    *wish = Vec3::ZERO;
+                    self.wander = None;
+                    self.idle = 0.5 + self.rng.f32();
+                }
+            }
+            // Rise off the bottom; sink back when close under the surface.
+            let near_bottom = world.solid(at(self.body.pos - Vec3::Y * 0.6));
+            let near_top = !world.liquid(at(self.body.pos + Vec3::Y * 1.4));
+            *jump = near_bottom && !near_top;
+        } else {
+            // Stranded: flop about now and then.
+            *jump = self.body.on_ground && self.rng.chance(0.04);
+            if *jump {
+                let a = self.rng.f32() * std::f32::consts::TAU;
+                *wish = Vec3::new(a.cos(), 0.0, a.sin());
+            }
+        }
     }
 }
 
@@ -773,6 +823,61 @@ mod tests {
         assert!(m.body.pos.y > 9.3 && m.body.pos.y < 10.2, "{}", m.body.pos.y);
         let (m, _) = run(&reg, "duck", Vec3::new(0.5, 9.6, 0.5), far, 6.0, &Pond);
         assert!(m.body.pos.y > 9.3 && m.body.pos.y < 10.2, "{}", m.body.pos.y);
+    }
+
+    fn with_mods() -> MobRegistry {
+        MobRegistry::from_ron_many(&[include_str!("../../../packs/vanilla/mobs.ron"), include_str!("../../../packs/vanilla/mods/mobs.ron")]).unwrap()
+    }
+
+    #[test]
+    fn mod_creatures_load_with_unique_names_and_known_prey() {
+        let reg = with_mods();
+        for n in ["gorilla", "crocodile", "cachalot_whale", "snail", "giraffe", "mutant_stalker", "void_walker_jungle"] {
+            assert!(reg.id(n).is_some(), "{n}");
+        }
+        let mut names: Vec<&str> = reg.defs.iter().map(|d| d.name.as_str()).collect();
+        names.sort();
+        let n = names.len();
+        names.dedup();
+        assert_eq!(n, names.len(), "duplicate mob names");
+        for d in &reg.defs {
+            for p in &d.prey {
+                assert!(reg.id(p).is_some(), "{} hunts unknown {p}", d.name);
+            }
+            // Mini-bosses never get the boss bar.
+            assert!(!(d.name.starts_with("mutant_") && d.boss), "{}", d.name);
+        }
+        assert!(reg.defs[reg.id("orca").unwrap()].aquatic);
+    }
+
+    /// Water from y=5 to 9 for x < 3, dry land (ground at y=9) beyond.
+    struct Lake;
+    impl Terrain for Lake {
+        fn solid(&self, p: IVec3) -> bool {
+            p.y < 5 || (p.x >= 3 && p.y < 10)
+        }
+        fn liquid(&self, p: IVec3) -> bool {
+            p.x < 3 && (5..10).contains(&p.y)
+        }
+    }
+
+    #[test]
+    fn fish_stay_in_the_water() {
+        let reg = with_mods();
+        let i = reg.id("bass").unwrap();
+        let def = &reg.defs[i];
+        let mut m = Mob::new(i, def, Vec3::new(1.5, 7.0, 0.5), 9);
+        let far = Vec3::new(100.0, 10.0, 100.0);
+        let mut ev = Vec::new();
+        for k in 0..3000 {
+            if k % 300 == 0 {
+                // Tempt it towards the shore.
+                m.go_to(Vec3::new(8.5, 10.0, 0.5), 5.0);
+            }
+            m.tick(def, &Lake, far, false, 15, true, 0.02, &mut ev);
+            assert!(m.body.pos.x < 3.6, "swam out at {}", m.body.pos);
+        }
+        assert!(m.body.in_water && m.body.pos.y < 9.5 && m.body.pos.y > 4.9, "{}", m.body.pos);
     }
 
     #[test]

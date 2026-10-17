@@ -90,7 +90,7 @@ impl Game {
 
     /// The top of the ground at (x, z): the surface, or in the Nether the first floor below `from`.
     pub(crate) fn ground_y(&self, x: i32, z: i32, from: i32) -> Option<i32> {
-        if self.dim == Dim::Overworld {
+        if matches!(self.dim, Dim::Overworld | Dim::Aether) {
             return self.world.surface_y(x, z);
         }
         (1..from.min(voxel::worldgen::NETHER_ROOF)).rev().find(|&y| {
@@ -164,12 +164,15 @@ impl Game {
         let p = self.body.pos;
         [p, p + Vec3::Y * 0.2, p + Vec3::Y].iter().find_map(|q| {
             let b = self.reg.get(self.world.block_or_air(q.floor().as_ivec3()));
-            (b.shape == Shape::Portal).then(|| b.name.starts_with("end_"))
+            (b.shape == Shape::Portal && !crate::mods::portals::is_mod_portal(&b.name)).then(|| b.name.starts_with("end_"))
         })
     }
 
     /// Standing in a portal for a few seconds takes the player to the other dimension.
     pub(crate) fn portal_step(&mut self, dt: f32) {
+        if self.mod_portal_step(dt) {
+            return;
+        }
         if self.dim == Dim::End && self.body.pos.y < -24.0 {
             // Fell off into the void.
             if self.survival {
@@ -261,6 +264,8 @@ impl Game {
         let Some(at) = self.arrival.take() else { return };
         let spot = if std::mem::take(&mut self.ne.gateway_landing) {
             self.finish_gateway(at)
+        } else if let Some(s) = self.mod_arrival(at) {
+            s
         } else if self.dim == Dim::End {
             self.arrive_in_end()
         } else if std::mem::take(&mut self.arrive_plain) {
@@ -284,7 +289,7 @@ impl Game {
         match self.dim {
             Dim::Nether => self.toast("Nether", 3.0),
             Dim::End => self.toast("O End", 3.0),
-            Dim::Overworld => {}
+            _ => {}
         }
         if self.args.mobs && (std::env::var("MC_NETHER").is_ok() || std::env::var("MC_END").is_ok()) {
             // Test hook: the Nether's creatures lined up in front of the portal.

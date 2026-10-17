@@ -135,6 +135,12 @@ impl Particles {
         self.push(p);
     }
 
+    /// A drop of water hanging off a ceiling, then falling.
+    pub fn drip(&mut self, at: Vec3, layer: u16) {
+        let p = Particle { pos: at, vel: Vec3::new(0.0, -0.4, 0.0), life: 2.5, size: 0.035, layer: layer as u32, uv: [0.4, 0.4], tint: [0.6, 0.75, 1.0], kind: Kind::Drop };
+        self.push(p);
+    }
+
     pub fn bubbles(&mut self, at: Vec3, layer: u16, count: usize) {
         for _ in 0..count {
             let off = Vec3::new(self.rand() - 0.5, self.rand() * 0.3, self.rand() - 0.5) * 0.6;

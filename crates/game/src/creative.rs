@@ -110,7 +110,7 @@ impl Game {
         if name.ends_with("_spawn_egg") {
             return Some(Tab::Eggs);
         }
-        if name == "fishing_bobber" {
+        if name == "fishing_bobber" || name.starts_with("gear_") && it.tool.is_some() && !name.ends_with("_stick_string") {
             return None;
         }
         if name == "flint_and_steel" || name == "minecart" || name.ends_with("_backpack") {
@@ -140,7 +140,7 @@ impl Game {
         if redstone {
             return Some(Tab::Functional);
         }
-        if matches!(bl.shape, Shape::Door | Shape::Trapdoor | Shape::Torch) || bl.light > 0 {
+        if matches!(bl.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate | Shape::Torch) || bl.light > 0 {
             return Some(Tab::Doors);
         }
         if ["crafting_table", "furnace", "chest", "bookshelf", "ladder", "jukebox"].contains(&name) || name.ends_with("_bed") || matches!(bl.shape, Shape::Chair | Shape::Table | Shape::Bench | Shape::Shelf) {

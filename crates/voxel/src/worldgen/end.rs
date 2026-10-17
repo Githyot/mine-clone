@@ -91,7 +91,7 @@ impl Generator {
     }
 
     /// Top and bottom of the land in a column, if there is any.
-    pub(super) fn end_land(&self, wx: i32, wz: i32) -> Option<(i32, i32)> {
+    pub(crate) fn end_land(&self, wx: i32, wz: i32) -> Option<(i32, i32)> {
         let (x, z) = (wx as f32, wz as f32);
         let d = (x * x + z * z).sqrt();
         let n = self.detail.fbm2(x / 38.0 + 900.0, z / 38.0, 3);
@@ -266,6 +266,7 @@ impl Generator {
                 set(&mut chunk, x, top + h + 1, z, p.flower);
             }
         }
+        // Buildings on the outer islands (Moog's End Structures idea).
         self.place_structures(&mut chunk);
         chunk
     }

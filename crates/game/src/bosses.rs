@@ -33,6 +33,7 @@ const SUMMONS: &[(&str, &str, bool, &str)] = &[
     ("lich_phylactery", "lich", true, "O Lich se levanta do gelo!"),
     ("obsidian_heart", "obsidilith", false, "O Obsidilito desperta!"),
     ("void_seed", "void_blossom", false, "A Flor do Vazio desabrocha!"),
+    ("gauntlet_core", "nether_gauntlet", false, "A Manopla do Nether se fecha!"),
 ];
 
 pub fn is_summon(item: &str) -> bool {
@@ -41,7 +42,8 @@ pub fn is_summon(item: &str) -> bool {
 
 /// How each boss fights: helpers it calls at half health, the school of its bolts, the
 /// ground its stomp throws up, what the screen says when the helpers come, and its special:
-/// 0 stomp, 1 frost nova (a ring of bolts), 2 fire pillars under the player, 3 poison rain.
+/// 0 stomp, 1 frost nova (a ring of bolts), 2 fire pillars under the player, 3 poison rain,
+/// 4 the gauntlet's punch and laser (mods/bomd.rs).
 struct Style {
     helper: &'static str,
     school: u8,
@@ -57,7 +59,15 @@ fn style(name: &str) -> Style {
         "obsidilith" => Style { helper: "ash_skeleton", school: 3, ground: "obsidian", call: "O Obsidilito chama as cinzas!", special: 2 },
         "world_breaker" => Style { helper: "ash_skeleton", school: 3, ground: "netherrack", call: "O Quebra-Mundos chama as cinzas!", special: 2 },
         "vine_queen" => Style { helper: "spider", school: 4, ground: "dirt", call: "A rainha solta suas aranhas da selva!", special: 3 },
+        // The Aether's dungeon bosses (mods/aether.rs).
+        "slider" => Style { helper: "sentry", school: 0, ground: "carved_stone", call: "O Deslizador desperta as sentinelas!", special: 0 },
+        "valkyrie_queen" => Style { helper: "valkyrie", school: 2, ground: "angelic_stone", call: "A Rainha chama suas valquírias!", special: 1 },
+        "sun_spirit" => Style { helper: "fire_minion", school: 0, ground: "hellfire_stone", call: "O Espírito do Sol chama seus lacaios!", special: 2 },
+        "otherside_stalker" => Style { helper: "sculk_leech", school: 3, ground: "gloomslate", call: "O Espreitador grita, e o abismo responde!", special: 3 },
+        "nether_gauntlet" => Style { helper: "ash_skeleton", school: 0, ground: "blackstone", call: "A Manopla convoca as cinzas!", special: 4 },
         "void_blossom" => Style { helper: "spider", school: 4, ground: "grass_block", call: "A flor solta suas aranhas!", special: 3 },
+        // Its spells come from mods/spellbooks.rs; this is its staff and its disciples.
+        "archmage" => Style { helper: "pyromancer", school: 3, ground: "obsidian", call: "O Arquimago chama seus discípulos!", special: 1 },
         _ => Style { helper: "zombie", school: 4, ground: "dirt", call: "As raízes acordam os mortos!", special: 0 },
     }
 }
@@ -173,6 +183,8 @@ impl Game {
                 self.body.vel.y += 8.0;
                 self.damage(if angry { 7.0 } else { 5.0 }, Some(pos));
             }
+        } else if special && st.special == 4 {
+            self.gauntlet_special(i, angry);
         } else if special && st.special == 3 {
             // Poison rain: thorns falling around the player from above.
             for k in 0..if angry { 9 } else { 6 } {

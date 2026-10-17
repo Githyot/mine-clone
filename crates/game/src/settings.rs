@@ -102,6 +102,20 @@ pub struct Settings {
     /// Multiplayer guest: the host's structure spacing, while connected (never saved).
     #[serde(skip)]
     pub spread_override: Option<i32>,
+    /// Several cloud layers drifting with the wind (Better Clouds idea); off = one classic layer.
+    /// Off by default: on slow (software) renderers it costs a fifth or more of the frame rate
+    /// when looking at the sky.
+    pub layered_clouds: bool,
+    /// Sun and moon shadows (Sildur's idea): 0 off, 1 fast (small map, near), 2 fancy.
+    pub shadows: u8,
+    /// Water mirrors the world around it (needs a shader pack: it reads the drawn scene).
+    pub water_reflections: bool,
+    /// Temporal anti-aliasing: smooth edges from jittered frames (needs a shader pack).
+    pub taa: bool,
+    /// Glowing bits of ore textures stay bright in the dark (Continuity's emissive textures).
+    pub emissive_textures: bool,
+    /// Inventory and hotbar animations (Immersive UI idea); off = reduce motion.
+    pub ui_animations: bool,
 }
 
 impl Default for Settings {
@@ -136,6 +150,12 @@ impl Default for Settings {
             lod_distance: 0,
             sparse_structures: false,
             spread_override: None,
+            layered_clouds: false,
+            shadows: 0,
+            water_reflections: true,
+            taa: false,
+            emissive_textures: true,
+            ui_animations: true,
         }
     }
 }
@@ -195,6 +215,9 @@ mod tests {
         assert_eq!(s.shader_quality, ShaderQuality::Fancy);
     }
 }
+
+/// Names of the shadow settings, as shown in the menu.
+pub const SHADOW_LEVELS: [&str; 3] = ["Desligadas", "Rápidas", "Bonitas"];
 
 /// Names of the difficulty levels, as shown in the menu.
 pub const DIFFICULTIES: [&str; 4] = ["Pacífico", "Fácil", "Normal", "Difícil"];

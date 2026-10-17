@@ -4,10 +4,12 @@
 
 pub mod block;
 pub mod chunk;
+pub mod gems;
 pub mod item;
 pub mod light;
 pub mod mesh;
 pub mod mob;
+pub mod modtrees;
 pub mod noise;
 pub mod physics;
 pub mod raycast;

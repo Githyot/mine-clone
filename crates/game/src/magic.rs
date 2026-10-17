@@ -67,6 +67,8 @@ const SPELLS: &[SpellDef] = &[
     SpellDef { item: "frost_staff", school: 1, cost: 8.0, cooldown: 0.9, damage: 4.0, speed: 24.0, life: 1.0, shot: Shot::Fan(5) },
     SpellDef { item: "thunder_tome", school: 5, cost: 10.0, cooldown: 1.2, damage: 12.0, speed: 0.0, life: 0.0, shot: Shot::Strike },
     SpellDef { item: "guardian_staff", school: 4, cost: 6.0, cooldown: 0.6, damage: 6.0, speed: 26.0, life: 1.2, shot: Shot::Fan(3) },
+    // Not a held item: the warship's cannon (mods/aircraft.rs) fires these.
+    SpellDef { item: "@warship_cannon", school: 0, cost: 0.0, cooldown: 0.0, damage: 8.0, speed: 34.0, life: 1.6, shot: Shot::Burst(2.5) },
     SpellDef { item: "flame_tome", school: 0, cost: 1.0, cooldown: 0.08, damage: 1.5, speed: 12.0, life: 0.35, shot: Shot::Flame },
     SpellDef { item: "blink_scroll", school: 3, cost: 6.0, cooldown: 1.0, damage: 0.0, speed: 0.0, life: 0.0, shot: Shot::Blink(14.0) },
     SpellDef { item: "heal_scroll", school: 4, cost: 8.0, cooldown: 2.0, damage: 6.0, speed: 0.0, life: 0.0, shot: Shot::Heal },
@@ -158,7 +160,7 @@ impl Magic {
 
 /// Is this item a spell caster?
 pub fn is_caster(name: &str) -> bool {
-    SPELLS.iter().any(|s| s.item == name)
+    SPELLS.iter().any(|s| s.item == name) || crate::mods::spellbooks::is_book(name)
 }
 
 impl Game {
@@ -257,6 +259,14 @@ impl Game {
             self.sfx(Sfx::Cast(sp.school));
         }
         self.anim.start_swing();
+    }
+
+    /// A shot from a mounted gun (the warship's cannon): a burst of fire that hurts mobs.
+    pub(crate) fn cannon_shot(&mut self, from: Vec3, dir: Vec3) {
+        let Some(i) = SPELLS.iter().position(|s| s.item == "@warship_cannon") else { return };
+        let sp = &SPELLS[i];
+        self.magic.bolts.push(Bolt { pos: from, vel: dir.normalize_or_zero() * sp.speed, life: sp.life, spell: i, hostile: None });
+        self.sfx(Sfx::Explode);
     }
 
     /// A monster's bolt (bosses): flies straight and hurts the player.

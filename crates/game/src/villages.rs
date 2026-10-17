@@ -91,11 +91,11 @@ impl Game {
         }
     }
 
-    fn count_item(&self, id: ItemId) -> u32 {
+    fn count_item_id(&self, id: ItemId) -> u32 {
         self.surv.inv.slots.iter().flatten().filter(|s| s.item == id).map(|s| s.count as u32).sum()
     }
 
-    fn take_item(&mut self, id: ItemId, mut n: u32) {
+    fn take_item_id(&mut self, id: ItemId, mut n: u32) {
         for k in 0..self.surv.inv.slots.len() {
             if n == 0 {
                 break;
@@ -127,13 +127,13 @@ impl Game {
         // Holding what they buy: a stack's worth for an emerald.
         if self.held_name().as_deref() == Some(want) {
             let (Some(wid), Some(em)) = (self.items.id(want), self.items.id("emerald")) else { return true };
-            let have = self.count_item(wid);
+            let have = self.count_item_id(wid);
             if have < per {
                 self.toast(format!("{dn}: Pago 1 esmeralda por {per}. Você só tem {have}."), 3.5);
                 return true;
             }
             let n = (have / per).min(16);
-            self.take_item(wid, n * per);
+            self.take_item_id(wid, n * per);
             if let Some(left) = self.surv.inv.add(&self.items, ItemStack::new(em, n as u8)) {
                 self.pop_drop(self.body.pos + Vec3::Y, left);
             }

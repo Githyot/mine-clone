@@ -123,7 +123,7 @@ impl Mobs {
         let hostile = self.list.len() - passive;
         // The Nether: everything lives in its caves, in the dark, and only its own creatures.
         // The End: always dark, on the islands' tops. Overworld creatures stay home.
-        let nether = world.gen.dim == voxel::worldgen::Dim::Nether;
+        let nether = matches!(world.gen.dim, voxel::worldgen::Dim::Nether | voxel::worldgen::Dim::Otherside);
         let away = world.gen.dim != voxel::worldgen::Dim::Overworld;
         for _ in 0..4 {
             let a = self.rand_f32() * std::f32::consts::TAU;
@@ -287,14 +287,15 @@ impl Mobs {
             m.tick(def, world, tp, tc, sky, day, dt, &mut events);
             for e in &events {
                 match *e {
-                    MobEvent::Hit { damage, from } if who.is_some() => out.remote_hits.push((who.unwrap(), damage, from)),
+                    MobEvent::Hit { damage, from } if who.is_some() => out.remote_hits.push((who.unwrap(), damage * m.power, from)),
                     MobEvent::Shoot { damage, from, hit, .. } if who.is_some() => {
                         if hit {
-                            out.remote_hits.push((who.unwrap(), damage, from));
+                            out.remote_hits.push((who.unwrap(), damage * m.power, from));
                         }
                     }
-                    MobEvent::Hit { damage, from } => out.damage.push((damage, Some(from))),
+                    MobEvent::Hit { damage, from } => out.damage.push((damage * m.power, Some(from))),
                     MobEvent::Shoot { damage, from, at, hit } => {
+                        let damage = damage * m.power;
                         // A real arrow: aimed at the player's middle (a little off on a miss),
                         // lobbed so gravity brings it there.
                         let mut target = at + Vec3::Y * 0.9;
@@ -322,7 +323,7 @@ impl Mobs {
                     MobEvent::Explode { pos, power } => out.explosions.push((pos, power)),
                     MobEvent::Bite { damage } => {
                         if let Some(j) = target[i] {
-                            bites.push((i, j, damage));
+                            bites.push((i, j, damage * m.power));
                         }
                     }
                     MobEvent::Burning | MobEvent::Died { .. } => {}
@@ -411,6 +412,10 @@ pub fn caster_school(name: &str) -> Option<u8> {
         "swamp_witch" => Some(4),
         "invoker" => Some(3),
         "ember_wraith" => Some(0),
+        // The wizards of the spellbooks mod (mods/spellbooks.rs casts their bigger spells).
+        "pyromancer" => Some(0),
+        "cryomancer" => Some(1),
+        "necromancer" => Some(3),
         _ => None,
     }
 }

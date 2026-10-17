@@ -88,6 +88,11 @@ pub enum Shape {
     Banner,
     /// A head or skull: an 8-pixel cube on the floor.
     Skull,
+    /// A hollow log (Distant Lands idea): four walls round a hole, standing up (variant 0) or
+    /// lying along x (1) or z (2).
+    Hollow,
+    /// A fence gate (Macaw's Fences idea): two posts and a swinging leaf; right click opens it.
+    FenceGate,
 }
 
 impl Shape {
@@ -127,6 +132,8 @@ impl Shape {
                 | Shape::Sign
                 | Shape::Banner
                 | Shape::Skull
+                | Shape::Hollow
+                | Shape::FenceGate
         )
     }
 }
@@ -280,8 +287,17 @@ pub struct BlockRegistry {
 
 impl BlockRegistry {
     pub fn from_ron(text: &str) -> Result<Self, String> {
-        let file: BlockFile = ron::from_str(text).map_err(|e| format!("blocks.ron: {e}"))?;
-        Self::from_defs(file.blocks)
+        Self::from_ron_many(&[text])
+    }
+
+    /// Several block files read as one list, in order (the base game, then mod packs).
+    pub fn from_ron_many(texts: &[&str]) -> Result<Self, String> {
+        let mut defs = Vec::new();
+        for text in texts.iter().filter(|t| !t.trim().is_empty()) {
+            let file: BlockFile = ron::from_str(text).map_err(|e| format!("blocks.ron: {e}"))?;
+            defs.extend(file.blocks);
+        }
+        Self::from_defs(defs)
     }
 
     pub fn from_defs(defs: Vec<BlockDef>) -> Result<Self, String> {

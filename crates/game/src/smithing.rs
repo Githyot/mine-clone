@@ -75,7 +75,7 @@ pub fn result(items: &ItemRegistry, template: Option<ItemStack>, base: Option<It
         }
         let up = bn.strip_prefix("diamond_")?;
         let id = items.id(&format!("netherite_{up}"))?;
-        return Some(ItemStack { item: id, count: 1, damage: b.damage, ench: b.ench });
+        return Some(ItemStack { item: id, count: 1, damage: b.damage, ench: b.ench, sockets: b.sockets });
     }
     let pattern = tn.strip_suffix("_armor_trim_smithing_template")?;
     let p = PATTERNS.iter().position(|x| x.0 == pattern)?;

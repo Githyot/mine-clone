@@ -159,6 +159,7 @@ impl Game {
             self.load_dim(dim, false);
         }
         self.title_world = name.to_string();
+        self.load_mods();
     }
 
     /// Enter the world that is loaded behind the menus (or open a different one first).
@@ -480,6 +481,7 @@ impl Game {
             format!("Itens no chão: {}", if st.flat_drops { "Deitados" } else { "Flutuando" }),
             format!("Construções: {}", if st.sparse_structures { "Espaçadas" } else { "Normais" }),
             format!("Resolução das texturas: {}x", st.texture_resolution),
+            format!("Animações da interface: {}", onoff(st.ui_animations)),
             "Controle...".to_string(),
             "Pacotes de textura...".to_string(),
         ]
@@ -560,7 +562,8 @@ impl Game {
                 };
                 self.reload_textures();
             }
-            16 => {
+            16 => st.ui_animations = !st.ui_animations,
+            17 => {
                 self.options_back = self.screen;
                 self.set_screen(Screen::Controls);
             }

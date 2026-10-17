@@ -295,7 +295,7 @@ fn stack_out(items: &voxel::item::ItemRegistry, s: &Option<ItemStack>) -> Option
 
 fn stack_in(items: &voxel::item::ItemRegistry, s: &Option<(String, u8, u16)>) -> Option<ItemStack> {
     let (n, c, d) = s.as_ref()?;
-    Some(ItemStack { item: items.id(n)?, count: *c, damage: *d, ench: Default::default() })
+    Some(ItemStack { item: items.id(n)?, count: *c, damage: *d, ench: Default::default(), sockets: 0 })
 }
 
 fn chunk_file(dir: &std::path::Path, p: ChunkPos) -> PathBuf {

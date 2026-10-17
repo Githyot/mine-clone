@@ -189,6 +189,8 @@ impl Redstone {
                         "redstone_lamp" => Kind::Lamp(false),
                         "redstone_lamp_on" => Kind::Lamp(true),
                         "tnt" => Kind::Tnt,
+                        // A season sensor in its season (mods/seasons.rs) powers like a redstone block.
+                        n if n.starts_with("season_sensor_") && n.ends_with("_on") => Kind::Block,
                         _ => Kind::None,
                     },
                 }

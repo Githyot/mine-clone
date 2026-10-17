@@ -780,7 +780,7 @@ def main():
     # Check the shape of a smelting entry against the base file.
     sample = re.search(r"smelting: \[\s*\(([^)]*)\)", BASE_RECIPES)
     assert sample and "input:" in sample.group(1), "smelting entries changed shape"
-    structs = [trial_chamber(), ancient_city(), trail_ruins(), desert_well(), beach_ruin()]
+    structs = [trial_chamber(), ancient_city(), trail_ruins(), beach_ruin()]  # the base game has its own desert well
     for s in structs:
         for v in s["palette"].values():
             assert v.split(":")[0] in known, f"{s['name']}: unknown block {v}"

@@ -8,7 +8,7 @@ use std::path::Path;
 use glam::{IVec3, Vec3};
 use serde::{Deserialize, Serialize};
 use voxel::block::{Shape, ToolKind};
-use voxel::item::{FoodDef, Inventory, ItemId, ItemRegistry, ItemStack, Look, ToolDef};
+use voxel::item::{FoodDef, Inventory, ItemId, ItemRegistry, ItemStack, Look, SavedItem, ToolDef};
 use voxel::physics::{Body, Input, Terrain};
 use voxel::rng::Rng;
 use voxel::trees::{self, TreeBlocks, TreeKind, TreeSpace};
@@ -139,6 +139,8 @@ pub struct Survival {
     pub(crate) hover_slot: Option<Slot>,
     /// When the inventory screen opened, for its slide-in.
     pub(crate) opened_at: Option<std::time::Instant>,
+    /// Interface animations (juice.rs).
+    pub(crate) juice: crate::juice::UiJuice,
     /// Slot the right-button drag last dropped into.
     drag_last: Option<Slot>,
     /// Saplings planted by the player and seconds until they grow.
@@ -195,6 +197,7 @@ impl Survival {
             figure_box: None,
             hover_slot: None,
             opened_at: None,
+            juice: Default::default(),
             drag_last: None,
             saplings: Vec::new(),
             leaf_decay: Vec::new(),
@@ -246,7 +249,17 @@ fn xp_for_level(l: u32) -> u32 {
 // ---------------------------------------------------------------------------------------------
 // Saving: by item name, so adding items to the game never breaks old worlds.
 
-type SavedStack = Option<(String, u8, u16)>;
+type SavedStack = Option<SavedItem>;
+
+/// A stack as saved: enchantments ride in the name (`enchanting::stack_key`), sockets as the fourth number.
+fn save_stack(items: &ItemRegistry, s: &ItemStack) -> SavedItem {
+    SavedItem(crate::enchanting::stack_key(items, s), s.count, s.damage, s.sockets)
+}
+
+fn load_stack(items: &ItemRegistry, s: &SavedItem) -> Option<ItemStack> {
+    let (item, ench) = crate::enchanting::parse_key(items, &s.0)?;
+    Some(ItemStack { item, count: s.1, damage: s.2, ench, sockets: s.3 })
+}
 
 #[derive(Serialize, Deserialize, Default)]
 struct SavedContainer {
@@ -286,16 +299,14 @@ struct Saved {
 }
 
 fn save_stacks(items: &ItemRegistry, inv: &Inventory) -> Vec<SavedStack> {
-    inv.slots.iter().map(|s| s.map(|s| (crate::enchanting::stack_key(items, &s), s.count, s.damage))).collect()
+    inv.slots.iter().map(|s| s.map(|s| save_stack(items, &s))).collect()
 }
 
 fn load_stacks(items: &ItemRegistry, v: &[SavedStack], n: usize) -> Inventory {
     let mut inv = Inventory::new(n);
     for (i, s) in v.iter().enumerate().take(n) {
-        if let Some((name, count, damage)) = s {
-            if let Some((id, ench)) = crate::enchanting::parse_key(items, name) {
-                inv.slots[i] = Some(ItemStack { item: id, count: *count, damage: *damage, ench });
-            }
+        if let Some(st) = s.as_ref().and_then(|s| load_stack(items, s)) {
+            inv.slots[i] = Some(st);
         }
     }
     inv
@@ -318,14 +329,14 @@ impl Survival {
             spawn: self.spawn.map(|p| p.to_array()),
             containers,
             saplings: self.saplings.iter().map(|(p, t)| (p.to_array(), *t)).collect(),
-            armor: self.armor.iter().map(|s| s.map(|s| (crate::enchanting::stack_key(items, &s), s.count, s.damage))).collect(),
-            offhand: self.offhand.map(|s| (crate::enchanting::stack_key(items, &s), s.count, s.damage)),
+            armor: self.armor.iter().map(|s| s.map(|s| save_stack(items, &s))).collect(),
+            offhand: self.offhand.map(|s| save_stack(items, &s)),
             carts: self.carts.iter().map(|c| (c.body.pos.to_array(), c.yaw)).collect(),
             boats: self.boats.iter().map(|b| (b.pos.to_array(), b.yaw, b.item.clone())).collect(),
             corpses: self
                 .corpses
                 .iter()
-                .map(|c| (c.pos.to_array(), c.yaw, c.items.iter().map(|s| Some((crate::enchanting::stack_key(items, &s), s.count, s.damage))).collect()))
+                .map(|c| (c.pos.to_array(), c.yaw, c.items.iter().map(|s| Some(save_stack(items, s))).collect()))
                 .collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
@@ -400,7 +411,39 @@ pub fn item_icon(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRegistry,
             ui.rect(x + s, by, (bw * k).max(s), s, c);
         }
     }
+    if let Some(r) = voxel::gems::rarity(stack.sockets) {
+        // Ranked gear: a corner in its rarity's colour.
+        ui.rect(x, y, 3.0 * s, s, voxel::gems::RARITY_COLORS[r]);
+        ui.rect(x, y + s, s, 2.0 * s, voxel::gems::RARITY_COLORS[r]);
+    }
     if stack.count > 1 {
+        let t = stack.count.to_string();
+        let tw = ui.text_width(&t, s);
+        ui.text(x + size - tw + 2.0 * s, y + size - 6.0 * s, &t, [62, 62, 62, 255]);
+        ui.text(x + size - tw + s, y + size - 7.0 * s, &t, WHITE);
+    }
+}
+
+/// An item icon turned by `angle` (radians) about its centre: flat item pictures turn, block
+/// icons lean sideways instead.
+#[allow(clippy::too_many_arguments)]
+pub fn item_icon_tilted(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRegistry, item_base: u16, stack: &ItemStack, x: f32, y: f32, size: f32, angle: f32) {
+    let Look::Sprite(l) = items.get(stack.item).look else {
+        item_icon(ui, blocks, items, item_base, stack, x + angle * size * 0.25, y, size);
+        return;
+    };
+    if angle.abs() < 0.01 {
+        item_icon(ui, blocks, items, item_base, stack, x, y, size);
+        return;
+    }
+    let (c, sn) = (angle.cos(), angle.sin());
+    let (cx, cy) = (x + size / 2.0, y + size / 2.0);
+    let h = size / 2.0;
+    let rot = |dx: f32, dy: f32| [cx + dx * c - dy * sn, cy + dx * sn + dy * c];
+    let full = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    ui.quad([rot(-h, -h), rot(h, -h), rot(h, h), rot(-h, h)], full, WHITE, (item_base + l) as i32);
+    if stack.count > 1 {
+        let s = ui.scale;
         let t = stack.count.to_string();
         let tw = ui.text_width(&t, s);
         ui.text(x + size - tw + 2.0 * s, y + size - 6.0 * s, &t, [62, 62, 62, 255]);
@@ -481,7 +524,7 @@ impl Game {
     }
 
     pub(crate) fn armor_points(&self) -> u32 {
-        self.surv.armor.iter().flatten().filter_map(|s| self.items.get(s.item).armor).map(|a| a.points as u32).sum()
+        self.surv.armor.iter().flatten().filter_map(|s| self.items.get(s.item).armor).map(|a| a.points as u32).sum::<u32>() + self.gem_armor()
     }
 
     /// Armor takes a share of a hit (4% per point, up to 80%) and wears a little.
@@ -510,14 +553,17 @@ impl Game {
     pub(crate) fn attack_cooldown(&self) -> f32 {
         // A modifier makes the weapon quicker or slower (Etapa 5).
         let k = self.held_stack().and_then(|s| crate::affixes::of(&s)).map(|a| 1.0 / a.speed).unwrap_or(1.0);
-        k * match self.held_tool().map(|t| t.kind) {
+        if let Some(c) = self.weapon_cooldown() {
+            return k * c / self.gem_attack_speed();
+        }
+        k * (match self.held_tool().map(|t| t.kind) {
             None => 0.25,
             Some(ToolKind::Sword) => 0.625,
             Some(ToolKind::Axe) => 1.0,
             Some(ToolKind::Pickaxe) => 0.83,
             Some(ToolKind::Shovel) => 1.0,
             Some(ToolKind::Hoe) => 0.5,
-        }
+        }) / self.gem_attack_speed()
     }
 
     /// 0..1, how ready the next swing is.
@@ -660,6 +706,7 @@ impl Game {
             }
             let _ = inv.add_in(&self.items, st, order);
         }
+        self.apoth_chest_loot(&mut inv);
         inv
     }
 
@@ -810,7 +857,7 @@ impl Game {
         };
         // Etapa 5: the weapon's modifier and the warrior emblem.
         let bonus = self.held_stack().and_then(|s| crate::affixes::of(&s)).map(|a| a.damage).unwrap_or(1.0) * self.melee_bonus();
-        base * bonus * (0.2 + 0.8 * k * k)
+        self.gem_attack(base * bonus * (0.2 + 0.8 * k * k))
     }
 
     pub(crate) fn surv_died(&mut self) {
@@ -964,7 +1011,7 @@ impl Game {
             // Eating is handled while the button is held (update).
             return false;
         }
-        if item.name == "fishing_rod" {
+        if crate::mods::aquaculture::is_rod(&item.name) {
             return self.use_rod();
         }
         if self.t5_use(&item.name) {
@@ -1197,7 +1244,7 @@ impl Game {
     }
 
     /// Turn one of the held item into another (a bucket filled or emptied). Creative keeps it.
-    fn swap_held(&mut self, to: &str) {
+    pub(crate) fn swap_held(&mut self, to: &str) {
         if !self.survival {
             return;
         }
@@ -1505,7 +1552,10 @@ impl Game {
         for p in grow {
             let id = self.world.block_or_air(p);
             let name = self.reg.get(id).name.clone();
-            let Some(kind) = TreeKind::from_sapling(&name) else { continue };
+            let Some(kind) = TreeKind::from_sapling(&name) else {
+                self.grow_mod_sapling(p, id, &name);
+                continue;
+            };
             let blocks = TreeBlocks::new(&self.reg);
             // Needs room to grow (the 2x2 trunks also need the three blocks beside the sapling).
             let h = kind.min_height();
@@ -1767,11 +1817,14 @@ impl Game {
                 }
             }
             Open::Station(st) => self.draw_station(st, x0, y0, &mut slots, mouse),
+            Open::Chest(p) if self.apoth_table(p).is_some() => slots.extend(self.draw_apoth_table(p, x0, y0, mouse)),
             Open::Chest(p) => {
                 let n = self.open_container_inv().map(|i| i.slots.len()).unwrap_or(CHEST_SIZE);
                 let id = self.world.block_or_air(p);
                 let title = if crate::backpacks::is_backpack(p) {
                     "Mochila".to_string()
+                } else if p.x == crate::mods::aircraft::CARGO_X {
+                    "Porão".to_string()
                 } else if n == CHEST_SIZE { "Baú".to_string() } else { self.reg.get(self.reg.get(id).base).display_name.clone() };
                 self.ui.label(x0 + 8.0 * s, y0 + 6.0 * s, &title, dark, s);
                 for i in 0..n {
@@ -1788,7 +1841,9 @@ impl Game {
 
         let result = self.craft_result();
         let mut hovered: Option<Slot> = None;
-        for &(slot, sx, sy) in &slots {
+        let anim = crate::juice::enabled(self.settings.ui_animations, self.args.screenshot.is_some());
+        let carried = self.surv.cursor.map(|c| c.item);
+        for (k, &(slot, sx, sy)) in slots.iter().enumerate() {
             let big = slot == Slot::CraftOut || slot == Slot::Cont(2) && matches!(open, Open::Furnace(_)) || self.is_station_output(slot);
             let pad = if big { 4.0 * s } else { 0.0 };
             self.ui.rect(sx - s - pad, sy - s - pad, cell + 2.0 * pad, cell + 2.0 * pad, [55, 55, 55, 255]);
@@ -1801,7 +1856,12 @@ impl Game {
             }
             let st = if slot == Slot::CraftOut { result } else { self.slot_get(slot) };
             if let Some(st) = st {
-                item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &st, sx, sy, 16.0 * s);
+                // The hovered item grows a little; ones that match the cursor's stack bob.
+                let k2 = self.surv.juice.slot_scale(slot, over, anim);
+                let bob = if carried == Some(st.item) && slot != Slot::CraftOut { self.surv.juice.match_bob(k, anim) * s } else { 0.0 };
+                let size = 16.0 * s * k2;
+                let off = (size - 16.0 * s) / 2.0;
+                item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &st, sx - off, sy - off + bob, size);
             }
         }
         self.surv.hover_slot = hovered;
@@ -1880,13 +1940,21 @@ impl Game {
                     let price = self.surv.shop_prices.get(i).copied().unwrap_or(0);
                     name = format!("{name} x{}: {price} esmeralda(s)", st.count);
                 }
-                let mut lines = vec![(name, WHITE)];
+                let mut lines = vec![(name, self.gem_name_color(&st))];
                 lines.extend(self.item_details(&st));
                 self.draw_tooltip_lines(&lines, mouse);
             }
         }
         if let Some(c) = self.surv.cursor {
-            item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, &c, mouse.0 - 8.0 * s, mouse.1 - 8.0 * s, 16.0 * s);
+            // The stack on the cursor sways as it moves; rare items trail sparks.
+            let rare = crate::juice::rarity(&self.items.get(c.item).name);
+            self.surv.juice.cursor(mouse, rare, s, anim);
+            self.surv.juice.draw_sparks(&mut self.ui);
+            let angle = self.surv.juice.angle;
+            item_icon_tilted(&mut self.ui, &self.reg, &self.items, self.item_base, &c, mouse.0 - 8.0 * s, mouse.1 - 8.0 * s, 16.0 * s, angle);
+        } else {
+            self.surv.juice.cursor(mouse, None, s, anim);
+            self.surv.juice.draw_sparks(&mut self.ui);
         }
         self.ui.text_centered(w / 2.0, y0 + ph + 4.0 * s, "Esq.: pegar  Dir.: metade  Shift: mover  Roda: 1 a 1  R: receita  U: usos", WHITE);
     }
@@ -1915,6 +1983,7 @@ impl Game {
             out.push((format!("Fome: +{}  Saturação: +{:.1}", f.hunger, f.saturation), GRAY));
         }
         self.t5_details(st, &mut out);
+        out.extend(self.gem_tooltip(st));
         out
     }
 
@@ -2009,6 +2078,9 @@ impl Game {
     }
 
     pub(crate) fn click_slot(&mut self, slot: Slot, right: bool, shift: bool) {
+        if self.apoth_socket_click(slot, right) {
+            return;
+        }
         if let (Slot::Cont(i), Open::Shop) = (slot, self.surv.open) {
             self.buy(i);
             return;
@@ -2249,7 +2321,7 @@ impl Game {
     pub(crate) fn test_kit(&mut self) {
         let give = |g: &mut Game, slot: usize, name: &str, count: u8, damage: u16| {
             if let Some(id) = g.items.id(name) {
-                g.surv.inv.slots[slot] = Some(ItemStack { item: id, count, damage, ench: Default::default() });
+                g.surv.inv.slots[slot] = Some(ItemStack { damage, ..ItemStack::new(id, count) });
             }
         };
         give(self, 0, "iron_pickaxe", 1, 60);
@@ -2993,7 +3065,7 @@ impl Game {
 const YELLOWISH: [u8; 4] = [255, 255, 160, 255];
 
 /// The live world as a place for a sapling to grow into a tree.
-struct WorldTrees<'a>(&'a mut crate::world::World);
+pub(crate) struct WorldTrees<'a>(pub(crate) &'a mut crate::world::World);
 
 impl TreeSpace for WorldTrees<'_> {
     fn get(&self, x: i32, y: i32, z: i32) -> voxel::BlockId {

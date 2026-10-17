@@ -1,0 +1,171 @@
+//! The mod content pack: the mods HP asked for, rebuilt as our own code and art from the ideas
+//! in `plan/mods/`. Each mod lives in its own file and hooks into the game through the few
+//! calls below (update, use, keys, HUD, saving), so the base game files stay small.
+//!
+//! The pack's data (blocks, items, recipes, mobs, structures) is in `packs/vanilla/mods/`,
+//! read after the base game's files.
+
+pub mod aether;
+pub mod aircraft;
+pub mod distant_lands;
+pub mod apotheosis;
+pub mod aquaculture;
+pub mod bomd;
+pub mod combat;
+pub mod dwellers;
+pub mod ecologics;
+pub mod farmers;
+pub mod macaws;
+pub mod melodies;
+pub mod mounts;
+pub mod paintings_pp;
+pub mod scenes;
+pub mod portals;
+pub mod saplings;
+pub mod seasons;
+pub mod social;
+pub mod snow;
+pub mod spellbooks;
+
+use serde::{Deserialize, Serialize};
+use winit::keyboard::KeyCode;
+
+use crate::{level_path_hint, Game};
+
+/// What the mods remember about a world, saved in `mods.ron` next to `level.ron`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ModSave {
+    /// Whole days since the world was made (seasons count from it).
+    pub day: u32,
+    /// Season sensors placed in this world.
+    pub sensors: Vec<[i32; 3]>,
+    /// Buildings whose dwellers were already spawned: origin and dimension.
+    pub dwellers: Vec<[i32; 4]>,
+    /// Aircraft in every dimension except the loaded one (those live in `Mods::aircraft`).
+    pub aircraft: Vec<aircraft::Plane>,
+    /// Apotheosis: the world tier in use and the highest reached (0 Refúgio .. 4 Pináculo).
+    pub world_tier: u8,
+    pub tier_unlocked: u8,
+    /// Health the player's gems add right now (already counted in the saved max health).
+    pub gem_health: f32,
+    /// The parts fitted to the player's modular fishing rod (Aquaculture).
+    pub rig: aquaculture::Rig,
+    /// What is written in each spellbook (by the number its stack carries).
+    pub spellbooks: Vec<spellbooks::Book>,
+}
+
+#[derive(Default)]
+pub struct Mods {
+    pub save: ModSave,
+    /// Time of day last frame, to count days as midnight passes.
+    last_time: f32,
+    pub seasons: seasons::Seasons,
+    dwell_t: f32,
+    pub aether: aether::Aether,
+    pub apoth: apotheosis::Apotheosis,
+    pub mount: mounts::Mount,
+    pub aircraft: aircraft::Aircraft,
+    pub social: social::Social,
+    pub spellbooks: spellbooks::Spellbooks,
+    /// How the player arrives in the dimension being loaded, when a mod portal sent them.
+    pub arriving: Option<portals::Arrive>,
+    /// What the carpenter table makes (Distant Lands), an index into its list.
+    pub carpenter: u8,
+    pub combat: combat::Combat,
+    pub macaws: macaws::Macaws,
+    pub ecologics: ecologics::Ecologics,
+    pub farmers: farmers::Farmers,
+    pub snow: snow::Snow,
+    pub melodies: melodies::Melodies,
+}
+
+impl Game {
+    fn mods_file(&self) -> std::path::PathBuf {
+        level_path_hint(&self.base, &self.world_name).join("mods.ron")
+    }
+
+    /// Read the open world's mod state (a fresh one for a new world).
+    pub(crate) fn load_mods(&mut self) {
+        // The robes' extra mana belongs to the world being left.
+        self.magic.max_mana -= self.mods.spellbooks.mana_bonus;
+        let save = std::fs::read_to_string(self.mods_file()).ok().and_then(|t| ron::from_str::<ModSave>(&t).ok()).unwrap_or_default();
+        self.mods = Mods { save, last_time: self.time_of_day, ..Default::default() };
+    }
+
+    pub(crate) fn save_mods(&self) {
+        if !self.world_open {
+            return;
+        }
+        let save = ModSave { aircraft: self.aircraft_to_save(), ..self.mods.save.clone() };
+        if let Ok(text) = ron::ser::to_string_pretty(&save, ron::ser::PrettyConfig::default()) {
+            let _ = std::fs::write(self.mods_file(), text);
+        }
+    }
+
+    /// Every frame while a world is open and not paused.
+    pub(crate) fn update_mods(&mut self, dt: f32) {
+        if self.time_of_day + 1000.0 < self.mods.last_time {
+            self.mods.save.day += 1;
+        }
+        self.mods.last_time = self.time_of_day;
+        self.update_seasons(dt);
+        self.update_aether(dt);
+        self.update_apotheosis(dt);
+        self.update_spellbooks(dt);
+        if dt > 0.0 {
+            self.update_dwellers(dt);
+            self.update_mount(dt);
+            self.update_aircraft(dt);
+            self.update_social(dt);
+            self.update_combat();
+            self.update_macaws(dt);
+            self.update_ecologics(dt);
+            self.update_smarter_farmers(dt);
+            self.update_snow(dt);
+        }
+    }
+
+    /// Test hooks run once the world around the player has loaded (MC_* variables).
+    pub(crate) fn mods_test_hooks(&mut self) {
+        self.seasons_test_hook();
+        self.aircraft_test_hook();
+        self.apoth_test_hook();
+        self.gameplay_test_hook();
+        self.spellbooks_test_hook();
+    }
+
+    /// Right click: a mod block or item that does something. True when it was used.
+    pub(crate) fn mods_use(&mut self) -> bool {
+        self.aircraft_use()
+            || self.carpenter_use()
+            || self.aether_use()
+            || self.seasons_use()
+            || self.apoth_use()
+            || self.melodies_use()
+            || self.aquaculture_use()
+            || self.snow_use()
+            || self.spellbooks_use()
+    }
+
+    /// A key went down. True when a mod used it.
+    pub(crate) fn mods_key(&mut self, code: KeyCode) -> bool {
+        self.apoth_key(code) || self.spellbooks_key(code)
+    }
+
+    /// Lines for the F3 screen.
+    pub(crate) fn mods_info_lines(&self) -> Vec<String> {
+        let mut v = vec![self.season_line(), self.apoth_info_line(), self.spellbooks_info_line()];
+        v.extend(self.combat_line());
+        v
+    }
+
+    /// HUD bits drawn over the game view.
+    pub(crate) fn draw_mods_hud(&mut self, w: f32, h: f32) {
+        self.draw_season_hud(w, h);
+        self.draw_aircraft_hud(w, h);
+        self.draw_apoth_hud(w, h);
+        self.draw_rod_hud(w, h);
+        self.draw_spellbooks_hud(w, h);
+    }
+}

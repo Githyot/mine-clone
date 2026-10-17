@@ -15,6 +15,8 @@ pub fn variant_count(shape: Shape) -> u8 {
         Shape::Slab => 3,
         Shape::Stairs | Shape::Layer | Shape::Roof => 8,
         Shape::Door | Shape::Trapdoor => 16,
+        // Fence gates: facing | open 4.
+        Shape::FenceGate => 8,
         // Wire: power 0..15. Lever and button: facing | on 4 | on a wall 8. Repeater: facing |
         // delay - 1 in bits 2..3. Piston: six ways (0..5) | pushed out 8; its head: | sticky 8.
         Shape::Wire | Shape::Lever | Shape::Button | Shape::Repeater | Shape::Piston | Shape::PistonHead => 16,
@@ -31,7 +33,7 @@ pub fn variant_count(shape: Shape) -> u8 {
         Shape::Chair | Shape::Bench | Shape::Shelf => 4,
         Shape::Sign | Shape::Banner => 8,
         Shape::Lantern | Shape::Bridge => 2,
-        Shape::Portal => 3,
+        Shape::Portal | Shape::Hollow => 3,
         // Rails: shape 0..9 (see `RAIL_ENDS`); powered, detector and activator rails only
         // bend into 0..5 and add 10 when powered.
         Shape::Rail => 16,
@@ -169,6 +171,28 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
             let b = if open { [13, 0, 0, 16, 16, 16] } else { [0, 0, 0, 16, 16, 3] };
             out.push(rotate(b, f));
         }
+        Shape::FenceGate => {
+            // Drawn across x (facing north): a post at each end and a two-rail leaf between.
+            let open = variant & 4 != 0;
+            if collision {
+                if !open {
+                    out.push(rotate([0, 0, 6, 16, 24, 10], f));
+                }
+                return;
+            }
+            let mut parts = vec![[0, 5, 7, 2, 16, 9], [14, 5, 7, 16, 16, 9]];
+            if open {
+                // Each half folds back against its post.
+                for x in [0, 14] {
+                    parts.extend([[x, 6, 9, x + 2, 9, 15], [x, 12, 9, x + 2, 15, 15], [x, 9, 13, x + 2, 12, 15]]);
+                }
+            } else {
+                parts.extend([[2, 6, 7, 14, 9, 9], [2, 12, 7, 14, 15, 9], [6, 9, 7, 8, 12, 9], [8, 9, 7, 10, 12, 9]]);
+            }
+            for b in parts {
+                out.push(rotate(b, f));
+            }
+        }
         Shape::Trapdoor => {
             let open = variant & 4 != 0;
             let top = variant & 8 != 0;
@@ -254,6 +278,12 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
             }
         }
         Shape::Chain => out.push([7, 0, 7, 9, 16, 9]),
+        Shape::Hollow => out.extend(match variant {
+            // Walls two pixels thick round a 12x12 hole.
+            1 => [[0, 0, 0, 16, 2, 16], [0, 14, 0, 16, 16, 16], [0, 2, 0, 16, 14, 2], [0, 2, 14, 16, 14, 16]],
+            2 => [[0, 0, 0, 16, 2, 16], [0, 14, 0, 16, 16, 16], [0, 2, 0, 2, 14, 16], [14, 2, 0, 16, 14, 16]],
+            _ => [[0, 0, 0, 16, 16, 2], [0, 0, 14, 16, 16, 16], [0, 0, 2, 2, 16, 14], [14, 0, 2, 16, 16, 14]],
+        }),
         Shape::Pot => out.push([3, 0, 3, 13, 6, 13]),
         Shape::Skull => out.push([4, 0, 4, 12, 8, 12]),
         Shape::Bench => {
@@ -360,7 +390,7 @@ pub fn has_parts(shape: Shape) -> bool {
 
 /// Fences, walls and panes join others of their kind and full solid blocks.
 pub fn joins(shape: Shape, other: Shape, other_opaque: bool) -> bool {
-    (other_opaque && shape != Shape::Table) || other == shape
+    (other_opaque && shape != Shape::Table) || other == shape || (matches!(shape, Shape::Fence | Shape::Wall) && other == Shape::FenceGate)
 }
 
 #[cfg(test)]
@@ -402,6 +432,33 @@ mod tests {
             boxes(Shape::PistonHead, d, 0, false, &mut v);
             assert_eq!(v[0], want, "head facing {d}");
         }
+    }
+
+    #[test]
+    fn hollow_logs_have_a_hole_along_their_axis() {
+        for (v, axis) in [(0u8, 1usize), (1, 0), (2, 2)] {
+            let mut b = Vec::new();
+            boxes(Shape::Hollow, v, 0, true, &mut b);
+            assert_eq!(b.len(), 4);
+            // The middle of the block is open, and every wall runs the whole length of the axis.
+            assert!(b.iter().all(|w| !(w[0] < 8 && w[3] > 8 && w[1] < 8 && w[4] > 8 && w[2] < 8 && w[5] > 8)));
+            assert!(b.iter().all(|w| w[axis] == 0 && w[axis + 3] == 16));
+        }
+    }
+
+    #[test]
+    fn fence_gates_open_and_join_fences() {
+        let mut v = Vec::new();
+        boxes(Shape::FenceGate, 0, 0, true, &mut v);
+        assert_eq!(v, vec![[0, 0, 6, 16, 24, 10]], "a closed gate blocks like a fence");
+        v.clear();
+        boxes(Shape::FenceGate, 4, 0, true, &mut v);
+        assert!(v.is_empty(), "an open gate lets you through");
+        v.clear();
+        boxes(Shape::FenceGate, 1, 0, false, &mut v);
+        // Facing east the gate runs along z.
+        assert!(v.iter().all(|b| b[0] >= 6 && b[3] <= 10));
+        assert!(joins(Shape::Fence, Shape::FenceGate, false));
     }
 
     #[test]
