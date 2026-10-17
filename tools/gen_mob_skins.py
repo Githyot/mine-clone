@@ -1737,6 +1737,8 @@ RECOLORED = {
         ZPANTS=pal("#1a2a3a", "#223446", "#2a3e52", "#32485e"))),
     "frost_archer": ("skeleton", dict(BONE=pal("#7a9aa8", "#98b6c2", "#b4ced8", "#cce2ea", "#e2f2f8"))),
 }
+RECOLORED["wolf_tame"] = RECOLORED["wolf"]
+RECOLORED["cat_tame"] = RECOLORED["cat"]
 for _n, (_b, _) in RECOLORED.items():
     ROLES[_n] = ROLES[_b]
     HARDCODED[_n] = HARDCODED[_b]
@@ -2194,7 +2196,7 @@ def main():
              "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
              "goblin_trader", "mutant_zombie", "npc_guard", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton",
              "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay", "lich", "obsidilith", "void_blossom", "marauder", "invoker", "brute", "ember_wraith", "void_walker_desert", "void_walker_snowy", "void_walker_swamp", "void_walker_savanna", "void_walker_crimson", "void_walker_soul",
-             "horse", "donkey", "llama", "camel", "wolf", "cat", "goat", "panda", "parrot", "frog", "turtle", "ooze", "mummy", "sunken", "frost_archer"]
+             "horse", "donkey", "llama", "camel", "wolf", "cat", "goat", "panda", "parrot", "frog", "turtle", "ooze", "mummy", "sunken", "frost_archer", "wolf_tame", "cat_tame"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols

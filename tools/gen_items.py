@@ -1310,6 +1310,28 @@ def wheat_seeds():
     return _sprite(rows, pal("#3a5a12", "#4e7418", "#6a9222", "#84ac30"))
 
 
+def saddle():
+    rows = [
+        "................",
+        "................",
+        "................",
+        "....3333333.....",
+        "...344444443....",
+        "..34445554443...",
+        "..34455555443...",
+        "..3444444444321.",
+        "...33333333.21..",
+        "......2...2.....",
+        "......2...2.....",
+        ".....121.121....",
+        ".....111.111....",
+        "................",
+        "................",
+        "................",
+    ]
+    return _sprite(rows, pal("#5a5a60", "#2e1a0e", "#4a2c16", "#6a4022", "#8a5a32"))
+
+
 def bone_meal():
     rows = ["................"] * 3 + [
         "......5.........",
@@ -2213,7 +2235,7 @@ def item_registry():
         "flint_and_steel": flint_and_steel,
         "honeycomb": honeycomb, "minecart": minecart_item,
         "gold_nugget": gold_nugget, "quartz": quartz, "nether_brick": nether_brick_item,
-        "bone_meal": bone_meal, "pumpkin_seeds": pumpkin_seeds, "melon_seeds": melon_seeds, "melon_slice": melon_slice,
+        "bone_meal": bone_meal, "saddle": saddle, "pumpkin_seeds": pumpkin_seeds, "melon_seeds": melon_seeds, "melon_slice": melon_slice,
         "sugar_cane": sugar_cane_item, "sugar": sugar, "paper": paper,
         "slime_ball": lambda: lump("slime_ball", pal("#2a7a1e", "#3a9a2a", "#52b23a", "#6cc84e", "#8ade6a")),
         "turtle_scute": lambda: lump("turtle_scute", pal("#1e3a14", "#2a4e1c", "#3a6426", "#4a7a30", "#5e9040")),

@@ -826,7 +826,7 @@ impl Game {
         if self.loot_corpse() {
             return true;
         }
-        if self.talk_to_npc() {
+        if self.pet_use() || self.talk_to_npc() {
             return true;
         }
         if let Some(st) = self.held_stack() {

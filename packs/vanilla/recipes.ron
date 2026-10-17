@@ -320,6 +320,7 @@
         (pattern: ["##"], key: {'#': "stone"}, result: "stone_pressure_plate"),
         (pattern: ["##"], key: {'#': "oak_planks"}, result: "oak_pressure_plate"),
         (pattern: ["# #", "# #", "###"], key: {'#': "oak_slab"}, result: "composter"),
+        (pattern: ["LLL", "LSL", "I I"], key: {'L': "leather", 'S': "string", 'I': "iron_ingot"}, result: "saddle"),
         (pattern: ["###"], key: {'#': "sugar_cane"}, result: "paper", count: 3),
         (pattern: ["###", "###", "###"], key: {'#': "melon_slice"}, result: "melon"),
         (pattern: ["###", "###", " | "], key: {'#': "oak_planks", '|': "stick"}, result: "oak_sign", count: 3),

@@ -16,6 +16,7 @@ mod fishing;
 mod magic;
 mod bosses;
 mod npcs;
+mod pets;
 mod raids;
 mod signs;
 mod fluids;
@@ -454,6 +455,8 @@ struct Game {
     boss: bosses::BossState,
     town: npcs::Town,
     raid: raids::Raid,
+    /// Saved tame animals not back in the world yet.
+    pets_waiting: Vec<pets::PetSave>,
     signs: std::collections::HashMap<[i32; 3], String>,
     sign_edit: Option<IVec3>,
     /// Seconds since the player was last hurt (red flash, invulnerability).
@@ -791,6 +794,7 @@ impl Game {
             boss: bosses::BossState::new(bosses_beaten),
             town: npcs::Town::new(town_npcs),
             raid: raids::Raid::default(),
+            pets_waiting: pets::load(&save.dir),
             signs: signs::load(&save.dir),
             sign_edit: None,
             hurt_age: 100.0,
@@ -1075,6 +1079,7 @@ impl Game {
         self.world.save_all();
         paintings::save(&self.world.save.dir, &self.paintings);
         signs::save(&self.world.save.dir, &self.signs);
+        self.save_pets();
         self.surv.save(&self.world.save.dir, &self.items);
         self.settings.save(&self.base.join("settings.ron"));
     }
@@ -1514,6 +1519,7 @@ impl Game {
                 // Townsfolk live at home.
                 self.update_npcs(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_raids(dt);
+                self.update_pets(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
         }
         if self.world_open && !matches!(self.screen, Screen::Loading | Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Shaders) {
@@ -1646,7 +1652,7 @@ impl Game {
         let was_ground = self.body.on_ground;
         // The camera pass for screenshots holds still.
         if self.args.screenshot.is_none() {
-            if !self.seat_step(input.sneak) && !self.ride_step(wish, input.sneak) {
+            if !self.seat_step(input.sneak) && !self.ride_step(wish, input.sneak) && !self.mount_step(wish, input.jump, input.sneak, dt) {
                 self.body.step(&self.world, &input, dt);
             }
         } else {
