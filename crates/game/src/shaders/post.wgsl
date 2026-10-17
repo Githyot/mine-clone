@@ -184,3 +184,37 @@ fn fs_suave(in: PostIn) -> @location(0) vec4<f32> {
     c = tonemap(c) * vignette(in.uv, opt(3));
     return vec4<f32>(c + vec3<f32>(dither(in.pos.xy)), 1.0);
 }
+
+// Temporal anti-aliasing: every frame is drawn shifted by a fraction of a pixel; blending each
+// one with the last (moved to where it was on screen) smooths edges. The last frame is clamped
+// to the colours around this pixel, so moving things don't leave trails.
+@fragment
+fn fs_taa(in: PostIn) -> @location(0) vec4<f32> {
+    let size = vec2<i32>(post.resolution.xy);
+    let px = clamp(vec2<i32>(in.pos.xy), vec2<i32>(0), size - vec2<i32>(1));
+    let cur = textureLoad(scene, px, 0).rgb;
+    if (post.taa.y < 0.5) {
+        return vec4<f32>(cur, 1.0);
+    }
+    var lo = cur;
+    var hi = cur;
+    for (var j = -1; j <= 1; j = j + 1) {
+        for (var i = -1; i <= 1; i = i + 1) {
+            let c = textureLoad(scene, clamp(px + vec2<i32>(i, j), vec2<i32>(0), size - vec2<i32>(1)), 0).rgb;
+            lo = min(lo, c);
+            hi = max(hi, c);
+        }
+    }
+    // Where was this point last frame?
+    let d = textureLoad(scene_depth, px, 0);
+    let ndc = vec4<f32>(in.uv.x * 2.0 - 1.0, 1.0 - in.uv.y * 2.0, d, 1.0);
+    let prev = post.reproj * ndc;
+    let puv = vec2<f32>(prev.x / prev.w * 0.5 + 0.5, 0.5 - prev.y / prev.w * 0.5);
+    if (any(puv < vec2<f32>(0.0)) || any(puv > vec2<f32>(1.0))) {
+        return vec4<f32>(cur, 1.0);
+    }
+    let hist = clamp(textureSampleLevel(tex_a, lin, puv, 0.0).rgb, lo, hi);
+    // A little sharpening keeps the pixel-art textures crisp.
+    let sharp = cur + (cur - (lo + hi) * 0.5) * 0.12;
+    return vec4<f32>(mix(max(sharp, vec3<f32>(0.0)), hist, 0.86), 1.0);
+}

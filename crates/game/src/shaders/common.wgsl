@@ -23,6 +23,14 @@ struct Globals {
     weather: vec4<f32>,
     // Moving lights: dropped torches, burning mobs. xyz like hand_light, w: level (0 = unused).
     dyn_lights: array<vec4<f32>, 8>,
+    // Camera-block-relative position → shadow map clip space.
+    shadow_mat: mat4x4<f32>,
+    // x: shadow strength (0 = off), y: one shadow texel (clip units), z: soft 0/1, w: distance.
+    shadow: vec4<f32>,
+    // x: cloud style (0 one layer, 1 layered), y: emissive textures, z: reflection steps.
+    extra: vec4<f32>,
+    // x, y: screen size; z: near plane; w: far plane.
+    screen: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;

@@ -1,5 +1,11 @@
 @group(1) @binding(0) var tex: texture_2d_array<f32>;
 @group(1) @binding(1) var samp: sampler;
+// Sun shadows and water reflections (Sildur's idea). Dummies when they are off; the scene copy
+// and its depth are only real while the translucent geometry is drawn.
+@group(2) @binding(0) var shadow_map: texture_depth_2d;
+@group(2) @binding(1) var shadow_cmp: sampler_comparison;
+@group(2) @binding(2) var scene_copy: texture_2d<f32>;
+@group(2) @binding(3) var scene_depth: texture_depth_2d;
 
 struct VOut {
     @builtin(position) clip: vec4<f32>,
@@ -27,7 +33,8 @@ fn vs_main(@location(0) w: vec3<u32>, @location(1) origin: vec3<f32>) -> VOut {
     var p = vec3<f32>(f32(w.x & 1023u), f32((w.x >> 10u) & 1023u), f32((w.x >> 20u) & 1023u)) / 16.0 + origin;
     let ao = (w.x >> 30u) & 3u;
     let uv = vec2<f32>(f32(w.y & 31u), f32((w.y >> 5u) & 31u)) / 16.0;
-    let layer = (w.y >> 10u) & 4095u;
+    let layer = (w.y >> 10u) & 2047u;
+    let emissive = (w.y >> 21u) & 1u;
     let face = (w.y >> 22u) & 7u;
     let flags = w.y >> 25u;
     let wp = p + g.cam_world.xyz - g.cam_pos.xyz;
@@ -67,14 +74,75 @@ fn vs_main(@location(0) w: vec3<u32>, @location(1) origin: vec3<f32>) -> VOut {
     }
     out.light = vec2<f32>(f32(w.z & 15u), f32((w.z >> 4u) & 15u)) / 15.0;
     out.dist = length(p - g.cam_pos.xyz);
-    out.kind = flags | (face << 8u);
+    out.kind = flags | (face << 8u) | (emissive << 12u);
     out.rel = p;
     return out;
 }
 
+// Outward normal of a block face (mesh face order +x, -x, +y, -y, +z, -z).
+fn face_normal(face: u32) -> vec3<f32> {
+    var n = array<vec3<f32>, 6>(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(-1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, -1.0, 0.0), vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(0.0, 0.0, -1.0));
+    return n[min(face, 5u)];
+}
+
+// Direction toward the light that casts shadows: the sun by day, the moon by night.
+fn shadow_light() -> vec3<f32> {
+    let s = g.sun_dir.xyz;
+    return select(-s, s, s.y > -0.05);
+}
+
+// 1 where the sun (or moon) reaches this point, 0 in shadow. Faces turned away from the light
+// are in their own shadow; plants and leaves are lit through.
+fn sun_visibility(in: VOut) -> f32 {
+    if (g.shadow.x <= 0.0 || in.light.x <= 0.0) {
+        return 1.0;
+    }
+    let l = shadow_light();
+    let plant = (in.kind & 1u) != 0u;
+    var n = face_normal((in.kind >> 8u) & 7u);
+    if (plant) {
+        n = l;
+    }
+    let ndl = dot(n, l);
+    if (ndl <= 0.0) {
+        return 0.0;
+    }
+    let d = length(in.rel - g.cam_pos.xyz);
+    let far_fade = smoothstep(g.shadow.w * 0.75, g.shadow.w, d);
+    if (far_fade >= 1.0) {
+        return 1.0;
+    }
+    // Push the lookup off the surface a little (more at grazing light) to avoid acne.
+    let p = in.rel + n * (0.03 + 0.06 * (1.0 - ndl)) * (1.0 + d * 0.02);
+    let c = g.shadow_mat * vec4<f32>(p, 1.0);
+    let uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
+    if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || c.z > 1.0) {
+        return 1.0;
+    }
+    let z = c.z - 0.0005;
+    var v = textureSampleCompareLevel(shadow_map, shadow_cmp, uv, z);
+    if (g.shadow.z > 0.5) {
+        // Soft: four more filtered taps around the point.
+        let o = g.shadow.y * 1.2;
+        v += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + vec2<f32>(o, o * 0.4), z);
+        v += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + vec2<f32>(-o * 0.4, o), z);
+        v += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + vec2<f32>(-o, -o * 0.4), z);
+        v += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + vec2<f32>(o * 0.4, -o), z);
+        v *= 0.2;
+    }
+    return mix(v, 1.0, far_fade);
+}
+
 fn lit(c: vec3<f32>, in: VOut) -> vec3<f32> {
     let daylight = g.fog_color.w;
-    let sky = light_curve(in.light.x) * daylight;
+    var sky = light_curve(in.light.x) * daylight;
+    if (g.shadow.x > 0.0) {
+        // Shadows take away the direct light only: low light (dawn, dusk) and the moon cast
+        // weaker ones, and the open sky still lights shadowed ground.
+        let l = shadow_light();
+        let strength = g.shadow.x * smoothstep(0.02, 0.2, abs(l.y)) * select(0.25, 0.55, g.sun_dir.y > -0.05);
+        sky *= 1.0 - (1.0 - sun_visibility(in)) * strength;
+    }
     // A light in the player's hand fades one level per block, like a placed torch.
     var hand = g.hand_light.w - length(in.rel - g.hand_light.xyz) / 15.0;
     for (var i = 0; i < 8; i++) {
@@ -99,12 +167,24 @@ fn lit(c: vec3<f32>, in: VOut) -> vec3<f32> {
     return rgb;
 }
 
+// Emissive textures (Continuity idea): the bright, coloured pixels of an ore stay lit in the dark.
+fn glow_pixels(c: vec3<f32>, rgb: vec3<f32>, in: VOut) -> vec3<f32> {
+    if (((in.kind >> 12u) & 1u) == 0u || g.extra.y < 0.5) {
+        return rgb;
+    }
+    let hi = max(c.r, max(c.g, c.b));
+    let lo = min(c.r, min(c.g, c.b));
+    let glow = smoothstep(0.2, 0.32, hi - lo) * smoothstep(0.3, 0.5, hi);
+    let full = c * in.color * (0.9 + g.effects.z * 0.35);
+    return mix(rgb, max(rgb, full), glow);
+}
+
 fn fog_amount(in: VOut) -> f32 {
     return smoothstep(g.fog.x, g.fog.y, in.dist);
 }
 
 fn shade(c: vec3<f32>, in: VOut) -> vec3<f32> {
-    return mix(lit(c, in), g.fog_color.rgb, fog_amount(in));
+    return mix(glow_pixels(c, lit(c, in), in), g.fog_color.rgb, fog_amount(in));
 }
 
 // Pixel relief: each texel is treated as a little bump as high as it is bright, lit from
@@ -167,6 +247,70 @@ fn wave_slope(xz: vec2<f32>, t: f32) -> vec2<f32> {
     return s;
 }
 
+// Sky seen in a direction (for reflections that leave the screen).
+fn sky_toward(r: vec3<f32>) -> vec3<f32> {
+    return mix(g.sky_horizon.rgb, g.sky_top.rgb, smoothstep(-0.02, 0.45, r.y));
+}
+
+fn linear_depth(d: f32) -> f32 {
+    let n = g.screen.z;
+    let f = g.screen.w;
+    return n * f / max(f - d * (f - n), 1e-6);
+}
+
+// Screen-space reflection: walk the reflected ray across the drawn scene until it passes behind
+// something. rgb + how much was found (0 = use the sky).
+fn screen_reflection(start: vec3<f32>, r: vec3<f32>) -> vec4<f32> {
+    let steps = i32(g.extra.z);
+    let size = g.screen.xy;
+    var p = start;
+    var dt = 0.35;
+    var prev = start;
+    for (var i = 0; i < steps; i = i + 1) {
+        prev = p;
+        p += r * dt;
+        dt *= 1.28;
+        let c = g.view_proj * vec4<f32>(p, 1.0);
+        if (c.w <= 0.05) {
+            break;
+        }
+        let ndc = c.xy / c.w;
+        if (abs(ndc.x) > 1.0 || abs(ndc.y) > 1.0) {
+            break;
+        }
+        let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+        let d = textureLoad(scene_depth, vec2<i32>(clamp(uv * size, vec2<f32>(0.0), size - 1.0)), 0);
+        if (d >= 1.0) {
+            continue;
+        }
+        let scene_z = linear_depth(d);
+        let ray_z = c.w;
+        if (ray_z > scene_z + 0.02 && ray_z < scene_z + dt * 2.5 + 0.6) {
+            // Refine between the last two points.
+            var a = prev;
+            var b = p;
+            for (var k = 0; k < 4; k = k + 1) {
+                let m = (a + b) * 0.5;
+                let cm = g.view_proj * vec4<f32>(m, 1.0);
+                let um = vec2<f32>(cm.x / cm.w * 0.5 + 0.5, 0.5 - cm.y / cm.w * 0.5);
+                let dm = textureLoad(scene_depth, vec2<i32>(clamp(um * size, vec2<f32>(0.0), size - 1.0)), 0);
+                if (cm.w > linear_depth(dm)) {
+                    b = m;
+                } else {
+                    a = m;
+                }
+            }
+            let cb = g.view_proj * vec4<f32>(b, 1.0);
+            let ub = clamp(vec2<f32>(cb.x / cb.w * 0.5 + 0.5, 0.5 - cb.y / cb.w * 0.5), vec2<f32>(0.0), vec2<f32>(1.0));
+            let col = textureLoad(scene_copy, vec2<i32>(clamp(ub * size, vec2<f32>(0.0), size - 1.0)), 0).rgb;
+            // Fade toward the screen's edges, where the picture runs out.
+            let e = min(min(ub.x, 1.0 - ub.x), min(ub.y, 1.0 - ub.y));
+            return vec4<f32>(col, smoothstep(0.0, 0.08, e));
+        }
+    }
+    return vec4<f32>(0.0);
+}
+
 @fragment
 fn fs_translucent(in: VOut) -> @location(0) vec4<f32> {
     let c = ctm_sample(in);
@@ -187,11 +331,50 @@ fn fs_translucent(in: VOut) -> @location(0) vec4<f32> {
         let sky = light_curve(in.light.x);
         let fres = pow(1.0 - max(-v.y, 0.0), 4.0);
         rgb *= 0.9 + (n.x + n.z) * 1.2;
-        rgb = mix(rgb, g.sky_horizon.rgb * sky, fres * 0.45);
         let r = reflect(v, n);
+        if (g.extra.z > 0.5) {
+            // Reflections: the world mirrored where the screen shows it, the sky elsewhere.
+            let k = 0.1 + fres * 0.75;
+            var refl = sky_toward(r) * max(sky, 0.15);
+            let ss = screen_reflection(in.rel, normalize(vec3<f32>(r.x, abs(r.y), r.z)));
+            refl = mix(refl, ss.rgb, ss.a);
+            rgb = mix(rgb, refl, k);
+            a = mix(a, 1.0, k * 0.7);
+        } else {
+            rgb = mix(rgb, g.sky_horizon.rgb * sky, fres * 0.45);
+        }
         let spec = pow(max(dot(r, g.sun_dir.xyz), 0.0), 120.0) * g.fog_color.w * sky;
         rgb += vec3<f32>(1.0, 0.92, 0.75) * spec * 1.6;
         a = mix(a, 1.0, fres * 0.5 + min(spec, 1.0) * 0.5);
     }
     return vec4<f32>(mix(rgb, g.fog_color.rgb, fog), mix(a, 1.0, fog));
+}
+
+// ---- Shadow map pass: the terrain seen from the sun, depth only ----
+struct ShadowOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+    @location(1) @interpolate(flat) layer: u32,
+};
+
+@vertex
+fn vs_shadow(@location(0) w: vec3<u32>, @location(1) origin: vec3<f32>) -> ShadowOut {
+    let p = vec3<f32>(f32(w.x & 1023u), f32((w.x >> 10u) & 1023u), f32((w.x >> 20u) & 1023u)) / 16.0 + origin;
+    var out: ShadowOut;
+    out.clip = g.shadow_mat * vec4<f32>(p, 1.0);
+    out.uv = vec2<f32>(f32(w.y & 31u), f32((w.y >> 5u) & 31u)) / 16.0;
+    if (((w.y >> 25u) & 4u) != 0u) {
+        // Merged quads are always full blocks of opaque texture: any uv will do.
+        out.uv = vec2<f32>(0.5, 0.5);
+    }
+    out.layer = (w.y >> 10u) & 2047u;
+    return out;
+}
+
+@fragment
+fn fs_shadow(in: ShadowOut) {
+    // Leaves and plants cast the shape of their texture.
+    if (textureSampleLevel(tex, samp, in.uv, in.layer, 0.0).a < 0.5) {
+        discard;
+    }
 }
