@@ -285,20 +285,6 @@ impl crate::Game {
                 self.prog.stats.add(&key, 1);
             }
         }
-        // Walking, swimming and flying statistics, in centimetres like the game counts them.
-        let moved = (p - self.prog.last_pos).length();
-        if moved < 20.0 && moved > 0.0 {
-            let key = if self.body.flying {
-                "fly_cm"
-            } else if self.body.in_water {
-                "swim_cm"
-            } else if self.sprinting {
-                "sprint_cm"
-            } else {
-                "walk_cm"
-            };
-            self.prog.stats.add(key, (moved * 100.0) as u64);
-        }
         self.prog.last_pos = p;
         // Recovery compass: reaching the death spot with it in hand.
         if let Some((dp, dd)) = self.prog.death {
@@ -488,16 +474,16 @@ impl crate::Game {
             let st = &self.prog.stats;
             let km = |cm: u64| format!("{:.2} km", cm as f32 / 100_000.0);
             lines.push(("Tempo jogado".into(), crate::effects::clock(st.get("play_seconds") as f32)));
-            lines.push(("Distância a pé".into(), km(st.get("walk_cm"))));
-            lines.push(("Distância correndo".into(), km(st.get("sprint_cm"))));
-            lines.push(("Distância nadando".into(), km(st.get("swim_cm"))));
-            lines.push(("Distância voando".into(), km(st.get("fly_cm"))));
+            lines.push(("Distância a pé".into(), km(st.get("cm_walked"))));
+            lines.push(("Distância de carrinho".into(), km(st.get("cm_by_cart"))));
+            lines.push(("Distância nadando".into(), km(st.get("cm_swum"))));
+            lines.push(("Distância voando".into(), km(st.get("cm_flown"))));
             lines.push(("Pulos".into(), st.get("jumps").to_string()));
             lines.push(("Blocos minerados".into(), st.get("blocks_mined").to_string()));
             lines.push(("Mobs mortos".into(), st.get("mobs_killed").to_string()));
             lines.push(("Mortes".into(), st.get("deaths").to_string()));
-            lines.push(("Itens encantados".into(), st.get("enchanted").to_string()));
-            lines.push(("Poções preparadas".into(), st.get("brewed").to_string()));
+            lines.push(("Itens encantados".into(), st.get("items_enchanted").to_string()));
+            lines.push(("Poções preparadas".into(), st.get("potions_brewed").to_string()));
             lines.push(("Dano causado".into(), format!("{:.1}", st.get("damage_dealt") as f32 / 10.0)));
             lines.push(("Dano recebido".into(), format!("{:.1}", st.get("damage_taken") as f32 / 10.0)));
             lines.push(("Blocos escovados".into(), st.get("brushed").to_string()));

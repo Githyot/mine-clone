@@ -304,7 +304,12 @@ impl crate::Game {
             let extra: &[(&str, f32, u8)] = match name.as_str() {
                 "spider" => &[("spider_eye", 0.33, 1)],
                 "rabbit" => &[("rabbit_foot", 0.1, 1)],
-                "swamp_witch" => &[("glowstone_dust", 0.3, 2), ("sugar", 0.3, 2), ("spider_eye", 0.2, 1), ("glass_bottle", 0.3, 2), ("redstone", 0.2, 2)],
+                "swamp_witch" => &[("glowstone_dust", 0.3, 2), ("sugar", 0.3, 2), ("spider_eye", 0.2, 1), ("glass_bottle", 0.3, 2), ("redstone", 0.2, 2), ("slime_ball", 0.3, 2)],
+                "fire_imp" => &[("magma_cream", 0.3, 1)],
+                "ember_wraith" => &[("ghast_tear", 0.15, 1)],
+                "void_walker" | "void_walker_soul" | "void_walker_crimson" | "void_walker_savanna" | "void_walker_swamp" | "void_walker_snowy" | "void_walker_desert" => &[("phantom_membrane", 0.2, 1)],
+                "warden" => &[("sculk_catalyst", 1.0, 1)],
+                "breeze" => &[("breeze_rod", 1.0, 2)],
                 "chicken" => &[("feather", 0.0, 1)],
                 "zombie" | "skeleton" => &[("glowstone_dust", 0.0, 1)],
                 _ => &[],
@@ -346,6 +351,32 @@ impl crate::Game {
         if matches!(name, "milk_bucket" | "honey_bottle" | "ominous_bottle") {
             return true;
         }
+        if name == "glass_bottle" {
+            // Scoop water: the first liquid block along the look, within reach.
+            let eye = self.body.eye();
+            let f = self.forward();
+            for k in 1..10 {
+                let q = (eye + f * (k as f32 * 0.5)).floor().as_ivec3();
+                let b = self.world.block_or_air(q);
+                if self.world.fluid(b) == 1 {
+                    if let Some(id) = self.items.id("potion_water") {
+                        if self.survival {
+                            let sel = self.selected;
+                            self.surv.inv.take(sel, 1);
+                            if let Some(rest) = self.surv.inv.add(&self.items, voxel::item::ItemStack::new(id, 1)) {
+                                self.pop_drop(self.body.pos + Vec3::Y, rest);
+                            }
+                        }
+                        self.sfx(crate::audio::Sfx::Splash(0.2));
+                    }
+                    return true;
+                }
+                if b != voxel::block::AIR {
+                    break;
+                }
+            }
+            return false;
+        }
         if name == "experience_bottle" {
             let f = self.forward();
             let at = self.body.eye() + f * 2.0;
@@ -359,6 +390,38 @@ impl crate::Game {
             return true;
         }
         self.weapon_use(name)
+    }
+
+    /// Food with effects: golden apples, spider eyes, pufferfish, rotten flesh.
+    pub(crate) fn fase6_ate(&mut self, name: &str) {
+        use crate::effects::*;
+        self.prog.stats.add("foods_eaten_total", 1);
+        let key = format!("ate:{name}");
+        if self.prog.stats.get(&key) == 0 {
+            self.prog.stats.add("foods_eaten", 1);
+        }
+        self.prog.stats.add(&key, 1);
+        match name {
+            "golden_apple" => {
+                self.add_effect(REGENERATION, 1, 5.0, false);
+                self.add_effect(ABSORPTION, 0, 120.0, false);
+            }
+            "enchanted_golden_apple" => {
+                self.add_effect(REGENERATION, 1, 20.0, false);
+                self.add_effect(ABSORPTION, 3, 120.0, false);
+                self.add_effect(RESISTANCE, 0, 300.0, false);
+                self.add_effect(FIRE_RESISTANCE, 0, 300.0, false);
+            }
+            "spider_eye" => self.add_effect(POISON, 0, 5.0, false),
+            "pufferfish" => {
+                self.add_effect(POISON, 1, 60.0, false);
+                self.add_effect(HUNGER, 2, 15.0, false);
+                self.add_effect(NAUSEA, 0, 15.0, false);
+            }
+            "rotten_flesh" if self.prog.rng.f32() < 0.8 => self.add_effect(HUNGER, 0, 30.0, false),
+            "golden_carrot" | "glow_berries" => {}
+            _ => {}
+        }
     }
 
     /// Tooltip lines Phase 6 adds: a potion's effects.

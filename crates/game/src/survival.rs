@@ -1286,7 +1286,9 @@ impl Game {
                 self.surv.saturation = (self.surv.saturation + f.saturation).min(self.surv.hunger);
                 let sel = self.selected;
                 let chorus = self.held_stack().is_some_and(|s| self.items.get(s.item).name == "chorus_fruit");
+                let eaten = self.held_stack().map(|s| self.items.get(s.item).name.clone()).unwrap_or_default();
                 self.surv.inv.take(sel, 1);
+                self.fase6_ate(&eaten);
                 self.sfx(Sfx::Pickup);
                 if chorus {
                     self.chorus_hop();

@@ -17,6 +17,7 @@ mod advancements;
 mod trials;
 mod deepdark;
 mod archaeology;
+mod fase6_test;
 mod copper;
 mod creative;
 mod dimension;
@@ -1441,6 +1442,10 @@ impl Game {
                 if let Ok(kind) = std::env::var("MC_CAVE") {
                     // Test hook: stand in a cave biome.
                     self.test_cave(&kind);
+                }
+                if let Ok(scene) = std::env::var("MC_FASE6") {
+                    // Test hook: a Phase 6 scene (stations, effects, advancements, mobs).
+                    self.test_fase6(&scene);
                 }
                 if std::env::var("MC_DECOR").is_ok() {
                     // Test hook: the new building blocks.

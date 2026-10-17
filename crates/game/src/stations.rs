@@ -435,7 +435,7 @@ impl Game {
         Some((out, xp))
     }
 
-    fn station_refresh(&mut self, st: Station) {
+    pub(crate) fn station_refresh(&mut self, st: Station) {
         let out = match st {
             Station::Anvil(_) => self.anvil_result().map(|r| r.0),
             Station::Grindstone => self.grindstone_result().map(|r| r.0),
