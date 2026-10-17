@@ -826,7 +826,7 @@ impl Game {
         if self.loot_corpse() {
             return true;
         }
-        if self.talk_to_npc() || self.barter_with_piglin() {
+        if self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
             return true;
         }
         if let Some(st) = self.held_stack() {

@@ -1659,7 +1659,7 @@ impl Game {
         let was_ground = self.body.on_ground;
         // The camera pass for screenshots holds still.
         if self.args.screenshot.is_none() {
-            if !self.seat_step(input.sneak) && !self.ride_step(wish, input.sneak) && !self.elytra_step(input.jump, dt) {
+            if !self.seat_step(input.sneak) && !self.ride_step(wish, input.sneak) && !self.strider_step(wish, input.sneak, dt) && !self.elytra_step(input.jump, dt) {
                 self.body.step(&self.world, &input, dt);
             }
         } else {

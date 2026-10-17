@@ -110,6 +110,9 @@ pub struct NetherEnd {
     wither_wake: f32,
     check_gateway: bool,
     pub gateway_landing: bool,
+    /// Riding a strider over the lava: which one (by its per-mob phase), and where it was.
+    strider: Option<f32>,
+    strider_held: Option<(Vec3, f32)>,
     /// The way back to build beside a far island once its chunks are in.
     pending_gateway: Option<IVec3>,
     /// A charged respawn anchor in the Nether: where, and charges left.
@@ -210,6 +213,12 @@ impl Game {
         self.update_clouds(dt);
         self.player_effects(dt);
         self.update_piglins(dt);
+        if let (Some(i), Some((p, yaw))) = (self.strider_index(), self.ne.strider_held.take()) {
+            let m = &mut self.mobs.list[i];
+            m.body.pos = p;
+            m.body.vel = Vec3::ZERO;
+            m.yaw = yaw;
+        }
         self.update_dragon(dt);
         self.update_wither(dt);
         self.gateway_step(dt);
@@ -711,8 +720,10 @@ impl Game {
         self.mobs.list.iter().position(|m| m.alive() && self.mobs.reg.defs[m.def].name == DRAGON)
     }
 
-    /// The dragon flies its own path: remember where it was so the mobs' walking leaves it be.
+    /// The dragon flies its own path (and a ridden strider goes where its rider steers):
+    /// remember where they were so the mobs' walking leaves them be.
     pub(crate) fn before_mobs(&mut self) {
+        self.ne.strider_held = self.strider_index().map(|i| (self.mobs.list[i].body.pos, self.mobs.list[i].yaw));
         self.ne.dragon.held = self.dragon_index().map(|i| (self.mobs.list[i].body.pos, self.mobs.list[i].body.vel, self.mobs.list[i].yaw));
     }
 
@@ -962,6 +973,72 @@ impl Game {
         Vec3::new(x as f32 + 0.5, y as f32, z as f32 + 0.5)
     }
 
+    // ------------------------------------------------------------------ striders
+
+    fn strider_index(&self) -> Option<usize> {
+        let phase = self.ne.strider?;
+        self.mobs.list.iter().position(|m| m.alive() && m.phase == phase && self.mobs.reg.defs[m.def].name == "strider")
+    }
+
+    /// Right-click a strider to climb on its back.
+    pub(crate) fn mount_strider(&mut self) -> bool {
+        let Some((i, t)) = self.mobs.pick(self.body.eye(), self.forward(), 3.5) else { return false };
+        if t > self.target.map(|h| h.distance).unwrap_or(f32::MAX) || self.mob_name(i) != "strider" || self.ne.strider.is_some() {
+            return false;
+        }
+        self.ne.strider = Some(self.mobs.list[i].phase);
+        self.body.flying = false;
+        self.toast("Agachar para descer do strider", 3.0);
+        self.sfx(Sfx::Place(Material::Cloth));
+        true
+    }
+
+    /// On a strider: it walks where you steer, over lava as over ground. Sneak to get off.
+    pub(crate) fn strider_step(&mut self, wish: Vec3, sneak: bool, dt: f32) -> bool {
+        let Some(i) = self.strider_index() else {
+            self.ne.strider = None;
+            return false;
+        };
+        if sneak {
+            self.ne.strider = None;
+            self.body.pos += Vec3::Y * 0.3;
+            self.unstick();
+            return false;
+        }
+        let lava = self.reg.id_or_air("lava");
+        let pos = self.mobs.list[i].body.pos;
+        let mut next = pos;
+        let flat = Vec3::new(wish.x, 0.0, wish.z);
+        if flat.length_squared() > 0.01 {
+            let step = flat.normalize() * 3.2 * dt;
+            let to = pos + step;
+            // Stand on the lava's top or on ground, stepping up or down a block at most.
+            let (x, z) = (to.x.floor() as i32, to.z.floor() as i32);
+            let base = pos.y.floor() as i32;
+            let stand = (-2..=1).rev().map(|d| base + d - 1).find(|&y| {
+                let b = self.world.block_or_air(IVec3::new(x, y, z));
+                let free = |k: i32| !self.reg.get(self.world.block_or_air(IVec3::new(x, y + k, z))).solid && self.world.block_or_air(IVec3::new(x, y + k, z)) != lava;
+                (b == lava || self.reg.get(b).solid) && free(1) && free(2)
+            });
+            if let Some(y) = stand {
+                next = Vec3::new(to.x, y as f32 + 1.0, to.z);
+            }
+            let m = &mut self.mobs.list[i];
+            m.yaw = flat.x.atan2(flat.z);
+            m.walk += dt * 6.0;
+            m.walk_speed = 3.0;
+        } else {
+            self.mobs.list[i].walk_speed = 0.0;
+        }
+        self.mobs.list[i].body.pos = next;
+        self.body.pos = next + Vec3::Y * 1.4;
+        self.body.vel = Vec3::ZERO;
+        self.body.on_ground = true;
+        self.body.fall_distance = 0.0;
+        self.fall_peak = self.body.pos.y;
+        true
+    }
+
     // ------------------------------------------------------------------ elytra
 
     fn wearing_elytra(&self) -> bool {
@@ -1144,6 +1221,27 @@ impl Game {
                 log::info!("gateway at {g}: {}", self.reg.get(self.world.block_or_air(g)).name);
                 let egg = self.reg.get(self.world.block_or_air(IVec3::new(0, END_EXIT_Y + 4, 0))).name.clone();
                 log::info!("egg block: {egg}");
+            }
+            "strider" => {
+                // Ride a strider forward for a few seconds, logging what it stands on.
+                let at = self.body.pos;
+                if self.mobs.spawn("strider", at) {
+                    self.ne.strider = Some(self.mobs.list.last().unwrap().phase);
+                }
+                for k in 0..160 {
+                    let dir = [side, flat, -side, -flat][k / 40];
+                    self.strider_step(dir, false, 0.05);
+                    self.before_mobs();
+                    if let (Some(i), Some((p, yaw))) = (self.strider_index(), self.ne.strider_held.take()) {
+                        self.mobs.list[i].body.pos = p;
+                        self.mobs.list[i].yaw = yaw;
+                    }
+                    if k % 20 == 0 {
+                        let p = self.body.pos;
+                        let under = self.reg.get(self.world.block_or_air((p - Vec3::Y * 1.9).floor().as_ivec3())).name.clone();
+                        log::info!("strider ride t={:.0}s at {:.1?} over {under}", k as f32 * 0.05, p);
+                    }
+                }
             }
             "glide" => {
                 // Wear elytra high up and glide for a few seconds, logging the flight.
