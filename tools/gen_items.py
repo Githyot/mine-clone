@@ -204,6 +204,23 @@ def tool(material, kind):
         # fuller: centre line slightly lighter than the blade
         img[blade & (np.abs(V) < 0.4) & (U < 16.4), :3] = p[3]
         _ = gp
+    elif kind == "hammer":
+        # Silent Gear idea: a heavy square head that breaks 3x3.
+        handle(img, 0, 11.6)
+        head = (U >= 10.2) & (U <= 15.0) & (np.abs(V) <= 4.2)
+        shade_mask(img, head, p[1:], rng)
+        img[head & (np.abs(V) > 3.4), :3] = p[1]
+    elif kind == "excavator":
+        handle(img, 0, 9.4)
+        blade = ((U - 12.4) / 3.6) ** 2 + (V / 4.0) ** 2 <= 1.0
+        shade_mask(img, blade, p[1:], rng)
+        img[blade & (U > 15.0), :3] = p[1]
+    elif kind == "sickle":
+        handle(img, 0, 7.0)
+        r = np.sqrt((U - 10.5) ** 2 + (V + 1.5) ** 2)
+        blade = (r >= 4.0) & (r <= 5.6) & (U >= 7.0) & (V >= -1.5)
+        shade_mask(img, blade, p[1:], rng)
+        img[blade & (r > 5.0), :3] = p[4]
     elif kind == "hoe":
         handle(img, 0, 12.4)
         # L-shaped head: flat bar to the left of the handle top, blade
@@ -541,6 +558,80 @@ def mana_crystal():
     ]
     p = pal("#0a1a5a", "#1c3aa8", "#2e62e0", "#6e9cff", "#e0ecff")
     return outline(from_map(rows, pmap(p)))
+
+
+def lute():
+    """A round-bellied lute with a bent neck."""
+    rows = [
+        "..........kk....",
+        ".........kk.....",
+        "........nn......",
+        ".......nn.......",
+        "......nn........",
+        ".....nn.........",
+        "...bbbbb........",
+        "..bBBBBBb.......",
+        ".bBBBhBBBb......",
+        ".bBBhHhBBb......",
+        ".bBBBhBBBb......",
+        ".bBBBBBBBb......",
+        "..bBBsBBb.......",
+        "...bbbbb........",
+        "................",
+        "................",
+    ]
+    cols = {"k": hexrgb("#3a2414"), "n": hexrgb("#5a3a20"), "b": hexrgb("#6a4224"), "B": hexrgb("#a8743c"),
+            "h": hexrgb("#3a2414"), "H": hexrgb("#1e1208"), "s": hexrgb("#d8c8a0")}
+    return outline(from_map(rows, cols))
+
+
+def flute():
+    """A wooden flute held on the slant, with finger holes."""
+    rows = [
+        "................",
+        "............ww..",
+        "...........wWw..",
+        "..........wWw...",
+        ".........whw....",
+        "........wWw.....",
+        ".......whw......",
+        "......wWw.......",
+        ".....whw........",
+        "....wWw.........",
+        "...wWw..........",
+        "..wWw...........",
+        "..ww............",
+        "................",
+        "................",
+        "................",
+    ]
+    cols = {"w": hexrgb("#6a4a24"), "W": hexrgb("#b08850"), "h": hexrgb("#2a1a0c")}
+    return outline(from_map(rows, cols))
+
+
+def cello():
+    """A cello standing on its spike, f-holes and strings."""
+    rows = [
+        ".......kk.......",
+        ".......nn.......",
+        ".......nn.......",
+        ".......nn.......",
+        ".....bbbbbb.....",
+        "....bBBssBBb....",
+        "....bBfssfBb....",
+        ".....bBssBb.....",
+        "....bBBssBBb....",
+        "...bBBfssfBBb...",
+        "...bBBBssBBBb...",
+        "...bBBBssBBBb...",
+        "....bBBssBBb....",
+        ".....bbbbbb.....",
+        ".......kk.......",
+        ".......k........",
+    ]
+    cols = {"k": hexrgb("#1e1208"), "n": hexrgb("#3a2414"), "b": hexrgb("#5a2a10"), "B": hexrgb("#9a4a1c"),
+            "f": hexrgb("#1e1208"), "s": hexrgb("#d8c8a0")}
+    return outline(from_map(rows, cols))
 
 
 def blaze_rod():
@@ -1967,6 +2058,10 @@ def item_registry():
     for mat in MATERIALS:
         for kind in TOOL_KINDS:
             reg[f"{mat}_{kind}"] = lambda m=mat, k=kind: tool(m, k)
+    for mat in ("iron", "diamond", "platinum", "tungsten"):
+        if mat in MATERIALS:
+            for kind in ("hammer", "excavator", "sickle"):
+                reg[f"{mat}_{kind}"] = lambda m=mat, k=kind: tool(m, k)
     reg.update({
         "stick": stick, "coal": coal, "charcoal": charcoal,
     })
@@ -1988,6 +2083,9 @@ def item_registry():
     reg["lich_phylactery"] = lich_phylactery
     reg["glow_berries"] = glow_berries
     reg["blaze_rod"] = blaze_rod
+    reg["lute"] = lute
+    reg["flute"] = flute
+    reg["cello"] = cello
     reg["obsidian_heart"] = obsidian_heart
     reg["void_seed"] = void_seed
     reg["guardian_heart"] = guardian_heart

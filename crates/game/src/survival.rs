@@ -908,6 +908,9 @@ impl Game {
             // Casting happens while the button is held (update_magic).
             return true;
         }
+        if self.play_instrument(&item.name) {
+            return true;
+        }
         if crate::bosses::is_summon(&item.name) {
             return self.use_summon(&item.name);
         }

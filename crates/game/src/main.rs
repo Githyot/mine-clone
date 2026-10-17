@@ -20,6 +20,7 @@ mod fluids;
 mod redstone;
 mod wanderers;
 mod furniture;
+mod gear;
 mod weather;
 mod entity;
 mod item_render;
@@ -493,6 +494,7 @@ struct Game {
     ambient_t: f32,
     room_t: f32,
     walker_t: f32,
+    melody_cd: f32,
     wander: wanderers::Wanderers,
     copper: copper::Copper,
     farm: farm::Farm,
@@ -810,6 +812,7 @@ impl Game {
             ambient_t: 0.0,
             room_t: 0.0,
             walker_t: 0.0,
+            melody_cd: 0.0,
             wander: Default::default(),
             copper: copper::Copper::new(&reg_for_fluids),
             farm: farm::Farm::new(&reg_for_fluids),
@@ -1832,6 +1835,7 @@ impl Game {
                     if axe && self.crouch <= 0.5 && self.reg.get(id).name.ends_with("_log") {
                         self.fell_tree(hit.block, id);
                     }
+                    self.area_break(hit.block, hit.normal, id);
                     let (layer, tint) = self.block_look(id);
                     self.particles.block_bits(hit.block, layer, tint, 18, 1.0);
                     self.anim.start_swing();

@@ -117,6 +117,7 @@ pub fn synth(sfx: Sfx, seed: u32) -> Vec<f32> {
         Sfx::SpellHit(k) => cast(&mut rng, k, true),
         Sfx::Piston(out) => piston(&mut rng, out),
         Sfx::Portal => portal(&mut rng),
+        Sfx::Melody(i, t) => melody(&mut rng, i, t),
     };
     out.into_iter().map(|s| s.clamp(-1.0, 1.0)).collect()
 }
@@ -408,6 +409,83 @@ fn piston(rng: &mut Rng, out: bool) -> Vec<f32> {
 
 /// A portal: two deep detuned notes that waver against each other, with a dark breath of
 /// noise swelling and fading under them.
+/// Short tunes of our own, as (scale step, beats); step 99 is a rest. The scale is D minor
+/// pentatonic from D3 up, so even the highest notes stay low and warm.
+const TUNES: [&[(i32, f32)]; 4] = [
+    &[(0, 1.0), (2, 1.0), (3, 1.0), (4, 2.0), (3, 1.0), (2, 1.0), (0, 2.0), (99, 1.0), (1, 1.0), (2, 1.0), (4, 1.0), (5, 2.0), (4, 1.0), (2, 1.0), (0, 3.0)],
+    &[(4, 1.5), (3, 0.5), (2, 1.0), (0, 1.0), (2, 2.0), (99, 0.5), (3, 1.5), (2, 0.5), (1, 1.0), (-1, 1.0), (0, 3.0)],
+    &[(0, 0.5), (0, 0.5), (2, 1.0), (4, 1.0), (2, 1.0), (5, 1.0), (4, 2.0), (99, 1.0), (3, 0.5), (3, 0.5), (2, 1.0), (1, 1.0), (0, 1.0), (-2, 1.0), (0, 3.0)],
+    &[(5, 2.0), (4, 1.0), (2, 1.0), (3, 2.0), (2, 1.0), (0, 1.0), (1, 2.0), (-1, 1.0), (0, 3.0)],
+];
+
+fn note_freq(step: i32) -> f32 {
+    const PENTA: [f32; 5] = [0.0, 3.0, 5.0, 7.0, 10.0];
+    let oct = step.div_euclid(5);
+    let semis = PENTA[step.rem_euclid(5) as usize] + 12.0 * oct as f32;
+    146.83 * 2f32.powf(semis / 12.0)
+}
+
+fn melody(rng: &mut Rng, instrument: u8, tune: u8) -> Vec<f32> {
+    let notes = TUNES[tune as usize % TUNES.len()];
+    let beat = if instrument == 2 { 0.42 } else { 0.32 };
+    let total: f32 = notes.iter().map(|n| n.1).sum::<f32>() * beat + 1.5;
+    let mut out = vec![0.0f32; (total * RATE) as usize];
+    let mut t0 = 0.0;
+    for &(step, beats) in notes {
+        let dur = beats * beat;
+        if step != 99 {
+            // The cello plays an octave down.
+            let f = note_freq(step) * if instrument == 2 { 0.5 } else { 1.0 };
+            let start = (t0 * RATE) as usize;
+            let len = ((dur + if instrument == 0 { 1.2 } else { 0.15 }) * RATE) as usize;
+            let mut lp = LowPass::new(match instrument {
+                0 => 1100.0,
+                1 => 900.0,
+                _ => 800.0,
+            });
+            match instrument {
+                0 => {
+                    // Lute: a plucked string (Karplus-Strong), softened.
+                    let n = (RATE / f) as usize;
+                    let mut buf: Vec<f32> = (0..n.max(2)).map(|_| rng.noise() * 0.6).collect();
+                    for k in 0..len {
+                        let i = k % buf.len();
+                        let j = (k + 1) % buf.len();
+                        let v = (buf[i] + buf[j]) * 0.4985;
+                        buf[i] = v;
+                        if let Some(o) = out.get_mut(start + k) {
+                            *o += lp.run(v) * 0.9;
+                        }
+                    }
+                }
+                _ => {
+                    // Flute and cello: a held tone with a soft attack, vibrato and a bit of
+                    // breath (flute) or bow (cello).
+                    let mut ph = 0.0f32;
+                    for k in 0..len {
+                        let t = k as f32 / RATE;
+                        let env = (t / 0.08).min(1.0) * (((dur + 0.15) - t) / 0.15).clamp(0.0, 1.0);
+                        let vib = 1.0 + (t * 5.2 * TAU).sin() * 0.004 * (t / 0.3).min(1.0);
+                        ph += f * vib / RATE;
+                        let x = ph.fract();
+                        let tone = if instrument == 1 {
+                            (x * TAU).sin() + (2.0 * x * TAU).sin() * 0.15 + rng.noise() * 0.04
+                        } else {
+                            // A band-limited-ish saw for the bow, darkened by the filter.
+                            (x * 2.0 - 1.0) * 0.6 + (x * TAU).sin() * 0.5 + rng.noise() * 0.02
+                        };
+                        if let Some(o) = out.get_mut(start + k) {
+                            *o += lp.run(tone) * env * 0.35;
+                        }
+                    }
+                }
+            }
+        }
+        t0 += dur;
+    }
+    out
+}
+
 fn portal(rng: &mut Rng) -> Vec<f32> {
     let dur = 2.6;
     let n = (dur * RATE) as usize;
@@ -590,6 +668,7 @@ mod tests {
             all.extend([Sfx::Break(m), Sfx::Place(m), Sfx::Hit(m), Sfx::Step(m)]);
         }
         all.extend([Sfx::Click, Sfx::Hurt, Sfx::Death, Sfx::Respawn, Sfx::MobHit, Sfx::Explode, Sfx::Splash(1.0), Sfx::Swim, Sfx::WaterExit, Sfx::Bubbles, Sfx::Pickup, Sfx::Xp, Sfx::Eat, Sfx::Fizz, Sfx::Thunder(1.0), Sfx::Thunder(0.2), Sfx::Rain, Sfx::Piston(true), Sfx::Piston(false), Sfx::Portal]);
+        all.extend((0..3).flat_map(|i| (0..4).map(move |t| Sfx::Melody(i, t))));
         all.extend((0..6).flat_map(|k| [Sfx::Cast(k), Sfx::SpellHit(k)]));
         for sfx in all {
             let v = synth(sfx, 7);

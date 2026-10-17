@@ -89,6 +89,7 @@ impl Game {
             return;
         }
         self.room_t -= dt;
+        self.melody_cd -= dt;
         if self.room_t <= 0.0 {
             self.room_t = 0.4;
             self.measure_room();

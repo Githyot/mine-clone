@@ -136,6 +136,23 @@
     (name: "mana_crystal", display_name: Some("Cristal de Mana")),
     // Bosses: the summon item, its trophy material and what it makes.
     (name: "ancient_seed", display_name: Some("Semente Ancestral")),
+    // Silent Gear ideas: hammers break 3x3, excavators dig 3x3, sickles reap 5x5 (crouch for one block).
+    (name: "iron_hammer", display_name: Some("Martelo de Ferro"), tool: Some((kind: Pickaxe, tier: 3, speed: 2.7, damage: 6.0, durability: 750))),
+    (name: "iron_excavator", display_name: Some("Escavadeira de Ferro"), tool: Some((kind: Shovel, tier: 3, speed: 3.0, damage: 4.0, durability: 750))),
+    (name: "iron_sickle", display_name: Some("Foice de Ferro"), tool: Some((kind: Hoe, tier: 3, speed: 6.0, damage: 3.0, durability: 500))),
+    (name: "diamond_hammer", display_name: Some("Martelo de Diamante"), tool: Some((kind: Pickaxe, tier: 4, speed: 3.6, damage: 7.0, durability: 4683))),
+    (name: "diamond_excavator", display_name: Some("Escavadeira de Diamante"), tool: Some((kind: Shovel, tier: 4, speed: 4.0, damage: 5.0, durability: 4683))),
+    (name: "diamond_sickle", display_name: Some("Foice de Diamante"), tool: Some((kind: Hoe, tier: 4, speed: 8.0, damage: 4.0, durability: 3122))),
+    (name: "platinum_hammer", display_name: Some("Martelo de Platina"), tool: Some((kind: Pickaxe, tier: 3, speed: 4.0, damage: 6.0, durability: 1350))),
+    (name: "platinum_excavator", display_name: Some("Escavadeira de Platina"), tool: Some((kind: Shovel, tier: 3, speed: 4.5, damage: 4.0, durability: 1350))),
+    (name: "platinum_sickle", display_name: Some("Foice de Platina"), tool: Some((kind: Hoe, tier: 3, speed: 9.0, damage: 3.0, durability: 900))),
+    (name: "tungsten_hammer", display_name: Some("Martelo de Tungstênio"), tool: Some((kind: Pickaxe, tier: 4, speed: 3.1, damage: 7.0, durability: 2700))),
+    (name: "tungsten_excavator", display_name: Some("Escavadeira de Tungstênio"), tool: Some((kind: Shovel, tier: 4, speed: 3.5, damage: 5.0, durability: 2700))),
+    (name: "tungsten_sickle", display_name: Some("Foice de Tungstênio"), tool: Some((kind: Hoe, tier: 4, speed: 7.0, damage: 4.0, durability: 1800))),
+    // Immersive Melodies: instruments that play a tune.
+    (name: "lute", display_name: Some("Alaúde"), max_stack: Some(1)),
+    (name: "flute", display_name: Some("Flauta"), max_stack: Some(1)),
+    (name: "cello", display_name: Some("Violoncelo"), max_stack: Some(1)),
     (name: "blaze_rod", display_name: Some("Vara de Brasa"), fuel: 120.0),
     (name: "glow_berries", display_name: Some("Bagas Brilhantes"), food: Some((hunger: 2, saturation: 1.2)), places: Some("cave_vines")),
     (name: "lich_phylactery", display_name: Some("Filactério do Lich")),

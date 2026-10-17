@@ -114,6 +114,8 @@ pub enum Sfx {
     Piston(bool),
     /// A nether portal lighting or pulling the player in: a deep wavering hum.
     Portal,
+    /// A tune on an instrument (Immersive Melodies idea): instrument 0 lute, 1 flute, 2 cello.
+    Melody(u8, u8),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
