@@ -15,6 +15,7 @@ Textures and mob skins come from tools/gen_fase6_art.py.
 
 import re
 from pathlib import Path
+from lote3_structures import ocean_monument  # Lote 3 of plan/o-que-falta.md
 
 ROOT = Path(__file__).resolve().parent.parent
 PACK = ROOT / "packs" / "vanilla"
@@ -695,6 +696,12 @@ def structures_ron(structs):
         out.append(f'        chance: {s["chance"]},')
         if s.get("sink"):
             out.append(f'        sink: {s["sink"]},')
+        if s.get("foundation"):
+            out.append(f'        foundation: Some("{s["foundation"]}"),')
+        if s.get("rough"):
+            out.append(f'        rough: {s["rough"]},')
+        if s.get("mobs"):
+            out.append("        mobs: [" + ", ".join(f'("{m}", {n})' for m, n in s["mobs"]) + "],")
         out.append("        palette: [" + ", ".join(f"('{k}', \"{v}\")" for k, v in s["palette"].items()) + "],")
         out.append("        layers: [")
         for layer in s["layers"]:
@@ -783,7 +790,7 @@ def main():
     # Check the shape of a smelting entry against the base file.
     sample = re.search(r"smelting: \[\s*\(([^)]*)\)", BASE_RECIPES)
     assert sample and "input:" in sample.group(1), "smelting entries changed shape"
-    structs = [trial_chamber(), ancient_city(), trail_ruins(), beach_ruin()]  # the base game has its own desert well
+    structs = [trial_chamber(), ancient_city(), trail_ruins(), beach_ruin(), ocean_monument()]  # the base game has its own desert well
     for s in structs:
         for v in s["palette"].values():
             assert v.split(":")[0] in known, f"{s['name']}: unknown block {v}"

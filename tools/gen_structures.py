@@ -1457,6 +1457,10 @@ def ron(structs):
         out.append(f'        chance: {s["chance"]},')
         if s.get("sink"):
             out.append(f'        sink: {s["sink"]},')
+        if s.get("rough"):
+            out.append(f'        rough: {s["rough"]},')
+        if s.get("mobs"):
+            out.append("        mobs: [" + ", ".join(f'("{m}", {n})' for m, n in s["mobs"]) + "],")
         if s.get("piece_only"):
             out.append("        piece_only: true,")
         if s.get("pieces"):
@@ -1477,6 +1481,8 @@ def ron(structs):
     out.append("])")
     return "\n".join(out) + "\n"
 
+
+from lote3_structures import buried_treasure, ocean_ruin, woodland_mansion  # noqa: E402
 
 structs = [
     house("oak_planks", "oak_log", "oak_roof", ["Plains", "Forest"], "casa_de_carvalho"),
@@ -1510,6 +1516,10 @@ structs = [
     bastion(),
     end_city(),
     end_ship(),
+    woodland_mansion(),
+    ocean_ruin("pedra"),
+    ocean_ruin("areia"),
+    buried_treasure(),
 ]
 OUT.write_text(ron(structs))
 print(f"wrote {OUT} ({len(structs)} structures)")
