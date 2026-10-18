@@ -21,11 +21,15 @@ pub struct Rules {
     pub weather_cycle: bool,
     /// Players can hurt each other (off by default: friends building together).
     pub pvp: bool,
+    /// Hard survival (nature.rs): body temperature, thirst and food groups.
+    pub temperature: bool,
+    pub thirst: bool,
+    pub nutrition: bool,
 }
 
 impl Default for Rules {
     fn default() -> Self {
-        Rules { daylight_cycle: true, weather_cycle: true, pvp: false }
+        Rules { daylight_cycle: true, weather_cycle: true, pvp: false, temperature: false, thirst: false, nutrition: false }
     }
 }
 
@@ -47,12 +51,12 @@ pub fn scope(cmd: &str) -> Scope {
         "/modo" | "/gamemode" | "/dar" | "/give" | "/matar" | "/kill" | "/spawnpoint" | "/pos" => Scope::Player,
         "/tempo" | "/time" | "/clima" | "/weather" | "/dificuldade" | "/difficulty" | "/regra" | "/gamerule" | "/dizer" | "/say" | "/placar"
         | "/scoreboard" | "/equipe" | "/team" => Scope::World,
-        "/semente" | "/seed" | "/ajuda" | "/help" | "/lista" | "/list" | "/tp" | "/regras" | "/plugins" => Scope::Free,
+        "/semente" | "/seed" | "/ajuda" | "/help" | "/lista" | "/list" | "/tp" | "/regras" | "/plugins" | "/nutricao" | "/nutrição" => Scope::Free,
         _ => Scope::Unknown,
     }
 }
 
-pub const HELP: &str = "Comandos: /tempo dia|noite|<n>, /clima limpo|chuva|tempestade, /modo criativo|sobrevivencia, /dar <item> [qtd], /tp <nome>|<x y z>, /matar, /spawnpoint, /dificuldade 0-3, /regra <ciclo_dia|ciclo_clima|pvp> <sim|nao>, /placar, /equipe, /semente, /lista";
+pub const HELP: &str = "Comandos: /tempo dia|noite|<n>, /clima limpo|chuva|tempestade, /modo criativo|sobrevivencia, /dar <item> [qtd], /tp <nome>|<x y z>, /matar, /spawnpoint, /dificuldade 0-3, /regra <ciclo_dia|ciclo_clima|pvp|temperatura|sede|nutricao> <sim|nao>, /nutricao, /placar, /equipe, /semente, /lista";
 
 pub(crate) fn yes(s: &str) -> Option<bool> {
     match s.to_lowercase().as_str() {
@@ -69,7 +73,9 @@ impl Game {
 
     pub(crate) fn save_rules(&self) {
         if let Ok(t) = ron::ser::to_string_pretty(&self.net.rules, Default::default()) {
-            let _ = std::fs::write(self.rules_path(), t);
+            let _ = std::fs::write(self.rules_path(), &t);
+            // Guests play by the host's rules (pvp, temperature, thirst...).
+            self.net_broadcast(&net::protocol::ToGuest::Rules(t));
         }
     }
 
@@ -88,9 +94,15 @@ impl Game {
             "/ajuda" | "/help" => HELP.into(),
             "/semente" | "/seed" => format!("Semente: {}", self.seed),
             "/regras" => format!(
-                "Regras: ciclo_dia={}, ciclo_clima={}, pvp={}",
-                self.net.rules.daylight_cycle, self.net.rules.weather_cycle, self.net.rules.pvp
+                "Regras: ciclo_dia={}, ciclo_clima={}, pvp={}, temperatura={}, sede={}, nutricao={}",
+                self.net.rules.daylight_cycle,
+                self.net.rules.weather_cycle,
+                self.net.rules.pvp,
+                self.net.rules.temperature,
+                self.net.rules.thirst,
+                self.net.rules.nutrition
             ),
+            "/nutricao" | "/nutrição" => self.nutrition_line(),
             "/placar" | "/scoreboard" => self.scoreboard_command(&args),
             "/equipe" | "/team" => self.team_command(&args),
             "/tempo" | "/time" => {
@@ -143,7 +155,10 @@ impl Game {
                     "ciclo_dia" | "dodaylightcycle" => &mut r.daylight_cycle,
                     "ciclo_clima" | "doweathercycle" => &mut r.weather_cycle,
                     "pvp" => &mut r.pvp,
-                    _ => return "Regras: ciclo_dia, ciclo_clima, pvp (ex.: /regra pvp sim)".into(),
+                    "temperatura" | "temperature" => &mut r.temperature,
+                    "sede" | "thirst" => &mut r.thirst,
+                    "nutricao" | "nutrição" | "nutrition" => &mut r.nutrition,
+                    _ => return "Regras: ciclo_dia, ciclo_clima, pvp, temperatura, sede, nutricao (ex.: /regra pvp sim)".into(),
                 };
                 match v {
                     Some(v) => {

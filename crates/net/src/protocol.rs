@@ -116,6 +116,8 @@ pub enum ToGuest {
     },
     /// The scoreboard and teams, whenever they change.
     Board(Board),
+    /// The world's rules (RON text of the game's `Rules`), on joining and whenever they change.
+    Rules(String),
 }
 
 /// The world's scoreboard and teams (`/placar`, `/equipe`), kept by the host in

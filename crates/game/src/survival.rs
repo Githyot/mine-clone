@@ -921,6 +921,9 @@ impl Game {
 
     /// Right click in survival. Returns true when something happened.
     pub(crate) fn surv_use(&mut self) -> bool {
+        if self.nature_sip() {
+            return true;
+        }
         if self.loot_corpse() {
             return true;
         }
@@ -1381,6 +1384,7 @@ impl Game {
         } else {
             self.surv.starve_t = 0.0;
         }
+        self.nature_update(dt);
         // Eating: hold the use button with food in hand.
         let food: Option<FoodDef> = self.held_stack().and_then(|s| self.items.get(s.item).food);
         let wants = use_held && self.screen == Screen::Playing && food.is_some() && self.surv.hunger < 20.0;
@@ -1411,6 +1415,7 @@ impl Game {
                 let eaten = self.held_stack().map(|s| self.items.get(s.item).name.clone()).unwrap_or_default();
                 self.surv.inv.take(sel, 1);
                 self.fase6_ate(&eaten);
+                self.nature_consumed(&eaten);
                 self.sfx(Sfx::Pickup);
                 if chorus {
                     self.chorus_hop();
@@ -1717,6 +1722,7 @@ impl Game {
 
     pub(crate) fn draw_survival_hud(&mut self, hx: f32, hy: f32, cell: f32) {
         let s = self.ui.scale;
+        self.draw_nature_hud(hx, hy, cell);
         // Hunger: ten drumsticks on the right, above the hotbar.
         let y = hy - 11.0 * s;
         let shake = self.surv.saturation <= 0.0 && self.surv.hunger <= 6.0 && !self.settings.reduce_motion;

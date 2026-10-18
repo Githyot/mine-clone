@@ -11,6 +11,8 @@ mod pvp;
 mod cmdblock;
 mod server;
 mod plugins;
+mod nature;
+mod bench;
 mod audio;
 mod backpacks;
 mod controller;
@@ -141,6 +143,8 @@ struct Args {
     world: Option<String>,
     /// Dedicated server: no window shown, the world open to friends, commands from the console.
     server: bool,
+    /// Benchmark: fly for this many seconds, then report frame times and close.
+    bench: Option<f32>,
     seed: Option<u64>,
     screenshot: Option<PathBuf>,
     pos: Option<Vec3>,
@@ -202,7 +206,7 @@ struct Args {
 
 fn parse_args() -> Args {
     let mut a = Args::default();
-    let mut it = std::env::args().skip(1);
+    let mut it = std::env::args().skip(1).peekable();
     let f3 = |s: &str| -> Option<Vec3> {
         let v: Vec<f32> = s.split(',').filter_map(|x| x.trim().parse().ok()).collect();
         (v.len() == 3).then(|| Vec3::new(v[0], v[1], v[2]))
@@ -211,6 +215,7 @@ fn parse_args() -> Args {
         match arg.as_str() {
             "--world" => a.world = it.next(),
             "--server" => a.server = true,
+            "--bench" => a.bench = Some(it.next_if(|v| v.parse::<f32>().is_ok()).and_then(|v| v.parse().ok()).unwrap_or(60.0)),
             "--seed" => a.seed = it.next().and_then(|s| s.parse().ok()),
             "--screenshot" => a.screenshot = it.next().map(PathBuf::from),
             "--pos" => a.pos = it.next().and_then(|s| f3(&s)),
@@ -264,6 +269,7 @@ fn parse_args() -> Args {
                 println!(
                     "mine-clone [--world NAME] [--seed N] [--render-distance N] [--size WxH]\n\
                      Server: mine-clone --server [--world NAME] (no window; type commands, \"parar\" saves and stops)\n\
+                     Benchmark: mine-clone --bench [seconds] [--world NAME] (report in bench/)\n\
                      Testing: [--screenshot out.png] [--pos x,y,z] [--look yaw,pitch] [--time ticks] [--fly] [--demo] [--inventory] [--pause] [--debug]\n\
                      \x20        [--survival] [--kit] [--open table|furnace|chest] [--mobs] [--perf] [--prone] [--camera N]\n\
                      \x20        [--shader NAME|off] [--shaders-menu] [--lod BLOCKS]"
@@ -594,6 +600,9 @@ struct Game {
     cmdblocks: cmdblock::CmdBlocks,
     /// WebAssembly mods from `plugins/` (plugins.rs).
     plugins: plugins::Plugins,
+    /// Body temperature, thirst and food groups (nature.rs).
+    nature: nature::Nature,
+    bench: bench::Bench,
     /// Seconds since the player was last hurt (red flash, invulnerability).
     hurt_age: f32,
     regen: f32,
@@ -780,7 +789,7 @@ impl Game {
         let camera_mode = args.camera.min(2);
         let show_perf = args.perf;
         let start_prone = args.prone;
-        let title_mode = !args.server && (args.title || (args.world.is_none() && args.screenshot.is_none()));
+        let title_mode = !args.server && args.bench.is_none() && (args.title || (args.world.is_none() && args.screenshot.is_none()));
         let world_name = args.world.clone().or_else(|| menus::list_worlds(&base).first().map(|w| w.name.clone())).unwrap_or_else(|| "Mundo 1".into());
         let save = Arc::new(WorldSave::new(level_path_hint(&base, &world_name)));
         let level = save.load_level();
@@ -969,6 +978,8 @@ impl Game {
             signs: signs::load(&save.dir),
             cmdblocks: cmdblock::load(&save.dir),
             plugins: loaded_plugins,
+            nature: nature::load(&save.dir),
+            bench: Default::default(),
             sign_edit: None,
             hurt_age: 100.0,
             regen: 0.0,
@@ -1303,6 +1314,7 @@ impl Game {
         paintings::save(&self.world.save.dir, &self.paintings);
         signs::save(&self.world.save.dir, &self.signs);
         cmdblock::save(&self.world.save.dir, &self.cmdblocks);
+        nature::save(&self.world.save.dir, &self.nature);
         self.save_pets();
         self.surv.save(&self.world.save.dir, &self.items);
         self.progress_save();
@@ -3546,7 +3558,7 @@ impl Game {
                     let bubbles = (self.air.max(0.0).ceil()) as i32;
                     for i in 0..bubbles {
                         let x = hx + cell * 9.0 - (i + 1) as f32 * 8.0 * s;
-                        let y = y - 10.0 * s;
+                        let y = y - 10.0 * s - if self.thirst_shown() { 10.0 * s } else { 0.0 };
                         if self.ui.sprite("sprites/hud/air", x, y - s, 9.0 * s, 9.0 * s) {
                             continue;
                         }
@@ -4061,6 +4073,10 @@ impl Game {
             self.frame_times.clear();
         }
         self.update(dt);
+        if self.bench_tick(raw_dt) {
+            self.save_all();
+            std::process::exit(0);
+        }
 
         // Eye height eases between standing, sneaking and lying down instead of jumping.
         let stand = if self.body.flying { voxel::physics::EYE_HEIGHT } else { voxel::physics::EYE_HEIGHT - 0.25 * self.crouch };

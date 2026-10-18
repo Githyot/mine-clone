@@ -1,7 +1,7 @@
 //! Distant terrain: past the render distance the world is drawn as a coarse, blocky heightmap
 //! straight from the world generator, so mountains and coasts show up far away without loading
 //! chunks. The ground is cut into square tiles; each tile samples one column every `step` blocks
-//! (4 near, 16 far), gives it a flat top in the colour of its surface block and walls down to its
+//! (4 near, 32 farthest), gives it a flat top in the colour of its surface block and walls down to its
 //! neighbours. Tiles are built on their own worker threads, kept while in range, and drawn by the
 //! renderer with fog. Where real chunks are drawn the shader throws the tiles away.
 
@@ -20,7 +20,8 @@ use voxel::{BlockId, BlockRegistry};
 /// Tile size in blocks.
 pub const TILE: i32 = 128;
 /// Extra distances offered in the menu (blocks past the render distance; 0 = off).
-pub const DISTANCES: [i32; 4] = [0, 256, 512, 1024];
+/// Extra blocks of distant terrain the options offer; 2048 is 128 chunks.
+pub const DISTANCES: [i32; 5] = [0, 256, 512, 1024, 2048];
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Debug)]
@@ -321,8 +322,10 @@ impl Lod {
             4
         } else if d < 768.0 {
             8
-        } else {
+        } else if d < 1536.0 {
             16
+        } else {
+            32
         }
     }
 
@@ -427,7 +430,7 @@ mod tests {
     #[test]
     fn tiles_are_quads_inside_the_tile() {
         let (gen, colors) = setup();
-        for step in [4, 8, 16] {
+        for step in [4, 8, 16, 32] {
             let m = build_tile(&gen, &colors, IVec2::new(3, -2), step);
             let n = (TILE / step) as usize;
             assert_eq!(m.verts.len() % 4, 0);

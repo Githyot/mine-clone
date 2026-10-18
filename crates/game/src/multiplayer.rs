@@ -895,6 +895,9 @@ impl Game {
                     g.view = (view as i32).clamp(2, 16);
                 }
                 self.net_to_guest(id, &ToGuest::Board(self.net.board.clone()));
+                if let Ok(t) = ron::to_string(&self.net.rules) {
+                    self.net_to_guest(id, &ToGuest::Rules(t));
+                }
                 let t = format!("{name} entrou no jogo");
                 self.host_broadcast(&ToGuest::Chat { from: String::new(), text: t.clone() }, Some(id));
                 self.net_say(t, YELLOW);
@@ -1641,6 +1644,11 @@ impl Game {
             }
             ToGuest::PlayerHit { amount, from, by } => self.pvp_hurt_me(amount, Vec3::from(from), &by),
             ToGuest::Board(b) => self.net.board = b,
+            ToGuest::Rules(t) => {
+                if let Ok(r) = ron::from_str(&t) {
+                    self.net.rules = r;
+                }
+            }
             ToGuest::Op(op) => {
                 self.guest().op = op;
                 let t = if op { "Agora pode usar comandos (/ajuda)" } else { "Comandos desligados pelo anfitrião" };
