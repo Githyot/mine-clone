@@ -6,6 +6,7 @@
     },
     shaped: [
         (pattern: [" B ", "D#D", "###"], key: {'B': "book", 'D': "diamond", '#': "obsidian"}, result: "enchanting_table"),
+        (pattern: ["MMM", "SES", "WWW"], key: {'M': "milk_bucket", 'S': "sugar", 'E': "egg", 'W': "wheat"}, result: "cake"),
         (pattern: ["III", " i ", "iii"], key: {'I': "iron_block", 'i': "iron_ingot"}, result: "anvil"),
         (pattern: ["/S/", "P P"], key: {'/': "stick", 'S': "stone_slab", 'P': "#planks"}, result: "grindstone"),
         (pattern: ["PPP", "BBB", "PPP"], key: {'P': "#planks", 'B': "book"}, result: "bookshelf"),
@@ -88,6 +89,7 @@
     shapeless: [
         (ingredients: ["emerald_block"], result: "emerald", count: 9),
         (ingredients: ["lapis_block"], result: "lapis_lazuli", count: 9),
+        (ingredients: ["book", "ink_sac", "feather"], result: "writable_book"),
         (ingredients: ["paper", "paper", "paper", "leather"], result: "book"),
         (ingredients: ["slime_ball", "blaze_powder"], result: "magma_cream"),
         (ingredients: ["spider_eye", "brown_mushroom", "sugar"], result: "fermented_spider_eye"),
