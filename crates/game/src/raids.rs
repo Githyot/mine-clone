@@ -11,9 +11,9 @@ use voxel::worldgen::Dim;
 use crate::audio::Sfx;
 use crate::Game;
 
-const RAIDERS: [&str; 3] = ["marauder", "brute", "invoker"];
+const RAIDERS: [&str; 4] = ["marauder", "brute", "invoker", "ravager"];
 /// Who comes in each wave: (mob, how many).
-const WAVES: [&[(&str, u32)]; 3] = [&[("marauder", 3)], &[("marauder", 3), ("brute", 1)], &[("marauder", 3), ("brute", 2), ("invoker", 1)]];
+const WAVES: [&[(&str, u32)]; 3] = [&[("marauder", 3)], &[("marauder", 3), ("brute", 1)], &[("marauder", 3), ("brute", 2), ("invoker", 1), ("ravager", 1)]];
 
 #[derive(Default)]
 pub struct Raid {

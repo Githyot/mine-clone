@@ -400,7 +400,7 @@ pub fn item_icon(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRegistry,
         crate::enchanting::draw_glint(ui, x, y, size, crate::progression::clock_now());
     }
     let s = ui.scale;
-    let durability = it.tool.as_ref().map(|t| t.durability).or(it.armor.map(|a| a.durability));
+    let durability = it.max_wear();
     if let Some(dur) = durability {
         if stack.wear() > 0 {
             let k = 1.0 - stack.wear() as f32 / dur as f32;
@@ -596,12 +596,15 @@ impl Game {
     pub(crate) fn wear_held(&mut self, amount: u16) {
         let sel = self.selected;
         let Some(s) = self.surv.inv.slots[sel] else { return };
-        let Some(t) = self.items.get(s.item).tool.clone() else { return };
+        let Some(max) = self.items.get(s.item).max_wear() else { return };
+        if self.items.get(s.item).armor.is_some() {
+            return;
+        }
         if self.unbreaking_saves(&s, false) {
             return;
         }
         let d = s.wear() + amount;
-        if d >= t.durability {
+        if d >= max {
             self.surv.inv.slots[sel] = None;
             self.sfx(Sfx::Break(Material::Wood));
             self.toast("Sua ferramenta quebrou", 2.0);
@@ -662,6 +665,7 @@ impl Game {
         let tool = self.held_tool();
         let drops = self.items.drops(&self.reg, id, tool.as_ref(), &mut self.surv.rng);
         let drops = self.ench_drops(id, drops);
+        let drops = self.extras_drops(id, drops);
         self.fase6_block_broken(pos, id);
         let c = pos.as_vec3() + Vec3::splat(0.5);
         let harvested = self.items.can_harvest(&self.reg, id, tool.as_ref());
@@ -715,6 +719,7 @@ impl Game {
             }
             let _ = inv.add_in(&self.items, st, order);
         }
+        self.extras_chest_loot(&mut inv);
         self.apoth_chest_loot(&mut inv);
         inv
     }
@@ -916,7 +921,13 @@ impl Game {
 
     /// Right click in survival. Returns true when something happened.
     pub(crate) fn surv_use(&mut self) -> bool {
+        if self.nature_sip() {
+            return true;
+        }
         if self.loot_corpse() {
+            return true;
+        }
+        if self.extras_mob_use() {
             return true;
         }
         if self.lead_use() || self.pet_use() || self.village_use() || self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
@@ -942,8 +953,12 @@ impl Game {
                 if self.nether_end_block_use(hit.block, &name) {
                     return true;
                 }
+                if self.extras_block_use(&name, hit.block) {
+                    return true;
+                }
                 match name.as_str() {
                     n if n.ends_with("_sign") => return self.edit_sign(hit.block),
+                    "command_block" => return self.cmdblock_open(hit.block),
                     "bee_nest_honey" | "beehive_honey" => return self.hive_use(hit.block, &name),
                     "composter" | "composter_ready" => {
                         if self.use_composter(hit.block, name == "composter_ready") {
@@ -961,8 +976,8 @@ impl Game {
                         self.open_container(Open::Furnace(hit.block));
                         return true;
                     }
-                    n if n == "hopper" || n == "dropper" || n == "dispenser" || n == "crafter" || n.ends_with("_drawer") || n == "shulker_box" => {
-                        let n = if n == "hopper" { 5 } else if n.ends_with("_drawer") { 18 } else if n == "shulker_box" { 27 } else { 9 };
+                    n if n == "hopper" || n == "dropper" || n == "dispenser" || n == "crafter" || n.ends_with("_drawer") || n.ends_with("shulker_box") => {
+                        let n = if n == "hopper" { 5 } else if n.ends_with("_drawer") { 18 } else if n.ends_with("shulker_box") { 27 } else { 9 };
                         self.surv.containers.entry(hit.block).or_insert_with(|| Container::Chest(Inventory::new(n)));
                         self.open_container(Open::Chest(hit.block));
                         return true;
@@ -991,6 +1006,9 @@ impl Game {
             return self.equip_held();
         }
         if self.nether_end_use(&item.name) {
+            return true;
+        }
+        if self.extras_item_use(&item.name) {
             return true;
         }
         if self.pot_plant(item.places) {
@@ -1082,12 +1100,14 @@ impl Game {
             if self.redstone.kind(self.world.block_or_air(hit.block)) != crate::redstone::Kind::Tnt {
                 if self.light_portal(hit) {
                     self.anim.start_swing();
+                    self.wear_held(1);
                     return true;
                 }
-                return false;
+                return self.light_fire();
             }
             self.prime_tnt(hit.block, 4.0);
             self.anim.start_swing();
+            self.wear_held(1);
             return true;
         }
         let Some(block) = item.places else { return false };
@@ -1100,6 +1120,8 @@ impl Game {
                 self.surv.inv.take(sel, 1);
             }
             self.after_place(pos);
+            let placed = self.world.block_or_air(pos);
+            self.extras_after_place(pos, placed);
             if trees::is_sapling(&self.reg.get(block).name) {
                 let t = 60.0 + self.surv.rng.f32() * 120.0;
                 self.surv.saplings.push((pos, t));
@@ -1362,6 +1384,7 @@ impl Game {
         } else {
             self.surv.starve_t = 0.0;
         }
+        self.nature_update(dt);
         // Eating: hold the use button with food in hand.
         let food: Option<FoodDef> = self.held_stack().and_then(|s| self.items.get(s.item).food);
         let wants = use_held && self.screen == Screen::Playing && food.is_some() && self.surv.hunger < 20.0;
@@ -1372,6 +1395,15 @@ impl Game {
                 self.surv.eat_sound = 0.22;
                 self.sfx(Sfx::Eat);
                 self.anim.start_swing();
+                // Crumbs of the food fall from the mouth (game feel, Lote 6).
+                if let Some(Look::Sprite(l)) = self.held_stack().map(|s| self.items.get(s.item).look) {
+                    let at = self.body.eye() + self.forward() * 0.45 - Vec3::Y * 0.2;
+                    let layer = (self.item_base + l) as u16;
+                    for _ in 0..4 {
+                        let j = Vec3::new(self.fx.range(-0.08, 0.08), 0.0, self.fx.range(-0.08, 0.08));
+                        self.particles.mote(at + j, layer, [1.0, 1.0, 1.0], 0.045, 2.6, 0.6);
+                    }
+                }
             }
             if self.surv.eat >= 1.6 {
                 self.surv.eat = 0.0;
@@ -1383,6 +1415,7 @@ impl Game {
                 let eaten = self.held_stack().map(|s| self.items.get(s.item).name.clone()).unwrap_or_default();
                 self.surv.inv.take(sel, 1);
                 self.fase6_ate(&eaten);
+                self.nature_consumed(&eaten);
                 self.sfx(Sfx::Pickup);
                 if chorus {
                     self.chorus_hop();
@@ -1415,10 +1448,28 @@ impl Game {
                     d.body.vel += to.normalize_or_zero() * dt * 40.0;
                 }
             }
+            let falling = d.body.vel.y;
+            let was_up = !d.body.on_ground;
             d.body.step(&self.world, &still, dt);
+            // A dropped thing bounces a little when it lands, and settles (game feel, Lote 6).
+            if was_up && d.body.on_ground && falling < -3.0 && !d.body.in_water {
+                d.body.vel.y = -falling * 0.3;
+                d.body.on_ground = false;
+            }
             // Floats up in water.
             if d.body.in_water {
                 d.body.vel.y = d.body.vel.y.max(0.6);
+            }
+        }
+        // Rare things on the ground give off a glint of their rarity's colour.
+        if !self.settings.reduce_motion && self.fx.rand() < dt * 6.0 && !self.surv.drops.is_empty() {
+            let k = (self.fx.rand() * self.surv.drops.len() as f32) as usize % self.surv.drops.len();
+            let d = &self.surv.drops[k];
+            if let Some(c) = crate::juice::rarity(&self.items.get(d.stack.item).name) {
+                let at = d.body.pos + Vec3::new(self.fx.range(-0.2, 0.2), 0.25 + self.fx.range(0.0, 0.3), self.fx.range(-0.2, 0.2));
+                let glow = self.glow_layer();
+                let col = [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0];
+                self.particles.glow(at, Vec3::Y * 0.35, glow, col, 0.035, 0.8);
             }
         }
         let mut sound = false;
@@ -1593,6 +1644,18 @@ impl Game {
     pub(crate) fn drop_instances(&self, cam_block: IVec3) -> Vec<GpuItem> {
         let c = cam_block.as_vec3();
         let mut out = Vec::with_capacity(self.surv.drops.len() + self.surv.orbs.len());
+        // The block just placed swells a touch and settles back into place.
+        if let Some((pos, id, at)) = self.place_pop {
+            let k = (self.now - at) / 0.16;
+            if (0.0..1.0).contains(&k) && self.world.block_or_air(pos) == id {
+                let bl = self.reg.get(id);
+                let l = self.world.light(pos + IVec3::Y);
+                let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
+                let p = pos.as_vec3() + Vec3::splat(0.5) - c;
+                let size = 1.0 + 0.1 * (k * std::f32::consts::PI).sin() + 0.01;
+                out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [0.0, 0.0, sky, blk], layers: [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32, 0.0], rot: [0.0; 4] });
+            }
+        }
         // The orb sprite is loaded right after the item sprites.
         let orb_layer = (self.item_base as usize + self.items.textures.len()) as f32;
         let hand = self.hand_light_level();
@@ -1659,9 +1722,10 @@ impl Game {
 
     pub(crate) fn draw_survival_hud(&mut self, hx: f32, hy: f32, cell: f32) {
         let s = self.ui.scale;
+        self.draw_nature_hud(hx, hy, cell);
         // Hunger: ten drumsticks on the right, above the hotbar.
         let y = hy - 11.0 * s;
-        let shake = self.surv.saturation <= 0.0 && self.surv.hunger <= 6.0;
+        let shake = self.surv.saturation <= 0.0 && self.surv.hunger <= 6.0 && !self.settings.reduce_motion;
         for i in 0..10 {
             let x = hx + cell * 9.0 - (i + 1) as f32 * 8.0 * s;
             let v = self.surv.hunger - i as f32 * 2.0;
@@ -1854,7 +1918,7 @@ impl Game {
 
         let result = self.craft_result();
         let mut hovered: Option<Slot> = None;
-        let anim = crate::juice::enabled(self.settings.ui_animations, self.args.screenshot.is_some());
+        let anim = crate::juice::enabled(self.settings.ui_animations && !self.settings.reduce_motion, self.args.screenshot.is_some());
         let carried = self.surv.cursor.map(|c| c.item);
         for (k, &(slot, sx, sy)) in slots.iter().enumerate() {
             let big = slot == Slot::CraftOut || slot == Slot::Cont(2) && matches!(open, Open::Furnace(_)) || self.is_station_output(slot);
@@ -1978,7 +2042,7 @@ impl Game {
         let it = self.items.get(st.item);
         let mut out = crate::enchanting::lines(st);
         out.extend(self.fase6_details(st));
-        let dur = it.tool.as_ref().map(|t| t.durability).or(it.armor.map(|a| a.durability));
+        let dur = it.max_wear();
         if let Some(d) = dur {
             let left = d.saturating_sub(st.wear());
             let k = left as f32 / d.max(1) as f32;
@@ -2491,8 +2555,10 @@ impl Game {
         let pv = def.parts[2].pivot;
         let l = self.world.light(eye.floor().as_ivec3());
         let eat = if self.surv.eat > 0.0 { (self.surv.eat * 14.0).sin().abs() * 0.04 } else { 0.0 };
+        // The food gets smaller as it is eaten.
+        let left = 1.0 - 0.45 * (self.surv.eat / 1.6).clamp(0.0, 1.0);
         // So close to the eye the item would fill the screen at its third-person size.
-        self.held_in_fist(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 0.6, l, Vec3::Y * eat)
+        self.held_in_fist(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 0.6 * left, l, Vec3::Y * eat)
     }
 
     /// Skeletons' bows and the arrows in flight or stuck in blocks.

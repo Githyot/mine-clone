@@ -130,7 +130,7 @@ impl crate::Game {
             return;
         }
         self.prog.brushing = None;
-        let biome = self.world.gen.biome_at(b.x, b.z).name().to_string();
+        let biome = self.world.gen.base_biome_at(b.x, b.z).name().to_string();
         let table = finds(sand, &biome);
         let total: u32 = table.iter().map(|f| f.1).sum();
         let mut r = self.prog.rng.below(total);

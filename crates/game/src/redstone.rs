@@ -60,6 +60,10 @@ pub enum Kind {
     Bulb(bool),
     /// Rails: 0 plain, 1 powered, 2 detector, 3 activator.
     Rail(u8),
+    /// A note block: plays once each time power arrives.
+    Note,
+    /// Runs its command each time power arrives.
+    Command,
 }
 
 /// What a piston does with a block in its way.
@@ -92,6 +96,10 @@ pub enum Event {
     Burnout(IVec3),
     /// A dropper or dispenser fires one item out of its front.
     Dispense(IVec3),
+    /// A note block got power: it plays its note.
+    Note(IVec3),
+    /// A command block got power: it runs its command.
+    Command(IVec3),
 }
 
 const SIDES: [IVec3; 6] = [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z];
@@ -148,6 +156,10 @@ pub struct Redstone {
     bulb_power: HashMap<IVec3, bool>,
     bulb_twin: HashMap<BlockId, BlockId>,
     pub events: Vec<Event>,
+    /// Note blocks that are powered now (they play again only after the power goes away).
+    notes_on: std::collections::HashSet<IVec3>,
+    /// Command blocks that are powered now.
+    commands_on: HashSet<IVec3>,
 }
 
 impl Redstone {
@@ -189,6 +201,8 @@ impl Redstone {
                         "redstone_lamp" => Kind::Lamp(false),
                         "redstone_lamp_on" => Kind::Lamp(true),
                         "tnt" => Kind::Tnt,
+                        "note_block" => Kind::Note,
+                        "command_block" => Kind::Command,
                         // A season sensor in its season (mods/seasons.rs) powers like a redstone block.
                         n if n.starts_with("season_sensor_") && n.ends_with("_on") => Kind::Block,
                         _ => Kind::None,
@@ -206,9 +220,9 @@ impl Redstone {
                 let base = reg.get(b.base).name.as_str();
                 if i as BlockId == AIR || b.shape == Shape::Liquid {
                     Push::Free
-                } else if b.hardness < 0.0 || ["obsidian", "bedrock", "chest", "furnace", "hopper", "dropper", "dispenser", "crafter"].contains(&base) || base.ends_with("_bed") || kind[i] == Kind::Head || (b.shape == Shape::Piston && b.variant & 8 != 0) {
+                } else if b.hardness < 0.0 || ["obsidian", "bedrock", "chest", "furnace", "hopper", "dropper", "dispenser", "crafter", "command_block"].contains(&base) || base.ends_with("_bed") || kind[i] == Kind::Head || (b.shape == Shape::Piston && b.variant & 8 != 0) {
                     Push::Stop
-                } else if !b.solid || matches!(b.shape, Shape::Cross | Shape::Torch | Shape::Layer | Shape::Door | Shape::Repeater) || kind[i] != Kind::None && !matches!(kind[i], Kind::Block | Kind::Lamp(_) | Kind::Tnt | Kind::Piston(_) | Kind::Observer) {
+                } else if !b.solid || matches!(b.shape, Shape::Cross | Shape::Torch | Shape::Layer | Shape::Door | Shape::Repeater) || kind[i] != Kind::None && !matches!(kind[i], Kind::Block | Kind::Lamp(_) | Kind::Tnt | Kind::Piston(_) | Kind::Observer | Kind::Note) {
                     Push::Break
                 } else {
                     Push::Move
@@ -251,6 +265,8 @@ impl Redstone {
             bulb_power: HashMap::new(),
             bulb_twin,
             events: Vec::new(),
+            notes_on: Default::default(),
+            commands_on: Default::default(),
         }
     }
 
@@ -696,6 +712,26 @@ impl Redstone {
                     self.touch(p);
                 }
             }
+            Kind::Note => {
+                // Plays on the rising edge only.
+                if self.input(g, p, IVec3::ZERO) > 0 {
+                    if self.notes_on.insert(p) {
+                        self.events.push(Event::Note(p));
+                    }
+                } else {
+                    self.notes_on.remove(&p);
+                }
+            }
+            Kind::Command => {
+                // Runs on the rising edge only, like a note block plays.
+                if self.input(g, p, IVec3::ZERO) > 0 {
+                    if self.commands_on.insert(p) {
+                        self.events.push(Event::Command(p));
+                    }
+                } else {
+                    self.commands_on.remove(&p);
+                }
+            }
             Kind::Tnt => {
                 if self.input(g, p, IVec3::ZERO) > 0 {
                     g.set(p, AIR);
@@ -1081,6 +1117,8 @@ impl crate::Game {
                 Event::Piston(p, out) if near(p) => self.sfx(Sfx::Piston(out)),
                 Event::Burnout(p) if near(p) => self.sfx(Sfx::Fizz),
                 Event::Dispense(p) => self.dispense(p),
+                Event::Note(p) => self.play_note_block(p),
+                Event::Command(p) => self.cmdblock_run(p),
                 Event::Moved { from, dir, count } => {
                     // Whoever stands where the blocks went rides along.
                     let step = dir.as_vec3();
@@ -1562,6 +1600,24 @@ mod tests {
         rs.interact(&mut m, IVec3::new(0, 1, 0));
         run(&mut rs, &mut m, &[], 0.5);
         assert_eq!(m.get(IVec3::new(5, 1, 0)), Some(lamp));
+    }
+
+    #[test]
+    fn command_block_runs_once_per_pulse() {
+        let (mut rs, mut m, reg) = setup();
+        let cb = reg.id("command_block").unwrap();
+        let lever = reg.id("lever").unwrap();
+        run(&mut rs, &mut m, &[(IVec3::new(0, 1, 0), cb), (IVec3::new(1, 1, 0), lever)], 0.2);
+        let count = |rs: &mut Redstone| std::mem::take(&mut rs.events).iter().filter(|e| matches!(e, Event::Command(_))).count();
+        assert_eq!(count(&mut rs), 0);
+        rs.interact(&mut m, IVec3::new(1, 1, 0));
+        run(&mut rs, &mut m, &[], 0.5);
+        assert_eq!(count(&mut rs), 1, "one run while the power stays on");
+        rs.interact(&mut m, IVec3::new(1, 1, 0));
+        run(&mut rs, &mut m, &[], 0.3);
+        rs.interact(&mut m, IVec3::new(1, 1, 0));
+        run(&mut rs, &mut m, &[], 0.3);
+        assert_eq!(count(&mut rs), 1, "and once more for the next pulse");
     }
 
     #[test]

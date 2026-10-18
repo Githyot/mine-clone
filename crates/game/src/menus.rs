@@ -154,6 +154,7 @@ impl Game {
         self.paintings = paintings::load(&save.dir, &self.painting_defs);
         self.surv = crate::survival::Survival::load(&save.dir, &self.items);
         self.prog = crate::progression::Prog::load(&save.dir);
+        self.extras.load(&save.dir, &crate::level_path_hint(&self.base, &self.world_name));
         let dim = level.as_ref().map(|l| voxel::worldgen::Dim::from_u8(l.dim)).unwrap_or_default();
         if dim != voxel::worldgen::Dim::Overworld {
             self.load_dim(dim, false);
@@ -188,7 +189,7 @@ impl Game {
 
     pub(crate) fn is_title_screen(&self) -> bool {
         matches!(self.screen, Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer)
-            || (!self.world_open && matches!(self.screen, Screen::Options | Screen::Packs))
+            || (!self.world_open && matches!(self.screen, Screen::Options | Screen::Packs | Screen::Keys))
     }
 
     fn click_sound(&mut self) {
@@ -430,6 +431,14 @@ impl Game {
             return;
         }
         self.creative_type(text);
+        if self.screen == Screen::Sign && self.extras.book.is_some() {
+            self.book_type(text);
+            return;
+        }
+        if self.screen == Screen::Sign && self.cmdblocks.edit.is_some() {
+            self.cmdblock_type(text);
+            return;
+        }
         if self.screen == Screen::Sign {
             self.naming_type(text);
             self.sign_type(text);
@@ -482,6 +491,10 @@ impl Game {
             format!("Construções: {}", if st.sparse_structures { "Espaçadas" } else { "Normais" }),
             format!("Resolução das texturas: {}x", st.texture_resolution),
             format!("Animações da interface: {}", onoff(st.ui_animations)),
+            format!("Legendas: {}", onoff(st.subtitles)),
+            format!("Reduzir movimento: {}", onoff(st.reduce_motion)),
+            format!("Idioma: {}", crate::lang::language_name(&st.language)),
+            "Teclas...".to_string(),
             "Controle...".to_string(),
             "Pacotes de textura...".to_string(),
         ]
@@ -563,7 +576,19 @@ impl Game {
                 self.reload_textures();
             }
             16 => st.ui_animations = !st.ui_animations,
-            17 => {
+            17 => st.subtitles = !st.subtitles,
+            18 => st.reduce_motion = !st.reduce_motion,
+            19 => {
+                let all = crate::lang::languages(&self.base);
+                let k = all.iter().position(|c| *c == st.language).map(|k| (k + 1) % all.len()).unwrap_or(0);
+                st.language = all[k].clone();
+                self.apply_language();
+            }
+            20 => {
+                self.key_rebinding = None;
+                self.set_screen(Screen::Keys);
+            }
+            21 => {
                 self.options_back = self.screen;
                 self.set_screen(Screen::Controls);
             }
@@ -621,7 +646,7 @@ impl Game {
         let to = match self.screen {
             Screen::Worlds | Screen::Multiplayer => Screen::Title,
             Screen::CreateWorld => Screen::Worlds,
-            Screen::Options | Screen::Packs => {
+            Screen::Options | Screen::Packs | Screen::Keys => {
                 if self.world_open {
                     Screen::Paused
                 } else {

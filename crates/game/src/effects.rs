@@ -495,6 +495,7 @@ impl Game {
         };
         self.prog.stats.add("potions_drunk", 1);
         self.prog.event(crate::progression::Event::Drank(name.clone()));
+        self.nature_consumed(&name);
         if !self.survival {
             return;
         }

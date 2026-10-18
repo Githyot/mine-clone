@@ -116,6 +116,14 @@ pub struct Settings {
     pub emissive_textures: bool,
     /// Inventory and hotbar animations (Immersive UI idea); off = reduce motion.
     pub ui_animations: bool,
+    /// "pt" (Portuguese, the game's own) or "en" (English, through lang.rs).
+    pub language: String,
+    /// Captions for the sounds around: what made it and from which side.
+    pub subtitles: bool,
+    /// Calm camera and interface: no view bobbing, shaking, sprint zoom or bouncing icons.
+    pub reduce_motion: bool,
+    /// Keyboard keys moved from their defaults: action → key (`keybinds.rs`).
+    pub key_binds: BTreeMap<String, String>,
 }
 
 impl Default for Settings {
@@ -156,6 +164,10 @@ impl Default for Settings {
             taa: false,
             emissive_textures: true,
             ui_animations: true,
+            language: "pt".into(),
+            subtitles: false,
+            reduce_motion: false,
+            key_binds: BTreeMap::new(),
         }
     }
 }

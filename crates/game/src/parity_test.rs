@@ -368,7 +368,8 @@ const STACKS: &[(&str, u8)] = &[
     ("saddle", 1),
     ("minecart", 1),
     ("oak_boat", 1),
-    ("potion", 1),
+    // Our potions are named by what is in them; the plain one is the water bottle.
+    ("potion_water", 1),
     ("enchanted_book", 1),
     ("totem_of_undying", 1),
     ("bow", 1),
@@ -381,7 +382,8 @@ const STACKS: &[(&str, u8)] = &[
     ("elytra", 1),
     ("writable_book", 1),
     ("written_book", 1),
-    ("music_disc_cat", 1),
+    // Our discs carry our own music, so they are named after our tracks.
+    ("music_disc_first_light", 1),
     ("white_shulker_box", 1),
     ("shulker_box", 1),
     ("arrow", 64),
@@ -449,6 +451,26 @@ const MOBS: &[(&str, &str, f32, f32, f32, f32)] = &[
     ("guardian", "deep_watcher", 30.0, 6.0, 0.85, 0.85),
     ("pillager", "marauder", 24.0, 0.0, 0.6, 1.95),
     ("evoker", "invoker", 24.0, 0.0, 0.6, 1.95),
+    ("cave_spider", "cave_spider", 12.0, 2.0, 0.7, 0.5),
+    ("mooshroom", "mooshroom", 10.0, 0.0, 0.9, 1.4),
+    ("glow_squid", "glow_squid", 10.0, 0.0, 0.8, 0.8),
+    ("mule", "mule", 0.0, 0.0, 1.3965, 1.6),
+    ("skeleton_horse", "skeleton_horse", 15.0, 0.0, 1.3965, 1.6),
+    ("zoglin", "zoglin", 40.0, 0.0, 1.3965, 1.4),
+    ("bogged", "bogged", 16.0, 0.0, 0.6, 1.99),
+    ("zombie_villager", "zombie_villager", 20.0, 3.0, 0.6, 1.95),
+    ("elder_guardian", "elder_guardian", 80.0, 8.0, 1.9975, 1.9975),
+    ("silverfish", "silverfish", 8.0, 1.0, 0.4, 0.3),
+    ("bat", "bat", 6.0, 0.0, 0.5, 0.9),
+    ("snow_golem", "snow_golem", 4.0, 0.0, 0.7, 1.9),
+    ("tropical_fish", "tropical_fish", 3.0, 0.0, 0.5, 0.4),
+    ("tadpole", "tadpole", 6.0, 0.0, 0.4, 0.3),
+    ("armadillo", "armadillo", 12.0, 0.0, 0.7, 0.65),
+    ("allay", "allay", 20.0, 0.0, 0.35, 0.6),
+    ("vex", "vex", 14.0, 9.0, 0.4, 0.8),
+    ("ravager", "ravager", 100.0, 12.0, 1.95, 2.2),
+    ("creaking", "creaking", 0.0, 3.0, 0.9, 2.7),
+    ("armor_stand", "armor_stand", 0.0, 0.0, 0.5, 1.975),
     ("pig", "pig", 10.0, 0.0, 0.9, 0.9),
     ("cow", "cow", 10.0, 0.0, 0.9, 1.4),
     ("sheep", "sheep", 8.0, 0.0, 0.9, 1.3),
@@ -713,7 +735,7 @@ fn parity_with_vanilla() {
             r.missing.push(format!("item {name}"));
             continue;
         };
-        let ours = it.tool.as_ref().map(|t| t.durability).or(it.armor.as_ref().map(|a| a.durability));
+        let ours = it.max_wear();
         if ours.is_none() {
             r.missing.push(format!("desgaste de {name} (não gasta)"));
             continue;

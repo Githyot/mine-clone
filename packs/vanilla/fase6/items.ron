@@ -217,7 +217,7 @@
     (name: "brush", display_name: Some("Escova"), max_stack: Some(1), tool: Some((kind: Hoe, tier: 1, speed: 1.0, damage: 1.0, durability: 64))),
     (name: "wind_charge", display_name: Some("Carga de Vento")),
     // Weapons
-    (name: "crossbow", display_name: Some("Besta"), max_stack: Some(1)),
+    (name: "crossbow", display_name: Some("Besta"), max_stack: Some(1), durability: Some(465)),
     (name: "trident", display_name: Some("Tridente"), tool: Some((kind: Sword, tier: 4, speed: 1.0, damage: 9.0, durability: 250))),
     (name: "mace", display_name: Some("Maça"), tool: Some((kind: Sword, tier: 3, speed: 1.0, damage: 6.0, durability: 500))),
     (name: "wooden_spear", display_name: Some("Lança de Madeira"), tool: Some((kind: Sword, tier: 1, speed: 2.0, damage: 2.0, durability: 59))),

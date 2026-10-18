@@ -1,4 +1,5 @@
 /target
+/target-*
 /saves
 /settings.ron
 /resourcepacks/*
@@ -12,3 +13,5 @@ __pycache__/
 /paintings/*
 /shaderpacks
 /.claude/
+/plugins
+/bench

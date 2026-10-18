@@ -19,11 +19,17 @@ pub struct Rules {
     pub daylight_cycle: bool,
     /// The weather changes by itself.
     pub weather_cycle: bool,
+    /// Players can hurt each other (off by default: friends building together).
+    pub pvp: bool,
+    /// Hard survival (nature.rs): body temperature, thirst and food groups.
+    pub temperature: bool,
+    pub thirst: bool,
+    pub nutrition: bool,
 }
 
 impl Default for Rules {
     fn default() -> Self {
-        Rules { daylight_cycle: true, weather_cycle: true }
+        Rules { daylight_cycle: true, weather_cycle: true, pvp: false, temperature: false, thirst: false, nutrition: false }
     }
 }
 
@@ -43,15 +49,16 @@ pub enum Scope {
 pub fn scope(cmd: &str) -> Scope {
     match cmd {
         "/modo" | "/gamemode" | "/dar" | "/give" | "/matar" | "/kill" | "/spawnpoint" | "/pos" => Scope::Player,
-        "/tempo" | "/time" | "/clima" | "/weather" | "/dificuldade" | "/difficulty" | "/regra" | "/gamerule" | "/dizer" | "/say" => Scope::World,
-        "/semente" | "/seed" | "/ajuda" | "/help" | "/lista" | "/list" | "/tp" | "/regras" => Scope::Free,
+        "/tempo" | "/time" | "/clima" | "/weather" | "/dificuldade" | "/difficulty" | "/regra" | "/gamerule" | "/dizer" | "/say" | "/placar"
+        | "/scoreboard" | "/equipe" | "/team" => Scope::World,
+        "/semente" | "/seed" | "/ajuda" | "/help" | "/lista" | "/list" | "/tp" | "/regras" | "/plugins" | "/nutricao" | "/nutrição" => Scope::Free,
         _ => Scope::Unknown,
     }
 }
 
-pub const HELP: &str = "Comandos: /tempo dia|noite|<n>, /clima limpo|chuva|tempestade, /modo criativo|sobrevivencia, /dar <item> [qtd], /tp <nome>|<x y z>, /matar, /spawnpoint, /dificuldade 0-3, /regra <ciclo_dia|ciclo_clima> <sim|nao>, /semente, /lista";
+pub const HELP: &str = "Comandos: /tempo dia|noite|<n>, /clima limpo|chuva|tempestade, /modo criativo|sobrevivencia, /dar <item> [qtd], /tp <nome>|<x y z>, /matar, /spawnpoint, /dificuldade 0-3, /regra <ciclo_dia|ciclo_clima|pvp|temperatura|sede|nutricao> <sim|nao>, /nutricao, /placar, /equipe, /semente, /lista";
 
-fn yes(s: &str) -> Option<bool> {
+pub(crate) fn yes(s: &str) -> Option<bool> {
     match s.to_lowercase().as_str() {
         "sim" | "s" | "true" | "1" | "on" | "ligado" => Some(true),
         "nao" | "não" | "n" | "false" | "0" | "off" | "desligado" => Some(false),
@@ -66,7 +73,9 @@ impl Game {
 
     pub(crate) fn save_rules(&self) {
         if let Ok(t) = ron::ser::to_string_pretty(&self.net.rules, Default::default()) {
-            let _ = std::fs::write(self.rules_path(), t);
+            let _ = std::fs::write(self.rules_path(), &t);
+            // Guests play by the host's rules (pvp, temperature, thirst...).
+            self.net_broadcast(&net::protocol::ToGuest::Rules(t));
         }
     }
 
@@ -84,7 +93,18 @@ impl Game {
         match cmd.as_str() {
             "/ajuda" | "/help" => HELP.into(),
             "/semente" | "/seed" => format!("Semente: {}", self.seed),
-            "/regras" => format!("Regras: ciclo_dia={}, ciclo_clima={}", self.net.rules.daylight_cycle, self.net.rules.weather_cycle),
+            "/regras" => format!(
+                "Regras: ciclo_dia={}, ciclo_clima={}, pvp={}, temperatura={}, sede={}, nutricao={}",
+                self.net.rules.daylight_cycle,
+                self.net.rules.weather_cycle,
+                self.net.rules.pvp,
+                self.net.rules.temperature,
+                self.net.rules.thirst,
+                self.net.rules.nutrition
+            ),
+            "/nutricao" | "/nutrição" => self.nutrition_line(),
+            "/placar" | "/scoreboard" => self.scoreboard_command(&args),
+            "/equipe" | "/team" => self.team_command(&args),
             "/tempo" | "/time" => {
                 // "/time set day" works too.
                 let v = if a0 == "set" || a0 == "definir" { args.get(1).map(|s| s.to_lowercase()).unwrap_or_default() } else { a0 };
@@ -134,7 +154,11 @@ impl Game {
                 let slot = match a0.as_str() {
                     "ciclo_dia" | "dodaylightcycle" => &mut r.daylight_cycle,
                     "ciclo_clima" | "doweathercycle" => &mut r.weather_cycle,
-                    _ => return "Regras: ciclo_dia, ciclo_clima (ex.: /regra ciclo_dia nao)".into(),
+                    "pvp" => &mut r.pvp,
+                    "temperatura" | "temperature" => &mut r.temperature,
+                    "sede" | "thirst" => &mut r.thirst,
+                    "nutricao" | "nutrição" | "nutrition" => &mut r.nutrition,
+                    _ => return "Regras: ciclo_dia, ciclo_clima, pvp, temperatura, sede, nutricao (ex.: /regra pvp sim)".into(),
                 };
                 match v {
                     Some(v) => {
@@ -202,7 +226,11 @@ impl Game {
                 self.surv.spawn = Some(p);
                 format!("Ponto de renascer: {} {} {}", p.x, p.y, p.z)
             }
-            _ => format!("Comando desconhecido: {cmd} (/ajuda)"),
+            "/plugins" => self.plugins_list_line(),
+            _ => match self.plugins_command(line) {
+                Some(r) => r,
+                None => format!("Comando desconhecido: {cmd} (/ajuda)"),
+            },
         }
     }
 }

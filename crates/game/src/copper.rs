@@ -175,6 +175,8 @@ impl Game {
                                 self.pot_tick(p, id, (r >> 24) as u32);
                             } else if id != AIR && self.farm.hives.contains(&id) {
                                 self.hive_tick(p, id, (r >> 24) as u32);
+                            } else if self.extras.ticks(id) {
+                                self.extras_tick(p, id, (r >> 24) as u32);
                             }
                         }
                         y += 16;

@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a message changes shape. Host and guest must match.
-pub const PROTOCOL: u32 = 1;
+pub const PROTOCOL: u32 = 2;
 
 /// Default UDP port for hosted worlds.
 pub const DEFAULT_PORT: u16 = 24454;
@@ -44,6 +44,12 @@ pub enum ToHost {
         data: Option<String>,
     },
     Chat(String),
+    /// The guest hit another player (PvP); the host checks the rules and teams.
+    HurtPlayer {
+        target: u32,
+        amount: f32,
+        from: [f32; 3],
+    },
     /// The guest's own things (inventory, health, where it stands) for the host to keep.
     SavePlayer(String),
 }
@@ -102,6 +108,87 @@ pub enum ToGuest {
     },
     /// Made (or no longer) an operator.
     Op(bool),
+    /// Another player hit the guest (PvP): not scaled by difficulty.
+    PlayerHit {
+        amount: f32,
+        from: [f32; 3],
+        by: String,
+    },
+    /// The scoreboard and teams, whenever they change.
+    Board(Board),
+    /// The world's rules (RON text of the game's `Rules`), on joining and whenever they change.
+    Rules(String),
+}
+
+/// The world's scoreboard and teams (`/placar`, `/equipe`), kept by the host in
+/// `saves/<world>/scoreboard.ron`.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct Board {
+    pub objectives: Vec<Objective>,
+    /// The objective shown at the side of the screen.
+    pub shown: Option<String>,
+    pub teams: Vec<Team>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct Objective {
+    pub name: String,
+    /// "manual" (only commands change it), "mortes" (deaths) or "abates" (players killed).
+    pub kind: String,
+    pub title: String,
+    /// Player name → score.
+    pub scores: Vec<(String, i32)>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct Team {
+    pub name: String,
+    /// Index into the game's team colours.
+    pub color: u8,
+    /// Members may hurt each other.
+    pub friendly_fire: bool,
+    pub members: Vec<String>,
+}
+
+impl Board {
+    pub fn team_of(&self, player: &str) -> Option<&Team> {
+        self.teams.iter().find(|t| t.members.iter().any(|m| m.eq_ignore_ascii_case(player)))
+    }
+
+    pub fn objective(&mut self, name: &str) -> Option<&mut Objective> {
+        self.objectives.iter_mut().find(|o| o.name.eq_ignore_ascii_case(name))
+    }
+
+    /// Add to a player's score in every objective of this kind.
+    pub fn count(&mut self, kind: &str, player: &str, n: i32) -> bool {
+        let mut any = false;
+        for o in self.objectives.iter_mut().filter(|o| o.kind == kind) {
+            o.add(player, n);
+            any = true;
+        }
+        any
+    }
+}
+
+impl Objective {
+    pub fn get(&self, player: &str) -> Option<i32> {
+        self.scores.iter().find(|(p, _)| p.eq_ignore_ascii_case(player)).map(|(_, s)| *s)
+    }
+
+    pub fn set(&mut self, player: &str, v: i32) {
+        match self.scores.iter_mut().find(|(p, _)| p.eq_ignore_ascii_case(player)) {
+            Some(e) => e.1 = v,
+            None => self.scores.push((player.to_string(), v)),
+        }
+    }
+
+    pub fn add(&mut self, player: &str, n: i32) {
+        let v = self.get(player).unwrap_or(0).saturating_add(n);
+        self.set(player, v);
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -168,6 +255,8 @@ pub mod flags {
     pub const BURNING: u16 = 128;
     pub const CREATIVE: u16 = 256;
     pub const DEAD: u16 = 512;
+    /// A dedicated server's own player: not drawn, not listed, not hit.
+    pub const HIDDEN: u16 = 1024;
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
