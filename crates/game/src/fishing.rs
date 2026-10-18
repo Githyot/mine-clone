@@ -88,7 +88,7 @@ impl Game {
 
     fn catch_fish(&mut self, at: Vec3) {
         let roll = self.surv.rng.f32();
-        let biome = self.world.gen.biome_at(at.x.floor() as i32, at.z.floor() as i32).name();
+        let biome = self.world.gen.base_biome_at(at.x.floor() as i32, at.z.floor() as i32).name();
         let more = crate::mods::aquaculture::MORE_FISH.iter().filter(|f| f.0.contains(&biome)).map(|f| (f.1, f.2));
         let fish: Vec<(&'static str, u32)> = FISH.iter().copied().chain(LOCAL_FISH.iter().filter(|f| f.0.contains(&biome)).map(|f| (f.1, f.2))).chain(more).map(|(n, w)| (n, self.rod_fish_weight(n, w))).collect();
         let junk: Vec<(&'static str, u32)> = JUNK.iter().chain(crate::mods::aquaculture::MORE_JUNK).copied().collect();

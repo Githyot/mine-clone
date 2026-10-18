@@ -357,7 +357,7 @@ impl Game {
         }
         for (i, target, snow_at) in throws {
             if let Some(p) = snow_at {
-                let b = self.world.gen.biome_at(p.x, p.z);
+                let b = self.world.gen.base_biome_at(p.x, p.z);
                 if matches!(b.name(), "Desert" | "Savanna" | "Badlands" | "Jungle") || self.dim == voxel::worldgen::Dim::Nether {
                     // Too hot: it melts.
                     let m = &mut self.mobs.list[i];

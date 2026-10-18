@@ -297,7 +297,7 @@ impl Game {
                     if verdite_on && !self.t5.hard.verdite.contains(&key) {
                         self.t5.hard.verdite.insert(key);
                         let mid = cp * CHUNK_SIZE as i32 + IVec2::splat(8);
-                        if self.world.gen.biome_at(mid.x, mid.y) == Biome::Jungle {
+                        if self.world.gen.base_biome_at(mid.x, mid.y) == Biome::Jungle {
                             self.place_veins(cp, "verdite_ore", 8, 50, 4, 6, 0x7E2D);
                             done += 1;
                         }

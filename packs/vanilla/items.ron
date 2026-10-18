@@ -501,4 +501,9 @@
     (name: "creaking_spawn_egg", display_name: Some("Ovo de Rangedor"), texture: Some("creaking_spawn_egg")),
     // Lote 2 spawn eggs (tools/gen_lote2_mobs.py).
     (name: "snow_golem_spawn_egg", display_name: Some("Ovo de Golem de Neve"), texture: Some("snow_golem_spawn_egg")),
+    // Lote 4: pale oak burns like the other woods.
+    (name: "pale_oak_log", fuel: 15.0),
+    (name: "pale_oak_planks", fuel: 15.0),
+    (name: "pale_oak_slab", fuel: 7.5),
+    (name: "pale_oak_sapling", fuel: 5.0, texture: Some("pale_oak_sapling")),
 ])

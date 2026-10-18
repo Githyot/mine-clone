@@ -1,8 +1,8 @@
 // Crafting and smelting. Ingredients are item names or #tags.
 (
     tags: {
-        "planks": ["oak_planks", "birch_planks", "spruce_planks", "jungle_planks", "acacia_planks", "dark_oak_planks", "cherry_planks", "mangrove_planks"],
-        "logs": ["oak_log", "birch_log", "spruce_log", "jungle_log", "acacia_log", "dark_oak_log", "cherry_log", "mangrove_log"],
+        "planks": ["oak_planks", "birch_planks", "spruce_planks", "jungle_planks", "acacia_planks", "dark_oak_planks", "cherry_planks", "mangrove_planks", "pale_oak_planks"],
+        "logs": ["oak_log", "birch_log", "spruce_log", "jungle_log", "acacia_log", "dark_oak_log", "cherry_log", "mangrove_log", "pale_oak_log"],
         "coals": ["coal", "charcoal"],
         "stone_tool_materials": ["cobblestone", "mossy_cobblestone"],
         "wool": ["white_wool", "orange_wool", "magenta_wool", "light_blue_wool", "yellow_wool", "lime_wool", "pink_wool", "gray_wool", "light_gray_wool", "cyan_wool", "purple_wool", "blue_wool", "brown_wool", "green_wool", "red_wool", "black_wool"],
@@ -294,6 +294,10 @@
         (pattern: ["##", "##", "##"], key: {'#': "dark_oak_planks"}, result: "dark_oak_door", count: 3),
         (pattern: ["###", "###"], key: {'#': "dark_oak_planks"}, result: "dark_oak_trapdoor", count: 2),
         (pattern: ["###"], key: {'#': "cherry_planks"}, result: "cherry_slab", count: 6),
+        (pattern: ["###"], key: {'#': "pale_oak_planks"}, result: "pale_oak_slab", count: 6),
+        (pattern: ["#  ", "## ", "###"], key: {'#': "pale_oak_planks"}, result: "pale_oak_stairs", count: 4),
+        (pattern: ["#|#", "#|#"], key: {'#': "pale_oak_planks", '|': "stick"}, result: "pale_oak_fence", count: 3),
+        (pattern: ["##"], key: {'#': "pale_moss_block"}, result: "pale_moss_carpet", count: 3),
         (pattern: ["###"], key: {'#': "mangrove_planks"}, result: "mangrove_slab", count: 6),
         (pattern: ["#  ", "## ", "###"], key: {'#': "cherry_planks"}, result: "cherry_stairs", count: 4),
         (pattern: ["#  ", "## ", "###"], key: {'#': "mangrove_planks"}, result: "mangrove_stairs", count: 4),
@@ -567,6 +571,8 @@
         (ingredients: ["acacia_log"], result: "acacia_planks", count: 4),
         (ingredients: ["dark_oak_log"], result: "dark_oak_planks", count: 4),
         (ingredients: ["cherry_log"], result: "cherry_planks", count: 4),
+        (ingredients: ["pale_oak_log"], result: "pale_oak_planks", count: 4),
+        (ingredients: ["sunflower"], result: "yellow_dye", count: 2),
         (ingredients: ["mangrove_log"], result: "mangrove_planks", count: 4),
         (ingredients: ["mud", "wheat"], result: "packed_mud"),
         (ingredients: ["copper_ingot", "copper_ingot", "copper_ingot", "tin_ingot"], result: "bronze_ingot", count: 4),

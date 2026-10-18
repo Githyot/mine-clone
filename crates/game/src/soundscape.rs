@@ -583,7 +583,7 @@ impl Game {
         let eye = self.body.eye();
         let head = eye.floor().as_ivec3();
         let sky = (self.world.light(head) >> 4) as f32;
-        let biome = self.world.gen.biome_at(head.x, head.z);
+        let biome = self.world.gen.base_biome_at(head.x, head.z);
         match self.dim {
             Dim::Nether => {
                 self.fx.dim_t -= dt;

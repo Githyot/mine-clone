@@ -262,7 +262,7 @@ tf.box((2, 6, 6), (-1, 0, -3), look("tfbody", ["#c85a10", "#e86a1a", "#f8a050", 
 tf.box((1, 4, 3), (-1, 1, -6), look("tftail", ["#c85a10", "#e86a1a", "#f8f4f0"]))
 tf.box((1, 2, 3), (-1, 6, -1), look("tffin", ["#c85a10", "#f8f4f0"]))
 new("tropical_fish", "Peixe Tropical", tf, health=3, speed=2.0, size=(0.5, 0.4), spawn="Water", aquatic=True, flee_range=4.0, group=(3, 6), weight=8,
-    biomes=["Ocean"], drops=[("tropical_fish", 1, 1)], egg=((239, 105, 21), (255, 249, 239)))
+    biomes=["Warm Ocean", "Lukewarm Ocean"], drops=[("tropical_fish", 1, 1)], egg=((239, 105, 21), (255, 249, 239)))
 tad = Model()
 tad.box((3, 2, 3), (-1, 0, 0), look("tdhead", ["#2a1c10", "#3e2a18", "#52381e"], eyes=(EYE, None)))
 tad.box((1, 2, 4), (0, 0, -4), look("tdtail", ["#2a1c10", "#3e2a18"]))
@@ -300,7 +300,7 @@ cr = biped(look("crhead", ["#2a2420", "#3e3630", "#524840"], eyes=((240, 150, 40
            look("crbody", ["#26201c", "#3a322c", "#4e443a", "#6a5e50"], pattern="planks"), look("crarm", ["#2a2420", "#3e3630"], pattern="planks"),
            look("crleg", ["#221c18", "#36302a"], pattern="planks"), tall=16, slim=True)
 new("creaking", "Rangedor", cr, kind="Hostile", health=1000, speed=3.0, size=(0.9, 2.7), spawn="Dark", attack=3, weight=2,
-    biomes=["Dark Forest", "Pale Garden"], egg=((95, 95, 95), (252, 120, 0)))
+    biomes=["Pale Garden"], egg=((95, 95, 95), (252, 120, 0)))
 stand = Model()
 wood = look("aswood", ["#6a4a2a", "#8a6238", "#a87a48", "#c49660"], pattern="planks")
 stand.box((2, 7, 2), (-1, 24, -1), wood, "Head", (0, 24, 0))

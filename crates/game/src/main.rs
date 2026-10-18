@@ -3111,7 +3111,7 @@ impl Game {
         for _ in 0..n {
             let x = c.x + self.surv.rng.range(-12, 13);
             let z = c.z + self.surv.rng.range(-12, 13);
-            if matches!(self.world.gen.biome_at(x, z).name(), "Desert" | "Badlands") {
+            if matches!(self.world.gen.base_biome_at(x, z).name(), "Desert" | "Badlands") {
                 continue;
             }
             let Some(y) = self.world.surface_y(x, z) else { continue };

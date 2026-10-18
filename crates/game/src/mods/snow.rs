@@ -120,7 +120,7 @@ impl Game {
         for _ in 0..n.min(30) {
             let x = me.x + self.surv.rng.range(-32, 33);
             let z = me.z + self.surv.rng.range(-32, 33);
-            let biome = self.world.gen.biome_at(x, z);
+            let biome = self.world.gen.base_biome_at(x, z);
             if self.weather.cold(biome) {
                 continue;
             }

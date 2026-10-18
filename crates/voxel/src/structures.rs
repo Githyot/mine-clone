@@ -345,7 +345,7 @@ impl Generator {
         let oz = rz * r + rng.range(0, (r - f.y).max(1));
         let (cx, cz) = (ox + f.x / 2, oz + f.y / 2);
         let biome = self.biome_at(cx, cz);
-        if !s.def.biomes.iter().any(|b| b == biome.name()) {
+        if !s.def.biomes.iter().any(|b| b == biome.name() || b == biome.base().name()) {
             return None;
         }
         if let Place::Sky(h) = s.def.place {
