@@ -13,3 +13,4 @@ __pycache__/
 /paintings/*
 /shaderpacks
 /.claude/
+/plugins

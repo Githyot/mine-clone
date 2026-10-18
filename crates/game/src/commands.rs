@@ -47,7 +47,7 @@ pub fn scope(cmd: &str) -> Scope {
         "/modo" | "/gamemode" | "/dar" | "/give" | "/matar" | "/kill" | "/spawnpoint" | "/pos" => Scope::Player,
         "/tempo" | "/time" | "/clima" | "/weather" | "/dificuldade" | "/difficulty" | "/regra" | "/gamerule" | "/dizer" | "/say" | "/placar"
         | "/scoreboard" | "/equipe" | "/team" => Scope::World,
-        "/semente" | "/seed" | "/ajuda" | "/help" | "/lista" | "/list" | "/tp" | "/regras" => Scope::Free,
+        "/semente" | "/seed" | "/ajuda" | "/help" | "/lista" | "/list" | "/tp" | "/regras" | "/plugins" => Scope::Free,
         _ => Scope::Unknown,
     }
 }
@@ -211,7 +211,11 @@ impl Game {
                 self.surv.spawn = Some(p);
                 format!("Ponto de renascer: {} {} {}", p.x, p.y, p.z)
             }
-            _ => format!("Comando desconhecido: {cmd} (/ajuda)"),
+            "/plugins" => self.plugins_list_line(),
+            _ => match self.plugins_command(line) {
+                Some(r) => r,
+                None => format!("Comando desconhecido: {cmd} (/ajuda)"),
+            },
         }
     }
 }

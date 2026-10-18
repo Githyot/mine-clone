@@ -10,6 +10,7 @@ mod subtitles;
 mod pvp;
 mod cmdblock;
 mod server;
+mod plugins;
 mod audio;
 mod backpacks;
 mod controller;
@@ -591,6 +592,8 @@ struct Game {
     signs: std::collections::HashMap<[i32; 3], String>,
     sign_edit: Option<IVec3>,
     cmdblocks: cmdblock::CmdBlocks,
+    /// WebAssembly mods from `plugins/` (plugins.rs).
+    plugins: plugins::Plugins,
     /// Seconds since the player was last hurt (red flash, invulnerability).
     hurt_age: f32,
     regen: f32,
@@ -740,6 +743,7 @@ fn level_path_hint(base: &Path, name: &str) -> PathBuf {
 impl Game {
     fn new(window: Arc<Window>, args: Args) -> Game {
         let base = base_dir();
+        let loaded_plugins = plugins::load(&base);
         let settings_path = base.join("settings.ron");
         let mut settings = Settings::load(&settings_path);
         settings.controller.fill_missing();
@@ -961,6 +965,7 @@ impl Game {
             pets_waiting: pets::load(&save.dir),
             signs: signs::load(&save.dir),
             cmdblocks: cmdblock::load(&save.dir),
+            plugins: loaded_plugins,
             sign_edit: None,
             hurt_age: 100.0,
             regen: 0.0,
@@ -1528,6 +1533,9 @@ impl Game {
         self.world.update(center, rd);
         let events = std::mem::take(&mut self.world.events);
         self.renderer.apply_mesh_events(events);
+        if self.world_open && self.screen == Screen::Playing {
+            self.plugins_tick(dt);
+        }
         self.net_update(dt);
         // A guest in the host's dimension gets the world's own changes from the host.
         let sim = self.net_simulates();
@@ -2190,7 +2198,7 @@ impl Game {
         if attack && self.break_cd <= 0.0 && (!self.survival || dig_done) {
             if let Some(hit) = self.target {
                 let id = self.world.block_or_air(hit.block);
-                if id != AIR && self.reg.get(id).hardness >= 0.0 && self.world.break_block(hit.block) {
+                if id != AIR && (self.reg.get(id).hardness >= 0.0 || !self.survival) && self.world.break_block(hit.block) {
                     self.mining = None;
                     self.after_break(hit.block, id);
                     if self.survival {
@@ -3016,6 +3024,7 @@ impl Game {
     /// Effects after a block went down.
     fn placed(&mut self, pos: IVec3, id: BlockId) -> Option<IVec3> {
         self.place_cd = 0.22;
+        self.plugins_block(pos, id, true);
         self.anim.start_swing();
         self.pads.rumble(0.0, 0.35, 0.05);
         let m = Material::of(&self.reg.get(id).name);

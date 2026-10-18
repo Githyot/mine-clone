@@ -859,6 +859,7 @@ impl Game {
     /// After any block is broken (in every mode): plants left floating come down with it, kelp
     /// leaves water, a sponge set down soaks up the water around it.
     pub(crate) fn after_break(&mut self, p: IVec3, was: BlockId) {
+        self.plugins_block(p, was, false);
         let name = self.reg.get(was).name.clone();
         self.infested_broken(p, &name);
         if self.world.is_wet(was) && self.extras.water != AIR && self.world.block_or_air(p) == AIR {
