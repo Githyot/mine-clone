@@ -11,7 +11,7 @@ use voxel::physics::Input;
 
 use crate::Game;
 
-const MOUNTS: [&str; 4] = ["horse", "donkey", "llama", "camel"];
+const MOUNTS: [&str; 5] = ["horse", "donkey", "llama", "camel", "pig"];
 /// (wild, tamed, the food that tames it, chance per try)
 const TAMES: [(&str, &str, &[&str], f32); 2] = [("wolf", "wolf_tame", &["bone"], 0.33), ("cat", "cat_tame", &["cod", "salmon", "raw_cod", "raw_salmon"], 0.33)];
 
@@ -109,6 +109,8 @@ impl Game {
     /// The player on a mount: it runs where they steer. True while riding.
     pub(crate) fn mount_step(&mut self, wish: Vec3, jump: bool, sneak: bool, dt: f32) -> bool {
         let Some(i) = self.mobs.list.iter().position(|m| m.ridden) else { return false };
+        // A pig only goes where a carrot on a stick points it.
+        let wish = self.pig_steer(wish);
         let alive = self.mobs.list[i].alive();
         let f = self.forward();
         let m = &mut self.mobs.list[i];

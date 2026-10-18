@@ -197,6 +197,7 @@ impl Game {
             }
         }
         k *= self.dig_effects();
+        k *= self.shears_speed(id);
         if self.body.head_in_water && self.armor_ench(AQUA_AFFINITY) == 0 {
             k /= 5.0;
         }

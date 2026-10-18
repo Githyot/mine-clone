@@ -154,6 +154,7 @@ impl Game {
         self.paintings = paintings::load(&save.dir, &self.painting_defs);
         self.surv = crate::survival::Survival::load(&save.dir, &self.items);
         self.prog = crate::progression::Prog::load(&save.dir);
+        self.extras.load(&save.dir, &crate::level_path_hint(&self.base, &self.world_name));
         let dim = level.as_ref().map(|l| voxel::worldgen::Dim::from_u8(l.dim)).unwrap_or_default();
         if dim != voxel::worldgen::Dim::Overworld {
             self.load_dim(dim, false);
@@ -430,6 +431,10 @@ impl Game {
             return;
         }
         self.creative_type(text);
+        if self.screen == Screen::Sign && self.extras.book.is_some() {
+            self.book_type(text);
+            return;
+        }
         if self.screen == Screen::Sign {
             self.naming_type(text);
             self.sign_type(text);

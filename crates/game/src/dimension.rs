@@ -53,6 +53,7 @@ impl Game {
         self.target = None;
         self.mining = None;
         self.paintings = paintings::load(&save.dir, &self.painting_defs);
+        self.extras.load(&save.dir, &crate::level_path_hint(&self.base, &self.world_name));
         let there = crate::survival::Survival::load(&save.dir, &self.items);
         if carry {
             self.surv.containers = there.containers;

@@ -81,6 +81,7 @@ mod survival;
 mod textures;
 mod ui;
 mod world;
+mod vanilla_extras;
 
 mod embedded {
     include!(concat!(env!("OUT_DIR"), "/embedded.rs"));
@@ -659,6 +660,8 @@ struct Game {
     surv: survival::Survival,
     /// Phase 6: effects, stations, enchantment play, statistics and advancements.
     prog: progression::Prog,
+    /// Lote 1 vanilla things: fire, jukebox, books, shields...
+    extras: vanilla_extras::Extras,
     rclicked: bool,
     /// Middle click in a menu this frame.
     mclicked: bool,
@@ -784,6 +787,8 @@ impl Game {
         let paintings = paintings::load(&save.dir, &painting_defs);
         let surv = survival::Survival::load(&save.dir, &items);
         let prog = progression::Prog::load(&save.dir);
+        let mut extras = vanilla_extras::Extras::new(&reg);
+        extras.load(&save.dir, &level_path_hint(&base, &world_name));
         let entities = entity::EntityRenderer::new(&renderer, &mob_reg, &painting_defs, &base, settings.texture_resolution);
         let mut mobs = mobs::Mobs::new(mob_reg, reg.id_or_air("grass_block"), seed);
         mobs.enabled = settings.mobs;
@@ -987,6 +992,7 @@ impl Game {
             item_base,
             surv,
             prog,
+            extras,
             rclicked: false,
             mclicked: false,
             rdown: false,
@@ -1237,6 +1243,7 @@ impl Game {
         self.progress_save();
         self.t5_save();
         self.prog.save(&level_path_hint(&self.base, &self.world_name), &self.items);
+        self.extras.save(&self.world.save.dir, &level_path_hint(&self.base, &self.world_name));
         self.save_mods();
         self.settings.save(&self.base.join("settings.ron"));
     }
@@ -1282,7 +1289,9 @@ impl Game {
             return;
         }
         if self.screen == Screen::Sign {
-            if self.naming.is_some() {
+            if self.extras.book.is_some() {
+                self.book_key(code);
+            } else if self.naming.is_some() {
                 self.naming_key(code);
             } else {
                 self.sign_key(code);
@@ -1312,7 +1321,10 @@ impl Game {
                 Screen::Paused | Screen::Inventory => self.set_screen(Screen::Playing),
                 Screen::Controls => self.set_screen(self.options_back),
                 Screen::Shaders => self.set_screen(Screen::Paused),
-                Screen::Paintings | Screen::Sign | Screen::Grimoire => self.set_screen(Screen::Playing),
+                Screen::Paintings | Screen::Sign | Screen::Grimoire => {
+                    self.extras.book = None;
+                    self.set_screen(Screen::Playing);
+                }
                 Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs => self.menu_back(),
                 Screen::Loading | Screen::Dead | Screen::Title => {}
             },
@@ -1929,7 +1941,7 @@ impl Game {
         }
 
         let feet = self.body.pos.floor().as_ivec3();
-        let pose = self.pose(self.world.fluid(self.world.block_or_air(feet)) == 2 || self.world.fluid(self.world.block_or_air(feet + IVec3::Y)) == 2);
+        let pose = self.pose(self.extras.burning > 0.0 || self.world.fluid(self.world.block_or_air(feet)) == 2 || self.world.fluid(self.world.block_or_air(feet + IVec3::Y)) == 2);
         self.anim.update(&pose, dt);
 
         // Water: splash going in, strokes while swimming, drips coming out, bubbles below.
@@ -2114,6 +2126,7 @@ impl Game {
                 let id = self.world.block_or_air(hit.block);
                 if id != AIR && self.reg.get(id).hardness >= 0.0 && self.world.break_block(hit.block) {
                     self.mining = None;
+                    self.after_break(hit.block, id);
                     if self.survival {
                         self.surv_block_broken(hit.block, id);
                     }
@@ -2473,6 +2486,8 @@ impl Game {
         }
         // Monsters and blasts hit harder on harder difficulties.
         let amount = if from.is_some() { amount * [0.0, 0.5, 1.0, 1.5][self.settings.difficulty.min(3) as usize] } else { amount };
+        // A shield up and facing the hit takes it all.
+        let amount = self.shield_block(amount, from);
         if amount <= 0.0 {
             self.prog.next_kind = Default::default();
             return;
@@ -2493,6 +2508,9 @@ impl Game {
         }
         self.sfx(Sfx::Hurt);
         self.pads.rumble(0.9, 0.6, 0.25);
+        if self.health <= 0.0 && self.use_totem() {
+            return;
+        }
         if self.health <= 0.0 {
             self.health = 0.0;
             self.prone = false;
@@ -2909,7 +2927,8 @@ impl Game {
         }
         let id = self.world.block_or_air(hit.block);
         let b = self.reg.get(id);
-        if !matches!(b.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate) {
+        // Iron doors only open with redstone.
+        if !matches!(b.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate) || self.reg.get(b.base).name.starts_with("iron_") {
             return false;
         }
         let (base, v, door) = (b.base, b.variant ^ 4, b.shape == Shape::Door);
@@ -3531,6 +3550,7 @@ impl Game {
                 }
             }
             Screen::Paintings => self.draw_paintings_menu(w, h, mouse),
+            Screen::Sign if self.extras.book.is_some() => self.draw_book(w, h),
             Screen::Sign if self.naming.is_some() => self.draw_naming(w, h),
             Screen::Sign => self.draw_sign_editor(w, h),
             Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer => self.draw_title_menus(w, h, mouse),

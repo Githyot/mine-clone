@@ -665,6 +665,7 @@ impl Game {
         let tool = self.held_tool();
         let drops = self.items.drops(&self.reg, id, tool.as_ref(), &mut self.surv.rng);
         let drops = self.ench_drops(id, drops);
+        let drops = self.extras_drops(id, drops);
         self.fase6_block_broken(pos, id);
         let c = pos.as_vec3() + Vec3::splat(0.5);
         let harvested = self.items.can_harvest(&self.reg, id, tool.as_ref());
@@ -718,6 +719,7 @@ impl Game {
             }
             let _ = inv.add_in(&self.items, st, order);
         }
+        self.extras_chest_loot(&mut inv);
         self.apoth_chest_loot(&mut inv);
         inv
     }
@@ -922,6 +924,9 @@ impl Game {
         if self.loot_corpse() {
             return true;
         }
+        if self.extras_mob_use() {
+            return true;
+        }
         if self.lead_use() || self.pet_use() || self.village_use() || self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
             return true;
         }
@@ -945,6 +950,9 @@ impl Game {
                 if self.nether_end_block_use(hit.block, &name) {
                     return true;
                 }
+                if self.extras_block_use(&name, hit.block) {
+                    return true;
+                }
                 match name.as_str() {
                     n if n.ends_with("_sign") => return self.edit_sign(hit.block),
                     "bee_nest_honey" | "beehive_honey" => return self.hive_use(hit.block, &name),
@@ -964,8 +972,8 @@ impl Game {
                         self.open_container(Open::Furnace(hit.block));
                         return true;
                     }
-                    n if n == "hopper" || n == "dropper" || n == "dispenser" || n == "crafter" || n.ends_with("_drawer") || n == "shulker_box" => {
-                        let n = if n == "hopper" { 5 } else if n.ends_with("_drawer") { 18 } else if n == "shulker_box" { 27 } else { 9 };
+                    n if n == "hopper" || n == "dropper" || n == "dispenser" || n == "crafter" || n.ends_with("_drawer") || n.ends_with("shulker_box") => {
+                        let n = if n == "hopper" { 5 } else if n.ends_with("_drawer") { 18 } else if n.ends_with("shulker_box") { 27 } else { 9 };
                         self.surv.containers.entry(hit.block).or_insert_with(|| Container::Chest(Inventory::new(n)));
                         self.open_container(Open::Chest(hit.block));
                         return true;
@@ -994,6 +1002,9 @@ impl Game {
             return self.equip_held();
         }
         if self.nether_end_use(&item.name) {
+            return true;
+        }
+        if self.extras_item_use(&item.name) {
             return true;
         }
         if self.pot_plant(item.places) {
@@ -1088,7 +1099,7 @@ impl Game {
                     self.wear_held(1);
                     return true;
                 }
-                return false;
+                return self.light_fire();
             }
             self.prime_tnt(hit.block, 4.0);
             self.anim.start_swing();
@@ -1105,6 +1116,8 @@ impl Game {
                 self.surv.inv.take(sel, 1);
             }
             self.after_place(pos);
+            let placed = self.world.block_or_air(pos);
+            self.extras_after_place(pos, placed);
             if trees::is_sapling(&self.reg.get(block).name) {
                 let t = 60.0 + self.surv.rng.f32() * 120.0;
                 self.surv.saplings.push((pos, t));

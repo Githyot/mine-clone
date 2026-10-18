@@ -304,6 +304,16 @@ struct Palette {
     /// Big ore veins: (ore, raw block) for copper and iron.
     vein_copper: (BlockId, BlockId),
     vein_iron: (BlockId, BlockId),
+    /// The deepslate floor of the world, and the ores that change with it.
+    deepslate: BlockId,
+    deep_ores: Vec<(BlockId, BlockId)>,
+    /// Vanilla plants and grounds added later (kelp, bamboo, berry bushes, podzol...).
+    kelp: BlockId,
+    bamboo: BlockId,
+    berry_bush: BlockId,
+    podzol: BlockId,
+    coarse_dirt: BlockId,
+    red_sandstone: BlockId,
 }
 
 /// The metal pairs of the ore ladder (Terraria's idea): each world makes one of each pair
@@ -394,6 +404,18 @@ impl Palette {
             cobblestone: g("cobblestone"),
             mossy_cobblestone: g("mossy_cobblestone"),
             ores,
+            deepslate: g("deepslate"),
+            kelp: g("kelp"),
+            bamboo: g("bamboo"),
+            berry_bush: g("sweet_berry_bush_stage3"),
+            podzol: g("podzol"),
+            coarse_dirt: g("coarse_dirt"),
+            red_sandstone: g("red_sandstone"),
+            deep_ores: ["coal", "iron", "gold", "diamond"]
+                .iter()
+                .map(|n| (g(&format!("{n}_ore")), g(&format!("deepslate_{n}_ore"))))
+                .filter(|&(a, b)| a != AIR && b != AIR)
+                .collect(),
             emerald: g("emerald_ore"),
             life_crystal: g("life_crystal"),
             geode: [
@@ -933,6 +955,22 @@ impl Generator {
                 }
             }
         }
+        // The bottom few blocks above bedrock turn to deepslate, ores and all.
+        if p.deepslate != AIR {
+            for z in 0..16 {
+                for x in 0..16 {
+                    let top = 5 + rng.below(4) as usize;
+                    for y in 1..top {
+                        let b = chunk.get(x, y, z);
+                        if b == p.stone {
+                            chunk.set(x, y, z, p.deepslate);
+                        } else if let Some(&(_, d)) = p.deep_ores.iter().find(|&&(o, _)| o == b) {
+                            chunk.set(x, y, z, d);
+                        }
+                    }
+                }
+            }
+        }
         // Emeralds: single blocks, mountains only.
         if p.emerald != AIR {
             for _ in 0..4 {
@@ -1216,6 +1254,7 @@ impl Generator {
 
         self.decorate_distant(chunk, cols, pos);
         self.scatter(chunk, cols, pos);
+        self.vanilla_scatter(chunk, cols, pos);
 
         // Ground plants.
         for z in 0..16usize {
@@ -1357,6 +1396,120 @@ impl Generator {
             if (ground == p.grass || ground == p.snow_grass) && chunk.get(x as usize, y as usize + 1, z as usize) == AIR {
                 trees::grow(TreeKind::Bush(wood), &self.trees, &mut ChunkSpace(chunk), &mut rng, x, y, z);
             }
+        }
+    }
+
+    /// Vanilla things added later, on a random stream of their own so nothing older moves: kelp
+    /// in the oceans, bamboo groves in the jungle, podzol and berry bushes in the taiga, coarse
+    /// dirt in savannas and on mountains, red sandstone under the badlands' red sand.
+    fn vanilla_scatter(&self, chunk: &mut Chunk, cols: &[Column], pos: ChunkPos) {
+        let p = &self.pal;
+        let mut rng = Rng::for_pos(self.seed, pos.x, pos.y, 3);
+        let biome = cols[8 + 8 * 16].biome;
+        let top = |x: i32, z: i32| cols[(x + z * 16) as usize].height;
+        match biome {
+            Biome::Ocean if p.kelp != AIR => {
+                for _ in 0..rng.range(0, 14) {
+                    let (x, z) = (rng.range(0, 15), rng.range(0, 15));
+                    let y = top(x, z);
+                    let (ux, uz) = (x as usize, z as usize);
+                    let ground = chunk.get(ux, y as usize, uz);
+                    if y > SEA_LEVEL - 4 || y < 2 || !(ground == p.sand || ground == p.gravel || ground == p.clay) {
+                        continue;
+                    }
+                    let room = SEA_LEVEL - 1 - y;
+                    let h = 1 + rng.below(room.max(1) as u32) as i32;
+                    for k in 1..=h {
+                        let uy = (y + k) as usize;
+                        if chunk.get(ux, uy, uz) != p.water {
+                            break;
+                        }
+                        chunk.set(ux, uy, uz, p.kelp);
+                    }
+                }
+            }
+            Biome::Jungle if p.bamboo != AIR && rng.chance(0.45) => {
+                let (cx, cz) = (rng.range(3, 12), rng.range(3, 12));
+                for _ in 0..rng.range(6, 16) {
+                    let (x, z) = ((cx + rng.range(-3, 3)).clamp(0, 15), (cz + rng.range(-3, 3)).clamp(0, 15));
+                    let y = top(x, z);
+                    let (ux, uz) = (x as usize, z as usize);
+                    if !(SEA_LEVEL..=200).contains(&y) || chunk.get(ux, y as usize, uz) != p.grass {
+                        continue;
+                    }
+                    if p.podzol != AIR {
+                        chunk.set(ux, y as usize, uz, p.podzol);
+                    }
+                    let h = rng.range(4, 12);
+                    for k in 1..=h {
+                        let uy = (y + k) as usize;
+                        let b = chunk.get(ux, uy, uz);
+                        if b != AIR && b != p.short_grass {
+                            break;
+                        }
+                        chunk.set(ux, uy, uz, p.bamboo);
+                    }
+                }
+            }
+            Biome::Taiga => {
+                // Podzol in round patches under the spruces.
+                if p.podzol != AIR && rng.chance(0.6) {
+                    let (cx, cz, r) = (rng.range(2, 13), rng.range(2, 13), 1.5 + rng.f32() * 1.5);
+                    for z in (cz - 3).max(0)..=(cz + 3).min(15) {
+                        for x in (cx - 3).max(0)..=(cx + 3).min(15) {
+                            let d = (((x - cx) * (x - cx) + (z - cz) * (z - cz)) as f32).sqrt();
+                            let y = top(x, z) as usize;
+                            if d + rng.f32() * 0.6 <= r && chunk.get(x as usize, y, z as usize) == p.snow_grass {
+                                chunk.set(x as usize, y, z as usize, p.podzol);
+                            }
+                        }
+                    }
+                }
+                // A few sweet berry bushes, ripe.
+                if p.berry_bush != AIR && rng.chance(0.3) {
+                    for _ in 0..rng.range(1, 3) {
+                        let (x, z) = (rng.range(0, 15), rng.range(0, 15));
+                        let y = top(x, z);
+                        let (ux, uy, uz) = (x as usize, y as usize, z as usize);
+                        let g = chunk.get(ux, uy, uz);
+                        if !(SEA_LEVEL..=200).contains(&y) || !(g == p.snow_grass || g == p.podzol || g == p.grass) {
+                            continue;
+                        }
+                        let above = chunk.get(ux, uy + 1, uz);
+                        if above == AIR || above == p.snow_layer || above == p.snow_layer2 || above == p.short_grass {
+                            chunk.set(ux, uy + 1, uz, p.berry_bush);
+                        }
+                    }
+                }
+            }
+            Biome::Savanna | Biome::Mountains if p.coarse_dirt != AIR && rng.chance(0.35) => {
+                let (cx, cz) = (rng.range(2, 13), rng.range(2, 13));
+                for _ in 0..rng.range(6, 14) {
+                    let (x, z) = ((cx + rng.range(-2, 2)).clamp(0, 15), (cz + rng.range(-2, 2)).clamp(0, 15));
+                    let y = top(x, z) as usize;
+                    if chunk.get(x as usize, y, z as usize) == p.grass {
+                        chunk.set(x as usize, y, z as usize, p.coarse_dirt);
+                        if chunk.get(x as usize, y + 1, z as usize) == p.short_grass {
+                            chunk.set(x as usize, y + 1, z as usize, AIR);
+                        }
+                    }
+                }
+            }
+            Biome::Badlands if p.red_sandstone != AIR && p.red_sand != AIR => {
+                for z in 0..16 {
+                    for x in 0..16 {
+                        let y = top(x, z) as usize;
+                        if y > 3 && chunk.get(x as usize, y, z as usize) == p.red_sand {
+                            for d in 1..=2 {
+                                if chunk.get(x as usize, y - d, z as usize) != AIR {
+                                    chunk.set(x as usize, y - d, z as usize, p.red_sandstone);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
 

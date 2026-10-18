@@ -123,6 +123,9 @@ pub enum Sfx {
     Engine(u8, u8),
     /// A whole melody on an instrument (mods/melodies.rs): instrument, melody number.
     Tune(u8, u16),
+    /// A note block: pitch 0..24 (semitones up from F#2) and instrument (0 plucked string,
+    /// 1 low drum on stone, 2 wooden knock on wood, 3 double bass).
+    Note(u8, u8),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -195,6 +198,8 @@ pub struct Audio {
     _stream: OutputStream,
     pub(crate) handle: OutputStreamHandle,
     music: Sink,
+    /// A jukebox's record: one of the built-in tracks, played on its own while the music waits.
+    disc: Sink,
     tracks: Vec<Track>,
     /// Seconds until the next song may start.
     pub next_in: f32,
@@ -224,10 +229,12 @@ impl Audio {
             }
         };
         let music = Sink::try_new(&handle).ok()?;
+        let disc = Sink::try_new(&handle).ok()?;
         let mut a = Audio {
             _stream: stream,
             handle,
             music,
+            disc,
             tracks: Vec::new(),
             next_in: 0.0,
             now_playing: None,
@@ -273,6 +280,15 @@ impl Audio {
     /// Call every frame.
     pub fn update(&mut self, dt: f32, situation: Situation, settings: &Settings) {
         self.music.set_volume(settings.music_volume);
+        if !self.disc.empty() {
+            // A record is playing: the background music stays quiet until it ends.
+            if !self.music.empty() {
+                self.music.stop();
+                self.now_playing = None;
+            }
+            self.next_in = self.next_in.max(30.0);
+            return;
+        }
         if settings.music_mode == MusicMode::Off {
             if !self.music.empty() {
                 self.music.stop();
@@ -292,6 +308,33 @@ impl Audio {
         if self.next_in <= 0.0 {
             self.play_random(situation, settings.music_mode);
         }
+    }
+
+    /// Put a record on: the built-in track `id` (as in tracks.json), at once.
+    pub fn play_disc(&mut self, id: &str) -> bool {
+        self.disc.stop();
+        let Some((_, bytes)) = embedded::MUSIC.iter().find(|(t, _)| *t == id) else { return false };
+        match Decoder::new(Cursor::new(*bytes)) {
+            Ok(d) => {
+                self.disc.append(d);
+                self.disc.play();
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    pub fn stop_disc(&mut self) {
+        self.disc.stop();
+    }
+
+    /// The record's loudness (it fades with the distance to its jukebox).
+    pub fn set_disc_volume(&mut self, v: f32) {
+        self.disc.set_volume(v);
+    }
+
+    pub fn disc_playing(&self) -> bool {
+        !self.disc.empty()
     }
 
     /// Start a song right away (the "next song" key).

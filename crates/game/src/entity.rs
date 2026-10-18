@@ -772,6 +772,7 @@ impl EntityRenderer {
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&r.sampler) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&view) },
             ],
         });
         let inst_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

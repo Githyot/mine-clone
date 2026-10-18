@@ -12,6 +12,8 @@ struct Particle {
 
 @group(1) @binding(0) var ptex: texture_2d_array<f32>;
 @group(1) @binding(1) var psamp: sampler;
+// Layers from 2048 on live in a second array (renderer::LAYERS_PER_ARRAY).
+@group(1) @binding(2) var ptex2: texture_2d_array<f32>;
 @group(2) @binding(0) var<storage, read> parts: array<Particle>;
 
 struct POut {
@@ -64,7 +66,12 @@ fn plight(l: f32) -> f32 {
 
 @fragment
 fn fs_particle(in: POut) -> @location(0) vec4<f32> {
-    let c = textureSampleLevel(ptex, psamp, in.uv, in.layer, 0.0);
+    var c: vec4<f32>;
+    if (in.layer < 2048) {
+        c = textureSampleLevel(ptex, psamp, in.uv, in.layer, 0.0);
+    } else {
+        c = textureSampleLevel(ptex2, psamp, in.uv, in.layer - 2048, 0.0);
+    }
     if (c.a < 0.3) {
         discard;
     }
