@@ -955,6 +955,7 @@ impl Game {
                 }
                 match name.as_str() {
                     n if n.ends_with("_sign") => return self.edit_sign(hit.block),
+                    "command_block" => return self.cmdblock_open(hit.block),
                     "bee_nest_honey" | "beehive_honey" => return self.hive_use(hit.block, &name),
                     "composter" | "composter_ready" => {
                         if self.use_composter(hit.block, name == "composter_ready") {

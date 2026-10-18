@@ -435,6 +435,10 @@ impl Game {
             self.book_type(text);
             return;
         }
+        if self.screen == Screen::Sign && self.cmdblocks.edit.is_some() {
+            self.cmdblock_type(text);
+            return;
+        }
         if self.screen == Screen::Sign {
             self.naming_type(text);
             self.sign_type(text);

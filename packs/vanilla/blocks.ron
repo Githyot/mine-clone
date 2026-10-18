@@ -670,6 +670,7 @@
     (name: "ladder", display_name: Some("Escada de Mão"), shape: Ladder, transparency: Cutout, solid: false, hardness: 0.4, tool: Some(Axe)),
     (name: "iron_door", display_name: Some("Porta de Ferro"), shape: Door, transparency: Cutout, hardness: 5.0, tool: Some(Pickaxe), tier: 1, textures: (side: Some("iron_door_lower"), top: Some("iron_door_upper"))),
     (name: "note_block", display_name: Some("Bloco Musical"), hardness: 0.8, tool: Some(Axe)),
+    (name: "command_block", display_name: Some("Bloco de Comando"), hardness: -1.0, drops: Some([]), textures: (top: Some("command_block_top"), side: Some("command_block_side"), bottom: Some("command_block_top"))),
     (name: "jukebox", display_name: Some("Toca-discos"), hardness: 2.0, tool: Some(Axe), textures: (top: Some("jukebox_top"), side: Some("jukebox_side"), bottom: Some("jukebox_side"))),
     (name: "wet_sponge", display_name: Some("Esponja Molhada"), tool: Some(Hoe), hardness: 0.6),
     (name: "kelp", display_name: Some("Alga"), shape: Cross, transparency: Cutout, solid: false, waterlogged: true, hardness: 0.0),

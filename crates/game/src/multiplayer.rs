@@ -81,7 +81,7 @@ fn clean_name(n: &str) -> String {
 pub struct Remote {
     pub name: String,
     pub state: PlayerState,
-    shown: Vec3,
+    pub(crate) shown: Vec3,
     shown_yaw: f32,
     anim: player_model::Animator,
 }
@@ -124,7 +124,7 @@ pub struct Net {
     /// Multiplayer screen: choosing which of our worlds to host.
     picking_world: bool,
     /// Start hosting once the chosen world is loaded.
-    host_when_ready: bool,
+    pub(crate) host_when_ready: bool,
     loaded: bool,
     /// The key that opened the chat also arrives as text; drop it.
     skip_text: bool,
@@ -135,6 +135,23 @@ pub struct Net {
     /// The open world's rules (commands.rs), and which world they belong to.
     pub rules: crate::commands::Rules,
     rules_for: String,
+    /// Scoreboard and teams (pvp.rs): the host's, or the copy it sent us.
+    pub(crate) board: net::Board,
+    pub(crate) board_dirty: bool,
+    /// The next `damage` comes from another player: not scaled by difficulty.
+    pub(crate) pvp_incoming: bool,
+    /// Who last hurt each player (lower-case name → attacker, when), for kill messages.
+    pub(crate) pvp_last: HashMap<String, (String, f32)>,
+    /// Guests already told PvP is off.
+    pub(crate) pvp_warned: HashSet<u32>,
+    pub(crate) was_dead: bool,
+    /// Test hook MC_PVP_HIT: hits made, when the last one was.
+    pub(crate) pvp_test: (u32, f32),
+    /// The guest whose command is running on the host (empty = our own).
+    pub(crate) cmd_by: String,
+    /// Dedicated server (`--server`): no player of our own, commands from the console.
+    pub(crate) server: bool,
+    pub(crate) console: Option<std::sync::mpsc::Receiver<String>>,
 }
 
 #[derive(Default)]
@@ -329,6 +346,7 @@ impl Game {
         set(pose.hurt, flags::HURT);
         set(!self.survival, flags::CREATIVE);
         set(self.screen == Screen::Dead, flags::DEAD);
+        set(self.net.server, flags::HIDDEN);
         let name = |s: &Option<ItemStack>| s.map(|s| self.items.get(s.item).name.clone()).unwrap_or_default();
         PlayerState {
             dim: self.dim.as_u8(),
@@ -501,6 +519,10 @@ impl Game {
         if self.world_open && self.net.rules_for != self.world_name && !self.net.is_guest() {
             self.net.rules_for = self.world_name.clone();
             self.net.rules = std::fs::read_to_string(self.rules_path()).ok().and_then(|t| ron::from_str(&t).ok()).unwrap_or_default();
+            self.net.board = crate::pvp::load_board(&self.base, &self.world_name);
+        }
+        if self.world_open {
+            self.board_tick();
         }
         if !self.net.rules.weather_cycle && !self.net.is_guest() {
             self.weather.state.timer = self.weather.state.timer.max(600.0);
@@ -552,6 +574,79 @@ impl Game {
             Mode::Guest(g) => !g.host_mobs,
             _ => true,
         }
+    }
+
+    /// Send to the host, as a guest that is in.
+    pub(crate) fn net_to_host(&self, m: &ToHost) {
+        if let Mode::Guest(g) = &self.net.mode {
+            if g.joined {
+                g.guest.send(m);
+            }
+        }
+    }
+
+    /// Send to one guest, as the host.
+    pub(crate) fn net_to_guest(&self, id: u32, m: &ToGuest) {
+        if let Mode::Host(h) = &self.net.mode {
+            h.host.send(id, m);
+        }
+    }
+
+    /// Send to every guest, as the host.
+    pub(crate) fn net_broadcast(&self, m: &ToGuest) {
+        if self.net.is_host() {
+            self.host_broadcast(m, None);
+        }
+    }
+
+    /// A line for everyone (the host says it to its guests too).
+    pub(crate) fn net_announce(&mut self, text: String) {
+        self.net_broadcast(&ToGuest::Chat { from: String::new(), text: text.clone() });
+        self.net_say(text, YELLOW);
+    }
+
+    /// A line typed in a dedicated server's console: a command, or chat from "Servidor".
+    pub(crate) fn server_line(&mut self, line: &str) {
+        self.send_chat(line);
+    }
+
+    /// Our own player id in the game we are in.
+    pub(crate) fn net_my_id(&self) -> u32 {
+        match &self.net.mode {
+            Mode::Guest(g) => g.my_id,
+            _ => HOST_ID,
+        }
+    }
+
+    /// May we use the commands that change things? Alone or hosting yes; a guest when op.
+    pub(crate) fn net_cheats(&self) -> bool {
+        match &self.net.mode {
+            Mode::Guest(g) => g.op,
+            _ => true,
+        }
+    }
+
+    /// Send the time and weather to the guests right away (a command changed them).
+    pub(crate) fn net_sky_now(&mut self) {
+        if self.net.is_host() {
+            self.host().sky_t = 1.0;
+        }
+    }
+
+    /// The name of a player by id (our own included).
+    pub(crate) fn net_name_of(&self, id: u32) -> String {
+        if id == self.net_my_id() {
+            return self.net.cfg.name.clone();
+        }
+        self.net.remotes.get(&id).map(|r| r.name.clone()).unwrap_or_default()
+    }
+
+    /// Where a player stands (our own feet for our id).
+    pub(crate) fn net_pos_of(&self, id: u32) -> Option<Vec3> {
+        if id == self.net_my_id() {
+            return Some(self.body.pos);
+        }
+        self.net.remotes.get(&id).map(|r| Vec3::from(r.state.pos))
     }
 
     // ---- hosting --------------------------------------------------------------------------
@@ -799,6 +894,7 @@ impl Game {
                     g.welcomed = true;
                     g.view = (view as i32).clamp(2, 16);
                 }
+                self.net_to_guest(id, &ToGuest::Board(self.net.board.clone()));
                 let t = format!("{name} entrou no jogo");
                 self.host_broadcast(&ToGuest::Chat { from: String::new(), text: t.clone() }, Some(id));
                 self.net_say(t, YELLOW);
@@ -808,6 +904,10 @@ impl Game {
             ToHost::State(s) => {
                 let name = self.host_ref().guests.get(&id).map(|g| g.name.clone()).unwrap_or_default();
                 let old_dim = self.host_ref().guests.get(&id).and_then(|g| g.state.as_ref().map(|s| s.dim));
+                let was_dead = self.host_ref().guests.get(&id).and_then(|g| g.state.as_ref()).is_some_and(|s| s.has(flags::DEAD));
+                if s.has(flags::DEAD) && !was_dead {
+                    self.board_death(&name);
+                }
                 if let Some(g) = self.host().guests.get_mut(&id) {
                     if old_dim.is_some_and(|d| d != s.dim) {
                         // A new dimension: start its chunks afresh.
@@ -876,6 +976,7 @@ impl Game {
                 self.host_broadcast(&ToGuest::Chat { from: name.clone(), text: text.clone() }, None);
                 self.net_say(format!("<{name}> {text}"), WHITE);
             }
+            ToHost::HurtPlayer { target, amount, from } => self.pvp_resolve(id, target, amount, Vec3::from(from)),
             ToHost::SavePlayer(data) => {
                 let name = self.host_ref().guests.get(&id).map(|g| g.name.to_lowercase()).unwrap_or_default();
                 if name.is_empty() || data.len() > 1 << 20 {
@@ -897,8 +998,12 @@ impl Game {
         let cmd = text.split_whitespace().next().unwrap_or("").to_lowercase();
         let reply = match cmd.as_str() {
             "/lista" | "/list" => self.player_list_line(),
+            // A guest set the command of a command block (they are edited where the world runs).
+            crate::cmdblock::SET_CMD if op => self.cmdblock_set_line(text),
             _ if crate::commands::scope(&cmd) == crate::commands::Scope::World => {
+                self.net.cmd_by = self.host_ref().guests.get(&id).map(|g| g.name.clone()).unwrap_or_default();
                 let r = self.run_command(text, op);
+                self.net.cmd_by.clear();
                 if op {
                     // Everyone sees the new sky right away, and who changed it.
                     self.host().sky_t = 1.0;
@@ -914,12 +1019,9 @@ impl Game {
     }
 
     fn player_list_line(&self) -> String {
-        let mut names = vec![match &self.net.mode {
-            Mode::Guest(g) => g.host_name.clone(),
-            _ => self.net.cfg.name.clone(),
-        }];
-        names.extend(self.net.remotes.values().map(|r| r.name.clone()));
-        if self.net.is_guest() {
+        // A dedicated server's own player is nobody.
+        let mut names: Vec<String> = self.net.remotes.values().filter(|r| !r.state.has(flags::HIDDEN)).map(|r| r.name.clone()).collect();
+        if !self.net.server {
             names.push(self.net.cfg.name.clone());
         }
         names.sort();
@@ -1537,6 +1639,8 @@ impl Game {
                 let h = data.as_deref().map(hash_text).unwrap_or(0);
                 self.guest().containers.insert(p, h);
             }
+            ToGuest::PlayerHit { amount, from, by } => self.pvp_hurt_me(amount, Vec3::from(from), &by),
+            ToGuest::Board(b) => self.net.board = b,
             ToGuest::Op(op) => {
                 self.guest().op = op;
                 let t = if op { "Agora pode usar comandos (/ajuda)" } else { "Comandos desligados pelo anfitrião" };
@@ -1661,7 +1765,7 @@ impl Game {
             let (pose, swing, armor, item) = {
                 let r = &self.net.remotes[&id];
                 let s = &r.state;
-                if s.dim != my_dim || (r.shown - self.body.pos).length() > 160.0 {
+                if s.dim != my_dim || s.has(flags::HIDDEN) || (r.shown - self.body.pos).length() > 160.0 {
                     continue;
                 }
                 let pose = player_model::Pose {
@@ -1718,14 +1822,14 @@ impl Game {
             if let Some((vp, cam_block)) = self.ui_view_proj {
                 let eye = self.body.eye();
                 let my_dim = self.dim.as_u8();
-                let tags: Vec<(Vec3, String, bool)> = self
+                let tags: Vec<(Vec3, String, bool, [u8; 4])> = self
                     .net
                     .remotes
                     .values()
-                    .filter(|r| r.state.dim == my_dim)
-                    .map(|r| (r.shown + Vec3::Y * (2.1 - r.state.sneaking * 0.3), r.name.clone(), r.state.sneaking > 0.5))
+                    .filter(|r| r.state.dim == my_dim && !r.state.has(flags::HIDDEN))
+                    .map(|r| (r.shown + Vec3::Y * (2.1 - r.state.sneaking * 0.3), r.name.clone(), r.state.sneaking > 0.5, self.team_color(&r.name)))
                     .collect();
-                for (top, name, sneaking) in tags {
+                for (top, name, sneaking, color) in tags {
                     let dist = (top - eye).length();
                     if dist > 64.0 || (sneaking && dist > 8.0) {
                         continue;
@@ -1741,7 +1845,7 @@ impl Game {
                     let (x, y) = ((nx * 0.5 + 0.5) * w, (0.5 - ny * 0.5) * h);
                     let tw = self.ui.text_width(&name, s);
                     self.ui.rect(x - tw / 2.0 - 2.0 * s, y - s, tw + 4.0 * s, 10.0 * s, [0, 0, 0, 100]);
-                    self.ui.text(x - tw / 2.0, y, &name, if sneaking { GRAY } else { WHITE });
+                    self.ui.text(x - tw / 2.0, y, &name, if sneaking { GRAY } else { color });
                 }
             }
         }

@@ -7,6 +7,9 @@ mod ambient;
 mod keybinds;
 mod lang;
 mod subtitles;
+mod pvp;
+mod cmdblock;
+mod server;
 mod audio;
 mod backpacks;
 mod controller;
@@ -135,6 +138,8 @@ const RENDER_DISTANCES: [i32; 9] = [4, 6, 8, 10, 12, 16, 20, 24, 32];
 #[derive(Default, Clone)]
 struct Args {
     world: Option<String>,
+    /// Dedicated server: no window shown, the world open to friends, commands from the console.
+    server: bool,
     seed: Option<u64>,
     screenshot: Option<PathBuf>,
     pos: Option<Vec3>,
@@ -204,6 +209,7 @@ fn parse_args() -> Args {
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--world" => a.world = it.next(),
+            "--server" => a.server = true,
             "--seed" => a.seed = it.next().and_then(|s| s.parse().ok()),
             "--screenshot" => a.screenshot = it.next().map(PathBuf::from),
             "--pos" => a.pos = it.next().and_then(|s| f3(&s)),
@@ -256,6 +262,7 @@ fn parse_args() -> Args {
             "--help" | "-h" => {
                 println!(
                     "mine-clone [--world NAME] [--seed N] [--render-distance N] [--size WxH]\n\
+                     Server: mine-clone --server [--world NAME] (no window; type commands, \"parar\" saves and stops)\n\
                      Testing: [--screenshot out.png] [--pos x,y,z] [--look yaw,pitch] [--time ticks] [--fly] [--demo] [--inventory] [--pause] [--debug]\n\
                      \x20        [--survival] [--kit] [--open table|furnace|chest] [--mobs] [--perf] [--prone] [--camera N]\n\
                      \x20        [--shader NAME|off] [--shaders-menu] [--lod BLOCKS]"
@@ -583,6 +590,7 @@ struct Game {
     pets_waiting: Vec<pets::PetSave>,
     signs: std::collections::HashMap<[i32; 3], String>,
     sign_edit: Option<IVec3>,
+    cmdblocks: cmdblock::CmdBlocks,
     /// Seconds since the player was last hurt (red flash, invulnerability).
     hurt_age: f32,
     regen: f32,
@@ -768,7 +776,7 @@ impl Game {
         let camera_mode = args.camera.min(2);
         let show_perf = args.perf;
         let start_prone = args.prone;
-        let title_mode = args.title || (args.world.is_none() && args.screenshot.is_none());
+        let title_mode = !args.server && (args.title || (args.world.is_none() && args.screenshot.is_none()));
         let world_name = args.world.clone().or_else(|| menus::list_worlds(&base).first().map(|w| w.name.clone())).unwrap_or_else(|| "Mundo 1".into());
         let save = Arc::new(WorldSave::new(level_path_hint(&base, &world_name)));
         let level = save.load_level();
@@ -952,6 +960,7 @@ impl Game {
             map: explore::MapCache::default(),
             pets_waiting: pets::load(&save.dir),
             signs: signs::load(&save.dir),
+            cmdblocks: cmdblock::load(&save.dir),
             sign_edit: None,
             hurt_age: 100.0,
             regen: 0.0,
@@ -1285,6 +1294,7 @@ impl Game {
         self.world.save_all();
         paintings::save(&self.world.save.dir, &self.paintings);
         signs::save(&self.world.save.dir, &self.signs);
+        cmdblock::save(&self.world.save.dir, &self.cmdblocks);
         self.save_pets();
         self.surv.save(&self.world.save.dir, &self.items);
         self.progress_save();
@@ -1338,6 +1348,8 @@ impl Game {
         if self.screen == Screen::Sign {
             if self.extras.book.is_some() {
                 self.book_key(code);
+            } else if self.cmdblocks.edit.is_some() {
+                self.cmdblock_key(code);
             } else if self.naming.is_some() {
                 self.naming_key(code);
             } else {
@@ -2093,7 +2105,7 @@ impl Game {
             })
             .map(|t| t.distance)
             .unwrap_or(f32::MAX);
-            if self.combat_swing(block_dist) {
+            if self.pvp_swing(block_dist) || self.combat_swing(block_dist) {
             } else if let Some((i, t)) = self.mobs.pick(self.body.eye(), self.forward(), self.weapon_reach()) {
                 if t < block_dist {
                     self.attack_cd = if self.survival { 0.1 } else { 0.45 };
@@ -2534,12 +2546,13 @@ impl Game {
 
     /// Hurt the player (survival only). `from` pushes the player away.
     fn damage(&mut self, amount: f32, from: Option<Vec3>) {
-        if !self.survival || self.screen == Screen::Dead || self.hurt_age < 0.5 || amount <= 0.0 {
+        let pvp = std::mem::take(&mut self.net.pvp_incoming);
+        if !self.survival || self.net.server || self.screen == Screen::Dead || self.hurt_age < 0.5 || amount <= 0.0 {
             self.prog.next_kind = Default::default();
             return;
         }
         // Monsters and blasts hit harder on harder difficulties.
-        let amount = if from.is_some() { amount * [0.0, 0.5, 1.0, 1.5][self.settings.difficulty.min(3) as usize] } else { amount };
+        let amount = if from.is_some() && !pvp { amount * [0.0, 0.5, 1.0, 1.5][self.settings.difficulty.min(3) as usize] } else { amount };
         // A shield up and facing the hit takes it all.
         let amount = self.shield_block(amount, from);
         if amount <= 0.0 {
@@ -3528,6 +3541,7 @@ impl Game {
                 }
             }
             self.draw_subtitles(w, h);
+            self.draw_scoreboard(w, h);
             if let Some(t) = &self.toast {
                 if t.until > self.now {
                     let text = t.text.clone();
@@ -3620,6 +3634,7 @@ impl Game {
             Screen::Paintings => self.draw_paintings_menu(w, h, mouse),
             Screen::Sign if self.extras.book.is_some() => self.draw_book(w, h),
             Screen::Sign if self.naming.is_some() => self.draw_naming(w, h),
+            Screen::Sign if self.cmdblocks.edit.is_some() => self.draw_cmdblock_editor(w, h),
             Screen::Sign => self.draw_sign_editor(w, h),
             Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer => self.draw_title_menus(w, h, mouse),
             Screen::Options | Screen::Packs | Screen::Keys => {
@@ -4395,7 +4410,12 @@ impl ApplicationHandler for App {
                 let (iw, ih) = i.dimensions();
                 winit::window::Icon::from_rgba(i.into_raw(), iw, ih).ok()
             });
-        let attrs = Window::default_attributes().with_title("Mine Clone").with_window_icon(icon).with_inner_size(winit::dpi::PhysicalSize::new(w, h));
+        let (w, h) = if self.args.server { (320, 240) } else { (w, h) };
+        let attrs = Window::default_attributes()
+            .with_title("Mine Clone")
+            .with_window_icon(icon)
+            .with_inner_size(winit::dpi::PhysicalSize::new(w, h))
+            .with_visible(!self.args.server);
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
         self.game = Some(Game::new(window, self.args.clone()));
     }
@@ -4411,7 +4431,7 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(size) => game.renderer.resize(size.width, size.height),
             WindowEvent::Focused(false) => {
                 game.keys.clear();
-                if game.screen == Screen::Playing && game.args.screenshot.is_none() {
+                if game.screen == Screen::Playing && game.args.screenshot.is_none() && !game.args.server {
                     game.set_screen(Screen::Paused);
                 }
             }
@@ -4484,9 +4504,16 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn about_to_wait(&mut self, _el: &ActiveEventLoop) {
-        if let Some(g) = &self.game {
-            g.window.request_redraw();
+    fn about_to_wait(&mut self, el: &ActiveEventLoop) {
+        if let Some(g) = self.game.as_mut() {
+            if g.args.server {
+                // A hidden window gets no redraws: the server ticks from here.
+                if !g.server_tick() {
+                    el.exit();
+                }
+            } else {
+                g.window.request_redraw();
+            }
         }
     }
 }

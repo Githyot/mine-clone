@@ -1327,4 +1327,13 @@
     "É um Balão?": "Is It a Balloon?",
     "É um Pássaro?": "Is It a Bird?",
     "Ótima Vista Daqui de Cima": "Great View From Up Here",
+    "Bloco de comando": "Command block",
+    "Um comando de chat (ex.: /tempo dia). Roda quando recebe energia.": "A chat command (e.g. /time day). Runs when it gets power.",
+    "Enter: pronto. Esc: cancela": "Enter: done. Esc: cancel",
+    "PvP desligado neste mundo (/regra pvp sim)": "PvP is off in this world (/gamerule pvp yes)",
+    "{} foi derrotado por {}": "{} was slain by {}",
+    "Só quem pode usar comandos, no modo criativo, mexe no bloco de comando": "Only players allowed to use commands, in creative mode, can edit a command block",
+    "Bloco de comando vazio": "Empty command block",
+    "Comando: {}": "Command: {}",
+    "[Bloco de comando] {}": "[Command block] {}",
 }
