@@ -300,6 +300,36 @@ fn missing(size: u32) -> Vec<u8> {
     out
 }
 
+/// Sound effects from the enabled packs: for each of our sound keys ("dig/stone",
+/// "random/explode"...) the variants the first pack that has them gives, as `.ogg` bytes.
+/// Read from `assets/minecraft/sounds/<key><n>.ogg` (Minecraft's layout) or `sounds/<key><n>.ogg`.
+pub fn pack_sounds(base: &Path, enabled_packs: &[String], keys: &[&'static str]) -> std::collections::HashMap<&'static str, Vec<std::sync::Arc<[u8]>>> {
+    let mut packs: Vec<Pack> = enabled_packs.iter().filter_map(|n| Pack::open(&base.join("resourcepacks").join(n))).collect();
+    let mut out = std::collections::HashMap::new();
+    for &key in keys {
+        'packs: for pack in packs.iter_mut() {
+            for root in ["assets/minecraft/sounds", "sounds"] {
+                let mut found: Vec<std::sync::Arc<[u8]>> = Vec::new();
+                if let Some(b) = pack.read(&format!("{root}/{key}.ogg")) {
+                    found.push(b.into());
+                }
+                for n in 1..=8 {
+                    match pack.read(&format!("{root}/{key}{n}.ogg")) {
+                        Some(b) => found.push(b.into()),
+                        None if n > 1 => break,
+                        None => {}
+                    }
+                }
+                if !found.is_empty() {
+                    out.insert(key, found);
+                    break 'packs;
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Folder holding the base game's textures when running from the source tree, if present.
 pub fn vanilla_texture_dir(base: &Path) -> Option<PathBuf> {
     let d = base.join("packs/vanilla/textures/block");
@@ -426,4 +456,25 @@ pub fn mip_chain_rect(base: &[u8], w: u32, h: u32, levels: u32) -> Vec<Vec<u8>> 
         sh = nh;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pack_sounds_are_found_in_minecraft_layout() {
+        let base = std::env::temp_dir().join(format!("mc-packsnd-{}", std::process::id()));
+        let snd = base.join("resourcepacks/P/assets/minecraft/sounds/dig");
+        std::fs::create_dir_all(&snd).unwrap();
+        for n in 1..=3 {
+            std::fs::write(snd.join(format!("stone{n}.ogg")), [n as u8]).unwrap();
+        }
+        std::fs::write(snd.join("wood.ogg"), [9u8]).unwrap();
+        let got = pack_sounds(&base, &["P".to_string()], &["dig/stone", "dig/wood", "dig/sand"]);
+        assert_eq!(got.get("dig/stone").map(|v| v.len()), Some(3));
+        assert_eq!(got.get("dig/wood").map(|v| v.len()), Some(1));
+        assert!(!got.contains_key("dig/sand"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

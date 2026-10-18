@@ -803,7 +803,10 @@ impl Game {
         renderer.cave_cull = !args.no_cave_cull;
         let mut ui = UiBatch::new(&font);
         ui.gui = tex.gui.sprites.clone();
-        let audio = Audio::new(&settings, &base);
+        let mut audio = Audio::new(&settings, &base);
+        if let Some(a) = audio.as_mut() {
+            a.set_pack_sounds(textures::pack_sounds(&base, &settings.resource_packs, &audio::PACK_KEYS));
+        }
 
         // Mobs: a mobs.ron on disk wins, like blocks.
         let [mobs_text, mods_mobs] = read_pack_pair(&base, "mobs.ron", embedded::MOBS_RON, embedded::MODS_MOBS_RON);
@@ -1328,6 +1331,9 @@ impl Game {
         self.renderer.reload_textures(&tex);
         self.ui.gui = tex.gui.sprites.clone();
         self.lod.set_colors(lod::LodColors::new(&self.reg, &tex));
+        if let Some(a) = self.audio.as_mut() {
+            a.set_pack_sounds(textures::pack_sounds(&self.base, &self.settings.resource_packs, &audio::PACK_KEYS));
+        }
         self.toast(format!("Texturas: {}", self.textures_name), 3.0);
     }
 

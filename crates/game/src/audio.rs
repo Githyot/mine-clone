@@ -208,6 +208,63 @@ pub struct Audio {
     music_folder: PathBuf,
     /// How the space around the player colours sound effects (Sound Physics idea).
     pub room: Room,
+    /// Recorded sounds from resource packs, by key (see `pack_key`); they replace ours.
+    pack: std::collections::HashMap<&'static str, Vec<std::sync::Arc<[u8]>>>,
+}
+
+/// Every sound key a resource pack may fill, in Minecraft's sound folder layout.
+pub const PACK_KEYS: [&str; 34] = [
+    "dig/stone", "dig/wood", "dig/grass", "dig/sand", "dig/glass", "dig/cloth", "dig/gravel", "dig/snow",
+    "step/stone", "step/wood", "step/grass", "step/sand", "step/cloth", "step/gravel", "step/snow", "step/ladder",
+    "random/glass", "random/click", "random/explode", "random/pop", "random/orb", "random/eat", "random/fizz",
+    "damage/hit", "ambient/weather/thunder", "ambient/weather/rain", "liquid/splash", "liquid/swim",
+    "tile/piston/out", "tile/piston/in", "portal/portal", "random/levelup", "random/bow", "mob/zombie/hurt",
+];
+
+/// The pack sound that stands for one of ours, if a pack may replace it.
+fn pack_key(s: Sfx) -> Option<&'static str> {
+    let dig = |m: Material| match m {
+        Material::Stone | Material::Ore | Material::Metal => "dig/stone",
+        Material::Wood => "dig/wood",
+        Material::Grass | Material::Leaves | Material::Dirt => "dig/grass",
+        Material::Sand => "dig/sand",
+        Material::Glass => "random/glass",
+        Material::Cloth => "dig/cloth",
+        Material::Gravel => "dig/gravel",
+        Material::Snow => "dig/snow",
+    };
+    let step = |m: Material| match m {
+        Material::Stone | Material::Ore | Material::Metal | Material::Glass => "step/stone",
+        Material::Wood => "step/wood",
+        Material::Grass | Material::Leaves | Material::Dirt => "step/grass",
+        Material::Sand => "step/sand",
+        Material::Cloth => "step/cloth",
+        Material::Gravel => "step/gravel",
+        Material::Snow => "step/snow",
+    };
+    Some(match s {
+        Sfx::Break(m) => dig(m),
+        Sfx::Place(m) => match m {
+            Material::Glass => "dig/stone",
+            m => dig(m),
+        },
+        Sfx::Step(m) | Sfx::Hit(m) => step(m),
+        Sfx::Click => "random/click",
+        Sfx::Hurt => "damage/hit",
+        Sfx::Explode => "random/explode",
+        Sfx::Pickup => "random/pop",
+        Sfx::Xp => "random/orb",
+        Sfx::Eat => "random/eat",
+        Sfx::Fizz => "random/fizz",
+        Sfx::Thunder(_) => "ambient/weather/thunder",
+        Sfx::Rain => "ambient/weather/rain",
+        Sfx::Splash(_) => "liquid/splash",
+        Sfx::Swim => "liquid/swim",
+        Sfx::Piston(true) => "tile/piston/out",
+        Sfx::Piston(false) => "tile/piston/in",
+        Sfx::Portal => "portal/portal",
+        _ => return None,
+    })
 }
 
 /// The space around the listener: how much echo comes back, after how long, and whether
@@ -241,11 +298,20 @@ impl Audio {
             rng: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7) | 1,
             music_folder: base.join(&settings.music_folder),
             room: Room::default(),
+            pack: Default::default(),
         };
         a.reload_tracks();
         // The first song comes fairly soon after joining, the rest after long silences.
         a.next_in = 20.0 + a.rand() * 40.0;
         Some(a)
+    }
+
+    /// Sounds from the enabled resource packs (none = all our own).
+    pub fn set_pack_sounds(&mut self, pack: std::collections::HashMap<&'static str, Vec<std::sync::Arc<[u8]>>>) {
+        if !pack.is_empty() {
+            log::info!("{} sound effects from resource packs", pack.len());
+        }
+        self.pack = pack;
     }
 
     fn rand(&mut self) -> f32 {
@@ -384,6 +450,16 @@ impl Audio {
     pub fn play(&mut self, sfx: Sfx, volume: f32) {
         if volume <= 0.0 {
             return;
+        }
+        let r = self.rand();
+        if let Some(list) = pack_key(sfx).and_then(|k| self.pack.get(k)).filter(|l| !l.is_empty()) {
+            let bytes = list[(r * list.len() as f32) as usize % list.len()].clone();
+            // A little pitch change each time, like the classic game, so repeats don't drone.
+            let pitch = 0.92 + self.rand() * 0.16;
+            if let Ok(d) = Decoder::new(Cursor::new(bytes)) {
+                let _ = self.handle.play_raw(d.convert_samples::<f32>().speed(pitch).amplify(volume));
+                return;
+            }
         }
         let seed = (self.rand() * 1e6) as u32;
         let samples = room_sound(crate::sfx::synth(sfx, seed), self.room);
