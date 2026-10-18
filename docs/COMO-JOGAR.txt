@@ -47,6 +47,7 @@ COMANDOS (chat: T, depois /; funcionam também jogando sozinho)
   /tp <nome>  ou  /tp <x> <y> <z>       /pos  mostra onde você está
   /matar   /spawnpoint (renascer aqui)   /semente   /lista   /ajuda
   /regra ciclo_dia sim|nao   /regra ciclo_clima sim|nao   (/regras mostra)
+  /regra pvp|temperatura|sede|nutricao sim|nao   /placar   /equipe   /plugins
 
 CONTROLES
   W A S D         andar
@@ -314,7 +315,7 @@ SHADERS
                 água ondulante
     Suave       só um pouco de brilho e cores mais quentes (leve)
   Qualidade: Rápido ou Bonito (Bonito tem brilho mais largo e raios de sol mais finos).
-  Distância LOD (Esc > Shaders): desenha o relevo além da distância de visão (256, 512 ou 1024
+  Distância LOD (Esc > Shaders): desenha o relevo além da distância de visão (256, 512, 1024 ou 2048
   blocos a mais), em blocos grandes e simples, como o mod Distant Horizons. Montanhas,
   florestas e o mar aparecem no horizonte sem carregar chunks. Funciona com ou sem shader.
   Para criar o seu, copie shaderpacks/sepia com outro nome, edite post.wgsl e clique em
@@ -384,7 +385,40 @@ LOTE DE MODS (17/10)
       tartaruga, abelha, lula, golfinho, axolote; monstros: gosma, múmia, afogado, arqueiro
       gélido, Asa-Noturna (voa à noite) e Vigia das Profundezas (atira no mar).
 
+NOVIDADES (18/10)
+  Opções: Idioma (Português ou English), Legendas dos sons, Reduzir movimento e Teclas...
+    (troque qualquer tecla; "Restaurar padrão" volta tudo).
+  Mundo: 22 variações de bioma (oceano quente com corais, jardim pálido, picos irregulares,
+    espinhos de gelo, planície de girassóis, floresta de flores e outras), monumento oceânico,
+    mansão da floresta, ruínas no mar e tesouro enterrado na praia.
+  Multijogador:
+    /regra pvp sim       jogadores podem se atacar (desligado por padrão)
+    /placar novo <nome> [manual|mortes|abates] [título]   /placar mostrar <nome>|nada
+    /placar somar|definir <jogador> <nome> <n>   /placar zerar <jogador>   /placar lista
+    /equipe nova <nome> [cor]   /equipe entrar <nome> [jogador]   /equipe sair [jogador]
+    /equipe cor <nome> <cor>   /equipe fogo_amigo <nome> sim|nao   /equipe lista
+      Nomes aparecem na cor da equipe; colegas de equipe não se machucam.
+    Bloco de comando (/dar command_block, no criativo): botão direito, digite um comando;
+      ele roda cada vez que recebe energia de redstone.
+    Servidor dedicado: mine-clone --server --world NOME (sem janela; digite comandos no
+      terminal; "parar" salva e desliga). Porta e senha vêm de multiplayer.ron. No Linux sem
+      tela, use xvfb-run.
+  Sobrevivência rigorosa (cada uma liga com /regra ... sim, desligadas por padrão):
+    /regra temperatura sim   termômetro ao lado da barra. Frio deixa lento e machuca;
+                             calor dá sede e machuca. Fogo, lava e tochas aquecem, gelo
+                             esfria, roupa de couro esquenta.
+    /regra sede sim          gotas azuis acima da fome. Beba garrafa de água, leite, sopas,
+                             frutas; com a mão vazia, botão direito na água dá um gole.
+    /regra nutricao sim      5 grupos de comida (/nutricao mostra). Comer de tudo cura um
+                             pouco; comer de um grupo só enfraquece.
+  Plugins (mods em WebAssembly): ponha arquivos .wasm ou .wat em plugins/ ao lado do jogo.
+    Veja plugins-exemplos/exemplo.wat (copie para plugins/ para testar: /sorte e /torre).
+    /plugins mostra os carregados. Cada plugin roda isolado e é parado se travar.
+  Pacotes de recursos agora trocam também os sons (.ogg em assets/minecraft/sounds/).
+  Distância LOD vai até +2048 blocos (128 chunks).
+  Teste de desempenho: mine-clone --bench 60 voa reto e grava o resultado em bench/.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)
-  --shader NOME (ou off)   --shaders-menu   --lod BLOCOS
+  --shader NOME (ou off)   --shaders-menu   --lod BLOCOS   --server   --bench SEGUNDOS
