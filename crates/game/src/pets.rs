@@ -11,7 +11,7 @@ use voxel::physics::Input;
 
 use crate::Game;
 
-const MOUNTS: [&str; 5] = ["horse", "donkey", "llama", "camel", "pig"];
+const MOUNTS: [&str; 7] = ["horse", "donkey", "llama", "camel", "pig", "mule", "skeleton_horse"];
 /// (wild, tamed, the food that tames it, chance per try)
 const TAMES: [(&str, &str, &[&str], f32); 2] = [("wolf", "wolf_tame", &["bone"], 0.33), ("cat", "cat_tame", &["cod", "salmon", "raw_cod", "raw_salmon"], 0.33)];
 
@@ -30,7 +30,7 @@ impl Game {
     fn is_pet(&self, i: usize) -> bool {
         let m = &self.mobs.list[i];
         let n = self.mobs.reg.defs[m.def].name.as_str();
-        n.ends_with("_tame") || m.saddled
+        n.ends_with("_tame") || m.saddled || matches!(n, "armor_stand" | "snow_golem" | "allay")
     }
 
     pub(crate) fn save_pets(&self) {

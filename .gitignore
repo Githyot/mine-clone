@@ -1,4 +1,5 @@
 /target
+/target-*
 /saves
 /settings.ron
 /resourcepacks/*

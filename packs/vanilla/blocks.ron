@@ -686,4 +686,9 @@
     (name: "jack_o_lantern", display_name: Some("Abóbora de Halloween"), shape: Oriented, light: 15, hardness: 1.0, tool: Some(Axe), textures: (top: Some("jack_o_lantern"), side: Some("pumpkin_side"), bottom: Some("pumpkin_side"))),
     (name: "fire", display_name: Some("Fogo"), shape: Cross, transparency: Cutout, solid: false, light: 15, hardness: 0.0, in_inventory: false, drops: Some([])),
     (name: "soul_fire", display_name: Some("Fogo das Almas"), shape: Cross, transparency: Cutout, solid: false, light: 10, hardness: 0.0, in_inventory: false, drops: Some([])),
+    // Lote 2: stone with a silverfish inside (looks like the real thing), and the monster spawner.
+    (name: "infested_stone", display_name: Some("Pedra Infestada"), hardness: 0.75, drops: Some([]), textures: (all: Some("stone"))),
+    (name: "infested_cobblestone", display_name: Some("Pedregulho Infestado"), hardness: 1.0, drops: Some([]), textures: (all: Some("cobblestone"))),
+    (name: "infested_stone_bricks", display_name: Some("Tijolos de Pedra Infestados"), hardness: 0.75, drops: Some([]), textures: (all: Some("stone_bricks"))),
+    (name: "spawner", display_name: Some("Gerador de Criaturas"), transparency: Cutout, hardness: 5.0, tool: Some(Pickaxe), tier: 1, drops: Some([]), xp: (15, 43)),
 ])

@@ -355,6 +355,8 @@ impl Palette {
             (g("tuff"), 1, 24, 2, 32),
             (g("gravel"), 0, 128, 6, 24),
             (g("dirt"), 0, 128, 6, 24),
+            // Silverfish hiding in the stone (vanilla puts them under mountains).
+            (g("infested_stone"), 0, 64, 2, 6),
         ]);
         Palette {
             stone: g("stone"),

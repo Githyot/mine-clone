@@ -82,6 +82,7 @@ mod textures;
 mod ui;
 mod world;
 mod vanilla_extras;
+mod vanilla_mobs;
 
 mod embedded {
     include!(concat!(env!("OUT_DIR"), "/embedded.rs"));
@@ -662,6 +663,8 @@ struct Game {
     prog: progression::Prog,
     /// Lote 1 vanilla things: fire, jukebox, books, shields...
     extras: vanilla_extras::Extras,
+    /// Lote 2 vanilla creatures' memory (allays, cures, spawners...).
+    vm: vanilla_mobs::VMobs,
     rclicked: bool,
     /// Middle click in a menu this frame.
     mclicked: bool,
@@ -993,6 +996,7 @@ impl Game {
             surv,
             prog,
             extras,
+            vm: Default::default(),
             rclicked: false,
             mclicked: false,
             rdown: false,
@@ -1480,6 +1484,7 @@ impl Game {
             }
             if let Some(close) = self.weather.thunder_sound {
                 self.sfx(Sfx::Thunder(close));
+                self.lightning_trap();
             }
             if self.weather.rain_sound {
                 let vol = self.settings.sound_volume * 0.5 * self.weather.rain;
@@ -1765,6 +1770,7 @@ impl Game {
             self.before_mobs();
             let out = self.mobs.update(&self.world, self.body.pos, creative, daylight, mdt);
             for (dmg, from) in out.damage {
+                self.mob_hit_effects(from);
                 self.damage(dmg, from);
             }
             self.net_remote_hits(&out.remote_hits);

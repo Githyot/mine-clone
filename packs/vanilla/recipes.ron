@@ -528,6 +528,7 @@
         (pattern: ["PPP", "PDP", "PPP"], key: {'P': "#planks", 'D': "diamond"}, result: "jukebox"),
         (pattern: ["II", "II", "II"], key: {'I': "iron_ingot"}, result: "iron_door", count: 3),
         (pattern: ["R ", " C"], key: {'R': "fishing_rod", 'C': "carrot"}, result: "carrot_on_a_stick"),
+        (pattern: ["S  ", "SSS", "S S"], key: {'S': "armadillo_scute"}, result: "wolf_armor"),
         (pattern: ["SSS", " S ", "SPS"], key: {'S': "stick", 'P': "stone_slab"}, result: "armor_stand"),
         (pattern: ["WIW", "WWW", " W "], key: {'W': "#planks", 'I': "iron_ingot"}, result: "shield"),
         (pattern: ["SS", "SS"], key: {'S': "red_sand"}, result: "red_sandstone"),

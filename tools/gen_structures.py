@@ -1030,6 +1030,10 @@ def mineshaft():
         layers[3][z][x] = "h"
     layers[1][2][11] = "c"
     layers[1][13][22] = "c"
+    # A cave spider spawner in the north-south tunnel, wrapped in webs.
+    layers[1][17][12] = "S"
+    for (x, z) in ((11, 16), (13, 18), (12, 18)):
+        layers[2][z][x] = "w"
     return {
         "name": "mina_abandonada",
         "biomes": ["Plains", "Forest", "Birch Forest", "Taiga", "Dark Forest", "Mountains", "Snowy Plains", "Savanna", "Desert",
@@ -1037,7 +1041,7 @@ def mineshaft():
         "spacing": 10,
         "chance": 0.35,
         "sink": 28,
-        "palette": {"P": "oak_planks", "D": "cobblestone", "f": "oak_fence", "r": "rail", "w": "cobweb", "h": "lantern:1", "c": "chest"},
+        "palette": {"P": "oak_planks", "D": "cobblestone", "f": "oak_fence", "r": "rail", "w": "cobweb", "h": "lantern:1", "c": "chest", "S": "spawner"},
         "layers": [rows(l) for l in layers],
         "loot": [("", "raw_iron", 2, 6, 0.6), ("", "coal", 3, 10, 0.7), ("", "redstone", 2, 8, 0.5), ("", "rail", 4, 12, 0.5),
                  ("", "torch", 4, 12, 0.6), ("", "diamond", 1, 2, 0.15), ("", "gold_ingot", 1, 3, 0.35), ("", "bread", 1, 3, 0.4)],

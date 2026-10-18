@@ -193,6 +193,7 @@ impl Game {
         self.update_jukebox();
         if dt > 0.0 {
             self.update_thrown(dt);
+            self.update_vanilla_mobs(dt);
             self.climb_sounds(dt);
             self.update_animals_extras(dt);
         }
@@ -354,6 +355,9 @@ impl Game {
 
     /// Right click on a creature with the held item (shears on a sheep).
     pub(crate) fn extras_mob_use(&mut self) -> bool {
+        if self.vanilla_mob_use() {
+            return true;
+        }
         let held = self.held_key();
         if held != "shears" {
             return false;
@@ -540,6 +544,11 @@ impl Game {
         self.anim.start_swing();
         self.sfx(Sfx::Place(Material::Snow));
         true
+    }
+
+    /// Something thrown by a creature (snow golems' snowballs).
+    pub(crate) fn throw_from(&mut self, item: u16, from: Vec3, vel: Vec3) {
+        self.extras.thrown.push(Thrown { pos: from, vel, item, life: 6.0 });
     }
 
     fn update_thrown(&mut self, dt: f32) {
@@ -850,6 +859,8 @@ impl Game {
     /// After any block is broken (in every mode): plants left floating come down with it, kelp
     /// leaves water, a sponge set down soaks up the water around it.
     pub(crate) fn after_break(&mut self, p: IVec3, was: BlockId) {
+        let name = self.reg.get(was).name.clone();
+        self.infested_broken(p, &name);
         if self.world.is_wet(was) && self.extras.water != AIR && self.world.block_or_air(p) == AIR {
             self.world.set_block(p, self.extras.water);
         }
@@ -882,6 +893,7 @@ impl Game {
 
     /// A block was just placed: a sponge drinks the water around it.
     pub(crate) fn extras_after_place(&mut self, p: IVec3, id: BlockId) {
+        self.try_build_snow_golem(p, id);
         if id == self.extras.sponge && id != AIR {
             let mut todo = vec![(p, 0)];
             let mut seen = HashSet::new();
