@@ -550,6 +550,11 @@ struct Game {
     key_rebinding: Option<usize>,
     /// Sound captions on screen (subtitles.rs).
     subtitles: Vec<subtitles::Subtitle>,
+    /// Hearts: the health last frame, and when the last healing began (its wave runs across).
+    last_health: f32,
+    /// The block just placed and when, for its pop.
+    place_pop: Option<(IVec3, BlockId, f32)>,
+    heal_wave: f32,
     /// Action waiting for a button press in the controller menu.
     rebinding: Option<Action>,
     /// Actions held this frame through the controller.
@@ -924,6 +929,9 @@ impl Game {
             key_map: keybinds::KeyMap::default(),
             key_rebinding: None,
             subtitles: Vec::new(),
+            last_health: 0.0,
+            place_pop: None,
+            heal_wave: -10.0,
             rebinding: None,
             pad_held: HashSet::new(),
             pad_back: false,
@@ -1494,6 +1502,10 @@ impl Game {
     fn update(&mut self, dt: f32) {
         self.now += dt;
         self.update_subtitles(dt);
+        if self.health > self.last_health + 0.05 && self.last_health > 0.0 && self.now - self.heal_wave > 0.8 {
+            self.heal_wave = self.now;
+        }
+        self.last_health = self.health;
         // Peaceful: health comes back on its own.
         if self.survival && self.settings.difficulty == 0 && self.screen != Screen::Dead && self.health > 0.0 {
             self.health = (self.health + dt).min(self.max_health);
@@ -3001,6 +3013,10 @@ impl Game {
         if self.reg.get(id).shape == Shape::Sign && self.args.screenshot.is_none() {
             self.edit_sign(pos);
         }
+        // A full block gives a little "pop" as it goes down (game feel, Lote 6).
+        if self.reg.get(id).shape == Shape::Cube && !self.settings.reduce_motion {
+            self.place_pop = Some((pos, id, self.now));
+        }
         Some(pos)
     }
 
@@ -3477,6 +3493,15 @@ impl Game {
                     let y = y0 - (i / 10) as f32 * row_step;
                     let v = self.health - i as f32 * 2.0;
                     let blink = self.hurt_age < 0.6 && ((self.hurt_age * 10.0) as i32) % 2 == 0;
+                    // Hearts tremble when health is low, and a wave runs across them on healing.
+                    let calm = self.settings.reduce_motion;
+                    let mut y = y;
+                    if !calm && self.health <= 4.0 {
+                        y += (((self.now * 14.0) as i32 * 7 + i * 13).rem_euclid(3) - 1) as f32 * s;
+                    }
+                    if !calm && ((self.now - self.heal_wave) * 22.0) as i32 == i {
+                        y -= 2.0 * s;
+                    }
                     if self.ui.sprite("sprites/hud/heart/container", x, y - s, 9.0 * s, 9.0 * s) {
                         if v > 0.0 {
                             let art = if v >= 2.0 { "sprites/hud/heart/full" } else { "sprites/hud/heart/half" };
