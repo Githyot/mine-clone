@@ -400,7 +400,7 @@ pub fn item_icon(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRegistry,
         crate::enchanting::draw_glint(ui, x, y, size, crate::progression::clock_now());
     }
     let s = ui.scale;
-    let durability = it.tool.as_ref().map(|t| t.durability).or(it.armor.map(|a| a.durability));
+    let durability = it.max_wear();
     if let Some(dur) = durability {
         if stack.wear() > 0 {
             let k = 1.0 - stack.wear() as f32 / dur as f32;
@@ -596,12 +596,15 @@ impl Game {
     pub(crate) fn wear_held(&mut self, amount: u16) {
         let sel = self.selected;
         let Some(s) = self.surv.inv.slots[sel] else { return };
-        let Some(t) = self.items.get(s.item).tool.clone() else { return };
+        let Some(max) = self.items.get(s.item).max_wear() else { return };
+        if self.items.get(s.item).armor.is_some() {
+            return;
+        }
         if self.unbreaking_saves(&s, false) {
             return;
         }
         let d = s.wear() + amount;
-        if d >= t.durability {
+        if d >= max {
             self.surv.inv.slots[sel] = None;
             self.sfx(Sfx::Break(Material::Wood));
             self.toast("Sua ferramenta quebrou", 2.0);
@@ -1082,12 +1085,14 @@ impl Game {
             if self.redstone.kind(self.world.block_or_air(hit.block)) != crate::redstone::Kind::Tnt {
                 if self.light_portal(hit) {
                     self.anim.start_swing();
+                    self.wear_held(1);
                     return true;
                 }
                 return false;
             }
             self.prime_tnt(hit.block, 4.0);
             self.anim.start_swing();
+            self.wear_held(1);
             return true;
         }
         let Some(block) = item.places else { return false };
@@ -1978,7 +1983,7 @@ impl Game {
         let it = self.items.get(st.item);
         let mut out = crate::enchanting::lines(st);
         out.extend(self.fase6_details(st));
-        let dur = it.tool.as_ref().map(|t| t.durability).or(it.armor.map(|a| a.durability));
+        let dur = it.max_wear();
         if let Some(d) = dur {
             let left = d.saturating_sub(st.wear());
             let k = left as f32 / d.max(1) as f32;

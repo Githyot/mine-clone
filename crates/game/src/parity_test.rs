@@ -368,7 +368,8 @@ const STACKS: &[(&str, u8)] = &[
     ("saddle", 1),
     ("minecart", 1),
     ("oak_boat", 1),
-    ("potion", 1),
+    // Our potions are named by what is in them; the plain one is the water bottle.
+    ("potion_water", 1),
     ("enchanted_book", 1),
     ("totem_of_undying", 1),
     ("bow", 1),
@@ -381,7 +382,8 @@ const STACKS: &[(&str, u8)] = &[
     ("elytra", 1),
     ("writable_book", 1),
     ("written_book", 1),
-    ("music_disc_cat", 1),
+    // Our discs carry our own music, so they are named after our tracks.
+    ("music_disc_first_light", 1),
     ("white_shulker_box", 1),
     ("shulker_box", 1),
     ("arrow", 64),
@@ -713,7 +715,7 @@ fn parity_with_vanilla() {
             r.missing.push(format!("item {name}"));
             continue;
         };
-        let ours = it.tool.as_ref().map(|t| t.durability).or(it.armor.as_ref().map(|a| a.durability));
+        let ours = it.max_wear();
         if ours.is_none() {
             r.missing.push(format!("desgaste de {name} (não gasta)"));
             continue;

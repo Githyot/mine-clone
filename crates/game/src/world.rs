@@ -77,6 +77,10 @@ pub struct World {
     solid: Vec<bool>,
     /// Collision height of each block (1.0 except slabs, beds).
     top: Vec<f32>,
+    /// Ladders and vines.
+    climb: Vec<bool>,
+    /// Blocks that stand in water (kelp): bodies swim through them.
+    wet: Vec<bool>,
     pub meshed_count: usize,
     /// Multiplayer: every block change, for the network to pass on (None = not recording).
     pub net_log: Option<Vec<(IVec3, BlockId)>>,
@@ -140,6 +144,8 @@ impl World {
         let fluid = reg.blocks.iter().map(|b| if b.base == water && water != AIR { 1 } else if b.base == lava && lava != AIR { 2 } else { 0 }).collect();
         let solid = reg.blocks.iter().map(|b| b.solid && b.shape != Shape::Liquid && b.shape != Shape::Invisible).collect();
         let top = reg.blocks.iter().map(|b| b.height as f32 / 16.0).collect();
+        let climb = reg.blocks.iter().map(|b| b.shape == Shape::Ladder || matches!(b.name.as_str(), "vine" | "weeping_vines" | "twisting_vines" | "scaffolding" | "cave_vines")).collect();
+        let wet = reg.blocks.iter().map(|b| b.waterlogged).collect();
         World {
             reg,
             gen,
@@ -159,6 +165,8 @@ impl World {
             changed: Vec::new(),
             solid,
             top,
+            climb,
+            wet,
             meshed_count: 0,
             net_log: None,
             extra_centers: Vec::new(),
@@ -528,6 +536,11 @@ impl World {
         self.fluid[id as usize] != 0
     }
 
+    /// Stands in water (kelp): leaves water behind when broken.
+    pub fn is_wet(&self, id: BlockId) -> bool {
+        self.wet[id as usize]
+    }
+
     /// 1 water, 2 lava, 0 anything else (any level of flow counts).
     pub fn fluid(&self, id: BlockId) -> u8 {
         self.fluid[id as usize]
@@ -566,7 +579,10 @@ impl Terrain for World {
         }
     }
     fn liquid(&self, p: IVec3) -> bool {
-        self.block(p).is_some_and(|id| self.fluid[id as usize] == 1)
+        self.block(p).is_some_and(|id| self.fluid[id as usize] == 1 || self.wet[id as usize])
+    }
+    fn climbable(&self, p: IVec3) -> bool {
+        self.block(p).is_some_and(|id| self.climb[id as usize])
     }
     fn top(&self, p: IVec3) -> f32 {
         self.block(p).map(|id| self.top[id as usize]).unwrap_or(1.0)

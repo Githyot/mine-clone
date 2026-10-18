@@ -30,7 +30,8 @@ pub fn variant_count(shape: Shape) -> u8 {
         // Spout: 0 down, 1..4 north, east, south, west.
         Shape::Hopper => 5,
         // Chairs: the way you look when sitting.
-        Shape::Chair | Shape::Bench | Shape::Shelf => 4,
+        Shape::Chair | Shape::Bench | Shape::Shelf | Shape::Ladder => 4,
+        Shape::Cake => 7,
         Shape::Sign | Shape::Banner => 8,
         Shape::Lantern | Shape::Bridge => 2,
         Shape::Portal | Shape::Hollow => 3,
@@ -304,6 +305,15 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
             for &b in boxes {
                 out.push(rotate(b, f));
             }
+        }
+        Shape::Ladder => {
+            // Drawn against a wall to the north, a pixel thick.
+            out.push(rotate([0, 0, 0, 16, 16, 1], f));
+        }
+        Shape::Cake => {
+            // Each bite takes two pixels off the west side.
+            let bites = variant.min(6);
+            out.push([1 + 2 * bites, 0, 1, 15, 8, 15]);
         }
         Shape::Shelf => {
             // Drawn against a wall to the north.

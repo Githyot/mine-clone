@@ -167,6 +167,8 @@ pub struct MeshTables {
     biome_tints: Vec<[u8; 3]>,
     /// Water drawn with its biome's water colour (swamps).
     water: Vec<bool>,
+    /// Blocks standing in water (kelp): water around them shows no face toward them.
+    wlog: Vec<bool>,
     water_tints: Vec<[u8; 3]>,
     /// Redstone: 1 wire, 2 something wire runs into from any side, 3 a repeater (joins along
     /// its facing), 0 anything else.
@@ -210,6 +212,7 @@ impl MeshTables {
                 .map(|c| [(c[0] * 200.0).min(255.0) as u8 | 1, (c[1] * 200.0).min(255.0) as u8, (c[2] * 200.0).min(255.0) as u8])
                 .collect(),
             water: vec![],
+            wlog: vec![],
             rs: vec![],
             water_tints: (0..crate::worldgen::Biome::COUNT)
                 .map(|i| crate::worldgen::Biome::from_u8(i as u8).water_tint().map(|c| (c * 200.0).min(255.0) as u8 & !1))
@@ -217,6 +220,7 @@ impl MeshTables {
         };
         for (i, b) in reg.blocks.iter().enumerate() {
             t.water.push(b.shape == Shape::Liquid && b.name.starts_with("water"));
+            t.wlog.push(b.waterlogged);
             t.rs.push(redstone_join(reg, i as BlockId));
             t.opaque.push(reg.is_opaque(i as BlockId));
             t.shape.push(b.shape);
@@ -628,7 +632,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     }
                     // Liquid against liquid: no face in between (any level of the same one, or the
                     // sides against another), only the top shows over a different one.
-                    if liquid && t.shape[nid as usize] == Shape::Liquid && (f != 2 || t.base[nid as usize] == t.base[idu]) {
+                    if liquid && (t.shape[nid as usize] == Shape::Liquid && (f != 2 || t.base[nid as usize] == t.base[idu]) || t.water[idu] && t.wlog[nid as usize]) {
                         continue;
                     }
                     let layer = t.faces[idu][f] as u32 | t.emissive[idu];

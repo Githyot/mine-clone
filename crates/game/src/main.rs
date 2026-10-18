@@ -2778,6 +2778,8 @@ impl Game {
             Shape::Sign | Shape::Banner => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) | 4 } else if hit.normal.y > 0 { facing(f.x, f.z) } else { return None },
             // A shelf goes on the wall you clicked.
             Shape::Shelf => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) } else { facing(f.x, f.z) },
+            // A ladder goes flat on the wall clicked.
+            Shape::Ladder => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) } else { return None },
             // Under a block it hangs on a chain.
             Shape::Lantern => (hit.normal.y < 0) as u8,
             // Runs the way you look.

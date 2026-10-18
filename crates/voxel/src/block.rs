@@ -93,6 +93,10 @@ pub enum Shape {
     Hollow,
     /// A fence gate (Macaw's Fences idea): two posts and a swinging leaf; right click opens it.
     FenceGate,
+    /// A ladder flat against the wall to one side (variant facing 0-3); climbable.
+    Ladder,
+    /// A cake: half a block high, losing a slice from one side per bite (variant 0-6 bites).
+    Cake,
 }
 
 impl Shape {
@@ -134,6 +138,8 @@ impl Shape {
                 | Shape::Skull
                 | Shape::Hollow
                 | Shape::FenceGate
+                | Shape::Ladder
+                | Shape::Cake
         )
     }
 }
@@ -208,6 +214,9 @@ pub struct BlockDef {
     /// Experience dropped when mined (min, max).
     #[serde(default)]
     pub xp: (u8, u8),
+    /// Stands in water (kelp): drawn and swum through as water, leaves water when broken.
+    #[serde(default)]
+    pub waterlogged: bool,
 }
 
 /// Tool families. Blocks name the one that digs them fast; items say which one they are.
@@ -267,6 +276,7 @@ pub struct Block {
     pub tier: u8,
     pub drops: Option<Vec<DropDef>>,
     pub xp: (u8, u8),
+    pub waterlogged: bool,
     /// Orientation (stairs, doors...); 0 for the base block.
     pub variant: u8,
     /// The base block of a variant (itself for the base): what it drops and shows as.
@@ -337,6 +347,7 @@ impl BlockRegistry {
             tier: 0,
             drops: Some(Vec::new()),
             xp: (0, 0),
+            waterlogged: false,
         }];
         all.extend(defs.into_iter().filter(|d| d.name != "air"));
         for d in all {
@@ -387,6 +398,7 @@ impl BlockRegistry {
                 tier: d.tier,
                 drops: d.drops,
                 xp: d.xp,
+                waterlogged: d.waterlogged,
                 variant: 0,
                 base: id,
             });

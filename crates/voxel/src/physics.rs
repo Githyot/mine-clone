@@ -31,7 +31,15 @@ pub trait Terrain {
             out.push([0.0, 0.0, 0.0, 1.0, self.top(p), 1.0]);
         }
     }
+    /// Ladders and vines: a body inside climbs instead of falling.
+    fn climbable(&self, _p: IVec3) -> bool {
+        false
+    }
 }
+
+/// How fast a body climbs a ladder, and the most it slides down one (blocks per second).
+pub const CLIMB_SPEED: f32 = 2.35;
+const CLIMB_SLIDE: f32 = 3.0;
 
 /// World-space boxes of every cell overlapping the region (cells one lower too, for fences).
 fn boxes_in(world: &impl Terrain, lo: Vec3, hi: Vec3) -> Vec<[f32; 6]> {
@@ -85,6 +93,8 @@ pub struct Body {
     pub head_in_water: bool,
     /// Distance fallen since last on the ground, for fall damage later.
     pub fall_distance: f32,
+    /// Pushed against a wall while on a ladder last step: climbs up.
+    pub climb_push: bool,
 }
 
 impl Body {
@@ -105,6 +115,7 @@ impl Body {
             in_water: false,
             head_in_water: false,
             fall_distance: 0.0,
+            climb_push: false,
         }
     }
 
@@ -151,6 +162,7 @@ impl Body {
         if wish.length_squared() > 1.0 {
             wish = wish.normalize();
         }
+        let climbing = !self.flying && !self.in_water && (world.climbable(feet) || world.climbable(feet + IVec3::Y));
 
         if self.flying {
             let speed = if input.sprint { FLY_SPEED * 2.0 } else { FLY_SPEED };
@@ -180,6 +192,13 @@ impl Body {
             self.vel.x += (target.x - self.vel.x) * k;
             self.vel.z += (target.z - self.vel.z) * k;
             self.vel.y = (self.vel.y - GRAVITY * dt).max(-TERMINAL_VELOCITY);
+            if climbing {
+                // On a ladder: slide down slowly, hold still while sneaking.
+                self.vel.y = self.vel.y.max(if input.sneak { 0.0 } else { -CLIMB_SLIDE });
+                if input.jump || self.climb_push {
+                    self.vel.y = CLIMB_SPEED;
+                }
+            }
             if input.jump && self.on_ground && !self.no_jump && !input.crawl {
                 self.vel.y = JUMP_SPEED;
                 if input.sprint {
@@ -193,6 +212,7 @@ impl Body {
         self.on_ground = false;
         // Sneaking keeps you from walking off edges.
         let sneak_guard = input.sneak && was_on_ground && !self.flying;
+        self.climb_push = false;
         for axis in [1usize, 0, 2] {
             let before = self.pos;
             let mut moved = self.move_axis(world, axis, delta[axis]);
@@ -212,6 +232,10 @@ impl Body {
                 self.pos = before;
                 self.vel[axis] = 0.0;
             } else if moved.abs() + 1e-6 < delta[axis].abs() {
+                // Walking into the wall a ladder hangs on climbs it.
+                if axis != 1 && climbing {
+                    self.climb_push = true;
+                }
                 if axis == 1 && delta[1] < 0.0 {
                     self.on_ground = true;
                     if self.flying {
@@ -221,7 +245,7 @@ impl Body {
                 self.vel[axis] = 0.0;
             }
         }
-        if self.on_ground || self.in_water {
+        if self.on_ground || self.in_water || climbing {
             self.fall_distance = 0.0;
         } else if delta.y < 0.0 {
             self.fall_distance -= delta.y;
