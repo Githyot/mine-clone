@@ -103,10 +103,12 @@ impl UiBatch {
     }
 
     pub fn text_width(&self, s: &str, scale: f32) -> f32 {
+        let s = crate::lang::tr(s);
         s.chars().map(|c| self.advance[(c as u32).min(255) as usize] as f32 * scale).sum()
     }
 
     fn glyphs(&mut self, x: f32, y: f32, s: &str, scale: f32, color: [u8; 4]) {
+        let s = crate::lang::tr(s);
         let mut cx = x;
         for c in s.chars() {
             let code = if (c as u32) < 256 { c as u32 } else { '?' as u32 };

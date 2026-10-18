@@ -1679,7 +1679,7 @@ impl Game {
         let s = self.ui.scale;
         // Hunger: ten drumsticks on the right, above the hotbar.
         let y = hy - 11.0 * s;
-        let shake = self.surv.saturation <= 0.0 && self.surv.hunger <= 6.0;
+        let shake = self.surv.saturation <= 0.0 && self.surv.hunger <= 6.0 && !self.settings.reduce_motion;
         for i in 0..10 {
             let x = hx + cell * 9.0 - (i + 1) as f32 * 8.0 * s;
             let v = self.surv.hunger - i as f32 * 2.0;
@@ -1872,7 +1872,7 @@ impl Game {
 
         let result = self.craft_result();
         let mut hovered: Option<Slot> = None;
-        let anim = crate::juice::enabled(self.settings.ui_animations, self.args.screenshot.is_some());
+        let anim = crate::juice::enabled(self.settings.ui_animations && !self.settings.reduce_motion, self.args.screenshot.is_some());
         let carried = self.surv.cursor.map(|c| c.item);
         for (k, &(slot, sx, sy)) in slots.iter().enumerate() {
             let big = slot == Slot::CraftOut || slot == Slot::Cont(2) && matches!(open, Open::Furnace(_)) || self.is_station_output(slot);

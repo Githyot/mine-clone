@@ -335,7 +335,7 @@ impl Game {
 
     /// Where the camera is pushed by shaking (add to the eye position).
     pub(crate) fn shake_offset(&self) -> Vec3 {
-        if !self.settings.view_bobbing || self.fx.shake <= 0.0 {
+        if !self.settings.view_bobbing || self.settings.reduce_motion || self.fx.shake <= 0.0 {
             return Vec3::ZERO;
         }
         let t = self.now;

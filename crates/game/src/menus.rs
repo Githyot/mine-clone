@@ -189,7 +189,7 @@ impl Game {
 
     pub(crate) fn is_title_screen(&self) -> bool {
         matches!(self.screen, Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer)
-            || (!self.world_open && matches!(self.screen, Screen::Options | Screen::Packs))
+            || (!self.world_open && matches!(self.screen, Screen::Options | Screen::Packs | Screen::Keys))
     }
 
     fn click_sound(&mut self) {
@@ -487,6 +487,10 @@ impl Game {
             format!("Construções: {}", if st.sparse_structures { "Espaçadas" } else { "Normais" }),
             format!("Resolução das texturas: {}x", st.texture_resolution),
             format!("Animações da interface: {}", onoff(st.ui_animations)),
+            format!("Legendas: {}", onoff(st.subtitles)),
+            format!("Reduzir movimento: {}", onoff(st.reduce_motion)),
+            format!("Idioma: {}", crate::lang::language_name(&st.language)),
+            "Teclas...".to_string(),
             "Controle...".to_string(),
             "Pacotes de textura...".to_string(),
         ]
@@ -568,7 +572,19 @@ impl Game {
                 self.reload_textures();
             }
             16 => st.ui_animations = !st.ui_animations,
-            17 => {
+            17 => st.subtitles = !st.subtitles,
+            18 => st.reduce_motion = !st.reduce_motion,
+            19 => {
+                let all = crate::lang::languages(&self.base);
+                let k = all.iter().position(|c| *c == st.language).map(|k| (k + 1) % all.len()).unwrap_or(0);
+                st.language = all[k].clone();
+                self.apply_language();
+            }
+            20 => {
+                self.key_rebinding = None;
+                self.set_screen(Screen::Keys);
+            }
+            21 => {
                 self.options_back = self.screen;
                 self.set_screen(Screen::Controls);
             }
@@ -626,7 +642,7 @@ impl Game {
         let to = match self.screen {
             Screen::Worlds | Screen::Multiplayer => Screen::Title,
             Screen::CreateWorld => Screen::Worlds,
-            Screen::Options | Screen::Packs => {
+            Screen::Options | Screen::Packs | Screen::Keys => {
                 if self.world_open {
                     Screen::Paused
                 } else {

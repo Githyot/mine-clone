@@ -4,6 +4,9 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod ambient;
+mod keybinds;
+mod lang;
+mod subtitles;
 mod audio;
 mod backpacks;
 mod controller;
@@ -469,6 +472,8 @@ pub(crate) enum Screen {
     Multiplayer,
     Options,
     Packs,
+    /// Moving the keyboard keys (keybinds.rs).
+    Keys,
     /// Shader packs and their options.
     Shaders,
     /// Writing on a sign.
@@ -540,6 +545,11 @@ struct Game {
     rustle_dist: f32,
 
     pads: Controllers,
+    /// Keys the player moved (keybinds.rs) and the action waiting for its new key.
+    key_map: keybinds::KeyMap,
+    key_rebinding: Option<usize>,
+    /// Sound captions on screen (subtitles.rs).
+    subtitles: Vec<subtitles::Subtitle>,
     /// Action waiting for a button press in the controller menu.
     rebinding: Option<Action>,
     /// Actions held this frame through the controller.
@@ -911,6 +921,9 @@ impl Game {
             step_dist: 0.0,
             rustle_dist: 0.0,
             pads: Controllers::new(),
+            key_map: keybinds::KeyMap::default(),
+            key_rebinding: None,
+            subtitles: Vec::new(),
             rebinding: None,
             pad_held: HashSet::new(),
             pad_back: false,
@@ -1093,7 +1106,29 @@ impl Game {
         }
         game.load_mods();
         game.mods_dim_test_hook();
+        game.key_map = keybinds::KeyMap::new(&game.settings.key_binds);
+        game.apply_language();
+        // Test hook: open a menu for screenshots (MC_SCREEN=options or keys).
+        match std::env::var("MC_SCREEN").as_deref() {
+            Ok("options") => game.set_screen(Screen::Options),
+            Ok("keys") => game.set_screen(Screen::Keys),
+            _ => {}
+        }
         game
+    }
+
+    /// Load the chosen language, and teach it the names of every block, item and mob.
+    pub(crate) fn apply_language(&mut self) {
+        for b in &self.reg.blocks {
+            lang::add_name(&b.display_name, &b.name);
+        }
+        for i in &self.items.items {
+            lang::add_name(&i.display_name, &i.name);
+        }
+        for d in &self.mobs.reg.defs {
+            lang::add_name(&d.display_name, &d.name);
+        }
+        lang::set_language(&self.settings.language, &self.base);
     }
 
     /// Turn on the shader pack named in the settings (or none). Errors turn shaders off and
@@ -1329,7 +1364,7 @@ impl Game {
                     self.extras.book = None;
                     self.set_screen(Screen::Playing);
                 }
-                Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs => self.menu_back(),
+                Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs | Screen::Keys => self.menu_back(),
                 Screen::Loading | Screen::Dead | Screen::Title => {}
             },
             KeyCode::KeyE => match self.screen {
@@ -1458,6 +1493,7 @@ impl Game {
 
     fn update(&mut self, dt: f32) {
         self.now += dt;
+        self.update_subtitles(dt);
         // Peaceful: health comes back on its own.
         if self.survival && self.settings.difficulty == 0 && self.screen != Screen::Dead && self.health > 0.0 {
             self.health = (self.health + dt).min(self.max_health);
@@ -1719,7 +1755,7 @@ impl Game {
 
         // Singleplayer: the pause menu (and the option screens opened from it) stop the world.
         // With friends in it, it keeps going.
-        let paused = self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Options | Screen::Controls | Screen::Packs | Screen::Shaders);
+        let paused = self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Options | Screen::Controls | Screen::Packs | Screen::Keys | Screen::Shaders);
         if !paused && self.net.rules.daylight_cycle {
             self.time_of_day = (self.time_of_day + dt * 20.0) % 24000.0;
         }
@@ -1757,7 +1793,7 @@ impl Game {
             }
             self.update_mods(if self.args.screenshot.is_some() { 0.0 } else { dt });
         }
-        let menus_stop = !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Shaders);
+        let menus_stop = !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Keys | Screen::Shaders);
         if self.world_open && sim && self.screen != Screen::Loading && !menus_stop {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
@@ -3336,7 +3372,7 @@ impl Game {
         let mouse = self.mouse_pos;
         let mut clicked_button: Option<usize> = None;
         // Screenshots show things at rest.
-        let anim = juice::enabled(self.settings.ui_animations, self.args.screenshot.is_some());
+        let anim = juice::enabled(self.settings.ui_animations && !self.settings.reduce_motion, self.args.screenshot.is_some());
         self.surv.juice.tick(self.selected, anim);
 
         if self.screen == Screen::Loading {
@@ -3358,7 +3394,7 @@ impl Game {
             let wave = 0.85 + 0.15 * (self.now as f32 * 4.0).sin();
             self.ui.rect(0.0, 0.0, w, h, [110, 30, 170, (haze * wave * 170.0) as u8]);
         }
-        let menu_screen = self.is_title_screen() || matches!(self.screen, Screen::Options | Screen::Packs);
+        let menu_screen = self.is_title_screen() || matches!(self.screen, Screen::Options | Screen::Packs | Screen::Keys);
         if !self.hide_hud && !matches!(self.screen, Screen::Paused | Screen::Dead | Screen::Shaders) && !menu_screen {
             // Crosshair.
             if self.screen == Screen::Playing {
@@ -3466,6 +3502,7 @@ impl Game {
                     }
                 }
             }
+            self.draw_subtitles(w, h);
             if let Some(t) = &self.toast {
                 if t.until > self.now {
                     let text = t.text.clone();
@@ -3560,7 +3597,7 @@ impl Game {
             Screen::Sign if self.naming.is_some() => self.draw_naming(w, h),
             Screen::Sign => self.draw_sign_editor(w, h),
             Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer => self.draw_title_menus(w, h, mouse),
-            Screen::Options | Screen::Packs => {
+            Screen::Options | Screen::Packs | Screen::Keys => {
                 if self.world_open {
                     self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 150]);
                 } else {
@@ -3569,6 +3606,8 @@ impl Game {
                 }
                 if self.screen == Screen::Options {
                     self.draw_options(w, h, mouse);
+                } else if self.screen == Screen::Keys {
+                    self.draw_keys(w, h, mouse);
                 } else {
                     self.draw_packs(w, h, mouse);
                 }
@@ -3875,7 +3914,7 @@ impl Game {
                         }
                         Screen::Shaders => self.set_screen(Screen::Paused),
                         Screen::Dead | Screen::Title => {}
-                        Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs => self.menu_back(),
+                        Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs | Screen::Keys => self.menu_back(),
                         _ => self.set_screen(Screen::Playing),
                     }
                 }
@@ -3986,7 +4025,7 @@ impl Game {
             let dist = raycast(pivot, dir, 4.0, |p| voxel::physics::Terrain::solid(world, p)).map(|h| (h.distance - 0.3).max(0.2)).unwrap_or(4.0);
             view_fwd = -dir;
             pivot + dir * dist
-        } else if playing_view && self.settings.view_bobbing {
+        } else if playing_view && self.settings.view_bobbing && !self.settings.reduce_motion {
             head + self.anim.view_bob(self.yaw, self.body.on_ground && !self.body.flying)
         } else {
             head
@@ -4053,7 +4092,7 @@ impl Game {
             block,
             frac: Vec3::from_slice(&g.cam_pos[..3]),
             forward: view_fwd,
-            fov_y: (self.settings.fov * (1.0 + 0.12 * self.fov_kick) * if self.spyglass_up() { 0.2 } else { 1.0 }).to_radians(),
+            fov_y: (self.settings.fov * (1.0 + if self.settings.reduce_motion { 0.0 } else { 0.12 * self.fov_kick }) * if self.spyglass_up() { 0.2 } else { 1.0 }).to_radians(),
             far: view_end + 32.0,
         };
 
@@ -4353,7 +4392,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(code) = event.physical_key {
-                    game.key(code, event.state == ElementState::Pressed, event.repeat);
+                    game.window_key(code, event.state == ElementState::Pressed, event.repeat);
                 }
                 if event.state == ElementState::Pressed {
                     if let Some(t) = &event.text {
