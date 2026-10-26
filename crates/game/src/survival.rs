@@ -930,7 +930,7 @@ impl Game {
         if self.extras_mob_use() {
             return true;
         }
-        if self.lead_use() || self.pet_use() || self.village_use() || self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
+        if self.lead_use() || self.stand_use() || self.pet_use() || self.village_use() || self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
             return true;
         }
         if let Some(st) = self.held_stack() {

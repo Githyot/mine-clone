@@ -20,6 +20,11 @@ pub struct PetSave {
     pub name: String,
     pub pos: [f32; 3],
     pub saddled: bool,
+    /// Which way it faces, and what an armor stand wears (stands.rs).
+    #[serde(default)]
+    pub yaw: f32,
+    #[serde(default)]
+    pub gear: Vec<Option<voxel::item::ItemStack>>,
 }
 
 pub fn load(dir: &Path) -> Vec<PetSave> {
@@ -38,7 +43,8 @@ impl Game {
             .filter(|&i| self.mobs.list[i].alive() && self.is_pet(i))
             .map(|i| {
                 let m = &self.mobs.list[i];
-                PetSave { name: self.mobs.reg.defs[m.def].name.clone(), pos: m.body.pos.to_array(), saddled: m.saddled }
+                let gear = self.stands.gear.get(&m.net_id).map(|g| g.0.to_vec()).unwrap_or_default();
+                PetSave { name: self.mobs.reg.defs[m.def].name.clone(), pos: m.body.pos.to_array(), saddled: m.saddled, yaw: m.yaw, gear }
             })
             .chain(self.pets_waiting.iter().cloned())
             .collect();
@@ -142,6 +148,18 @@ impl Game {
             return;
         }
         let me = self.body.pos;
+        // Pets left far behind wait in the save instead of vanishing with the wild ones.
+        let mut k = 0;
+        while k < self.mobs.list.len() {
+            let m = &self.mobs.list[k];
+            if m.alive() && !m.ridden && m.body.pos.distance(me) > 120.0 && self.is_pet(k) {
+                let m = self.mobs.list.remove(k);
+                let gear = self.stands.gear.remove(&m.net_id).map(|g| g.0.to_vec()).unwrap_or_default();
+                self.pets_waiting.push(PetSave { name: self.mobs.reg.defs[m.def].name.clone(), pos: m.body.pos.to_array(), saddled: m.saddled, yaw: m.yaw, gear });
+            } else {
+                k += 1;
+            }
+        }
         let mut k = 0;
         while k < self.pets_waiting.len() {
             let p = Vec3::from(self.pets_waiting[k].pos);
@@ -150,6 +168,15 @@ impl Game {
                 if self.mobs.spawn(&pet.name, p) {
                     if let Some(m) = self.mobs.list.last_mut() {
                         m.saddled = pet.saddled;
+                        m.yaw = pet.yaw;
+                        if pet.gear.iter().any(|g| g.is_some()) {
+                            let mut gear: crate::stands::Gear = Default::default();
+                            for (i, g) in pet.gear.iter().take(5).enumerate() {
+                                gear[i] = *g;
+                            }
+                            let (id, pos) = (m.net_id, m.body.pos);
+                            self.stands.gear.insert(id, (gear, pos));
+                        }
                     }
                 }
             } else {

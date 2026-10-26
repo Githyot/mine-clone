@@ -14,6 +14,7 @@ mod plugins;
 mod nature;
 mod bench;
 mod swing;
+mod stands;
 mod audio;
 mod backpacks;
 mod controller;
@@ -571,6 +572,8 @@ struct Game {
     place_pop: Option<(IVec3, BlockId, f32)>,
     /// Doors and chest lids swinging (swing.rs).
     swings: swing::Swings,
+    /// What armor stands wear (stands.rs).
+    stands: stands::Stands,
     heal_wave: f32,
     /// Action waiting for a button press in the controller menu.
     rebinding: Option<Action>,
@@ -959,6 +962,7 @@ impl Game {
             last_health: 0.0,
             place_pop: None,
             swings: Default::default(),
+            stands: Default::default(),
             heal_wave: -10.0,
             rebinding: None,
             pad_held: HashSet::new(),
@@ -1845,6 +1849,7 @@ impl Game {
                 self.update_leads(dt);
                 self.update_map(dt);
                 self.update_pets(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.stands_update();
             }
             self.update_mods(if self.args.screenshot.is_some() { 0.0 } else { dt });
         }
@@ -4257,8 +4262,11 @@ impl Game {
         let selection = if self.screen == Screen::Playing || self.args.screenshot.is_some() { self.target.map(|t| t.block) } else { None };
         let mut items = self.mobs.instances(&self.world, block, rd + 16.0);
         let mob_items = self.arrow_and_bow_instances(&items, block);
-        let (net_models, net_held) = self.net_instances(block);
+        let (net_models, mut net_held) = self.net_instances(block);
         items.extend(net_models);
+        let (stand_models, stand_held) = self.stand_instances(block, rd + 16.0);
+        items.extend(stand_models);
+        net_held.extend(stand_held);
         let mut held_third = None;
         if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
             let def = &self.mobs.reg.defs[pd];
