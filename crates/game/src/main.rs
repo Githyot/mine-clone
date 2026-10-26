@@ -148,6 +148,8 @@ struct Args {
     world: Option<String>,
     /// Dedicated server: no window shown, the world open to friends, commands from the console.
     server: bool,
+    /// Run only a relay (`--relay [port]`), for hosts whose router won't open a port.
+    relay: Option<u16>,
     /// Benchmark: fly for this many seconds, then report frame times and close.
     bench: Option<f32>,
     seed: Option<u64>,
@@ -220,6 +222,7 @@ fn parse_args() -> Args {
         match arg.as_str() {
             "--world" => a.world = it.next(),
             "--server" => a.server = true,
+            "--relay" => a.relay = Some(it.next_if(|v| v.parse::<u16>().is_ok()).and_then(|v| v.parse().ok()).unwrap_or(net::relay::DEFAULT_PORT)),
             "--bench" => a.bench = Some(it.next_if(|v| v.parse::<f32>().is_ok()).and_then(|v| v.parse().ok()).unwrap_or(60.0)),
             "--seed" => a.seed = it.next().and_then(|s| s.parse().ok()),
             "--screenshot" => a.screenshot = it.next().map(PathBuf::from),
@@ -274,6 +277,7 @@ fn parse_args() -> Args {
                 println!(
                     "mine-clone [--world NAME] [--seed N] [--render-distance N] [--size WxH]\n\
                      Server: mine-clone --server [--world NAME] (no window; type commands, \"parar\" saves and stops)\n\
+                     Relay: mine-clone --relay [port] (for hosts whose router won't open a port; default port 24455)\n\
                      Benchmark: mine-clone --bench [seconds] [--world NAME] (report in bench/)\n\
                      Testing: [--screenshot out.png] [--pos x,y,z] [--look yaw,pitch] [--time ticks] [--fly] [--demo] [--inventory] [--pause] [--debug]\n\
                      \x20        [--survival] [--kit] [--open table|furnace|chest] [--mobs] [--perf] [--prone] [--camera N]\n\
@@ -4592,6 +4596,13 @@ fn main() {
         let _ = std::fs::write(&crash_file, format!("Mine Clone {} crashed:\n{info}\n\n{bt}\n", env!("CARGO_PKG_VERSION")));
         default_hook(info);
     }));
+    if let Some(port) = args.relay {
+        if let Err(e) = net::relay::run(port) {
+            log::error!("relay: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if args.server {
         // No window and no graphics: the server only ticks the world and talks to players.
         let mut game = Game::new(None, args);

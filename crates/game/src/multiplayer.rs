@@ -59,12 +59,15 @@ pub struct NetConfig {
     pub upnp: bool,
     /// Empty = anyone with the code may come in.
     pub password: String,
+    /// A relay (`mine-clone --relay`) to also take guests through, when the router won't open
+    /// the port. Empty = none.
+    pub relay: String,
 }
 
 impl Default for NetConfig {
     fn default() -> Self {
         let name = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).unwrap_or_else(|_| "Jogador".into());
-        NetConfig { name: clean_name(&name), last_addr: String::new(), recent: Vec::new(), port: net::DEFAULT_PORT, upnp: true, password: String::new() }
+        NetConfig { name: clean_name(&name), last_addr: String::new(), recent: Vec::new(), port: net::DEFAULT_PORT, upnp: true, password: String::new(), relay: String::new() }
     }
 }
 
@@ -187,6 +190,9 @@ struct HostState {
     upnp: Option<crossbeam_channel::Receiver<Result<net::upnp::Mapping, String>>>,
     external: Option<SocketAddrV4>,
     upnp_note: String,
+    /// The code through the relay, once it gave us a room.
+    relay_code: Option<String>,
+    relay_waiting: bool,
     lan_ip: Option<std::net::Ipv4Addr>,
     guests: HashMap<ConnId, GuestInfo>,
     send_t: f32,
@@ -669,6 +675,10 @@ impl Game {
         let port = host.port;
         let beacon = Beacon::start(&self.world_name, &self.net.cfg.name, port);
         let upnp = self.net.cfg.upnp.then(|| net::upnp::open(port));
+        let relay = std::env::var("MC_RELAY").unwrap_or_else(|_| self.net.cfg.relay.clone());
+        if !relay.trim().is_empty() {
+            host.use_relay(&relay);
+        }
         let list = |f: &str| -> Vec<String> {
             std::fs::read_to_string(level_path_hint(&self.base, &self.world_name).join(f))
                 .map(|t| t.lines().map(|l| l.trim().to_lowercase()).filter(|l| !l.is_empty()).collect())
@@ -682,6 +692,8 @@ impl Game {
             upnp,
             external: None,
             upnp_note: if self.net.cfg.upnp { "abrindo a porta no roteador...".into() } else { "UPnP desligado".into() },
+            relay_code: None,
+            relay_waiting: !relay.trim().is_empty(),
             lan_ip: net::upnp::lan_ip(),
             guests: HashMap::new(),
             send_t: 0.0,
@@ -707,9 +719,13 @@ impl Game {
         }
     }
 
-    /// The code friends type to join: the router's address when UPnP worked, else the LAN one.
+    /// The code friends type to join: the router's address when UPnP worked, else the relay's,
+    /// else the LAN one.
     pub(crate) fn net_invite_code(&self) -> Option<String> {
         let Mode::Host(h) = &self.net.mode else { return None };
+        if h.external.is_none() && h.relay_code.is_some() {
+            return h.relay_code.clone();
+        }
         let a = h.external.or_else(|| h.lan_ip.map(|ip| SocketAddrV4::new(ip, h.host.port)))?;
         Some(net::codes::encode(a))
     }
@@ -756,8 +772,28 @@ impl Game {
                 }
                 Err(e) => h.upnp_note = format!("{e}; abra a porta UDP {} no roteador para jogar pela internet", h.host.port),
             }
-            let line = self.host_ref().upnp_note.clone();
+            let h = self.host_ref();
+            let line = if h.external.is_none() && h.relay_code.is_some() { "pela ponte".to_string() } else { h.upnp_note.clone() };
             self.net_say(format!("Convite: {} ({line})", self.net_invite_code().unwrap_or_default()), YELLOW);
+        }
+
+        // Relay answer.
+        if self.host_ref().relay_waiting {
+            if let Some(r) = self.host_ref().host.relay_room() {
+                let h = self.host();
+                h.relay_waiting = false;
+                match r {
+                    Ok((addr, room)) => {
+                        let code = match addr {
+                            std::net::SocketAddr::V4(a) => net::codes::encode_relay(a, room),
+                            a => format!("{a}#{room}"),
+                        };
+                        h.relay_code = Some(code.clone());
+                        self.net_say(format!("Convite pela ponte: {code}"), YELLOW);
+                    }
+                    Err(e) => self.net_say(format!("A ponte não respondeu: {e}"), YELLOW),
+                }
+            }
         }
 
         let events = self.host_ref().host.poll();
@@ -2067,6 +2103,27 @@ impl Game {
                     }
                     Some(_) => self.net_say(format!("{arg} está em outra dimensão"), YELLOW),
                     None => self.net_say(format!("Ninguém chamado \"{arg}\""), YELLOW),
+                }
+                true
+            }
+            // "/ponte 203.0.113.5" takes guests through that relay from the next time the
+            // world opens; "/ponte nada" stops.
+            "/ponte" | "/relay" => {
+                if arg.is_empty() {
+                    let now = if self.net.cfg.relay.is_empty() { "nenhuma".to_string() } else { self.net.cfg.relay.clone() };
+                    self.net_say(format!("Ponte: {now} (use /ponte <endereço> ou /ponte nada)"), YELLOW);
+                    return true;
+                }
+                self.net.cfg.relay = if matches!(arg.as_str(), "nada" | "off" | "none") { String::new() } else { arg.clone() };
+                self.net.save_config(&self.base);
+                if self.net.cfg.relay.is_empty() {
+                    self.net_say("Ponte desligada".to_string(), YELLOW);
+                } else {
+                    if let Mode::Host(h) = &mut self.net.mode {
+                        h.host.use_relay(&arg);
+                        h.relay_waiting = true;
+                    }
+                    self.net_say(format!("Ponte: {arg}"), YELLOW);
                 }
                 true
             }

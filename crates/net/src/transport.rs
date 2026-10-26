@@ -24,7 +24,15 @@ const MAX_FRAME: usize = 32 << 20;
 
 pub type ConnId = u32;
 
-type Conns = Arc<Mutex<HashMap<ConnId, (mpsc::UnboundedSender<Vec<u8>>, quinn::Connection)>>>;
+/// A guest's outgoing frames and its connection. Through a relay the connection is the
+/// host's own link to the relay, shared by every relayed guest, so it is never closed for one.
+struct Peer {
+    tx: mpsc::UnboundedSender<Vec<u8>>,
+    conn: quinn::Connection,
+    relayed: bool,
+}
+
+type Conns = Arc<Mutex<HashMap<ConnId, Peer>>>;
 
 pub enum HostEvent {
     Joined(ConnId, SocketAddr),
@@ -38,11 +46,11 @@ pub enum GuestEvent {
     Closed(String),
 }
 
-fn runtime() -> std::io::Result<tokio::runtime::Runtime> {
+pub(crate) fn runtime() -> std::io::Result<tokio::runtime::Runtime> {
     tokio::runtime::Builder::new_multi_thread().worker_threads(2).thread_name("net").enable_all().build()
 }
 
-fn transport() -> Arc<quinn::TransportConfig> {
+pub(crate) fn transport() -> Arc<quinn::TransportConfig> {
     let mut t = quinn::TransportConfig::default();
     t.keep_alive_interval(Some(Duration::from_secs(4)));
     t.max_idle_timeout(Some(Duration::from_secs(20).try_into().unwrap()));
@@ -52,7 +60,7 @@ fn transport() -> Arc<quinn::TransportConfig> {
     Arc::new(t)
 }
 
-async fn read_frame(r: &mut quinn::RecvStream) -> Option<Vec<u8>> {
+pub(crate) async fn read_frame(r: &mut quinn::RecvStream) -> Option<Vec<u8>> {
     let n = r.read_u32_le().await.ok()? as usize;
     if n > MAX_FRAME {
         return None;
@@ -75,26 +83,55 @@ async fn write_loop(mut w: quinn::SendStream, mut rx: mpsc::UnboundedReceiver<Ve
 pub struct Host {
     pub port: u16,
     events: Receiver<HostEvent>,
+    tx: crossbeam_channel::Sender<HostEvent>,
     conns: Conns,
+    next: Arc<AtomicU32>,
     endpoint: quinn::Endpoint,
+    relay: Arc<Mutex<Option<Result<(SocketAddr, u16), String>>>>,
+    relay_conn: Arc<Mutex<Option<quinn::Connection>>>,
     rt: Option<tokio::runtime::Runtime>,
+}
+
+/// One guest's stream, direct or relayed: frames in, frames out, until it ends.
+#[allow(clippy::too_many_arguments)]
+async fn serve(
+    send: quinn::SendStream,
+    mut recv: quinn::RecvStream,
+    addr: SocketAddr,
+    conn: quinn::Connection,
+    relayed: bool,
+    tx: crossbeam_channel::Sender<HostEvent>,
+    conns: Conns,
+    next: Arc<AtomicU32>,
+) {
+    let id = next.fetch_add(1, Ordering::Relaxed);
+    let (wtx, wrx) = mpsc::unbounded_channel();
+    conns.lock().unwrap().insert(id, Peer { tx: wtx, conn: conn.clone(), relayed });
+    let _ = tx.send(HostEvent::Joined(id, addr));
+    tokio::spawn(write_loop(send, wrx));
+    let why = loop {
+        match read_frame(&mut recv).await {
+            Some(f) => match decode::<ToHost>(&f) {
+                Some(m) => {
+                    if tx.send(HostEvent::Message(id, m)).is_err() {
+                        break "host stopped".to_string();
+                    }
+                }
+                None => break "mensagem inválida".to_string(),
+            },
+            None if relayed => break "saiu".to_string(),
+            None => break conn.close_reason().map(|r| r.to_string()).unwrap_or_else(|| "saiu".to_string()),
+        }
+    };
+    conns.lock().unwrap().remove(&id);
+    let _ = tx.send(HostEvent::Left(id, why));
 }
 
 impl Host {
     /// Listen on `port` (0 = any free port), on IPv6 and IPv4 where the system allows both.
     pub fn start(port: u16) -> Result<Host, String> {
         let rt = runtime().map_err(|e| e.to_string())?;
-        let cert = rcgen::generate_simple_self_signed(vec!["mine-clone".to_string()]).map_err(|e| e.to_string())?;
-        let key = rustls::pki_types::PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
-        let mut tls = rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
-            .with_protocol_versions(&[&rustls::version::TLS13])
-            .map_err(|e| e.to_string())?
-            .with_no_client_auth()
-            .with_single_cert(vec![cert.cert.der().clone()], key.into())
-            .map_err(|e| e.to_string())?;
-        tls.alpn_protocols = vec![ALPN.to_vec()];
-        let mut cfg = quinn::ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(tls).map_err(|e| e.to_string())?));
-        cfg.transport_config(transport());
+        let cfg = server_config(ALPN)?;
         let endpoint = {
             let _g = rt.enter();
             // Dual-stack first (IPv6 friends can come straight in), plain IPv4 if that fails.
@@ -104,41 +141,56 @@ impl Host {
         };
         let port = endpoint.local_addr().map(|a| a.port()).unwrap_or(port);
         let (tx, events) = unbounded();
-        let conns: Arc<Mutex<HashMap<ConnId, _>>> = Arc::new(Mutex::new(HashMap::new()));
+        let conns: Conns = Arc::new(Mutex::new(HashMap::new()));
         let next = Arc::new(AtomicU32::new(1));
+        let (tx_keep, next_keep) = (tx.clone(), next.clone());
         let (ep, conns2) = (endpoint.clone(), conns.clone());
         rt.spawn(async move {
             while let Some(incoming) = ep.accept().await {
                 let (tx, conns, next) = (tx.clone(), conns2.clone(), next.clone());
                 tokio::spawn(async move {
                     let Ok(conn) = incoming.await else { return };
-                    let Ok(Ok((send, mut recv))) = tokio::time::timeout(Duration::from_secs(10), conn.accept_bi()).await else {
+                    let Ok(Ok((send, recv))) = tokio::time::timeout(Duration::from_secs(10), conn.accept_bi()).await else {
                         return;
                     };
-                    let id = next.fetch_add(1, Ordering::Relaxed);
-                    let (wtx, wrx) = mpsc::unbounded_channel();
-                    conns.lock().unwrap().insert(id, (wtx, conn.clone()));
-                    let _ = tx.send(HostEvent::Joined(id, conn.remote_address()));
-                    tokio::spawn(write_loop(send, wrx));
-                    let why = loop {
-                        match read_frame(&mut recv).await {
-                            Some(f) => match decode::<ToHost>(&f) {
-                                Some(m) => {
-                                    if tx.send(HostEvent::Message(id, m)).is_err() {
-                                        break "host stopped".to_string();
-                                    }
-                                }
-                                None => break "mensagem inválida".to_string(),
-                            },
-                            None => break conn.close_reason().map(|r| r.to_string()).unwrap_or_else(|| "saiu".to_string()),
-                        }
-                    };
-                    conns.lock().unwrap().remove(&id);
-                    let _ = tx.send(HostEvent::Left(id, why));
+                    let addr = conn.remote_address();
+                    serve(send, recv, addr, conn, false, tx, conns, next).await;
                 });
             }
         });
-        Ok(Host { port, events, conns, endpoint, rt: Some(rt) })
+        Ok(Host { port, events, tx: tx_keep, conns, next: next_keep, endpoint, relay: Arc::new(Mutex::new(None)), relay_conn: Arc::new(Mutex::new(None)), rt: Some(rt) })
+    }
+
+    /// Also take guests through a relay (`mine-clone --relay` on a machine with an open port),
+    /// for when the router won't open ours. The room number arrives through `relay_room`.
+    pub fn use_relay(&self, addr: &str) {
+        let Some(rt) = &self.rt else { return };
+        let (status, slot, tx, conns, next) = (self.relay.clone(), self.relay_conn.clone(), self.tx.clone(), self.conns.clone(), self.next.clone());
+        let addr = addr.trim().to_string();
+        rt.spawn(async move {
+            let set = |r: Result<(SocketAddr, u16), String>| *status.lock().unwrap() = Some(r);
+            let conn = match crate::relay::dial(&addr).await {
+                Ok(c) => c,
+                Err(e) => return set(Err(e)),
+            };
+            let room = match crate::relay::register(&conn).await {
+                Ok(r) => r,
+                Err(e) => return set(Err(e)),
+            };
+            *slot.lock().unwrap() = Some(conn.clone());
+            set(Ok((conn.remote_address(), room)));
+            // Each guest arrives as a new stream, its address first.
+            while let Ok((send, mut recv)) = conn.accept_bi().await {
+                let Some(addr) = crate::relay::read_addr(&mut recv).await else { continue };
+                tokio::spawn(serve(send, recv, addr, conn.clone(), true, tx.clone(), conns.clone(), next.clone()));
+            }
+            set(Err(conn.close_reason().map(|r| r.to_string()).unwrap_or_else(|| "a ponte caiu".to_string())));
+        });
+    }
+
+    /// The relay's address and our room there, once registered (or why not).
+    pub fn relay_room(&self) -> Option<Result<(SocketAddr, u16), String>> {
+        self.relay.lock().unwrap().clone()
     }
 
     pub fn poll(&self) -> Vec<HostEvent> {
@@ -151,31 +203,41 @@ impl Host {
 
     /// Send already encoded bytes (one encode for many guests).
     pub fn send_raw(&self, to: ConnId, bytes: Vec<u8>) {
-        if let Some((tx, _)) = self.conns.lock().unwrap().get(&to) {
-            let _ = tx.send(bytes);
+        if let Some(p) = self.conns.lock().unwrap().get(&to) {
+            let _ = p.tx.send(bytes);
         }
     }
 
     /// Say why, then hang up shortly after (so the reason arrives first).
     pub fn kick(&self, to: ConnId, why: &str) {
         self.send(to, &ToGuest::Bye(why.to_string()));
-        if let (Some((_, conn)), Some(rt)) = (self.conns.lock().unwrap().get(&to).cloned(), &self.rt) {
+        let peer = self.conns.lock().unwrap().get(&to).map(|p| (p.conn.clone(), p.relayed));
+        if let (Some((conn, relayed)), Some(rt)) = (peer, &self.rt) {
+            let conns = self.conns.clone();
             rt.spawn(async move {
                 tokio::time::sleep(Duration::from_millis(500)).await;
-                conn.close(0u32.into(), b"kick");
+                if relayed {
+                    // Dropping its sender ends just this guest's stream; the relay hangs up on it.
+                    conns.lock().unwrap().remove(&to);
+                } else {
+                    conn.close(0u32.into(), b"kick");
+                }
             });
         }
     }
 
     /// Round-trip time to a guest, in milliseconds.
     pub fn ping(&self, to: ConnId) -> Option<u32> {
-        self.conns.lock().unwrap().get(&to).map(|(_, c)| c.rtt().as_millis() as u32)
+        self.conns.lock().unwrap().get(&to).map(|p| p.conn.rtt().as_millis() as u32)
     }
 }
 
 impl Drop for Host {
     fn drop(&mut self) {
-        for (_, (_, c)) in self.conns.lock().unwrap().drain() {
+        for (_, p) in self.conns.lock().unwrap().drain() {
+            p.conn.close(0u32.into(), b"host closed");
+        }
+        if let Some(c) = self.relay_conn.lock().unwrap().take() {
             c.close(0u32.into(), b"host closed");
         }
         self.endpoint.close(0u32.into(), b"host closed");
@@ -213,27 +275,17 @@ impl Guest {
             let fail = |e: String| {
                 let _ = tx.send(GuestEvent::Closed(e));
             };
-            let target = match tokio::task::spawn_blocking(move || resolve(&addr)).await {
+            let target = match tokio::task::spawn_blocking(move || resolve_target(&addr)).await {
                 Ok(Ok(a)) => a,
                 Ok(Err(e)) => return fail(e),
                 Err(e) => return fail(e.to_string()),
             };
-            let bind =
-                if target.is_ipv6() { SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0) } else { SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0) };
-            let mut ep = match quinn::Endpoint::client(bind) {
+            let (target, room) = target;
+            let alpn = if room.is_some() { crate::relay::ALPN } else { ALPN };
+            let ep = match client_endpoint(target, alpn) {
                 Ok(e) => e,
-                Err(e) => return fail(e.to_string()),
+                Err(e) => return fail(e),
             };
-            let mut tls = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
-                .with_protocol_versions(&[&rustls::version::TLS13])
-                .expect("tls 1.3")
-                .dangerous()
-                .with_custom_certificate_verifier(Arc::new(AnyCert(rustls::crypto::ring::default_provider())))
-                .with_no_client_auth();
-            tls.alpn_protocols = vec![ALPN.to_vec()];
-            let mut cfg = quinn::ClientConfig::new(Arc::new(QuicClientConfig::try_from(tls).expect("quic tls")));
-            cfg.transport_config(transport());
-            ep.set_default_client_config(cfg);
             let connecting = match ep.connect(target, "mine-clone") {
                 Ok(c) => c,
                 Err(e) => return fail(e.to_string()),
@@ -243,9 +295,13 @@ impl Guest {
                 Ok(Err(e)) => return fail(format!("não conectou: {e}")),
                 Err(_) => return fail("ninguém respondeu nesse endereço".to_string()),
             };
-            let (send, mut recv) = match conn.open_bi().await {
+            let opened = match room {
+                Some(r) => crate::relay::join(&conn, r).await,
+                None => conn.open_bi().await.map_err(|e| e.to_string()),
+            };
+            let (send, mut recv) = match opened {
                 Ok(s) => s,
-                Err(e) => return fail(e.to_string()),
+                Err(e) => return fail(e),
             };
             *slot.lock().unwrap() = Some(conn.clone());
             let (wtx, wrx) = mpsc::unbounded_channel();
@@ -299,6 +355,59 @@ impl Drop for Guest {
             rt.shutdown_timeout(Duration::from_millis(300));
         }
     }
+}
+
+/// A client endpoint speaking `alpn`, trusting any certificate (see `AnyCert`).
+pub(crate) fn client_endpoint(target: SocketAddr, alpn: &[u8]) -> Result<quinn::Endpoint, String> {
+    let bind = if target.is_ipv6() { SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0) } else { SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0) };
+    let mut ep = quinn::Endpoint::client(bind).map_err(|e| e.to_string())?;
+    let mut tls = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+        .with_protocol_versions(&[&rustls::version::TLS13])
+        .map_err(|e| e.to_string())?
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(AnyCert(rustls::crypto::ring::default_provider())))
+        .with_no_client_auth();
+    tls.alpn_protocols = vec![alpn.to_vec()];
+    let mut cfg = quinn::ClientConfig::new(Arc::new(QuicClientConfig::try_from(tls).map_err(|e| e.to_string())?));
+    cfg.transport_config(transport());
+    ep.set_default_client_config(cfg);
+    Ok(ep)
+}
+
+/// A server config speaking `alpn` with a fresh self-signed certificate.
+pub(crate) fn server_config(alpn: &[u8]) -> Result<quinn::ServerConfig, String> {
+    let cert = rcgen::generate_simple_self_signed(vec!["mine-clone".to_string()]).map_err(|e| e.to_string())?;
+    let key = rustls::pki_types::PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
+    let mut tls = rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+        .with_protocol_versions(&[&rustls::version::TLS13])
+        .map_err(|e| e.to_string())?
+        .with_no_client_auth()
+        .with_single_cert(vec![cert.cert.der().clone()], key.into())
+        .map_err(|e| e.to_string())?;
+    tls.alpn_protocols = vec![alpn.to_vec()];
+    let mut cfg = quinn::ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(tls).map_err(|e| e.to_string())?));
+    cfg.transport_config(transport());
+    Ok(cfg)
+}
+
+/// Where to go, and the room there when it is a relay: a relay join code, or "address#room".
+pub fn resolve_target(text: &str) -> Result<(SocketAddr, Option<u16>), String> {
+    let t = text.trim();
+    if let Some((a, room)) = crate::codes::decode_relay(t) {
+        return Ok((a, Some(room)));
+    }
+    if let Some((a, r)) = t.rsplit_once('#') {
+        let room = r.trim().parse::<u16>().map_err(|_| format!("sala inválida: {r}"))?;
+        return Ok((resolve_relay(a)?, Some(room)));
+    }
+    Ok((resolve(t)?, None))
+}
+
+/// A relay's address; without a port, the relay's usual one.
+pub fn resolve_relay(text: &str) -> Result<SocketAddr, String> {
+    let t = text.trim();
+    let has_port = t.parse::<SocketAddr>().is_ok() || (!t.starts_with('[') && t.matches(':').count() == 1 && t.rsplit_once(':').is_some_and(|(_, p)| p.parse::<u16>().is_ok()));
+    resolve(&if has_port { t.to_string() } else { format!("{}:{}", t, crate::relay::DEFAULT_PORT) })
 }
 
 /// "1.2.3.4:5", "name:5", "name" (default port), "[::1]:5" or a join code.

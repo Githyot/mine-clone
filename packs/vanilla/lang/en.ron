@@ -1390,4 +1390,12 @@
     "Use: /summon <criatura> [x y z]": "Usage: /summon <creature> [x y z]",
     "Criatura desconhecida: {name}": "Unknown creature: {name}",
     "{} apareceu": "{} appeared",
+    // Lote 9: the relay.
+    "Convite pela ponte: {code}": "Invite through the relay: {code}",
+    "A ponte não respondeu: {e}": "The relay did not answer: {e}",
+    "Ponte: {now} (use /ponte <endereço> ou /ponte nada)": "Relay: {now} (use /ponte <address> or /ponte nada)",
+    "nenhuma": "none",
+    "Ponte desligada": "Relay off",
+    "Ponte: {arg}": "Relay: {arg}",
+    "pela ponte": "through the relay",
 }
