@@ -327,7 +327,7 @@ impl Game {
         if !self.rule_food() {
             return "Nutrição desligada (/regra nutricao sim)".into();
         }
-        let parts: Vec<String> = GROUPS.iter().zip(self.nature.food.iter()).map(|(n, v)| format!("{n} {:.0}%", v * 100.0)).collect();
+        let parts: Vec<String> = GROUPS.iter().zip(self.nature.food.iter()).map(|(n, v)| format!("{} {:.0}%", crate::lang::tr(n), v * 100.0)).collect();
         parts.join(", ")
     }
 
