@@ -114,13 +114,13 @@ enum PackKind {
     Zip(zip::ZipArchive<Cursor<Vec<u8>>>),
 }
 
-struct Pack {
+pub(crate) struct Pack {
     name: String,
     kind: PackKind,
 }
 
 impl Pack {
-    fn open(path: &Path) -> Option<Pack> {
+    pub(crate) fn open(path: &Path) -> Option<Pack> {
         let name = path.file_name()?.to_string_lossy().to_string();
         if path.is_dir() {
             Some(Pack { name, kind: PackKind::Dir(path.to_path_buf()) })
@@ -133,7 +133,29 @@ impl Pack {
         }
     }
 
-    fn read(&mut self, rel: &str) -> Option<Vec<u8>> {
+    /// Every file under `assets/`, as paths from `assets/` on (a zip's wrapping folder left out).
+    pub(crate) fn list(&mut self) -> Vec<String> {
+        match &mut self.kind {
+            PackKind::Dir(d) => {
+                let mut out = Vec::new();
+                let mut stack = vec![d.join("assets")];
+                while let Some(dir) = stack.pop() {
+                    for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                        let p = e.path();
+                        if p.is_dir() {
+                            stack.push(p);
+                        } else if let Ok(rel) = p.strip_prefix(&*d) {
+                            out.push(rel.to_string_lossy().replace('\\', "/"));
+                        }
+                    }
+                }
+                out
+            }
+            PackKind::Zip(z) => z.file_names().filter_map(|n| n.find("assets/").map(|i| n[i..].to_string())).collect(),
+        }
+    }
+
+    pub(crate) fn read(&mut self, rel: &str) -> Option<Vec<u8>> {
         match &mut self.kind {
             PackKind::Dir(d) => std::fs::read(d.join(rel)).ok(),
             PackKind::Zip(z) => {
@@ -161,6 +183,36 @@ impl Pack {
     }
 }
 
+/// Shader packs that come inside resource packs (Lote 9): a `shaders/post.wgsl` (and
+/// optionally `shaders/pack.ron`) in our own shader pack format, at the pack's top. They are
+/// copied to `shaderpacks/.pacotes/<pack>/` so the shader menu lists them while the resource
+/// pack is on. Minecraft's own core shaders (GLSL) can't run here and are ignored. Returns
+/// whether the list changed.
+pub fn extract_pack_shaders(base: &Path, enabled: &[String]) -> bool {
+    let out = base.join("shaderpacks").join(".pacotes");
+    let had = std::fs::read_dir(&out).map(|r| r.count() > 0).unwrap_or(false);
+    let _ = std::fs::remove_dir_all(&out);
+    let mut n = 0;
+    for name in enabled {
+        let Some(mut pack) = Pack::open(&base.join("resourcepacks").join(name)) else { continue };
+        let Some(wgsl) = pack.read("shaders/post.wgsl") else { continue };
+        let id: String = name.trim_end_matches(".zip").chars().filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')).collect();
+        let dir = out.join(id.trim());
+        if std::fs::create_dir_all(&dir).is_err() {
+            continue;
+        }
+        let _ = std::fs::write(dir.join("post.wgsl"), wgsl);
+        if let Some(ron) = pack.read("shaders/pack.ron") {
+            let _ = std::fs::write(dir.join("pack.ron"), ron);
+        }
+        n += 1;
+    }
+    if n > 0 {
+        log::info!("{n} shader packs from resource packs");
+    }
+    had || n > 0
+}
+
 /// Packs available in `dir`, sorted by name.
 pub fn list_resource_packs(dir: &Path) -> Vec<String> {
     let mut v: Vec<String> = std::fs::read_dir(dir)
@@ -179,7 +231,7 @@ pub fn list_resource_packs(dir: &Path) -> Vec<String> {
 }
 
 /// How Minecraft names our textures (newest names first, then pre-1.13 names).
-fn minecraft_names(name: &str) -> Vec<String> {
+pub(crate) fn minecraft_names(name: &str) -> Vec<String> {
     let mut v = vec![name.to_string()];
     let extra: &[&str] = match name {
         "grass_block_top" => &["grass_top"],
@@ -358,6 +410,16 @@ pub fn load(names: &[String], base: &Path, enabled_packs: &[String], max_res: u3
         };
         let mc_folders: [&str; 2] = if kind == "item" { ["item", "items"] } else { ["block", "blocks"] };
         let mut found: Option<image::RgbaImage> = None;
+        // A picture only a pack's block model uses, by its path in the pack.
+        if let Some(rest) = full.strip_prefix("packtex/") {
+            let (ns, path) = rest.split_once('/').unwrap_or(("minecraft", rest));
+            found = packs.iter_mut().find_map(|p| p.read(&format!("assets/{ns}/textures/{path}.png")).and_then(|b| decode(&b))).map(first_frame);
+            if found.is_none() {
+                log::warn!("missing texture '{full}'");
+            }
+            images.push(found);
+            continue;
+        }
         if name.starts_with("plugin_") {
             found = PLUGIN_TEXTURES.lock().unwrap().iter().find(|(n, _)| n == name).map(|(_, i)| i.clone());
         }

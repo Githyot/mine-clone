@@ -83,6 +83,8 @@ pub struct World {
     /// Blocks that stand in water (kelp): bodies swim through them.
     wet: Vec<bool>,
     pub meshed_count: usize,
+    /// What the mesh workers draw with (shared with them; resource pack models swap inside).
+    pub tables: Arc<MeshTables>,
     /// The dedicated server draws nothing: lit chunks count as meshed without building meshes.
     pub headless: bool,
     /// Multiplayer: every block change, for the network to pass on (None = not recording).
@@ -158,6 +160,7 @@ impl World {
         let climb = reg.blocks.iter().map(|b| b.shape == Shape::Ladder || matches!(b.name.as_str(), "vine" | "weeping_vines" | "twisting_vines" | "scaffolding" | "cave_vines")).collect();
         let wet = reg.blocks.iter().map(|b| b.waterlogged).collect();
         World {
+            tables,
             reg,
             gen,
             save,
@@ -523,6 +526,15 @@ impl World {
                     // A mesh still in flight is thrown away when it comes back.
                     s.mesh_ver += 1;
                 }
+            }
+        }
+    }
+
+    /// Mesh every loaded chunk again (the block models changed).
+    pub fn remesh_all(&mut self) {
+        for s in self.slots.values_mut() {
+            if s.mesh_done > 0 {
+                s.mesh_ver += 1;
             }
         }
     }

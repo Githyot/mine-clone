@@ -171,8 +171,14 @@ pub fn builtin_packs() -> Vec<ShaderPack> {
 pub fn list_packs(dir: &Path) -> (Vec<ShaderPack>, Vec<String>) {
     let mut packs = builtin_packs();
     let mut errors = Vec::new();
-    let mut dirs: Vec<PathBuf> = std::fs::read_dir(dir).map(|r| r.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.is_dir()).collect()).unwrap_or_default();
-    dirs.sort();
+    let folders = |d: &Path| -> Vec<PathBuf> {
+        let mut v: Vec<PathBuf> = std::fs::read_dir(d).map(|r| r.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.is_dir()).collect()).unwrap_or_default();
+        v.sort();
+        v
+    };
+    // Then the ones that came inside resource packs (see `textures::extract_pack_shaders`).
+    let mut dirs = folders(dir);
+    dirs.extend(folders(&dir.join(".pacotes")));
     for d in dirs {
         let id = d.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         if !d.join("post.wgsl").is_file() {
@@ -253,7 +259,10 @@ fn readme() -> String {
          Escolha o pacote no menu de pausa (Esc) > Shaders. Depois de editar os arquivos,\n\
          clique em \"Recarregar pacotes\" para ver o resultado sem fechar o jogo.\n\
          Se o shader tiver um erro, o jogo mostra a mensagem e desliga o shader (não fecha).\n\
-         A pasta \"sepia\" é um exemplo: copie-a com outro nome para começar o seu.\n\n\
+         A pasta \"sepia\" é um exemplo: copie-a com outro nome para começar o seu.\n\
+         Um resource pack também pode trazer um shader: ponha os mesmos dois arquivos na pasta\n\
+         \"shaders/\" do pack. Com o pack ligado, o shader aparece no menu com o nome do pack\n\
+         (o jogo copia para \".pacotes/\" aqui dentro; não edite lá).\n\n\
          pack.ron\n\
          --------\n\
          (\n\

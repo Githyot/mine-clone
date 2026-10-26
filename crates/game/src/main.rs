@@ -82,6 +82,7 @@ mod pots;
 mod progress;
 mod rails;
 mod headless;
+mod packmodels;
 mod renderer;
 mod scenefx;
 mod settings;
@@ -803,8 +804,11 @@ impl Game {
         // Plugins' items go after everyone else's.
         loaded_plugins.base_items = items.items.len();
         loaded_plugins.register_items(&mut items);
-        let item_base = reg.textures.len() as u16;
-        let texture_names: Vec<String> = reg.textures.iter().chain(items.textures.iter()).cloned().chain(extra_textures()).collect();
+        // Resource pack block models; the pictures only they use go right after ours.
+        let pack_models = packmodels::load(&reg, &base, &settings.resource_packs);
+        let item_base = (reg.textures.len() + pack_models.textures.len()) as u16;
+        let texture_names: Vec<String> =
+            reg.textures.iter().chain(pack_models.textures.iter()).chain(items.textures.iter()).cloned().chain(extra_textures()).collect();
 
         // Without --world the game opens on the title screen, with the last played world behind it.
         let camera_mode = args.camera.min(2);
@@ -822,6 +826,7 @@ impl Game {
         let gen = Arc::new(Generator::new(seed, &reg).with_structures(structures.clone()).with_spread(settings.structure_spread()));
         let tints: Vec<[f32; 3]> = (0..Biome::COUNT).map(|b| Biome::from_u8(b as u8).tint()).collect();
         let tables = Arc::new(MeshTables::new(&reg, tints));
+        tables.set_models(pack_models.models);
         let reg_for_fluids = reg.clone();
         let mut world = World::new(reg.clone(), gen.clone(), save.clone(), tables);
         world.headless = window.is_none();
@@ -931,6 +936,7 @@ impl Game {
         }
         let packs = textures::list_resource_packs(&base.join("resourcepacks"));
         let show_debug = args.debug;
+        textures::extract_pack_shaders(&base, &settings.resource_packs);
         let (shader_packs, pack_errors) = shaderpack::list_packs(&base.join("shaderpacks"));
         for e in &pack_errors {
             log::warn!("shader pack: {e}");
@@ -1371,7 +1377,12 @@ impl Game {
     }
 
     fn reload_textures(&mut self) {
-        let names: Vec<String> = self.reg.textures.iter().chain(self.items.textures.iter()).cloned().chain(extra_textures()).collect();
+        let pack_models = packmodels::load(&self.reg, &self.base, &self.settings.resource_packs);
+        self.item_base = (self.reg.textures.len() + pack_models.textures.len()) as u16;
+        let names: Vec<String> =
+            self.reg.textures.iter().chain(pack_models.textures.iter()).chain(self.items.textures.iter()).cloned().chain(extra_textures()).collect();
+        self.world.tables.set_models(pack_models.models);
+        self.world.remesh_all();
         let tex = textures::load(&names, &self.base, &self.settings.resource_packs, self.settings.texture_resolution);
         self.textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
         if let Some(r) = self.renderer.get_mut() {
@@ -1381,6 +1392,9 @@ impl Game {
         self.lod.set_colors(lod::LodColors::new(&self.reg, &tex));
         if let Some(a) = self.audio.as_mut() {
             a.set_pack_sounds(textures::pack_sounds(&self.base, &self.settings.resource_packs, &audio::PACK_KEYS));
+        }
+        if textures::extract_pack_shaders(&self.base, &self.settings.resource_packs) {
+            self.reload_shader_packs();
         }
         self.toast(format!("Texturas: {}", self.textures_name), 3.0);
     }
