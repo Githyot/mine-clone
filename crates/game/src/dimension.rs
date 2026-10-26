@@ -46,7 +46,9 @@ impl Game {
         self.seat = None;
         self.tnt.clear();
         self.bobber = None;
-        self.renderer.clear_chunks();
+        if let Some(r) = self.renderer.get_mut() {
+            r.clear_chunks();
+        }
         self.mobs.list.clear();
         self.mobs.arrows.clear();
         self.nether_end_loaded();

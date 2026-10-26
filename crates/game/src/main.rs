@@ -81,6 +81,7 @@ mod post;
 mod pots;
 mod progress;
 mod rails;
+mod headless;
 mod renderer;
 mod scenefx;
 mod settings;
@@ -526,8 +527,8 @@ struct Toast {
 }
 
 struct Game {
-    window: Arc<Window>,
-    renderer: Renderer,
+    window: headless::Gpu<Arc<Window>>,
+    renderer: headless::Gpu<Renderer>,
     world: World,
     reg: Arc<BlockRegistry>,
     settings: Settings,
@@ -585,7 +586,7 @@ struct Game {
     pad_scroll_cd: f32,
 
     mobs: mobs::Mobs,
-    entities: entity::EntityRenderer,
+    entities: headless::Gpu<entity::EntityRenderer>,
     /// Survival mode: health, damage, no flying.
     survival: bool,
     health: f32,
@@ -760,7 +761,8 @@ fn level_path_hint(base: &Path, name: &str) -> PathBuf {
 }
 
 impl Game {
-    fn new(window: Arc<Window>, args: Args) -> Game {
+    /// `window` is None for the dedicated server, which never draws.
+    fn new(window: Option<Arc<Window>>, args: Args) -> Game {
         let base = base_dir();
         let loaded_plugins = plugins::load(&base);
         let settings_path = base.join("settings.ron");
@@ -812,17 +814,20 @@ impl Game {
         let tints: Vec<[f32; 3]> = (0..Biome::COUNT).map(|b| Biome::from_u8(b as u8).tint()).collect();
         let tables = Arc::new(MeshTables::new(&reg, tints));
         let reg_for_fluids = reg.clone();
-        let world = World::new(reg.clone(), gen.clone(), save.clone(), tables);
+        let mut world = World::new(reg.clone(), gen.clone(), save.clone(), tables);
+        world.headless = window.is_none();
 
         let tex = textures::load(&texture_names, &base, &settings.resource_packs, settings.texture_resolution);
         let textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
         let lod = lod::Lod::new(gen.clone(), lod::LodColors::new(&reg, &tex));
         let font = FontAtlas::new();
-        let mut renderer = pollster::block_on(Renderer::new(window.clone(), settings.vsync, &tex, &font));
-        renderer.cave_cull = !args.no_cave_cull;
+        let mut renderer = window.clone().map(|w| pollster::block_on(Renderer::new(w, settings.vsync, &tex, &font)));
+        if let Some(r) = renderer.as_mut() {
+            r.cave_cull = !args.no_cave_cull;
+        }
         let mut ui = UiBatch::new(&font);
         ui.gui = tex.gui.sprites.clone();
-        let mut audio = Audio::new(&settings, &base);
+        let mut audio = if args.server { None } else { Audio::new(&settings, &base) };
         if let Some(a) = audio.as_mut() {
             a.set_pack_sounds(textures::pack_sounds(&base, &settings.resource_packs, &audio::PACK_KEYS));
         }
@@ -842,7 +847,7 @@ impl Game {
         let pale = pale::Pale::new(&reg);
         let mut extras = vanilla_extras::Extras::new(&reg);
         extras.load(&save.dir, &level_path_hint(&base, &world_name));
-        let entities = entity::EntityRenderer::new(&renderer, &mob_reg, &painting_defs, &base, settings.texture_resolution);
+        let entities = renderer.as_ref().map(|r| entity::EntityRenderer::new(r, &mob_reg, &painting_defs, &base, settings.texture_resolution));
         let mut mobs = mobs::Mobs::new(mob_reg, reg.id_or_air("grass_block"), seed);
         mobs.enabled = settings.mobs;
         mobs.peaceful = settings.difficulty == 0;
@@ -922,15 +927,15 @@ impl Game {
             log::warn!("shader pack: {e}");
         }
 
-        log::info!("world '{world_name}' seed {seed}, {} blocks, {} textures ({}px)", reg.len(), reg.textures.len(), renderer.texture_size);
+        log::info!("world '{world_name}' seed {seed}, {} blocks, {} textures ({}px)", reg.len(), reg.textures.len(), renderer.as_ref().map_or(0, |r| r.texture_size));
         log::info!("{} interface pictures from packs", ui.gui.len());
         let now = Instant::now();
         if args.rain || args.storm {
             weather_save = weather::WeatherSave { raining: true, thunder: args.storm, timer: 600.0 };
         }
         let mut game = Game {
-            window,
-            renderer,
+            window: headless::Gpu::new(window),
+            renderer: headless::Gpu::new(renderer),
             world,
             reg,
             settings,
@@ -975,7 +980,7 @@ impl Game {
             pad_back: false,
             pad_scroll_cd: 0.0,
             mobs,
-            entities,
+            entities: headless::Gpu::new(entities),
             survival,
             health,
             max_health,
@@ -1195,8 +1200,9 @@ impl Game {
                 None => self.shader_error = Some(format!("pacote \"{}\" não encontrado", self.settings.shader_pack)),
             }
         }
-        self.renderer.post.taa = self.settings.taa;
-        if let Err(e) = self.renderer.set_shader(pack.as_ref(), self.settings.shader_quality) {
+        let Some(r) = self.renderer.get_mut() else { return };
+        r.post.taa = self.settings.taa;
+        if let Err(e) = r.set_shader(pack.as_ref(), self.settings.shader_quality) {
             self.toast(format!("Erro no shader: {e}"), 8.0);
             self.shader_error = Some(e);
         }
@@ -1212,7 +1218,9 @@ impl Game {
 
     fn sync_shader_options(&mut self) {
         let values = self.active_shader().map(|p| p.values(self.settings.shader_options.get(&p.id))).unwrap_or_default();
-        self.renderer.post.options = values;
+        if let Some(r) = self.renderer.get_mut() {
+            r.post.options = values;
+        }
     }
 
     /// Name for the pause menu and the F3 screen.
@@ -1255,6 +1263,9 @@ impl Game {
     }
 
     fn set_grab(&mut self, grab: bool) {
+        if self.window.get().is_none() {
+            return;
+        }
         if grab {
             let ok = self.window.set_cursor_grab(CursorGrabMode::Locked).or_else(|_| self.window.set_cursor_grab(CursorGrabMode::Confined));
             if ok.is_err() {
@@ -1354,7 +1365,9 @@ impl Game {
         let names: Vec<String> = self.reg.textures.iter().chain(self.items.textures.iter()).cloned().chain(extra_textures()).collect();
         let tex = textures::load(&names, &self.base, &self.settings.resource_packs, self.settings.texture_resolution);
         self.textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
-        self.renderer.reload_textures(&tex);
+        if let Some(r) = self.renderer.get_mut() {
+            r.reload_textures(&tex);
+        }
         self.ui.gui = tex.gui.sprites.clone();
         self.lod.set_colors(lod::LodColors::new(&self.reg, &tex));
         if let Some(a) = self.audio.as_mut() {
@@ -1565,7 +1578,9 @@ impl Game {
         self.world.update(center, rd);
         self.swing_update();
         let events = std::mem::take(&mut self.world.events);
-        self.renderer.apply_mesh_events(events);
+        if let Some(r) = self.renderer.get_mut() {
+            r.apply_mesh_events(events);
+        }
         if self.world_open && self.screen == Screen::Playing {
             self.plugins_tick(dt);
         }
@@ -1627,7 +1642,9 @@ impl Game {
             self.world.changed.clear();
             self.weather.columns.clear();
         }
-        self.renderer.set_rain(&self.weather.columns);
+        if let Some(r) = self.renderer.get_mut() {
+            r.set_rain(&self.weather.columns);
+        }
 
         if self.screen == Screen::Loading {
             let (sx, sz) = if self.needs_spawn { self.spawn_xz } else { (self.body.pos.x.floor() as i32, self.body.pos.z.floor() as i32) };
@@ -4465,14 +4482,12 @@ impl ApplicationHandler for App {
                 let (iw, ih) = i.dimensions();
                 winit::window::Icon::from_rgba(i.into_raw(), iw, ih).ok()
             });
-        let (w, h) = if self.args.server { (320, 240) } else { (w, h) };
         let attrs = Window::default_attributes()
             .with_title("Mine Clone")
             .with_window_icon(icon)
-            .with_inner_size(winit::dpi::PhysicalSize::new(w, h))
-            .with_visible(!self.args.server);
+            .with_inner_size(winit::dpi::PhysicalSize::new(w, h));
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
-        self.game = Some(Game::new(window, self.args.clone()));
+        self.game = Some(Game::new(Some(window), self.args.clone()));
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -4559,16 +4574,9 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn about_to_wait(&mut self, el: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, _el: &ActiveEventLoop) {
         if let Some(g) = self.game.as_mut() {
-            if g.args.server {
-                // A hidden window gets no redraws: the server ticks from here.
-                if !g.server_tick() {
-                    el.exit();
-                }
-            } else {
-                g.window.request_redraw();
-            }
+            g.window.request_redraw();
         }
     }
 }
@@ -4584,6 +4592,12 @@ fn main() {
         let _ = std::fs::write(&crash_file, format!("Mine Clone {} crashed:\n{info}\n\n{bt}\n", env!("CARGO_PKG_VERSION")));
         default_hook(info);
     }));
+    if args.server {
+        // No window and no graphics: the server only ticks the world and talks to players.
+        let mut game = Game::new(None, args);
+        while game.server_tick() {}
+        return;
+    }
     let event_loop = EventLoop::new().expect("event loop");
     event_loop.set_control_flow(ControlFlow::Poll);
     let mut app = App { args, game: None };

@@ -83,6 +83,8 @@ pub struct World {
     /// Blocks that stand in water (kelp): bodies swim through them.
     wet: Vec<bool>,
     pub meshed_count: usize,
+    /// The dedicated server draws nothing: lit chunks count as meshed without building meshes.
+    pub headless: bool,
     /// Multiplayer: every block change, for the network to pass on (None = not recording).
     pub net_log: Option<Vec<(IVec3, BlockId)>>,
     /// Multiplayer host: other players' chunks, kept loaded and lit (not meshed) around them.
@@ -177,6 +179,7 @@ impl World {
             climb,
             wet,
             meshed_count: 0,
+            headless: false,
             net_log: None,
             extra_centers: Vec::new(),
             swings: Vec::new(),
@@ -378,6 +381,14 @@ impl World {
             if !self.all_lit(p) {
                 continue;
             }
+            if self.headless {
+                let s = self.slots.get_mut(&p).unwrap();
+                if s.mesh_done == 0 {
+                    self.meshed_count += 1;
+                }
+                s.mesh_done = s.mesh_ver;
+                continue;
+            }
             let n = self.neighbours(p).unwrap();
             let s = self.slots.get_mut(&p).unwrap();
             s.mesh_pending = true;
@@ -514,10 +525,6 @@ impl World {
                 }
             }
         }
-    }
-
-    pub fn is_hidden(&self, p: IVec3) -> bool {
-        self.hidden.contains(&p)
     }
 
     /// Remove a block; sand and gravel above it fall down.

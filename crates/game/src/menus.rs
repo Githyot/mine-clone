@@ -107,7 +107,9 @@ impl Game {
         self.riding = None;
         self.seat = None;
         self.tnt.clear();
-        self.renderer.clear_chunks();
+        if let Some(r) = self.renderer.get_mut() {
+            r.clear_chunks();
+        }
         self.world_name = name.to_string();
         self.seed = seed;
         let (sx, sy, sz) = gen.find_spawn();
