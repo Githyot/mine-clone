@@ -1510,6 +1510,7 @@ impl crate::Game {
                     info: [0.0, 0.0, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0],
                     layers: [faces[0] as f32, faces[2] as f32, faces[3] as f32, flash],
                     rot: [0.0; 4],
+                    ..bytemuck::Zeroable::zeroed()
                 }
             })
             .collect()

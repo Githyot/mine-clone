@@ -137,6 +137,13 @@ impl MeshInput {
         MeshInput { blocks, light, biomes: c.biomes }
     }
 
+    /// Leave out one block, given relative to the centre chunk (-1..=16 reaches the border).
+    pub fn hide(&mut self, x: i32, y: i32, z: i32) {
+        if (-1..=16).contains(&x) && (-1..=16).contains(&z) && (0..CHUNK_HEIGHT as i32).contains(&y) {
+            self.blocks[pi((x + 1) as usize, (y + 1) as usize, (z + 1) as usize)] = AIR;
+        }
+    }
+
     pub fn section_has_blocks(&self, s: usize) -> bool {
         let y0 = s * 16 + 1;
         (y0..y0 + 16).any(|y| {

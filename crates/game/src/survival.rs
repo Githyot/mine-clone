@@ -1653,9 +1653,10 @@ impl Game {
                 let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
                 let p = pos.as_vec3() + Vec3::splat(0.5) - c;
                 let size = 1.0 + 0.1 * (k * std::f32::consts::PI).sin() + 0.01;
-                out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [0.0, 0.0, sky, blk], layers: [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32, 0.0], rot: [0.0; 4] });
+                out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [0.0, 0.0, sky, blk], layers: [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32, 0.0], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
             }
         }
+        out.extend(self.swing_instances(cam_block));
         // The orb sprite is loaded right after the item sprites.
         let orb_layer = (self.item_base as usize + self.items.textures.len()) as f32;
         let hand = self.hand_light_level();
@@ -1692,17 +1693,17 @@ impl Game {
                     let yaw = d.spin_rest + kf * 0.7;
                     let (lift, pitch, spread) = if flat > 0.5 { (0.02 + kf * 0.02, -std::f32::consts::FRAC_PI_2, 0.07) } else { (size * 0.5, 0.0, size * 1.1) };
                     let off = Vec3::new(yaw.cos(), 0.0, yaw.sin()) * kf * spread;
-                    out.push(GpuItem { pos: [p.x + off.x, p.y + lift, p.z + off.z, size], info: [yaw, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [pitch, 0.0, 0.0, 0.0] });
+                    out.push(GpuItem { pos: [p.x + off.x, p.y + lift, p.z + off.z, size], info: [yaw, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [pitch, 0.0, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
                 } else {
                     let off = Vec3::new(kf * 0.05, kf * 0.04, -kf * 0.05);
-                    out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0; 4] });
+                    out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
                 }
             }
         }
         for o in &self.surv.orbs {
             let p = o.pos - c + Vec3::Y * ((o.age * 4.0).sin() * 0.05);
             let size = 0.12 + (o.value as f32).sqrt() * 0.04;
-            out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [self.yaw, 1.0, 1.0, 1.0], layers: [orb_layer, orb_layer, orb_layer, 0.5], rot: [0.0; 4] });
+            out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [self.yaw, 1.0, 1.0, 1.0], layers: [orb_layer, orb_layer, orb_layer, 0.5], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
         }
         out
     }
@@ -2588,7 +2589,7 @@ impl Game {
                 let y = (tip + side) * std::f32::consts::FRAC_1_SQRT_2;
                 let q = rot * Quat::from_mat3(&Mat3::from_cols(x, y, face));
                 let (yaw, pitch, roll) = q.to_euler(EulerRot::YXZ);
-                out.push(GpuItem { pos: [fist.x, fist.y, fist.z, 0.62], info: [yaw, 1.0, b.light[0], b.light[1]], layers: [bow; 4], rot: [pitch, roll, 0.0, 0.0] });
+                out.push(GpuItem { pos: [fist.x, fist.y, fist.z, 0.62], info: [yaw, 1.0, b.light[0], b.light[1]], layers: [bow; 4], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
             }
         }
         out.extend(self.bobber_instance(cam_block));
@@ -2608,7 +2609,7 @@ impl Game {
                 let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
                 let p = a.pos - c;
                 for pitch in [0.0, std::f32::consts::FRAC_PI_2] {
-                    out.push(GpuItem { pos: [p.x, p.y, p.z, 0.5], info: [yaw, 1.0, sky, blk], layers: [arrow; 4], rot: [pitch, roll, 0.0, 0.0] });
+                    out.push(GpuItem { pos: [p.x, p.y, p.z, 0.5], info: [yaw, 1.0, sky, blk], layers: [arrow; 4], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
                 }
             }
         }
@@ -2698,6 +2699,7 @@ impl Game {
             info: [yaw, if look.flat { 1.0 } else { 0.0 }, (l >> 4) as f32 / 15.0, blk],
             layers: [look.layers[0], look.layers[1], look.layers[2], 0.0],
             rot: [pitch, roll, 0.0, 0.0],
+            ..bytemuck::Zeroable::zeroed()
         })
     }
 

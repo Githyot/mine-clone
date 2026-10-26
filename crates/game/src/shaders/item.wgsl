@@ -10,6 +10,11 @@ struct Item {
     layers: vec4<f32>,
     // x: pitch, y: roll (a held item tilts with the camera), zw unused.
     rot: vec4<f32>,
+    // A part of a block (a swinging door, a chest lid) when piv.w is 1: corners in the block's
+    // 0..1 frame, and the pivot inside the block that pos stands for.
+    bmin: vec4<f32>,
+    bmax: vec4<f32>,
+    piv: vec4<f32>,
 };
 
 @group(1) @binding(0) var itex: texture_2d_array<f32>;
@@ -46,7 +51,13 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
     let face = vi / 6u;
     let c = icorner(face, vi % 6u);
     let flat = it.info.y > 0.5;
+    let part = it.piv.w > 0.5;
     var local = (c - vec3<f32>(0.5)) * it.pos.w;
+    // Where this corner sits in the block, for a block part's texture.
+    let inb = mix(it.bmin.xyz, it.bmax.xyz, c);
+    if (part) {
+        local = inb - it.piv.xyz;
+    }
     if (flat) {
         local.z = local.z / 16.0;
     }
@@ -69,15 +80,38 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
         o.uv = vec2<f32>(c.x, 1.0 - c.y);
         o.layer = i32(it.layers.x);
     } else {
-        switch face {
-            case 0u, 1u: { o.uv = vec2<f32>(c.z, 1.0 - c.y); }
-            case 4u, 5u: { o.uv = vec2<f32>(c.x, 1.0 - c.y); }
-            default: { o.uv = c.xz; }
+        var wf = face;
+        if (part) {
+            // The piece of the texture under it, turned with the block like the terrain does
+            // (rot.z quarter turns), so it lines up with the still block it replaces.
+            var t = inb;
+            var turn = array<u32, 6>(4u, 5u, 2u, 3u, 1u, 0u);
+            for (var k = 0; k < i32(it.rot.z); k++) {
+                t = vec3<f32>(1.0 - t.z, t.y, t.x);
+                wf = turn[wf];
+            }
+            switch wf {
+                case 0u: { o.uv = vec2<f32>(1.0 - t.z, 1.0 - t.y); }
+                case 1u: { o.uv = vec2<f32>(t.z, 1.0 - t.y); }
+                case 2u: { o.uv = t.xz; }
+                case 3u: { o.uv = vec2<f32>(t.x, 1.0 - t.z); }
+                case 4u: { o.uv = vec2<f32>(t.x, 1.0 - t.y); }
+                default: { o.uv = vec2<f32>(1.0 - t.x, 1.0 - t.y); }
+            }
+        } else {
+            switch face {
+                case 0u, 1u: { o.uv = vec2<f32>(c.z, 1.0 - c.y); }
+                case 4u, 5u: { o.uv = vec2<f32>(c.x, 1.0 - c.y); }
+                default: { o.uv = c.xz; }
+            }
         }
-        if (face == 2u) {
+        if (wf == 2u) {
             o.layer = i32(it.layers.y);
-        } else if (face == 3u) {
+        } else if (wf == 3u) {
             o.layer = i32(it.layers.z);
+        } else if (part && wf == 4u && it.bmax.w > 0.0) {
+            // A chest's front (bmax.w is its layer).
+            o.layer = i32(it.bmax.w);
         } else {
             o.layer = i32(it.layers.x);
         }

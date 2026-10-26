@@ -13,6 +13,7 @@ mod server;
 mod plugins;
 mod nature;
 mod bench;
+mod swing;
 mod audio;
 mod backpacks;
 mod controller;
@@ -568,6 +569,8 @@ struct Game {
     last_health: f32,
     /// The block just placed and when, for its pop.
     place_pop: Option<(IVec3, BlockId, f32)>,
+    /// Doors and chest lids swinging (swing.rs).
+    swings: swing::Swings,
     heal_wave: f32,
     /// Action waiting for a button press in the controller menu.
     rebinding: Option<Action>,
@@ -955,6 +958,7 @@ impl Game {
             subtitles: Vec::new(),
             last_health: 0.0,
             place_pop: None,
+            swings: Default::default(),
             heal_wave: -10.0,
             rebinding: None,
             pad_held: HashSet::new(),
@@ -1549,6 +1553,7 @@ impl Game {
         let eye = self.body.eye();
         let center = ChunkPos::new((eye.x.floor() as i32) >> 4, (eye.z.floor() as i32) >> 4);
         self.world.update(center, rd);
+        self.swing_update();
         let events = std::mem::take(&mut self.world.events);
         self.renderer.apply_mesh_events(events);
         if self.world_open && self.screen == Screen::Playing {
@@ -4309,7 +4314,7 @@ impl Game {
             items.extend(self.armor_instances(&b));
             items.push((pd, b));
             let back = center + f * (world_h * 1.3) - block.as_vec3();
-            figure_backdrop = Some(item_render::GpuItem { pos: [back.x, back.y, back.z, world_h * 1.22 * (d + world_h * 1.3) / d], info: [0.0, 0.0, 0.0, 0.0], layers: [0.0; 4], rot: [0.0; 4] });
+            figure_backdrop = Some(item_render::GpuItem { pos: [back.x, back.y, back.z, world_h * 1.22 * (d + world_h * 1.3) / d], info: [0.0, 0.0, 0.0, 0.0], layers: [0.0; 4], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
         }
         if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
             let def = &self.mobs.reg.defs[pd];
@@ -4370,6 +4375,7 @@ impl Game {
                     info: [0.0, 0.0, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0],
                     layers: [layer, layer, layer, 0.0],
                     rot: [0.0; 4],
+                    ..bytemuck::Zeroable::zeroed()
                 });
             }
         }

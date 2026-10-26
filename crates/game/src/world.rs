@@ -24,7 +24,8 @@ type Neighbours = [Option<Arc<Chunk>>; 9];
 enum Job {
     Generate(ChunkPos),
     Light(ChunkPos, u32, Neighbours),
-    Mesh(ChunkPos, u32, Neighbours),
+    /// The blocks left out (a door that is swinging is drawn on its own meanwhile).
+    Mesh(ChunkPos, u32, Neighbours, Vec<IVec3>),
 }
 
 enum Done {
@@ -86,6 +87,11 @@ pub struct World {
     pub net_log: Option<Vec<(IVec3, BlockId)>>,
     /// Multiplayer host: other players' chunks, kept loaded and lit (not meshed) around them.
     pub extra_centers: Vec<(ChunkPos, i32)>,
+    /// Doors, trapdoors and gates that just opened or closed: (where, before, after), for
+    /// their swing (`swing.rs`).
+    pub swings: Vec<(IVec3, BlockId, BlockId)>,
+    /// Blocks the chunk meshes leave out while they are drawn moving.
+    hidden: HashSet<IVec3>,
 }
 
 impl World {
@@ -117,9 +123,12 @@ impl World {
                             let refs: [Option<&Chunk>; 9] = std::array::from_fn(|i| n[i].as_deref());
                             Done::Lit(pos, ver, compute_light(&reg, refs))
                         }
-                        Job::Mesh(pos, ver, n) => {
+                        Job::Mesh(pos, ver, n, hidden) => {
                             let refs: [Option<&Chunk>; 9] = std::array::from_fn(|i| n[i].as_deref());
-                            let input = MeshInput::new(refs);
+                            let mut input = MeshInput::new(refs);
+                            for h in hidden {
+                                input.hide(h.x - pos.x * 16, h.y, h.z - pos.y * 16);
+                            }
                             let mut v = Vec::new();
                             for s in 0..16 {
                                 if input.section_has_blocks(s) {
@@ -170,6 +179,8 @@ impl World {
             meshed_count: 0,
             net_log: None,
             extra_centers: Vec::new(),
+            swings: Vec::new(),
+            hidden: HashSet::new(),
         }
     }
 
@@ -371,7 +382,8 @@ impl World {
             let s = self.slots.get_mut(&p).unwrap();
             s.mesh_pending = true;
             self.in_flight += 1;
-            let job = Job::Mesh(p, s.mesh_ver, n);
+            let hidden: Vec<IVec3> = self.hidden.iter().copied().filter(|h| (h.x.div_euclid(16) - p.x).abs() <= 1 && (h.z.div_euclid(16) - p.y).abs() <= 1).collect();
+            let job = Job::Mesh(p, s.mesh_ver, n, hidden);
             let _ = if urgent { self.urgent_jobs.send(job) } else { self.jobs.send(job) };
         }
 
@@ -453,7 +465,14 @@ impl World {
         let Some(slot) = self.slots.get_mut(&cp) else { return false };
         let Some(c) = slot.chunk.as_mut() else { return false };
         let c = Arc::make_mut(c);
+        let was = c.get(x, p.y as usize, z);
         c.set(x, p.y as usize, z, id);
+        if was != id && self.swings.len() < 64 {
+            let (a, b) = (self.reg.get(was), self.reg.get(id));
+            if a.base == b.base && a.variant ^ b.variant == 4 && matches!(a.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate) {
+                self.swings.push((p, was, id));
+            }
+        }
         c.modified = true;
         if let Some(log) = self.net_log.as_mut() {
             log.push((p, id));
@@ -472,6 +491,33 @@ impl World {
             }
         }
         true
+    }
+
+    /// Leave a block out of the chunk meshes (or put it back), remeshing the chunks it touches.
+    pub fn set_hidden(&mut self, p: IVec3, hide: bool) {
+        let changed = if hide { self.hidden.insert(p) } else { self.hidden.remove(&p) };
+        if !changed {
+            return;
+        }
+        let mut cps = Vec::new();
+        for d in [IVec3::ZERO, IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z] {
+            let cp = split_xz(p.x + d.x, p.z + d.z).0;
+            if !cps.contains(&cp) {
+                cps.push(cp);
+            }
+        }
+        for cp in cps {
+            if let Some(s) = self.slots.get_mut(&cp) {
+                if s.mesh_done > 0 {
+                    // A mesh still in flight is thrown away when it comes back.
+                    s.mesh_ver += 1;
+                }
+            }
+        }
+    }
+
+    pub fn is_hidden(&self, p: IVec3) -> bool {
+        self.hidden.contains(&p)
     }
 
     /// Remove a block; sand and gravel above it fall down.

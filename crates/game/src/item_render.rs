@@ -15,6 +15,12 @@ pub struct GpuItem {
     pub layers: [f32; 4],
     /// Pitch and roll (held items); zero for items on the ground.
     pub rot: [f32; 4],
+    /// A box of a block instead of a cube (doors swinging, a chest lid): its corners in the
+    /// block's own 0..1 frame. `pos` is then the pivot it turns around, `piv` where that
+    /// pivot sits in the block, and `piv.w` is 1.
+    pub bmin: [f32; 4],
+    pub bmax: [f32; 4],
+    pub piv: [f32; 4],
 }
 
 pub struct ItemGpu {
