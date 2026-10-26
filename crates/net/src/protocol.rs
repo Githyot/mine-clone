@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a message changes shape. Host and guest must match.
-pub const PROTOCOL: u32 = 2;
+pub const PROTOCOL: u32 = 3;
 
 /// Default UDP port for hosted worlds.
 pub const DEFAULT_PORT: u16 = 24454;
@@ -118,6 +118,9 @@ pub enum ToGuest {
     Board(Board),
     /// The world's rules (RON text of the game's `Rules`), on joining and whenever they change.
     Rules(String),
+    /// A command the host aimed at this guest (`/dar Ana ...`, a command block's `@p`): run it
+    /// here, as allowed.
+    RunAs(String),
 }
 
 /// The world's scoreboard and teams (`/placar`, `/equipe`), kept by the host in

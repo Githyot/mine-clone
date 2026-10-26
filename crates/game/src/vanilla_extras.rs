@@ -862,6 +862,7 @@ impl Game {
         self.plugins_block(p, was, false);
         let name = self.reg.get(was).name.clone();
         self.infested_broken(p, &name);
+        self.pale_broken(p, was);
         if self.world.is_wet(was) && self.extras.water != AIR && self.world.block_or_air(p) == AIR {
             self.world.set_block(p, self.extras.water);
         }

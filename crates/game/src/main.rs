@@ -15,6 +15,8 @@ mod nature;
 mod bench;
 mod swing;
 mod stands;
+mod pale;
+mod selectors;
 mod audio;
 mod backpacks;
 mod controller;
@@ -704,6 +706,8 @@ struct Game {
     prog: progression::Prog,
     /// Lote 1 vanilla things: fire, jukebox, books, shields...
     extras: vanilla_extras::Extras,
+    /// Eyeblossoms and creaking hearts (pale.rs).
+    pale: pale::Pale,
     /// Lote 2 vanilla creatures' memory (allays, cures, spawners...).
     vm: vanilla_mobs::VMobs,
     rclicked: bool,
@@ -835,6 +839,7 @@ impl Game {
         let paintings = paintings::load(&save.dir, &painting_defs);
         let surv = survival::Survival::load(&save.dir, &items);
         let prog = progression::Prog::load(&save.dir);
+        let pale = pale::Pale::new(&reg);
         let mut extras = vanilla_extras::Extras::new(&reg);
         extras.load(&save.dir, &level_path_hint(&base, &world_name));
         let entities = entity::EntityRenderer::new(&renderer, &mob_reg, &painting_defs, &base, settings.texture_resolution);
@@ -963,6 +968,7 @@ impl Game {
             place_pop: None,
             swings: Default::default(),
             stands: Default::default(),
+            pale,
             heal_wave: -10.0,
             rebinding: None,
             pad_held: HashSet::new(),
@@ -1704,6 +1710,10 @@ impl Game {
                 if let Ok(scene) = std::env::var("MC_FASE6") {
                     // Test hook: a Phase 6 scene (stations, effects, advancements, mobs).
                     self.test_fase6(&scene);
+                }
+                if std::env::var("MC_PALE").is_ok() {
+                    // Test hook: the pale garden's and resin's new blocks.
+                    self.test_pale();
                 }
                 if std::env::var("MC_DECOR").is_ok() {
                     // Test hook: the new building blocks.

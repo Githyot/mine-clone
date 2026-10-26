@@ -147,6 +147,8 @@ pub struct TreeBlocks {
     grass: BlockId,
     snow_grass: BlockId,
     water: BlockId,
+    /// Now and then in a pale oak's trunk.
+    heart: BlockId,
 }
 
 impl TreeBlocks {
@@ -155,6 +157,7 @@ impl TreeBlocks {
         TreeBlocks {
             logs: Wood::ALL.map(|w| g(&format!("{}_log", w.name()))),
             leaves: Wood::ALL.map(|w| g(&format!("{}_leaves", w.name()))),
+            heart: g("creaking_heart"),
             vine: g("vine"),
             roots: g("mangrove_roots"),
             propagule: g("mangrove_propagule"),
@@ -449,6 +452,12 @@ impl<W: TreeSpace> Tree<'_, W> {
                 self.log(x + ox, ly, z + oz, log);
             }
             self.root(x + ox, y, z + oz, log);
+        }
+        if wood == Wood::PaleOak && self.b.heart != AIR && rng.chance(0.12) {
+            let (ox, oz) = [(0, 0), (1, 0), (0, 1), (1, 1)][rng.below(4) as usize];
+            if self.w.get(x + ox, y + 2, z + oz) == log {
+                self.w.set(x + ox, y + 2, z + oz, self.b.heart);
+            }
         }
     }
 

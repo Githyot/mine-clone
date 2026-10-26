@@ -3,8 +3,9 @@
 //! command (right click opens the editor); it is kept per world in `command_blocks.ron`.
 //! A guest's edit goes to the host, where the world and its redstone run.
 //!
-//! The command runs as the host with every permission; commands about "the player" (/dar,
-//! /tp, /modo) act on the host's own player, and `@p` is not understood yet.
+//! The command runs on the host with every permission. Commands about a player (/dar, /tp,
+//! /modo) act on the nearest one, or on whom `@p`, `@a`, `@r`, `@s`, `@e` or a name picks
+//! (selectors.rs); `~` in /setblock, /fill and /summon counts from the block.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -23,6 +24,8 @@ pub(crate) struct CmdBlocks {
     pub texts: HashMap<String, String>,
     /// The block being edited and the text so far.
     pub edit: Option<(IVec3, String)>,
+    /// The block whose command is running (where `~` counts from).
+    pub origin: Option<IVec3>,
 }
 
 fn key(dim: u8, p: IVec3) -> String {
@@ -31,7 +34,7 @@ fn key(dim: u8, p: IVec3) -> String {
 
 pub(crate) fn load(dir: &Path) -> CmdBlocks {
     let texts = std::fs::read_to_string(dir.join("command_blocks.ron")).ok().and_then(|t| ron::from_str(&t).ok()).unwrap_or_default();
-    CmdBlocks { texts, edit: None }
+    CmdBlocks { texts, edit: None, origin: None }
 }
 
 pub(crate) fn save(dir: &Path, c: &CmdBlocks) {
@@ -126,7 +129,9 @@ impl Game {
     pub(crate) fn cmdblock_run(&mut self, p: IVec3) {
         let Some(cmd) = self.cmdblocks.texts.get(&key(self.dim.as_u8(), p)).cloned() else { return };
         let cmd = if cmd.starts_with('/') { cmd } else { format!("/{cmd}") };
-        let out = self.run_command(&cmd, true);
+        self.cmdblocks.origin = Some(p);
+        let out = self.run_command_at(&cmd, p.as_vec3() + glam::Vec3::splat(0.5));
+        self.cmdblocks.origin = None;
         // The world changed for everyone: the sky and scores go out now.
         self.net_sky_now();
         if !out.is_empty() && (p.as_vec3() - self.body.pos).length() < 32.0 {

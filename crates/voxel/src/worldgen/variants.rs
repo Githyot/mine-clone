@@ -186,6 +186,9 @@ impl Generator {
                         // Pale moss carpets on the ground.
                         if p.pale_moss_carpet != AIR && chunk.get(ux, uy, uz) == p.grass && free(chunk, ux, uy + 1, uz) && rng.chance(0.18) {
                             chunk.set(ux, uy + 1, uz, p.pale_moss_carpet);
+                        } else if p.eyeblossom != AIR && chunk.get(ux, uy, uz) == p.grass && free(chunk, ux, uy + 1, uz) && rng.chance(0.025) {
+                            // Eyeblossoms, shut: they open on their own once night falls.
+                            chunk.set(ux, uy + 1, uz, p.eyeblossom);
                         }
                         // Moss hanging under the pale crowns, one to three blocks.
                         if p.pale_hanging_moss == AIR {

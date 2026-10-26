@@ -177,6 +177,8 @@ impl Game {
                                 self.hive_tick(p, id, (r >> 24) as u32);
                             } else if self.extras.ticks(id) {
                                 self.extras_tick(p, id, (r >> 24) as u32);
+                            } else if self.pale.ticks(id) {
+                                self.pale_tick(p, id, (r >> 24) as u32);
                             }
                         }
                         y += 16;

@@ -50,13 +50,13 @@ pub fn scope(cmd: &str) -> Scope {
     match cmd {
         "/modo" | "/gamemode" | "/dar" | "/give" | "/matar" | "/kill" | "/spawnpoint" | "/pos" => Scope::Player,
         "/tempo" | "/time" | "/clima" | "/weather" | "/dificuldade" | "/difficulty" | "/regra" | "/gamerule" | "/dizer" | "/say" | "/placar"
-        | "/scoreboard" | "/equipe" | "/team" => Scope::World,
+        | "/scoreboard" | "/equipe" | "/team" | "/setblock" | "/bloco" | "/fill" | "/preencher" | "/summon" | "/invocar" => Scope::World,
         "/semente" | "/seed" | "/ajuda" | "/help" | "/lista" | "/list" | "/tp" | "/regras" | "/plugins" | "/nutricao" | "/nutrição" => Scope::Free,
         _ => Scope::Unknown,
     }
 }
 
-pub const HELP: &str = "Comandos: /tempo dia|noite|<n>, /clima limpo|chuva|tempestade, /modo criativo|sobrevivencia, /dar <item> [qtd], /tp <nome>|<x y z>, /matar, /spawnpoint, /dificuldade 0-3, /regra <ciclo_dia|ciclo_clima|pvp|temperatura|sede|nutricao> <sim|nao>, /nutricao, /placar, /equipe, /semente, /lista";
+pub const HELP: &str = "Comandos: /tempo dia|noite|<n>, /clima limpo|chuva|tempestade, /modo criativo|sobrevivencia, /dar <item> [qtd], /tp <nome>|<x y z>, /matar, /spawnpoint, /dificuldade 0-3, /regra <ciclo_dia|ciclo_clima|pvp|temperatura|sede|nutricao> <sim|nao>, /nutricao, /placar, /equipe, /setblock, /fill, /summon, /semente, /lista. Para outro jogador: o nome ou @p, @a, @r, @s, @e";
 
 pub(crate) fn yes(s: &str) -> Option<bool> {
     match s.to_lowercase().as_str() {
@@ -227,7 +227,7 @@ impl Game {
                 format!("Ponto de renascer: {} {} {}", p.x, p.y, p.z)
             }
             "/plugins" => self.plugins_list_line(),
-            _ => match self.plugins_command(line) {
+            _ => match self.edit_command(&cmd, &args).or_else(|| self.plugins_command(line)) {
                 Some(r) => r,
                 None => format!("Comando desconhecido: {cmd} (/ajuda)"),
             },

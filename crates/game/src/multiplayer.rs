@@ -1649,6 +1649,12 @@ impl Game {
                     self.net.rules = r;
                 }
             }
+            ToGuest::RunAs(line) => {
+                let r = self.run_command(&line, true);
+                if !r.is_empty() {
+                    self.net_say(r, YELLOW);
+                }
+            }
             ToGuest::Op(op) => {
                 self.guest().op = op;
                 let t = if op { "Agora pode usar comandos (/ajuda)" } else { "Comandos desligados pelo anfitrião" };
@@ -2019,7 +2025,8 @@ impl Game {
                 }
                 return;
             }
-            let r = self.run_command(text, cheats);
+            // Alone or hosting, a command may name another player or use @p, @a...
+            let r = if cheats && !guest { self.run_command_at(text, self.body.pos) } else { self.run_command(text, cheats) };
             if !r.is_empty() {
                 self.net_say(r, YELLOW);
             }
@@ -2048,7 +2055,8 @@ impl Game {
         let cmd = parts.next().unwrap_or("");
         let arg = parts.next().unwrap_or("").to_string();
         match cmd {
-            "/tp" if !arg.is_empty() && arg.parse::<f32>().is_err() => {
+            // "/tp Ana": go to Ana. "/tp Ana 0 80 0" and "/tp @p ..." are for run_command_at.
+            "/tp" if !arg.is_empty() && arg.parse::<f32>().is_err() && !arg.starts_with('@') && parts.next().is_none() => {
                 let target = self.net.remotes.values().find(|r| r.name.eq_ignore_ascii_case(&arg)).map(|r| (r.state.dim, Vec3::from(r.state.pos)));
                 match target {
                     Some((d, p)) if d == self.dim.as_u8() => {

@@ -506,4 +506,12 @@
     (name: "pale_oak_planks", fuel: 15.0),
     (name: "pale_oak_slab", fuel: 7.5),
     (name: "pale_oak_sapling", fuel: 5.0, texture: Some("pale_oak_sapling")),
+    (name: "pale_oak_door", texture: Some("pale_oak_door"), max_stack: Some(16), fuel: 10.0),
+    (name: "pale_oak_trapdoor", fuel: 15.0),
+    (name: "pale_oak_sign", max_stack: Some(16), fuel: 10.0),
+    (name: "pale_oak_boat", display_name: Some("Barco de Carvalho Pálido"), max_stack: Some(1), texture: Some("pale_oak_boat")),
+    (name: "closed_eyeblossom", texture: Some("closed_eyeblossom")),
+    (name: "open_eyeblossom", texture: Some("open_eyeblossom")),
+    (name: "resin_clump", display_name: Some("Torrão de Resina"), texture: Some("resin_clump")),
+    (name: "resin_brick", display_name: Some("Tijolo de Resina"), texture: Some("resin_brick")),
 ])
