@@ -330,7 +330,8 @@ impl Game {
 
     fn content_hash(&self) -> u64 {
         let blocks = self.reg.blocks.iter().map(|b| b.name.as_str());
-        let items = self.items.items.iter().map(|i| i.name.as_str());
+        // Plugins' items are left out: a guest gets the host's plugins only after joining.
+        let items = self.items.items.iter().take(self.plugins.base_items.max(1)).map(|i| i.name.as_str());
         let mobs = self.mobs.reg.defs.iter().map(|d| d.name.as_str());
         net::content_hash(blocks.chain(std::iter::once("|")).chain(items).chain(std::iter::once("|")).chain(mobs))
     }
@@ -923,7 +924,12 @@ impl Game {
                     player,
                     op: self.host_ref().ops.contains(&name.to_lowercase()),
                 };
+                let files = self.plugins.files();
                 let h = self.host();
+                if !files.is_empty() {
+                    // First, so their items exist before the player's things arrive.
+                    h.host.send(id, &ToGuest::Plugins(files));
+                }
                 h.host.send(id, &ToGuest::Welcome(w));
                 if let Some(g) = h.guests.get_mut(&id) {
                     g.name = name.clone();
@@ -1541,6 +1547,9 @@ impl Game {
     fn guest_message(&mut self, m: ToGuest) {
         match m {
             ToGuest::Welcome(w) => self.guest_open(w),
+            ToGuest::Plugins(files) => {
+                self.plugins_from_host(&files);
+            }
             ToGuest::Bye(_) => {}
             ToGuest::Chunk { dim, pos, data } => {
                 if dim != self.dim.as_u8() || !self.world_open {
@@ -1753,6 +1762,7 @@ impl Game {
         self.net.mode = Mode::Off;
         self.net.remotes.clear();
         self.settings.spread_override = None;
+        self.plugins_leave_host();
         self.world.net_log = None;
         let why = if why.is_empty() { "a conexão caiu".to_string() } else { why.to_string() };
         if joined && self.world_open {
@@ -1760,6 +1770,14 @@ impl Game {
         }
         self.net.status = if joined { format!("Desconectado de {addr}: {why}") } else { format!("Não deu para entrar em {addr}: {why}") };
         self.set_screen(Screen::Multiplayer);
+    }
+
+    /// Some(may use commands) on a guest, None otherwise.
+    pub(crate) fn net_guest_op(&self) -> Option<bool> {
+        match &self.net.mode {
+            Mode::Guest(g) => Some(g.op),
+            _ => None,
+        }
     }
 
     /// Leave or close multiplayer (quitting to the title, closing the game).
@@ -1792,6 +1810,7 @@ impl Game {
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
                 self.settings.spread_override = None;
+                self.plugins_leave_host();
             }
         }
         self.world.net_log = None;

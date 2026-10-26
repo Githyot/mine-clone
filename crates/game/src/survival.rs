@@ -933,6 +933,9 @@ impl Game {
         if self.lead_use() || self.stand_use() || self.pet_use() || self.village_use() || self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
             return true;
         }
+        if self.plugins_use_item() {
+            return true;
+        }
         if let Some(st) = self.held_stack() {
             let name = self.items.get(st.item).name.clone();
             if crate::backpacks::slots(&name).is_some() {

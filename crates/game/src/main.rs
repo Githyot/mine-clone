@@ -503,6 +503,8 @@ pub(crate) enum Screen {
     Sign,
     /// The glyph grimoire: writing spells (Etapa 5).
     Grimoire,
+    /// A window a plugin opened.
+    Plugin,
 }
 
 /// What a row of the shader menu does.
@@ -768,7 +770,7 @@ impl Game {
     /// `window` is None for the dedicated server, which never draws.
     fn new(window: Option<Arc<Window>>, args: Args) -> Game {
         let base = base_dir();
-        let loaded_plugins = plugins::load(&base);
+        let mut loaded_plugins = plugins::load(&base);
         let settings_path = base.join("settings.ron");
         let mut settings = Settings::load(&settings_path);
         settings.controller.fill_missing();
@@ -797,7 +799,10 @@ impl Game {
             log::error!("{e}; using the built-in blocks, items and recipes");
             game_data(embedded::BLOCKS_RON, embedded::ITEMS_RON, embedded::RECIPES_RON).expect("built-in game data")
         });
-        let reg = Arc::new(reg);
+        let (reg, mut items) = (Arc::new(reg), items);
+        // Plugins' items go after everyone else's.
+        loaded_plugins.base_items = items.items.len();
+        loaded_plugins.register_items(&mut items);
         let item_base = reg.textures.len() as u16;
         let texture_names: Vec<String> = reg.textures.iter().chain(items.textures.iter()).cloned().chain(extra_textures()).collect();
 
@@ -1434,7 +1439,8 @@ impl Game {
                 Screen::Paused | Screen::Inventory => self.set_screen(Screen::Playing),
                 Screen::Controls => self.set_screen(self.options_back),
                 Screen::Shaders => self.set_screen(Screen::Paused),
-                Screen::Paintings | Screen::Sign | Screen::Grimoire => {
+                Screen::Paintings | Screen::Sign | Screen::Grimoire | Screen::Plugin => {
+                    self.plugins.screen = None;
                     self.extras.book = None;
                     self.set_screen(Screen::Playing);
                 }
@@ -3722,6 +3728,7 @@ impl Game {
             }
             Screen::Shaders => clicked_button = self.draw_shaders_menu(w, h, mouse),
             Screen::Grimoire => self.draw_grimoire(w, h, mouse),
+            Screen::Plugin => self.draw_plugin_screen(w, h, mouse),
             Screen::Dead => {
                 self.ui.rect(0.0, 0.0, w, h, [120, 0, 0, 110]);
                 self.ui.text_centered(w / 2.0, h / 2.0 - 40.0 * s, "Você morreu!", WHITE);

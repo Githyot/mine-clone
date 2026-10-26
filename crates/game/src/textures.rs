@@ -341,6 +341,9 @@ pub const BASE_RESOLUTION: u32 = 64;
 
 /// Load every texture into one array. `max_res` caps the layer size (16, 32, 64...): the setting
 /// for computers with little video memory; packs above it are shrunk smoothly.
+/// Pictures plugins drew for their items ("plugin_<item>"), used before any pack.
+pub static PLUGIN_TEXTURES: std::sync::Mutex<Vec<(String, image::RgbaImage)>> = std::sync::Mutex::new(Vec::new());
+
 pub fn load(names: &[String], base: &Path, enabled_packs: &[String], max_res: u32) -> TextureSet {
     let mut packs: Vec<Pack> = enabled_packs.iter().filter_map(|n| Pack::open(&base.join("resourcepacks").join(n))).collect();
     let used: Vec<String> = packs.iter().map(|p| p.name.clone()).collect();
@@ -355,7 +358,13 @@ pub fn load(names: &[String], base: &Path, enabled_packs: &[String], max_res: u3
         };
         let mc_folders: [&str; 2] = if kind == "item" { ["item", "items"] } else { ["block", "blocks"] };
         let mut found: Option<image::RgbaImage> = None;
+        if name.starts_with("plugin_") {
+            found = PLUGIN_TEXTURES.lock().unwrap().iter().find(|(n, _)| n == name).map(|(_, i)| i.clone());
+        }
         'packs: for pack in packs.iter_mut() {
+            if found.is_some() {
+                break;
+            }
             if let Some(img) = pack.read(&format!("textures/{kind}/{name}.png")).and_then(|b| decode(&b)) {
                 found = Some(first_frame(img));
                 break;

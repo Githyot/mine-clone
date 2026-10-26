@@ -204,6 +204,30 @@ impl ItemRegistry {
         Ok(reg)
     }
 
+    /// A plain item added after loading (by a plugin): a flat sprite named `texture`, at the
+    /// end of the list. None when the name is taken.
+    pub fn add_plain(&mut self, name: &str, display_name: &str, texture: &str, max_stack: u8, food: Option<FoodDef>) -> Option<ItemId> {
+        if self.by_name.contains_key(name) || self.items.len() >= ItemId::MAX as usize {
+            return None;
+        }
+        self.textures.push(format!("item/{texture}"));
+        let id = self.items.len() as ItemId;
+        self.by_name.insert(name.to_string(), id);
+        self.items.push(Item {
+            name: name.to_string(),
+            display_name: display_name.to_string(),
+            look: Look::Sprite((self.textures.len() - 1) as u16),
+            max_stack: max_stack.clamp(1, 64),
+            tool: None,
+            food,
+            armor: None,
+            places: None,
+            fuel: 0.0,
+            durability: None,
+        });
+        Some(id)
+    }
+
     #[inline]
     pub fn get(&self, id: ItemId) -> &Item {
         &self.items[id as usize]
