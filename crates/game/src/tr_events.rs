@@ -125,6 +125,7 @@ impl Game {
 
     /// Mobs killed this frame: jellies count for the jelly rain.
     pub(crate) fn tr_deaths(&mut self, deaths: &[(usize, Vec3)]) {
+        self.tr_soul_drops(deaths);
         let Some(rain) = self.t5.tr.ev.rain.as_mut() else { return };
         for &(def, _) in deaths {
             if self.mobs.reg.defs[def].name.starts_with("jelly_") {

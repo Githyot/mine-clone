@@ -454,9 +454,9 @@ impl Game {
         let n = self.t5.tr.lands.orbs;
         let at = p.as_vec3() + Vec3::splat(0.5);
         let rewards: &[(&str, u32)] = if ruin {
-            &[("ruin_thorn", 1), ("star_band", 1), ("umbral_ingot", 6), ("shadow_scale", 5)]
+            &[("ruin_thorn", 1), ("star_band", 1), ("umbral_ingot", 6), ("shadow_orb_lamp", 1)]
         } else {
-            &[("blight_rod", 1), ("panic_charm", 1), ("sanguinite_ingot", 6), ("blight_tissue", 5)]
+            &[("blight_rod", 1), ("panic_charm", 1), ("sanguinite_ingot", 6), ("blight_lamp", 1)]
         };
         let (name, count) = rewards[(n as usize * 7 + self.surv.rng.below(4) as usize) % rewards.len()];
         if let Some(id) = self.items.id(name) {

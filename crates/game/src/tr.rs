@@ -28,6 +28,9 @@ struct Saved {
     prism_done: Vec<(i32, i32)>,
     #[serde(default)]
     orbs: u32,
+    /// The pet and light pet out (tr_pets.rs).
+    #[serde(default)]
+    pets: Vec<String>,
 }
 
 #[derive(Default)]
@@ -36,6 +39,7 @@ pub struct Tr {
     pub(crate) ev: crate::tr_events::Events,
     pub(crate) lands: crate::tr_world::Lands,
     pub(crate) wep: crate::tr_weapons::Weapons,
+    pub(crate) pets: crate::tr_pets::Pets,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -51,6 +55,7 @@ impl Tr {
         tr.lands.done = s.lands_done.into_iter().collect();
         tr.lands.prism_done = s.prism_done.into_iter().collect();
         tr.lands.orbs = s.orbs;
+        tr.pets.out = s.pets;
         tr
     }
 
@@ -61,6 +66,7 @@ impl Tr {
             lands_done: self.lands.done.iter().copied().collect(),
             prism_done: self.lands.prism_done.iter().copied().collect(),
             orbs: self.lands.orbs,
+            pets: self.pets.out.clone(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
@@ -79,11 +85,15 @@ impl Game {
         self.update_tr_events(dt);
         self.update_lands(dt);
         self.update_tr_weapons(dt, use_held);
+        self.update_tr_pets(dt);
     }
 
     /// Right click with an item of this file; true when it did something.
     pub(crate) fn tr_use(&mut self, name: &str) -> Option<bool> {
         if let Some(r) = self.tr_weapon_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.tr_pet_use(name) {
             return Some(r);
         }
         match name {
@@ -322,6 +332,7 @@ impl Game {
                 self.args.show_inventory = true;
             }
             "weapons" => self.test_tr_weapons(),
+            "pets" | "mounts" | "harpies" | "wings" => self.test_tr_pets(scene),
             s if self.test_tr_event(s) => {}
             _ => log::warn!("unknown MC_TR scene {scene}"),
         }

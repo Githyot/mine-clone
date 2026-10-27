@@ -551,6 +551,24 @@ ARMAS NOVAS (lado Terraria, lote 4)
     você mira.
   Magias: Raio d'Água, Foice Demoníaca.
 
+ASAS, MONTARIAS E MASCOTES (lado Terraria, lote 5)
+  Almas: no modo difícil, monstros da Ruína e da Chaga soltam Alma da Noite, os do Prisma
+    soltam Alma da Luz, e as harpias soltam Alma do Voo.
+  Céu alto: acima da altura 200 você cai mais devagar. Harpias voam acima de 120.
+  Asas (acessório): de Fada, de Demônio, de Folha, de Gelo, de Chama e de Abelha. Cada uma
+    voa por um tempo diferente. Segure Espaço no ar para voar e para planar. Em terceira
+    pessoa (F5) você vê as asas nas costas. Receita: material da asa + Almas do Voo.
+  Montarias: use o item para chamar e agache (Shift) para descer.
+    Sela de Geleia (Rei Geleia): pula muito alto, e cair em cima de um monstro machuca.
+    Óculos de Mel (Rainha da Colmeia): a abelha voa enquanto você segura Espaço.
+    Maçã Abençoada (Unicórnio do Prisma, raro): corre rápido e atropela monstros.
+  Mascotes: use o item para chamar, use de novo para mandar para casa.
+    Mola do Olho (Grande Olho), Pote de Mel (Rainha da Colmeia), Bolha de Geleia (Rei Geleia).
+  Mascotes de luz iluminam o caminho: Sino de Fada (pó de fada + ouro), Lâmpada do Orbe
+    Sombrio (orbe da Ruína), Lâmpada da Chaga (coração da Chaga), Pote de Fogo-fátuo
+    (Alma da Noite + caco sombrio + pó de pedra luminosa + frasco).
+  Dá para ter um mascote e um mascote de luz ao mesmo tempo.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

@@ -397,7 +397,7 @@ def mobs_l1():
     out.append(f"""    // The Jelly King: a huge hopping jelly with a gold crown. Sheds jellies as it is hurt.
     (
         name: "king_jelly", display_name: "Rei Geleia", kind: Hostile, health: 420, speed: 2.0, attack: 6,
-        drops: [(item: "gel", min: 20, max: 40), (item: "jelly_hook", chance: 0.5), (item: "jelly_staff", chance: 0.5), (item: "royal_gel"), (item: "lesser_healing_potion", min: 3, max: 6), (item: "ninja_helmet", chance: 0.34), (item: "ninja_chestplate", chance: 0.34), (item: "ninja_leggings", chance: 0.34), (item: "ninja_boots", chance: 0.34)], xp: 90,
+        drops: [(item: "gel", min: 20, max: 40), (item: "jelly_hook", chance: 0.5), (item: "jelly_staff", chance: 0.5), (item: "royal_gel"), (item: "lesser_healing_potion", min: 3, max: 6), (item: "ninja_helmet", chance: 0.34), (item: "ninja_chestplate", chance: 0.34), (item: "ninja_leggings", chance: 0.34), (item: "ninja_boots", chance: 0.34), (item: "jelly_saddle", chance: 0.25), (item: "jelly_bubble", chance: 0.2)], xp: 90,
         width: 3.2, height: 2.6, spawn: Never, hops: true, scale: 4.5, boss: true,
         parts: {KING_PARTS},
         layers: [(part: 0, inflate: 0.6), (part: 1, inflate: 0.4)],
@@ -405,7 +405,7 @@ def mobs_l1():
     // The Great Eye: hovers, stares, dashes; at half health it opens a mouth of teeth.
     (
         name: "great_eye", display_name: "Grande Olho", kind: Hostile, health: 560, speed: 0.1, attack: 7,
-        drops: [(item: "lens", min: 4, max: 8), (item: "watcher_shield"), (item: "emerald", min: 3, max: 6), (item: "life_crystal", chance: 0.3)], xp: 110,
+        drops: [(item: "lens", min: 4, max: 8), (item: "watcher_shield"), (item: "emerald", min: 3, max: 6), (item: "life_crystal", chance: 0.3), (item: "eye_spring", chance: 0.2)], xp: 110,
         width: 2.2, height: 2.2, spawn: Never, scale: 2.4, boss: true, flies: true,
         parts: {EYE_PARTS},
         layers: [(part: 0, inflate: 0.5)],
@@ -435,7 +435,7 @@ def mobs_l1():
     // The Hive Queen: woken from her larva deep in the jungle; charges, stings, calls her drones.
     (
         name: "hive_queen", display_name: "Rainha da Colmeia", kind: Hostile, health: 680, speed: 0.1, attack: 7,
-        drops: [(item: "beeswax", min: 10, max: 17), (item: "hive_staff", chance: 0.4), (item: "hive_blade", chance: 0.4), (item: "hive_pack"), (item: "honeycomb", min: 10, max: 20)], xp: 140,
+        drops: [(item: "beeswax", min: 10, max: 17), (item: "hive_staff", chance: 0.4), (item: "hive_blade", chance: 0.4), (item: "hive_pack"), (item: "honeycomb", min: 10, max: 20), (item: "honey_goggles", chance: 0.15), (item: "honey_jar", chance: 0.2)], xp: 140,
         width: 2.6, height: 2.0, spawn: Never, scale: 2.6, boss: true, flies: true,
         parts: {BEE_PARTS},
         layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.5)],
@@ -1348,7 +1348,7 @@ def mobs_l3():
     ),
     (
         name: "prism_unicorn", display_name: "Unicórnio Prismático", kind: Hostile, health: 110, speed: 4.5, attack: 9,
-        drops: [(item: "unicorn_horn", chance: 0.4), (item: "pixie_dust", min: 1, max: 2)], xp: 14,
+        drops: [(item: "unicorn_horn", chance: 0.4), (item: "pixie_dust", min: 1, max: 2), (item: "blessed_apple", chance: 0.03)], xp: 14,
         width: 1.3, height: 1.9, spawn: Never, scale: 1.1,
         parts: {UNICORN_PARTS},
         layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.4)],
@@ -2005,6 +2005,246 @@ SHAPELESS_L4 = [
 
 
 # ==============================================================================================
+# Lote 5: wings, item mounts, pets and light pets, souls, harpies of the high sky
+# ==============================================================================================
+
+WING = [
+    "................",
+    "..1.........1...",
+    ".121.......121..",
+    ".1231.....1321..",
+    "12341.....14321.",
+    "123451...154321.",
+    "1234521.1254321.",
+    ".123452.2543211.",
+    ".12345222543221.",
+    "..12345254321...",
+    "..123451543211..",
+    "...1234.4321....",
+    "...123...321....",
+    "....12...21.....",
+    ".....1...1......",
+    "................",
+]
+
+SOUL = [
+    "................",
+    "................",
+    "......1111......",
+    ".....123321.....",
+    "....12344321....",
+    "....13455431....",
+    "....13455431....",
+    "....12344321....",
+    ".....123321.....",
+    "......1221......",
+    ".......12.......",
+    "......12........",
+    ".....12.........",
+    "................",
+    "................",
+    "................",
+]
+
+SADDLE = [
+    "................",
+    "................",
+    "................",
+    "....11111111....",
+    "...1222222221...",
+    "..122333333221..",
+    "..123344443321..",
+    "..123344443321..",
+    "..1aaaaaaaaaa1..",
+    "...1a......a1...",
+    "...1a......a1...",
+    "....b......b....",
+    "....b......b....",
+    "................",
+    "................",
+    "................",
+]
+
+APPLE = [
+    "................",
+    "........ab......",
+    ".......ab.......",
+    ".....1111111....",
+    "....122222221...",
+    "...12333333221..",
+    "...12344433221..",
+    "...12345433221..",
+    "...12344433221..",
+    "...12333333221..",
+    "....122222221...",
+    ".....1111111....",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+
+LAMP = [
+    "................",
+    "......aaaa......",
+    ".....a....a.....",
+    "......aaaa......",
+    ".....bbbbbb.....",
+    "....1111111b....",
+    "....1234321.....",
+    "....1345431.....",
+    "....1355531.....",
+    "....1345431.....",
+    "....1234321.....",
+    "....1111111.....",
+    ".....bbbbbb.....",
+    "................",
+    "................",
+    "................",
+]
+
+WINGS_L5 = [
+    # name, display, palette, recipe material
+    ("fairy_wings", "Asas de Fada", pal("#5a8aa0", "#8ac4d6", "#c0e6f0", "#f0d0f0", "#ffffff"), "pixie_dust"),
+    ("demon_wings", "Asas Demoníacas", pal("#1a0a14", "#3a1428", "#5a2040", "#8a3a5a", "#c86a8a"), "soul_of_night"),
+    ("leaf_wings", "Asas de Folha", pal("#0e2a10", "#1e4a1c", "#3a7a2a", "#6aaa4a", "#b4e08a"), "jungle_spore"),
+    ("frost_wings", "Asas de Gelo", pal("#2a4a6a", "#4a7aa0", "#7aaed4", "#b4daf4", "#eef8ff"), "frost_shard"),
+    ("flame_wings", "Asas de Chama", FIRE, "magmarite_ingot"),
+    ("bee_wings", "Asas de Abelha", pal("#3a2204", "#8a5a0e", "#d49a1e", "#f4c84a", "#fff0a0"), "beeswax"),
+]
+
+MOUNT_PARTS_JELLY = """[
+            (size: (12, 10, 12), origin: (-6, 0, -6), uv: (0, 0)),
+            (size: (8, 2, 6), origin: (-4, 10, -3), uv: (0, 24)),
+        ]"""
+
+HARPY_PARTS = """[
+            (size: (6, 10, 4), origin: (-3, 8, -2), uv: (0, 0)),
+            (size: (6, 6, 6), origin: (-3, 18, -3), uv: (0, 16), anim: Head, pivot: (0, 18, 0)),
+            (size: (14, 1, 8), origin: (-17, 16, -3), uv: (0, 30), anim: Wing(0), pivot: (-3, 16, 1)),
+            (size: (14, 1, 8), origin: (3, 16, -3), uv: (0, 30), anim: Wing(1), pivot: (3, 16, 1)),
+            (size: (2, 8, 2), origin: (-3, 0, -1), uv: (24, 0), anim: Leg(0), pivot: (-2, 8, 0)),
+            (size: (2, 8, 2), origin: (1, 0, -1), uv: (24, 0), anim: Leg(1), pivot: (2, 8, 0)),
+        ]"""
+
+WISP_PARTS = """[
+            (size: (4, 4, 4), origin: (-2, 0, -2), uv: (0, 0), anim: Head, pivot: (0, 2, 0)),
+        ]"""
+
+
+def mobs_l5():
+    def pet(name, display, parts, scale, layers="[]", w=0.5, h=0.5):
+        return f"""    (
+        name: "{name}", display_name: "{display}", kind: Passive, health: 50, speed: 3.0, attack: 0,
+        drops: [], xp: 0,
+        width: {w}, height: {h}, spawn: Never, scale: {scale}, flies: true,
+        parts: {parts},
+        layers: {layers},
+    ),"""
+
+    def mount(name, display, parts, scale, speed, w, h, layers, extra=""):
+        return f"""    (
+        name: "{name}", display_name: "{display}", kind: Passive, health: 200, speed: {speed}, attack: 0,
+        drops: [], xp: 0,
+        width: {w}, height: {h}, spawn: Never, scale: {scale}{extra},
+        parts: {parts},
+        layers: {layers},
+    ),"""
+
+    return ["    // Lote 5: pets, light pets, item mounts and the harpies of the high sky.",
+            pet("pet_eye", "Olhinho", EYE_PARTS, 0.45),
+            pet("pet_bee", "Abelhinha", BEE_PARTS, 0.5),
+            pet("pet_jelly", "Geleiazinha", JELLY_PARTS, 0.5, w=0.4, h=0.35),
+            pet("pet_fairy", "Fada", PIXIE_PARTS, 0.9, "[(part: 0, inflate: 0.4)]"),
+            pet("pet_orb", "Orbe Sombrio", WISP_PARTS, 1.6, w=0.4, h=0.4),
+            pet("pet_heart", "Coração Pulsante", WISP_PARTS, 1.6, w=0.4, h=0.4),
+            pet("pet_wisp", "Fogo-Fátuo", WISP_PARTS, 1.3, w=0.3, h=0.3),
+            mount("mount_jelly", "Geleia de Montaria", MOUNT_PARTS_JELLY, 3.0, 3.2, 1.6, 1.4, "[(part: 0, inflate: 0.5)]", ", hops: true"),
+            mount("mount_bee", "Abelha de Montaria", BEE_PARTS, 1.8, 3.6, 1.4, 1.2, "[(part: 0, inflate: 0.5)]"),
+            mount("mount_unicorn", "Unicórnio de Montaria", UNICORN_PARTS, 1.1, 5.0, 1.3, 1.9, "[(part: 0, inflate: 0.5), (part: 1, inflate: 0.4)]"),
+            f"""    (
+        name: "harpy", display_name: "Harpia", kind: Hostile, health: 40, speed: 0.1, attack: 5,
+        drops: [(item: "feather", min: 1, max: 3)], xp: 6,
+        width: 0.7, height: 1.6, spawn: Never, scale: 1.3, flies: true,
+        parts: {HARPY_PARTS},
+        layers: [(part: 1, inflate: 0.5)],
+    ),"""]
+
+
+HARPY = pal("#6a4a8a", "#8a6aaa", "#aa8ac8", "#c8a8e0", "#e4d0f4")
+HARPY_SKIN = pal("#b08a6a", "#c8a07a", "#dcb88e", "#ecd0a8")
+
+
+def harpy_painter(c):
+    if c.role == "wing":
+        return g.pick(HARPY, 0.15 + 0.6 * c.jit + 0.2 * ((c.i // 2) % 2))
+    if c.role == "head":
+        if c.face == "front" and c.j >= 2:
+            if c.j == 3 and c.i in (1, 4):
+                return (40, 20, 60)
+            return g.pick(HARPY_SKIN, 0.3 + 0.5 * c.jit)
+        return g.pick(HARPY, 0.4 + 0.5 * c.jit)
+    if c.role == "leg":
+        return g.pick(pal("#c49418", "#ecc434", "#fce47a"), c.jit)
+    return g.pick(HARPY, 0.2 + 0.6 * c.jit)
+
+
+def wisp_painter(p):
+    def f(c):
+        cx, cy = c.i - (c.fw - 1) / 2, c.j - (c.fh - 1) / 2
+        return g.pick(p, 0.95 - 0.25 * (cx * cx + cy * cy) + 0.1 * c.jit)
+    return f
+
+
+def skins_l5():
+    base = skins_l1()
+    l3 = skins_l3()
+    vein = pal("#6a0a12", "#8a1420", "#a8202c")
+    return {
+        "pet_eye": (["eye", "stalk", "stalk", "stalk"], e5s.eye_painter(pal("#e8e2da", "#f0ece6", "#fbf8f4"), vein, pal("#2a4a9a", "#3a6ac4", "#6a9ae8")), e5s.eye_overlay(vein)),
+        "pet_bee": base["hive_drone"],
+        "pet_jelly": (["jelly"], jelly_painter(JELLY_PALS["jelly_pink"]), jelly_overlay(JELLY_PALS["jelly_pink"])),
+        "pet_fairy": l3["prism_pixie"],
+        "pet_orb": (["orb"], wisp_painter(pal("#2a1040", "#5a2a8a", "#9a5ad4", "#d4a8ff", "#ffffff")), None),
+        "pet_heart": (["orb"], wisp_painter(pal("#3a0408", "#a0141e", "#e8343a", "#ff9a8a", "#ffffff")), None),
+        "pet_wisp": (["orb"], wisp_painter(pal("#0a3a2a", "#1a8a6a", "#3ae0b0", "#a0ffe0", "#ffffff")), None),
+        "mount_jelly": (["jelly", "saddle"], jelly_painter(JELLY_PALS["jelly_blue"], pal("#3a2010", "#5a3418", "#7a4a24", "#9a6232")), jelly_overlay(JELLY_PALS["jelly_blue"])),
+        "mount_bee": base["hive_queen"],
+        "mount_unicorn": l3["prism_unicorn"],
+        "harpy": (["body", "head", "wing", "wing", "leg", "leg"], harpy_painter, None),
+    }
+
+
+def items_l5():
+    stack1 = "max_stack: Some(1)"
+    out = [
+        ("soul_of_flight", "Alma do Voo", icon(SOUL, pal("#2a4a6a", "#4a8ac4", "#8ac4f0", "#c8e8ff", "#ffffff")), ""),
+        ("soul_of_light", "Alma da Luz", icon(SOUL, pal("#6a3a5a", "#c47aa8", "#f0b4d8", "#ffe0f0", "#ffffff")), ""),
+        ("soul_of_night", "Alma da Noite", icon(SOUL, pal("#1a0a2a", "#3a1a5a", "#6a3a9a", "#a87ad0", "#e0c8ff")), ""),
+        ("jelly_saddle", "Sela Gelatinosa", icon2(SADDLE, JELLY_PALS["jelly_blue"], WOOD), stack1),
+        ("honey_goggles", "Óculos de Mel", icon2(SADDLE, pal("#3a2204", "#8a5a0e", "#d49a1e", "#f4c84a", "#fff0a0"), STEEL), stack1),
+        ("blessed_apple", "Maçã Abençoada", icon2(APPLE, pal("#7a5408", "#c49418", "#ecc434", "#fce47a", "#ffffff"), pal("#3a2a10", "#3a8a2a")), stack1),
+        ("eye_spring", "Olho na Mola", e5.eye("#f0ece6", "#3a6ac4"), stack1),
+        ("honey_jar", "Pote de Mel", icon2(LAMP, pal("#6a3e08", "#a0640e", "#d49a1e", "#f4c84a", "#fff0a0"), WOOD), stack1),
+        ("jelly_bubble", "Bolha de Geleia", icon(GEL, JELLY_PALS["jelly_pink"]), stack1),
+        ("fairy_bell", "Sino de Fada", icon2(LAMP, pal("#5a8aa0", "#8ac4d6", "#c0e6f0", "#f0d0f0", "#ffffff"), gi.MATERIALS["golden"]), stack1),
+        ("shadow_orb_lamp", "Orbe Sombrio", icon2(LAMP, pal("#2a1040", "#5a2a8a", "#9a5ad4", "#d4a8ff", "#ffffff"), STEEL), stack1),
+        ("blight_lamp", "Coração Pulsante", icon2(LAMP, pal("#3a0408", "#a0141e", "#e8343a", "#ff9a8a", "#ffffff"), STEEL), stack1),
+        ("wisp_jar", "Pote de Fogo-Fátuo", icon2(LAMP, pal("#0a3a2a", "#1a8a6a", "#3ae0b0", "#a0ffe0", "#ffffff"), STEEL), stack1),
+    ]
+    for name, disp, p, _ in WINGS_L5:
+        out.append((name, disp, icon(WING, p), stack1))
+    return out
+
+
+SHAPED_L5 = [(["W W", "WSW", "W W"], {"W": mat, "S": "soul_of_flight"}, name, 1) for name, _, _, mat in WINGS_L5] + [
+    ([" G ", "PPP", "PPP"], {"G": "gold_nugget", "P": "pixie_dust"}, "fairy_bell", 1),
+    ([" G ", "DSD", " B "], {"G": "glowstone_dust", "D": "dark_shard", "S": "soul_of_night", "B": "glass_bottle"}, "wisp_jar", 1),
+]
+SHAPELESS_L5 = []
+
+
+# ==============================================================================================
 
 def write_data(items, blocks, mobs, shaped, shapeless, smelting):
     OUT.mkdir(parents=True, exist_ok=True)
@@ -2073,12 +2313,12 @@ def write_skins(skins):
 
 
 def main():
-    items = items_l1() + items_l2() + items_l3() + items_l4()
+    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5()
     blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3
-    mobs = mobs_l1() + mobs_l2() + mobs_l3()
-    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4, SMELTING_L2 + SMELTING_L3)
+    mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5()
+    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5, SMELTING_L2 + SMELTING_L3)
     structures_l3()
-    skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3()})
+    skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5()})
     pics = []
     for name, _, img, _ in items:
         im = gt.to_image(img)

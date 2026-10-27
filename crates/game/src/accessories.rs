@@ -63,7 +63,9 @@ const JUMPS: &[(&str, f32)] = &[
 impl Game {
     /// Seconds of lift in the air: wings, then rocket boots, then steam boots.
     fn flight_max(&self) -> f32 {
-        if self.wears("angel_wings") {
+        if let Some(t) = self.tr_wing().map(|w| w.1) {
+            t
+        } else if self.wears("angel_wings") {
             3.2
         } else if self.wears("comet_boots") {
             2.6
@@ -197,7 +199,7 @@ impl Game {
         let glow = self.glow_layer();
         let hooked = self.t5.hook.attached();
         if !ground && !hooked && self.seat.is_none() && self.riding.is_none() {
-            let wings = self.wears("angel_wings") || self.wears("feather_wings");
+            let wings = self.wears("angel_wings") || self.wears("feather_wings") || self.tr_wing().is_some();
             let rocket = !wings && (self.wears("rocket_boots") || self.wears("comet_boots"));
             let steam = !wings && !rocket && self.wears("steam_boots");
             let next = if pressed {
@@ -262,7 +264,13 @@ impl Game {
                 }
                 self.fall_peak = self.body.pos.y;
                 if self.surv.rng.f32() < dt * 20.0 {
-                    let tint = if self.wears("angel_wings") { [1.5, 1.4, 0.8] } else { [1.2, 1.2, 1.2] };
+                    let tint = if let Some(w) = self.tr_wing() {
+                        w.2
+                    } else if self.wears("angel_wings") {
+                        [1.5, 1.4, 0.8]
+                    } else {
+                        [1.2, 1.2, 1.2]
+                    };
                     self.particles.glow(self.body.pos + Vec3::Y * 1.2, Vec3::new(0.0, -1.5, 0.0), glow, tint, 0.08, 0.5);
                 }
             }

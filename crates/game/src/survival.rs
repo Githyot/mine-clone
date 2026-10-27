@@ -2609,6 +2609,7 @@ impl Game {
         out.extend(self.bobber_instance(cam_block));
         out.extend(self.shot_instances(cam_block));
         out.extend(self.tr_weapon_instances(cam_block));
+        out.extend(self.tr_wing_instances(cam_block));
         if let Some(arrow) = sprite("arrow") {
             let c = cam_block.as_vec3();
             for a in &self.mobs.arrows {
@@ -2732,7 +2733,12 @@ impl Game {
         }
         for m in &self.mobs.list {
             // Fire imps glow like a torch.
-            let glows = matches!(self.mobs.reg.defs[m.def].name.as_str(), "fire_imp" | "ember_wraith");
+            let name = self.mobs.reg.defs[m.def].name.as_str();
+            if let Some(l) = crate::tr_pets::light_of(name) {
+                found.push((m.body.pos.distance(eye), m.body.pos + Vec3::Y * 0.2, l));
+                continue;
+            }
+            let glows = matches!(name, "fire_imp" | "ember_wraith");
             if (m.on_fire > 0.0 || glows) && m.alive() {
                 found.push((m.body.pos.distance(eye), m.body.pos + Vec3::Y * 0.8, if glows { 0.7 } else { 0.85 }));
             }
