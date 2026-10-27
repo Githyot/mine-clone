@@ -585,6 +585,30 @@
         ],
         layers: [],
     ),
+    // Not a creature: windmill sails (windmill.rs), turning in front of their hub block. Model
+    // pixels are an eighth of a block. The hub, then one arm (spar, cloth, leading board) four
+    // times, each drawn pointing up and given its quarter turn in code. The wooden lattice over
+    // the cloth stands out in relief. Painted by tools/gen_windmill_sails.py.
+    (
+        name: "windmill_sails", display_name: "Hélice de Moinho", kind: Passive, health: 6, speed: 0.0,
+        width: 1.0, height: 1.0, spawn: Never, scale: 2.0,
+        parts: [
+            (size: (6, 6, 4), origin: (-3, -3, 0), uv: (0, 0)),
+            (size: (2, 34, 2), origin: (-1, 3, 1), uv: (0, 12)),
+            (size: (10, 26, 1), origin: (1, 10, 2), uv: (8, 12)),
+            (size: (3, 26, 1), origin: (-4, 10, 2), uv: (30, 12)),
+            (size: (2, 34, 2), origin: (-1, 3, 1), uv: (0, 12)),
+            (size: (10, 26, 1), origin: (1, 10, 2), uv: (8, 12)),
+            (size: (3, 26, 1), origin: (-4, 10, 2), uv: (30, 12)),
+            (size: (2, 34, 2), origin: (-1, 3, 1), uv: (0, 12)),
+            (size: (10, 26, 1), origin: (1, 10, 2), uv: (8, 12)),
+            (size: (3, 26, 1), origin: (-4, 10, 2), uv: (30, 12)),
+            (size: (2, 34, 2), origin: (-1, 3, 1), uv: (0, 12)),
+            (size: (10, 26, 1), origin: (1, 10, 2), uv: (8, 12)),
+            (size: (3, 26, 1), origin: (-4, 10, 2), uv: (30, 12)),
+        ],
+        layers: [(part: 2, inflate: 0.5), (part: 5, inflate: 0.5), (part: 8, inflate: 0.5), (part: 11, inflate: 0.5)],
+    ),
     // A traveling trader who turns up in caves now and then (ideas from Goblin Traders).
     (
         name: "goblin_trader", display_name: "Mercador Goblin", kind: Passive, health: 30, speed: 2.4,

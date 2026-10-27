@@ -96,6 +96,11 @@ pub struct World {
     pub swings: Vec<(IVec3, BlockId, BlockId)>,
     /// Blocks the chunk meshes leave out while they are drawn moving.
     hidden: HashSet<IVec3>,
+    /// Blocks with a turning model drawn over them (windmill sails), by block id.
+    spins: Vec<bool>,
+    /// Where those blocks are in the loaded chunks, kept up to date as chunks come and go and
+    /// blocks change, so drawing them never has to search the world.
+    pub spinners: HashMap<ChunkPos, Vec<IVec3>>,
 }
 
 impl World {
@@ -159,6 +164,7 @@ impl World {
         let top = reg.blocks.iter().map(|b| b.height as f32 / 16.0).collect();
         let climb = reg.blocks.iter().map(|b| b.shape == Shape::Ladder || matches!(b.name.as_str(), "vine" | "weeping_vines" | "twisting_vines" | "scaffolding" | "cave_vines")).collect();
         let wet = reg.blocks.iter().map(|b| b.waterlogged).collect();
+        let spins = reg.blocks.iter().map(|b| reg.blocks[b.base as usize].name == "windmill_sails").collect();
         World {
             tables,
             reg,
@@ -187,6 +193,35 @@ impl World {
             extra_centers: Vec::new(),
             swings: Vec::new(),
             hidden: HashSet::new(),
+            spins,
+            spinners: HashMap::new(),
+        }
+    }
+
+    /// Note down the turning blocks of a chunk that just arrived.
+    fn find_spinners(&mut self, c: &Chunk) {
+        self.spinners.remove(&c.pos);
+        let spins = &self.spins;
+        if !spins.iter().any(|&b| b) {
+            return;
+        }
+        let mut found = Vec::new();
+        for (si, sec) in c.sections.iter().enumerate() {
+            if sec.is_empty() || !sec.may_contain(|b| spins[b as usize]) {
+                continue;
+            }
+            for y in si * 16..si * 16 + 16 {
+                for z in 0..16 {
+                    for x in 0..16 {
+                        if spins[c.get(x, y, z) as usize] {
+                            found.push(IVec3::new(c.pos.x * 16 + x as i32, y as i32, c.pos.y * 16 + z as i32));
+                        }
+                    }
+                }
+            }
+        }
+        if !found.is_empty() {
+            self.spinners.insert(c.pos, found);
         }
     }
 
@@ -238,9 +273,13 @@ impl World {
                     if let Some(s) = self.slots.get_mut(&pos) {
                         // A chunk that came over the network meanwhile wins.
                         if s.chunk.is_none() {
-                            s.chunk = Some(Arc::new(c));
+                            let c = Arc::new(c);
+                            s.chunk = Some(c.clone());
+                            s.gen_pending = false;
+                            self.find_spinners(&c);
+                        } else {
+                            s.gen_pending = false;
                         }
-                        s.gen_pending = false;
                     }
                 }
                 Done::Lit(pos, ver, light) => {
@@ -426,12 +465,14 @@ impl World {
                 self.events.push(MeshEvent::Remove(p));
             }
             self.slots.remove(&p);
+            self.spinners.remove(&p);
         }
     }
 
     /// Put in a whole chunk (sent by a multiplayer host), relighting and remeshing around it.
     pub fn replace_chunk(&mut self, chunk: Chunk) {
         let cp = chunk.pos;
+        self.find_spinners(&chunk);
         let slot = self.slots.entry(cp).or_insert_with(|| Slot { light_ver: 1, mesh_ver: 1, ..Default::default() });
         slot.chunk = Some(Arc::new(chunk));
         self.unsaved.insert(cp);
@@ -481,6 +522,13 @@ impl World {
         let c = Arc::make_mut(c);
         let was = c.get(x, p.y as usize, z);
         c.set(x, p.y as usize, z, id);
+        if self.spins[was as usize] != self.spins[id as usize] {
+            let list = self.spinners.entry(cp).or_default();
+            list.retain(|&q| q != p);
+            if self.spins[id as usize] {
+                list.push(p);
+            }
+        }
         if was != id && self.swings.len() < 64 {
             let (a, b) = (self.reg.get(was), self.reg.get(id));
             if a.base == b.base && a.variant ^ b.variant == 4 && matches!(a.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate) {

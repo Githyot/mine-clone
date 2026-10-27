@@ -162,7 +162,10 @@ impl Structures {
                 *t = (0..reg.blocks.len())
                     .map(|i| {
                         let b = &reg.blocks[i];
-                        if k == 0 || !matches!(b.shape, Shape::Stairs | Shape::Roof | Shape::Door | Shape::Trapdoor) {
+                        // Blocks facing one of four ways turn with the structure (an Oriented
+                        // block facing up or down stays as it is).
+                        let turns = matches!(b.shape, Shape::Stairs | Shape::Roof | Shape::Door | Shape::Trapdoor) || b.shape == Shape::Oriented && b.variant & 7 < 4;
+                        if k == 0 || !turns {
                             return i as BlockId;
                         }
                         let v = (b.variant & !3) | ((b.variant & 3) + k as u8) & 3;

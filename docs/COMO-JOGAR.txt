@@ -220,6 +220,10 @@ ESTRUTURAS
   descendo de uma abertura com musgo, baús com ouro, diamante e cristal de vida), acampamento
   com barraca de lã e santuário de pedra nas montanhas e na neve.
   Torre do mago (estantes e baú com varinhas e cristais de mana) e moinho de vento.
+  As hélices dos moinhos giram com o vento: mais rápido na chuva e na tempestade e no alto,
+  devagar em lugar abrigado e paradas num lugar fechado. Para fazer a sua: Hélice de Moinho
+  na mesa (lã nos cantos, gravetos em cruz e um tronco no meio). Coloque numa parede: as pás
+  giram na frente, viradas para você.
   Na chuva, as gotas respingam no chão em volta de você.
 
 NETHER
