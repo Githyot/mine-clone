@@ -60,6 +60,7 @@ mod boss_ai;
 mod tr;
 mod tr_bosses;
 mod tr_events;
+mod tr_world;
 mod glyphs;
 mod hardmode;
 mod hook;
@@ -429,10 +430,11 @@ fn load_game_data(base: &Path) -> Result<(BlockRegistry, ItemRegistry, Recipes),
 fn load_structures(base: &Path, reg: &BlockRegistry) -> Arc<voxel::structures::Structures> {
     let [text, mods] = read_pack_pair(base, "structures.ron", embedded::STRUCTURES_RON, embedded::MODS_STRUCTURES_RON);
     let text = merge_list(&text, &fase6_text(Some(base), "structures.ron"));
+    let text = merge_list(&text, embedded::TR_STRUCTURES_RON);
     let [_, dims] = read_pack_pair(base, "dims_structures.ron", "", embedded::MODS_DIMS_STRUCTURES_RON);
     let parsed = voxel::structures::Structures::from_ron_many(&[&text, &mods, &dims], reg).or_else(|e| {
         log::error!("{e}; using the built-in structures");
-        voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, embedded::MODS_STRUCTURES_RON, embedded::MODS_DIMS_STRUCTURES_RON], reg)
+        voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, embedded::TR_STRUCTURES_RON, embedded::MODS_STRUCTURES_RON, embedded::MODS_DIMS_STRUCTURES_RON], reg)
     });
     Arc::new(parsed.unwrap_or_else(|e| {
         log::error!("{e}");

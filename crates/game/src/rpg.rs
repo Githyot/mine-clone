@@ -189,6 +189,7 @@ pub const ACCESSORIES: &[AccDef] = &[
     // From the deep world (accessories.rs): the jumps stack, one of each per jump.
     acc("leap_boots", "Um pulo a mais no ar", &[M::Move(0.15), M::Jump(0.15)]),
     acc("blizzard_bottle", "Um pulo a mais no ar, bem alto", &[]),
+    acc("star_band", "Mais mana", &[M::Mana(4.0)]),
     acc("sandstorm_bottle", "Um pulo a mais que continua subindo enquanto segura Espaço", &[]),
     acc("cloud_balloon", "Um pulo a mais no ar e pulos mais altos", &[M::Jump(0.3), M::NoFall]),
     acc("rocket_boots", "Segure Espaço no ar para subir com foguetes", &[M::Move(0.1)]),
@@ -246,6 +247,13 @@ pub const SETS: &[SetDef] = &[
     set("radiant", "Esquiva um golpe a cada 30 s", &[M::Dmg(ALL_CLASSES, 0.08)]),
     set("verdite", "Um cristal de folha atira nos monstros por perto", &[M::Dmg(ALL_CLASSES, 0.05)]),
     set("magmarite", "Fogo e lava não queimam", &[M::Fire, M::Lava, M::Dmg(MELEE, 0.12), M::Def(2.0)]),
+    set("umbral", "", &[M::MeleeSpeed(0.15), M::Move(0.08)]),
+    set("sanguinite", "", &[M::Regen(0.5), M::Def(1.0)]),
+    set("hive", "", &[M::Minions(1), M::Dmg(SUMMON, 0.1)]),
+    set("jungle", "", &[M::Mana(4.0), M::ManaCost(0.16)]),
+    set("fossil", "", &[M::Dmg(RANGED, 0.1), M::Crit(RANGED, 0.05)]),
+    set("necro", "", &[M::Dmg(RANGED, 0.1), M::Crit(RANGED, 0.05)]),
+    set("ninja", "", &[M::Move(0.2), M::Crit(ALL_CLASSES, 0.04)]),
     set("meteor", "O Disparador de Meteoro não gasta mana", &[M::Dmg(MAGIC, 0.09), M::Def(1.0)]),
     set("lumite", "", &[M::Dmg(ALL_CLASSES, 0.1), M::Crit(ALL_CLASSES, 0.1), M::Minions(1), M::Move(0.1)]),
 ];
@@ -1810,6 +1818,13 @@ const SET_NAMES: &[(&str, &str)] = &[
     ("verdite", "Verdita"),
     ("lumite", "Lumita"),
     ("meteor", "Meteoro"),
+    ("umbral", "Sombraço"),
+    ("sanguinite", "Sanguinita"),
+    ("hive", "Abelha"),
+    ("jungle", "Selva"),
+    ("fossil", "Fóssil"),
+    ("necro", "Necro"),
+    ("ninja", "Ninja"),
 ];
 
 /// Ores from least to most valuable, for the ore finder (by part of the block name).

@@ -397,7 +397,7 @@ def mobs_l1():
     out.append(f"""    // The Jelly King: a huge hopping jelly with a gold crown. Sheds jellies as it is hurt.
     (
         name: "king_jelly", display_name: "Rei Geleia", kind: Hostile, health: 420, speed: 2.0, attack: 6,
-        drops: [(item: "gel", min: 20, max: 40), (item: "jelly_hook", chance: 0.5), (item: "jelly_staff", chance: 0.5), (item: "royal_gel"), (item: "lesser_healing_potion", min: 3, max: 6)], xp: 90,
+        drops: [(item: "gel", min: 20, max: 40), (item: "jelly_hook", chance: 0.5), (item: "jelly_staff", chance: 0.5), (item: "royal_gel"), (item: "lesser_healing_potion", min: 3, max: 6), (item: "ninja_helmet", chance: 0.34), (item: "ninja_chestplate", chance: 0.34), (item: "ninja_leggings", chance: 0.34), (item: "ninja_boots", chance: 0.34)], xp: 90,
         width: 3.2, height: 2.6, spawn: Never, hops: true, scale: 4.5, boss: true,
         parts: {KING_PARTS},
         layers: [(part: 0, inflate: 0.6), (part: 1, inflate: 0.4)],
@@ -1027,6 +1027,570 @@ SMELTING_L2 = [("meteorite_ore", "meteorite_ingot", 1.0)]
 
 
 # ==============================================================================================
+# Lote 3: the evil lands (Ruína / Chaga), the Prism, sky islands, the pyramid, early armours
+# ==============================================================================================
+
+LANDS = {
+    # name: (grass top, stone, sand)
+    "ruin": (pal("#3a2450", "#4a2e64", "#5a3a78", "#6c4a8c", "#7e5ca0", "#9274b4"),
+             pal("#2e2638", "#3a3046", "#463a54", "#524462", "#5e4e70", "#6c5a80"),
+             pal("#3e3648", "#4a4256", "#564e64", "#625a70", "#6e667c")),
+    "blight": (pal("#5a1414", "#6e1a1a", "#842222", "#9a2c2a", "#b03a34", "#c44a40"),
+               pal("#3a1416", "#4c1a1c", "#5e2224", "#70302e", "#823c38", "#944a44"),
+               pal("#5a2a28", "#6a3430", "#7a3e38", "#8a4a42", "#9a564c")),
+    "prism": (pal("#5ab4c8", "#6ac4d6", "#7ad2e2", "#92dcea", "#b0e6f0", "#d0f2f8"),
+              pal("#b8a8c0", "#c8b8d0", "#d6c8de", "#e2d6ea", "#eee4f4", "#faf4ff"),
+              pal("#d8c4d8", "#e2d0e2", "#ecdcec", "#f4e8f4", "#fcf4fc")),
+}
+LAND_NAMES = {"ruin": "da Ruína", "blight": "da Chaga", "prism": "Prismática"}
+
+
+def with_pals(fn, **pals):
+    old = {k: getattr(gt, k) for k in pals}
+    for k, v in pals.items():
+        setattr(gt, k, v)
+    try:
+        return fn()
+    finally:
+        for k, v in old.items():
+            setattr(gt, k, v)
+
+
+def blocks_l3():
+    out = {}
+    for land, (grass, stone, sand) in LANDS.items():
+        out[f"{land}_grass_top"] = with_pals(lambda: gt.grass_top(f"{land}_grass_top"), GRASS=grass)
+        out[f"{land}_grass_side"] = gt.fringe_side(f"{land}_grass_side", grass)
+        out[f"{land}_stone"] = with_pals(lambda: gt.stone(f"{land}_stone"), STONE=stone)
+        out[f"{land}_sand"] = with_pals(lambda: gt.sand(f"{land}_sand"), SAND=sand)
+    ruin_stone = LANDS["ruin"][1]
+    blight_stone = LANDS["blight"][1]
+    out["umbral_ore"] = gt.ore("umbral", bg=with_pals(lambda: gt.stone("umbral_bg"), STONE=ruin_stone), p=pal("#1a1028", "#5a2a8a", "#9a5ad4", "#d4a8ff"))
+    out["sanguinite_ore"] = gt.ore("sanguinite", bg=with_pals(lambda: gt.stone("sanguinite_bg"), STONE=blight_stone), p=pal("#3a0408", "#a0141e", "#e8343a", "#ff9a8a"))
+
+    def orb(x, y):
+        cx, cy = (x - 7.5) / 7.0, (y - 7.5) / 7.0
+        r = cx * cx + cy * cy
+        return 0.98 - 0.7 * r + 0.25 * np.sin(x * 1.3 + y * 0.9) if r < 1 else 0.1
+
+    out["ruin_orb"] = block_noise(31, orb, pal("#140a1e", "#3a1a5a", "#6a2a9a", "#a65ae0", "#e8c8ff"))
+    out["blight_heart"] = block_noise(32, lambda x, y: orb(x, y) + (0.2 if (x * 3 + y) % 7 == 0 else 0), pal("#2a0406", "#6a0e14", "#a81c24", "#e04a4a", "#ffb0a0"))
+
+    def altar_top(x, y):
+        edge = min(x, y, 15 - x, 15 - y)
+        return 0.85 if edge == 0 else (0.15 if 5 <= x <= 10 and 5 <= y <= 10 else 0.45)
+
+    def altar_side(x, y):
+        if y < 3:
+            return 0.8
+        if y > 12:
+            return 0.5
+        return 0.25 + (0.4 if (x in (2, 3, 12, 13)) else 0.0)
+
+    out["ruin_altar_top"] = block_noise(33, altar_top, pal("#140a1e", "#2e2040", "#4a3464", "#7a5aa0", "#c8a0ff"))
+    out["ruin_altar_side"] = block_noise(34, altar_side, pal("#140a1e", "#2e2040", "#4a3464", "#7a5aa0", "#c8a0ff"))
+    out["blight_altar_top"] = block_noise(35, altar_top, pal("#200608", "#4a1014", "#7a1e22", "#b03a34", "#ff9a8a"))
+    out["blight_altar_side"] = block_noise(36, altar_side, pal("#200608", "#4a1014", "#7a1e22", "#b03a34", "#ff9a8a"))
+
+    def plates(x, y):
+        rim = x % 8 == 0 or y % 8 == 0
+        return 0.25 if rim else 0.55 + 0.3 * ((x % 8) + (y % 8) < 5)
+
+    out["sky_brick"] = block_noise(37, plates, pal("#7a5a10", "#b08a1c", "#d8b030", "#f0d060", "#fff0b0"))
+    out["cloud_block"] = block_noise(38, lambda x, y: 0.55 + 0.35 * np.sin(x * 0.8) * np.cos(y * 0.7), pal("#c8d2dc", "#dce4ec", "#eaf0f6", "#f6f9fc", "#ffffff"))
+    return out
+
+
+def land_blocks():
+    out = []
+    for land in LANDS:
+        n = LAND_NAMES[land]
+        out.append(f'(name: "{land}_grass", display_name: Some("Grama {n}"), hardness: 0.6, tool: Some(Shovel), textures: (top: Some("{land}_grass_top"), side: Some("{land}_grass_side"), bottom: Some("dirt")), drops: Some([(item: "dirt")]))')
+        out.append(f'(name: "{land}_stone", display_name: Some("Pedra {n}"), hardness: 1.5, tool: Some(Pickaxe), tier: 1)')
+        out.append(f'(name: "{land}_sand", display_name: Some("Areia {n}"), hardness: 0.5, tool: Some(Shovel), gravity: true)')
+    return out
+
+
+BLOCKS_L3 = land_blocks() + [
+    '(name: "umbral_ore", display_name: Some("Minério de Sombraço"), hardness: 4.0, tool: Some(Pickaxe), tier: 2, xp: (1, 3))',
+    '(name: "sanguinite_ore", display_name: Some("Minério de Sanguinita"), hardness: 4.0, tool: Some(Pickaxe), tier: 2, xp: (1, 3))',
+    '(name: "ruin_orb", display_name: Some("Orbe da Ruína"), light: 9, hardness: 2.0, drops: Some([]))',
+    '(name: "blight_heart", display_name: Some("Coração da Chaga"), light: 9, hardness: 2.0, drops: Some([]))',
+    '(name: "ruin_altar", display_name: Some("Altar da Ruína"), light: 4, hardness: 40.0, tool: Some(Pickaxe), tier: 5, textures: (top: Some("ruin_altar_top"), side: Some("ruin_altar_side"), bottom: Some("ruin_altar_side")), drops: Some([]))',
+    '(name: "blight_altar", display_name: Some("Altar da Chaga"), light: 4, hardness: 40.0, tool: Some(Pickaxe), tier: 5, textures: (top: Some("blight_altar_top"), side: Some("blight_altar_side"), bottom: Some("blight_altar_side")), drops: Some([]))',
+    '(name: "sky_brick", display_name: Some("Tijolo Celeste"), light: 2, hardness: 2.0, tool: Some(Pickaxe))',
+    '(name: "cloud_block", display_name: Some("Nuvem"), hardness: 0.3)',
+]
+
+POWDER = [
+    "................",
+    "................",
+    "......1111......",
+    ".....122221.....",
+    "....12333321....",
+    "....13444431....",
+    "...1344554431...",
+    "...1345555431...",
+    "...1345555431...",
+    "...1344554431...",
+    "....13444431....",
+    ".....133331.....",
+    "......1111......",
+    "................",
+    "................",
+    "................",
+]
+
+RING = [
+    "................",
+    "................",
+    ".......55.......",
+    "......5445......",
+    ".......55.......",
+    ".....111111.....",
+    "....12222221....",
+    "...1231..1321...",
+    "...121....121...",
+    "...121....121...",
+    "...1231..1321...",
+    "....12222221....",
+    ".....111111.....",
+    "................",
+    "................",
+    "................",
+]
+
+HORN2 = [
+    "................",
+    "..............5.",
+    ".............54.",
+    "............543.",
+    "...........543..",
+    "..........5431..",
+    ".........5431...",
+    "........5432....",
+    ".......5432.....",
+    "......5432......",
+    ".....5432.......",
+    "....4432........",
+    "...3332.........",
+    "...222..........",
+    "................",
+    "................",
+]
+
+FOSSIL = [
+    "................",
+    "................",
+    "....11111111....",
+    "...1222222221...",
+    "..122333333221..",
+    "..123344443321..",
+    "..123455554321..",
+    "..123451154321..",
+    "..123451154321..",
+    "..123455554321..",
+    "..123344443321..",
+    "..122333333221..",
+    "...1222222221...",
+    "....11111111....",
+    "................",
+    "................",
+]
+
+ARMOR_L3 = {
+    # material: (display, palette, points per piece helmet/chest/legs/boots)
+    "umbral": ("de Sombraço", pal("#1a1028", "#3a2458", "#5a3a84", "#8a64b8", "#c8a8f0"), (2, 5, 4, 2)),
+    "sanguinite": ("de Sanguinita", pal("#2a0406", "#5a0e14", "#8a1c22", "#c03a38", "#f08a80"), (2, 5, 4, 2)),
+    "hive": ("de Abelha", pal("#3a2204", "#6a3e08", "#a0640e", "#d49a1e", "#f4c84a"), (1, 3, 3, 1)),
+    "jungle": ("da Selva", pal("#0e2a10", "#1e4a1c", "#2e6a2a", "#4e9a3a", "#8ad064"), (2, 4, 3, 1)),
+    "fossil": ("Fóssil", pal("#4a3e2a", "#7a6a4a", "#a8966e", "#cfc09a", "#f0e6c8"), (2, 4, 3, 1)),
+    "necro": ("Necro", pal("#2a2a24", "#5a584c", "#8a8676", "#b8b4a2", "#e4e0d0"), (2, 4, 3, 2)),
+    "ninja": ("Ninja", pal("#0a0a0e", "#16161e", "#24242e", "#3a3a48", "#5a5a6e"), (1, 3, 2, 1)),
+}
+
+
+def items_l3():
+    gi.INGOT_COL["umbral"] = ARMOR_L3["umbral"][1]
+    gi.INGOT_COL["sanguinite"] = ARMOR_L3["sanguinite"][1]
+    for m, (_, p, _) in ARMOR_L3.items():
+        gi.ARMOR_MATERIALS[m] = p
+        gi.MATERIALS[m] = p
+    gi.MATERIALS["sky"] = pal("#6a7aa0", "#8a9ac4", "#b0c0e4", "#d8e4f8", "#ffffff")
+    gi.WAND_GEMS["ruin"] = pal("#2a1040", "#5a2a8a", "#9a5ad4", "#d4a8ff", "#ffffff")
+    gi.WAND_GEMS["blight"] = pal("#3a0408", "#a0141e", "#e8343a", "#ff9a8a", "#ffffff")
+    out = [
+        ("umbral_ingot", "Barra de Sombraço", gi.ingot("umbral"), ""),
+        ("sanguinite_ingot", "Barra de Sanguinita", gi.ingot("sanguinite"), ""),
+        ("purification_powder", "Pó Purificador", icon(POWDER, pal("#2a5a2a", "#4a8a3a", "#7ac45a", "#b4ea8a", "#f0fff0")), ""),
+        ("vile_powder", "Pó Vil", icon(POWDER, pal("#2a1040", "#4a2a6a", "#7a4aa0", "#a87ad0", "#e0c8ff")), ""),
+        ("star_band", "Anel Estelar", icon(RING, pal("#6a5008", "#c4941c", "#f0d060", "#7ab4ff", "#e0f0ff")), "max_stack: Some(1)"),
+        ("ruin_thorn", "Espinho Vil", gi.wand("ruin"), "max_stack: Some(1)"),
+        ("blight_rod", "Bastão da Chaga", gi.staff("blight", "sanguinite"), "max_stack: Some(1)"),
+        ("pixie_dust", "Pó de Fada", icon(GEL, pal("#5a8aa0", "#8ac4d6", "#c0e6f0", "#f0d0f0", "#ffffff")), ""),
+        ("unicorn_horn", "Chifre de Unicórnio", icon(HORN2, pal("#6a5a7a", "#b8a8c8", "#e8d8f0", "#fff0ff", "#ffffff")), ""),
+        ("sturdy_fossil", "Fóssil Resistente", icon(FOSSIL, pal("#4a3e2a", "#7a6a4a", "#a8966e", "#cfc09a", "#f0e6c8")), ""),
+        ("jungle_spore", "Esporo da Selva", icon(GEL, pal("#1e4a1c", "#3a8a2a", "#6ac44a", "#b4f08a", "#f0fff0")), ""),
+        ("sky_blade", "Lâmina Celeste", gi.tool("sky", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 2, speed: 8.0, damage: 6.5, durability: 600))"),
+        ("umbral_pickaxe", "Picareta de Sombraço", gi.tool("umbral", "pickaxe"), "max_stack: Some(1), tool: Some((kind: Pickaxe, tier: 3, speed: 9.0, damage: 4.0, durability: 1100))"),
+        ("sanguinite_pickaxe", "Picareta de Sanguinita", gi.tool("sanguinite", "pickaxe"), "max_stack: Some(1), tool: Some((kind: Pickaxe, tier: 3, speed: 9.0, damage: 4.0, durability: 1100))"),
+        ("umbral_sword", "Espada de Sombraço", gi.tool("umbral", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 3, speed: 8.0, damage: 7.5, durability: 1100))"),
+        ("sanguinite_sword", "Espada de Sanguinita", gi.tool("sanguinite", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 3, speed: 8.0, damage: 7.5, durability: 1100))"),
+    ]
+    names = {"helmet": "Capacete", "chestplate": "Peitoral", "leggings": "Calças", "boots": "Botas"}
+    for m, (disp, _, pts) in ARMOR_L3.items():
+        for slot, k in enumerate(gi.ARMOR_KINDS):
+            out.append((f"{m}_{k}", f"{names[k]} {disp}", gi.armor(m, k), f"armor: Some((slot: {slot}, points: {pts[slot]}, durability: {200 + 30 * pts[slot]}))"))
+    return out
+
+
+def armor_recipes(mat, ing, extra=None):
+    key = {"I": ing}
+    if extra:
+        key["E"] = extra
+    e = "E" if extra else "I"
+    return [
+        (["III", f"I{e}I" if extra else "I I"], key if extra else {"I": ing}, f"{mat}_helmet", 1),
+        (["I I", f"I{e}I" if extra else "III", "III"], key if extra else {"I": ing}, f"{mat}_chestplate", 1),
+        (["III", "I I", "I I"], {"I": ing}, f"{mat}_leggings", 1),
+        (["I I", "I I"], {"I": ing}, f"{mat}_boots", 1),
+    ]
+
+
+SHAPED_L3 = (
+    armor_recipes("umbral", "umbral_ingot", "shadow_scale")
+    + armor_recipes("sanguinite", "sanguinite_ingot", "blight_tissue")
+    + armor_recipes("hive", "beeswax")
+    + armor_recipes("jungle", "jungle_spore", "emerald")
+    + armor_recipes("fossil", "sturdy_fossil")
+    + armor_recipes("necro", "bone", "spider_eye")
+    + [
+        (["UUU", " S ", " S "], {"U": "umbral_ingot", "S": "stick"}, "umbral_pickaxe", 1),
+        (["UUU", " S ", " S "], {"U": "sanguinite_ingot", "S": "stick"}, "sanguinite_pickaxe", 1),
+        (["U", "U", "S"], {"U": "umbral_ingot", "S": "stick"}, "umbral_sword", 1),
+        (["U", "U", "S"], {"U": "sanguinite_ingot", "S": "stick"}, "sanguinite_sword", 1),
+    ]
+)
+SHAPELESS_L3 = [
+    (["brown_mushroom", "glowstone_dust"], "purification_powder", 5),
+    (["red_mushroom", "rotten_flesh"], "vile_powder", 5),
+    (["vine", "vine", "vine", "cocoa_beans"], "jungle_spore", 1),
+    (["bone", "bone", "bone", "sandstone"], "sturdy_fossil", 1),
+    (["umbral_ore", "umbral_ore", "umbral_ore"], "umbral_ingot", 1),
+    (["sanguinite_ore", "sanguinite_ore", "sanguinite_ore"], "sanguinite_ingot", 1),
+]
+SMELTING_L3 = [("umbral_ore", "umbral_ingot", 1.0), ("sanguinite_ore", "sanguinite_ingot", 1.0)]
+
+EATER_PARTS = """[
+            (size: (8, 8, 10), origin: (-4, 0, -2), uv: (0, 0), anim: Head, pivot: (0, 4, 0)),
+            (size: (6, 6, 8), origin: (-3, 1, -10), uv: (0, 20)),
+            (size: (8, 1, 6), origin: (-12, 6, -6), uv: (0, 36), anim: Wing(0), pivot: (-3, 6, -3)),
+            (size: (8, 1, 6), origin: (4, 6, -6), uv: (0, 36), anim: Wing(1), pivot: (3, 6, -3)),
+        ]"""
+
+BRUTE2_PARTS = """[
+            (size: (10, 12, 6), origin: (-5, 12, -3), uv: (0, 0)),
+            (size: (10, 10, 8), origin: (-5, 24, -4), uv: (0, 20), anim: Head, pivot: (0, 24, 0)),
+            (size: (4, 14, 4), origin: (-9, 10, -2), uv: (36, 0), anim: ArmForward(0), pivot: (-7, 23, 0)),
+            (size: (4, 14, 4), origin: (5, 10, -2), uv: (36, 0), anim: ArmForward(1), pivot: (7, 23, 0)),
+            (size: (4, 12, 4), origin: (-5, 0, -2), uv: (0, 40), anim: Leg(0), pivot: (-3, 12, 0)),
+            (size: (4, 12, 4), origin: (1, 0, -2), uv: (0, 40), anim: Leg(1), pivot: (3, 12, 0)),
+        ]"""
+
+PIXIE_PARTS = """[
+            (size: (4, 4, 4), origin: (-2, 6, -2), uv: (0, 0), anim: Head, pivot: (0, 6, 0)),
+            (size: (4, 6, 2), origin: (-2, 0, -1), uv: (0, 10)),
+            (size: (6, 8, 1), origin: (-8, 2, -1), uv: (16, 0), anim: Wing(0), pivot: (-2, 4, 0)),
+            (size: (6, 8, 1), origin: (2, 2, -1), uv: (16, 0), anim: Wing(1), pivot: (2, 4, 0)),
+        ]"""
+
+UNICORN_PARTS = """[
+            (size: (10, 10, 20), origin: (-5, 12, -10), uv: (0, 0)),
+            (size: (6, 12, 6), origin: (-3, 18, 8), uv: (0, 30), anim: Head, pivot: (0, 20, 10)),
+            (size: (6, 5, 8), origin: (-3, 26, 12), uv: (24, 30), anim: Head, pivot: (0, 20, 10)),
+            (size: (2, 7, 2), origin: (-1, 31, 16), uv: (52, 30), anim: Head, pivot: (0, 20, 10)),
+            (size: (4, 12, 4), origin: (-5, 0, 5), uv: (0, 48), anim: Leg(0), pivot: (-3, 12, 7)),
+            (size: (4, 12, 4), origin: (1, 0, 5), uv: (0, 48), anim: Leg(1), pivot: (3, 12, 7)),
+            (size: (4, 12, 4), origin: (-5, 0, -9), uv: (0, 48), anim: Leg(1), pivot: (-3, 12, -7)),
+            (size: (4, 12, 4), origin: (1, 0, -9), uv: (0, 48), anim: Leg(0), pivot: (3, 12, -7)),
+        ]"""
+
+
+def mobs_l3():
+    return [f"""    // Lote 3: the evil lands and the Prism.
+    (
+        name: "soul_eater", display_name: "Devorador de Almas", kind: Hostile, health: 34, speed: 0.1, attack: 5,
+        drops: [(item: "rotten_flesh", chance: 0.5), (item: "shadow_scale", chance: 0.08), (item: "vile_powder", chance: 0.2)], xp: 6,
+        width: 0.8, height: 0.7, spawn: Never, scale: 1.4, flies: true,
+        parts: {EATER_PARTS},
+        layers: [(part: 0, inflate: 0.5)],
+    ),
+    (
+        name: "blight_flyer", display_name: "Voador da Chaga", kind: Hostile, health: 34, speed: 0.1, attack: 5,
+        drops: [(item: "rotten_flesh", chance: 0.5), (item: "blight_tissue", chance: 0.08)], xp: 6,
+        width: 0.8, height: 0.7, spawn: Never, scale: 1.4, flies: true,
+        parts: {EATER_PARTS},
+        layers: [(part: 0, inflate: 0.5)],
+    ),
+    (
+        name: "blight_brute", display_name: "Rosto da Chaga", kind: Hostile, health: 70, speed: 2.4, attack: 7,
+        drops: [(item: "rotten_flesh", min: 1, max: 2), (item: "blight_tissue", chance: 0.1)], xp: 8,
+        width: 0.9, height: 2.2, spawn: Never, scale: 1.1,
+        parts: {BRUTE2_PARTS},
+        layers: [(part: 0, inflate: 0.4), (part: 1, inflate: 0.5)],
+    ),
+    (
+        name: "prism_pixie", display_name: "Fada Prismática", kind: Hostile, health: 40, speed: 0.1, attack: 7,
+        drops: [(item: "pixie_dust", min: 1, max: 3)], xp: 8,
+        width: 0.6, height: 0.8, spawn: Never, scale: 1.3, flies: true,
+        parts: {PIXIE_PARTS},
+        layers: [(part: 0, inflate: 0.4)],
+    ),
+    (
+        name: "prism_unicorn", display_name: "Unicórnio Prismático", kind: Hostile, health: 110, speed: 4.5, attack: 9,
+        drops: [(item: "unicorn_horn", chance: 0.4), (item: "pixie_dust", min: 1, max: 2)], xp: 14,
+        width: 1.3, height: 1.9, spawn: Never, scale: 1.1,
+        parts: {UNICORN_PARTS},
+        layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.4)],
+    ),"""]
+
+
+EATER = pal("#2a1a3a", "#3e2a52", "#54386a", "#6a4a82", "#82609a")
+EATER_RED = pal("#3a0e10", "#561a1a", "#722626", "#8e3634", "#a84a44")
+WING_SKIN = pal("#1a1020", "#2a1a32", "#3a2644")
+
+
+def eater_painter(body):
+    def f(c):
+        if c.role == "wing":
+            return g.pick(WING_SKIN if body is EATER else pal("#2a0808", "#3e1010", "#521818"), 0.3 + 0.5 * c.jit)
+        if c.role == "head" and c.face == "front":
+            # A round sucking mouth ringed with teeth.
+            cx, cy = c.i - (c.fw - 1) / 2, c.j - (c.fh - 1) / 2
+            r = cx * cx + cy * cy
+            if r < 3:
+                return (20, 6, 10)
+            if r < 6:
+                return (220, 210, 190) if (c.i + c.j) % 2 == 0 else (60, 20, 30)
+        n = g.fbm(c.seed, c.gx, c.gy, c.gz, 2.5)
+        return g.pick(body, 0.2 + 0.7 * n)
+    return f
+
+
+def eater_overlay(body):
+    def f(c):
+        if c.face in ("top", "left", "right") and c.jit > 0.55:
+            return g.pick(body, 0.9)
+        return None
+    return f
+
+
+def brute2_painter(c):
+    n = g.fbm(c.seed, c.gx, c.gy, c.gz, 3.0)
+    if c.role == "head" and c.face == "front":
+        if c.j in (2, 3) and c.i in (1, 2, 7, 8):
+            return (250, 220, 120)
+        if 5 <= c.j <= 7 and 2 <= c.i <= 7:
+            return (240, 230, 210) if (c.i % 2 == 0 and c.j != 6) else (40, 8, 10)
+    return g.pick(EATER_RED, 0.2 + 0.7 * n)
+
+
+def brute2_overlay(c):
+    if c.face in ("front", "back", "left", "right") and (c.i * 3 + c.j) % 7 == 0:
+        return g.pick(EATER_RED, 0.95)
+    return None
+
+
+PIXIE = pal("#c48ab4", "#dca8cc", "#f0c8e4", "#fce4f4", "#ffffff")
+PIXIE_WING = pal("#7ac4e0", "#a8dcf0", "#d0eef8", "#f0faff")
+
+
+def pixie_painter(c):
+    if c.role == "wing":
+        return g.pick(PIXIE_WING, 0.2 + 0.7 * c.jit)
+    if c.role == "head" and c.face == "front" and c.j == 1 and c.i in (0, 3):
+        return (60, 40, 120)
+    return g.pick(PIXIE, 0.3 + 0.6 * c.jit)
+
+
+UNI = pal("#c8c0d8", "#dcd6e8", "#ece8f4", "#f8f6fc", "#ffffff")
+MANE = pal("#5ab4e0", "#8ad0f0", "#e08ad0", "#f0b4e4", "#fff0a0")
+
+
+def unicorn_painter(c):
+    if c.role == "horn":
+        return g.pick(pal("#c49418", "#ecc434", "#fce47a", "#fff4c0"), 0.2 + 0.7 * (c.j / max(1, c.fh)))
+    if c.role == "neck" and c.face in ("back", "top") or (c.role == "head" and c.face == "top"):
+        return g.pick(MANE, (c.j * 0.2 + c.i * 0.07) % 1.0)
+    if c.role == "head" and c.face in ("left", "right") and c.j == 2 and c.i in (4, 5):
+        return (60, 40, 120)
+    if c.role == "leg" and c.j > c.fh - 3:
+        return g.pick(pal("#8a7aa0", "#a898bc"), c.jit)
+    return g.pick(UNI, 0.2 + 0.7 * c.jit)
+
+
+def unicorn_overlay(c):
+    if c.role == "body" and c.face == "top" and c.jit > 0.6:
+        return g.pick(UNI, 0.95)
+    return None
+
+
+def skins_l3():
+    return {
+        "soul_eater": (["head", "body", "wing", "wing"], eater_painter(EATER), eater_overlay(EATER)),
+        "blight_flyer": (["head", "body", "wing", "wing"], eater_painter(EATER_RED), eater_overlay(EATER_RED)),
+        "blight_brute": (["body", "head", "arm", "arm", "leg", "leg"], brute2_painter, brute2_overlay),
+        "prism_pixie": (["head", "body", "wing", "wing"], pixie_painter, None),
+        "prism_unicorn": (["body", "neck", "head", "horn", "leg", "leg", "leg", "leg"], unicorn_painter, unicorn_overlay),
+    }
+
+
+# The sky islands and the pyramid (tr/structures.ron).
+
+def sky_island():
+    """A floating island: a rounded clod of dirt and stone under a grass top, with a small
+    golden-brick shrine and its chest, and clouds hanging around it."""
+    R = 9
+    size = 2 * R + 1
+    layers = []
+    depth = 7
+    rng = np.random.default_rng(77)
+    for y in range(depth + 7):
+        rows = []
+        for z in range(size):
+            row = ""
+            for x in range(size):
+                dx, dz = x - R, z - R
+                d = (dx * dx + dz * dz) ** 0.5
+                c = "."
+                if y < depth:
+                    # The clod narrows towards the bottom.
+                    r = R * (0.35 + 0.65 * (y + 1) / depth) - rng.random() * 0.8
+                    if d <= r:
+                        c = "S" if y < depth - 3 else "D"
+                    elif d <= r + 1.5 and y >= depth - 2 and rng.random() < 0.35:
+                        c = "c"
+                    if y == depth - 1 and d <= r:
+                        c = "G"
+                else:
+                    h = y - depth
+                    if abs(dx) <= 3 and abs(dz) <= 3:
+                        wall = abs(dx) == 3 or abs(dz) == 3
+                        if h == 5:
+                            c = "B" if abs(dx) <= 3 and abs(dz) <= 3 else "."
+                        elif h == 6:
+                            c = "B" if abs(dx) <= 1 and abs(dz) <= 1 else "."
+                        elif wall:
+                            door = dz == 3 and dx == 0 and h in (0, 1)
+                            window = (dx == 0 or dz == 0) and h == 2 and not door
+                            c = "." if door else ("g" if window else ("B" if (abs(dx) == 3 and abs(dz) == 3) else "b"))
+                        elif h == 0 and dx == 0 and dz == -2:
+                            c = "K"
+                        elif h == 0 and dx == 2 and dz == -2:
+                            c = "t"
+                    elif h == 0 and d < R - 2 and rng.random() < 0.12:
+                        c = "f"
+                    elif h in (1, 2) and d > R and rng.random() < 0.05:
+                        c = "c"
+                row += c
+            rows.append(row)
+        layers.append(rows)
+    return layers
+
+
+def pyramid():
+    """A sandstone pyramid in the desert with a corridor down to a treasure room under it."""
+    R = 12
+    size = 2 * R + 1
+    sink = 8
+    layers = []
+    for y in range(sink + R + 1):
+        rows = []
+        h = y - sink
+        for z in range(size):
+            row = ""
+            for x in range(size):
+                dx, dz = x - R, z - R
+                c = " "
+                if h < 0:
+                    # Under the ground: the treasure room and the shaft down to it.
+                    room = abs(dx) <= 4 and abs(dz) <= 4 and -6 <= h <= -2
+                    shell = abs(dx) <= 5 and abs(dz) <= 5 and -7 <= h <= -1
+                    shaft = dx == 0 and dz == 3 and h >= -6
+                    if room:
+                        c = "."
+                        if h == -6 and (dx, dz) in ((0, -3), (-3, -3), (3, -3)):
+                            c = "K"
+                        elif h == -4 and abs(dx) == 4 and dz == 0:
+                            c = "t"
+                    elif shaft:
+                        c = "L"
+                    elif shell:
+                        c = "C"
+                else:
+                    r = R - h
+                    if r < 0:
+                        c = " "
+                    elif max(abs(dx), abs(dz)) <= r:
+                        inner = max(abs(dx), abs(dz)) < r - 1
+                        hall = h in (0, 1, 2) and dx == 0 and dz > 0
+                        hall2 = h in (0, 1, 2) and abs(dx) <= 1 and abs(dz) <= 1
+                        if hall or hall2 or (inner and h < r - 2 and h < 3 and abs(dx) <= 2 and abs(dz) <= 2):
+                            c = "."
+                            if hall and dz == 3 and h == 0:
+                                c = "L"
+                        else:
+                            c = "S" if max(abs(dx), abs(dz)) == r else "C"
+                            if h == 1 and dz == r and dx == 0:
+                                c = "."
+                        if h == R:
+                            c = "X"
+                row += c
+            rows.append(row)
+        layers.append(rows)
+    return layers, sink
+
+
+def structures_l3():
+    isl = sky_island()
+    pyr, sink = pyramid()
+    lines = ["// The rest of the Terraria side (plan/terraria-completo.md). Written by tools/gen_tr.py.", "(structures: ["]
+
+    def emit(name, biomes, spacing, chance, palette, layers, extra, loot, mobs=None):
+        lines.append("    (")
+        lines.append(f'        name: "{name}",')
+        lines.append(f"        biomes: [{', '.join(chr(34) + b + chr(34) for b in biomes)}],")
+        lines.append(f"        spacing: {spacing},")
+        lines.append(f"        chance: {chance},")
+        lines.append("        palette: [" + ", ".join(f"('{k}', \"{v}\")" for k, v in palette) + "],")
+        lines.append("        layers: [")
+        for layer in layers:
+            lines.append("            [" + ", ".join(f'"{r}"' for r in layer) + "],")
+        lines.append("        ],")
+        for e in extra:
+            lines.append(f"        {e},")
+        lines.append("        loot: [")
+        for item, lo, hi, ch in loot:
+            lines.append(f'            (item: "{item}", min: {lo}, max: {hi}, chance: {ch}),')
+        lines.append("        ],")
+        if mobs:
+            lines.append("        mobs: [" + ", ".join(f'("{m}", {n})' for m, n in mobs) + "],")
+        lines.append("    ),")
+
+    emit("ilha_do_ceu", ["Plains", "Forest", "Birch Forest", "Taiga", "Savanna", "Meadow", "Flower Forest", "Dark Forest", "Jungle", "Desert", "Snowy Plains"], 22, 0.55,
+         [("S", "stone"), ("D", "dirt"), ("G", "grass_block"), ("c", "cloud_block"), ("B", "sky_brick"), ("b", "sky_brick"), ("g", "glass"), ("K", "chest"), ("t", "torch"), ("f", "dandelion")],
+         isl, ["place: Sky(150)"],
+         [("lucky_horseshoe", 1, 1, 0.35), ("shiny_balloon", 1, 1, 0.3), ("cloud_bottle", 1, 1, 0.35), ("sky_blade", 1, 1, 0.3), ("fallen_star", 2, 5, 0.7), ("gold_ingot", 2, 6, 0.5)])
+    emit("piramide", ["Desert"], 32, 0.6,
+         [("S", "sandstone"), ("C", "cut_sandstone"), ("X", "chiseled_sandstone"), ("K", "chest"), ("t", "torch"), ("L", "ladder")],
+         pyr, [f"sink: {sink}", "rough: 6"],
+         [("sandstorm_bottle", 1, 1, 0.35), ("sturdy_fossil", 2, 6, 0.6), ("gold_ingot", 3, 9, 0.7), ("emerald", 1, 4, 0.5), ("lesser_healing_potion", 1, 3, 0.5), ("fallen_star", 1, 3, 0.4)],
+         [("mummy", 3)])
+    lines += ["])", ""]
+    (OUT / "structures.ron").write_text("\n".join(lines))
+
+
+# ==============================================================================================
 
 def write_data(items, blocks, mobs, shaped, shapeless, smelting):
     OUT.mkdir(parents=True, exist_ok=True)
@@ -1095,21 +1659,23 @@ def write_skins(skins):
 
 
 def main():
-    items = items_l1() + items_l2()
-    blocks = BLOCKS_L1 + BLOCKS_L2
-    mobs = mobs_l1() + mobs_l2()
-    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2, SHAPELESS_L1 + SHAPELESS_L2, SMELTING_L2)
-    skins = write_skins({**skins_l1(), **skins_l2()})
+    items = items_l1() + items_l2() + items_l3()
+    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3
+    mobs = mobs_l1() + mobs_l2() + mobs_l3()
+    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3, SMELTING_L2 + SMELTING_L3)
+    structures_l3()
+    skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3()})
     pics = []
     for name, _, img, _ in items:
         im = gt.to_image(img)
         im.save(os.path.join(gi.ITEM_DIR, name + ".png"))
         pics.append(im)
-    for name, img in {**blocks_l1(), **blocks_l2()}.items():
+    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3()}
+    for name, img in all_blocks.items():
         im = gt.to_image(img)
         im.save(os.path.join(gi.BLOCK_DIR, name + ".png"))
         pics.append(im)
-    names = [i[0] for i in items] + list(blocks_l1()) + list(blocks_l2())
+    names = [i[0] for i in items] + list(all_blocks)
     print(f"{len(items)} items, {len(blocks)} blocks, {len(mobs)} mobs, {len(skins)} skins")
     print("--only " + ",".join(names))
     if len(sys.argv) > 1:

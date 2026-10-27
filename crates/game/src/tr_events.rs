@@ -39,7 +39,7 @@ struct JellyRain {
 pub struct Events {
     pub(crate) craters: Vec<IVec3>,
     night_was: bool,
-    meteor_in: Option<f32>,
+    pub(crate) meteor_in: Option<f32>,
     falling: Option<Falling>,
     /// Stars in the sky on their way down: (position, velocity).
     stars: Vec<(Vec3, Vec3)>,
@@ -488,6 +488,7 @@ impl Game {
         if self.dim != Dim::Overworld {
             return;
         }
+        self.land_sky(top, horizon);
         let ev = &self.t5.tr.ev;
         let mix = |c: &mut [f32; 3], to: [f32; 3], k: f32| {
             for i in 0..3 {

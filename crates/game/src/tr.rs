@@ -21,12 +21,20 @@ struct Saved {
     /// Meteor craters (tr_events.rs).
     #[serde(default)]
     craters: Vec<(i32, i32, i32)>,
+    /// Chunks the lands were laid over (tr_world.rs), and orbs broken.
+    #[serde(default)]
+    lands_done: Vec<(i32, i32)>,
+    #[serde(default)]
+    prism_done: Vec<(i32, i32)>,
+    #[serde(default)]
+    orbs: u32,
 }
 
 #[derive(Default)]
 pub struct Tr {
     pub(crate) fight: crate::tr_bosses::Fight,
     pub(crate) ev: crate::tr_events::Events,
+    pub(crate) lands: crate::tr_world::Lands,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -39,11 +47,20 @@ impl Tr {
         let s: Saved = std::fs::read_to_string(dir.join("tr.ron")).ok().and_then(|x| ron::from_str(&x).ok()).unwrap_or_default();
         let mut tr = Tr { eye_nights: s.eye_nights, ..Default::default() };
         tr.ev.craters = s.craters.iter().map(|&(x, y, z)| glam::IVec3::new(x, y, z)).collect();
+        tr.lands.done = s.lands_done.into_iter().collect();
+        tr.lands.prism_done = s.prism_done.into_iter().collect();
+        tr.lands.orbs = s.orbs;
         tr
     }
 
     pub fn save(&self, dir: &Path) {
-        let s = Saved { eye_nights: self.eye_nights, craters: self.ev.craters.iter().map(|c| (c.x, c.y, c.z)).collect() };
+        let s = Saved {
+            eye_nights: self.eye_nights,
+            craters: self.ev.craters.iter().map(|c| (c.x, c.y, c.z)).collect(),
+            lands_done: self.lands.done.iter().copied().collect(),
+            prism_done: self.lands.prism_done.iter().copied().collect(),
+            orbs: self.lands.orbs,
+        };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
             if let Err(e) = std::fs::write(dir.join("tr.ron"), text) {
@@ -59,18 +76,27 @@ impl Game {
         self.update_tr_fight(dt);
         self.great_eye_nights(dt);
         self.update_tr_events(dt);
+        self.update_lands(dt);
     }
 
     /// Right click with an item of this file; true when it did something.
     pub(crate) fn tr_use(&mut self, name: &str) -> Option<bool> {
-        if name == "solar_tablet" {
-            return Some(self.use_solar_tablet());
+        match name {
+            "solar_tablet" => return Some(self.use_solar_tablet()),
+            "purification_powder" => return Some(self.use_powder(true)),
+            "vile_powder" => return Some(self.use_powder(false)),
+            _ => {}
         }
         self.tr_summon(name)
     }
 
     /// After a block was broken: the royal larva wakes the Hive Queen.
     pub(crate) fn tr_block_broken(&mut self, p: glam::IVec3, name: &str) {
+        match name {
+            "ruin_orb" | "blight_heart" => return self.orb_broken(p, name == "ruin_orb"),
+            "ruin_altar" | "blight_altar" => return self.altar_broken(p, name == "ruin_altar"),
+            _ => {}
+        }
         if name == "hive_larva" && self.mobs.list.iter().all(|m| !(m.alive() && self.mobs.reg.defs[m.def].boss)) {
             let at = p.as_vec3() + Vec3::new(0.5, 2.0, 0.5);
             if self.spawn_tr_boss("hive_queen", at) {
@@ -83,6 +109,14 @@ impl Game {
     /// What a fallen boss of this file opens.
     pub(crate) fn tr_boss_defeated(&mut self, name: &str) {
         self.tr_event_boss_down();
+        if name == "great_eye" {
+            // The eye leaves some of the world's evil ore behind (and its seeds, in Terraria).
+            let ore = if crate::tr_world::world_evil(self.seed) == crate::tr_world::Land::Ruin { "umbral_ore" } else { "sanguinite_ore" };
+            if let Some(id) = self.items.id(ore) {
+                let at = self.body.pos + Vec3::Y;
+                self.spawn_drop(at, voxel::item::ItemStack::new(id, 30), Vec3::Y);
+            }
+        }
         let text = match name {
             "king_jelly" => "As geleias se acalmam... por enquanto.",
             "great_eye" => "Uma sensação estranha passa por você.",
@@ -229,6 +263,58 @@ impl Game {
                 if let Some(id) = self.items.id("meteor_blaster") {
                     self.surv.inv.slots[0] = Some(voxel::item::ItemStack::new(id, 1));
                 }
+            }
+            "ruin" => self.test_land(crate::tr_world::Land::Ruin),
+            "blight" => self.test_land(crate::tr_world::Land::Blight),
+            "prism" => {
+                self.t5.hard.on = true;
+                self.test_land(crate::tr_world::Land::Prism);
+                for (k, n) in ["prism_pixie", "prism_unicorn", "prism_pixie"].iter().enumerate() {
+                    let p = self.body.pos + flat * (8.0 + k as f32) + side * (k as f32 - 1.0) * 3.0;
+                    let y = ground(self, p) + if n.ends_with("pixie") { 2.0 } else { 0.0 };
+                    self.mobs.spawn(n, Vec3::new(p.x, y, p.z));
+                    let last = self.mobs.list.len() - 1;
+                    face(self, last);
+                }
+            }
+            "land_mobs" => {
+                for (k, n) in ["soul_eater", "blight_flyer", "blight_brute", "prism_pixie", "prism_unicorn"].iter().enumerate() {
+                    let p = self.body.pos + flat * (6.0 + (k % 2) as f32 * 2.0) + side * (k as f32 - 2.0) * 2.5;
+                    let y = ground(self, p) + if matches!(*n, "soul_eater" | "blight_flyer" | "prism_pixie") { 1.5 } else { 0.0 };
+                    self.mobs.spawn(n, Vec3::new(p.x, y, p.z));
+                    let last = self.mobs.list.len() - 1;
+                    face(self, last);
+                }
+            }
+            "sky_island" | "pyramid" => {
+                let name = if scene == "sky_island" { "ilha_do_ceu" } else { "piramide" };
+                let (x, z) = (self.body.pos.x as i32, self.body.pos.z as i32);
+                if let Some((o, size)) = self.world.gen.find_structure(name, x, z, 40) {
+                    let c = o.as_vec3() + size.as_vec3() * 0.5;
+                    let (back, up) = if scene == "sky_island" { (26.0, 6.0) } else { (30.0, 10.0) };
+                    let y = if scene == "sky_island" { c.y.max(150.0) + up } else { self.world.gen.height_at(c.x as i32, c.z as i32) as f32 + up };
+                    self.body.pos = Vec3::new(c.x, y, c.z + back);
+                    self.yaw = std::f32::consts::PI;
+                    self.body.flying = true;
+                    log::info!("{name} at {o} size {size}");
+                } else {
+                    log::warn!("no {name} found");
+                }
+            }
+            "items3" => {
+                self.survival = true;
+                let names = [
+                    "umbral_ingot", "sanguinite_ingot", "purification_powder", "vile_powder", "star_band", "ruin_thorn", "blight_rod", "pixie_dust", "unicorn_horn",
+                    "sturdy_fossil", "jungle_spore", "sky_blade", "umbral_pickaxe", "sanguinite_pickaxe", "umbral_sword", "sanguinite_sword", "umbral_helmet", "sanguinite_chestplate",
+                    "hive_helmet", "jungle_chestplate", "fossil_helmet", "necro_chestplate", "ninja_helmet", "ruin_orb", "blight_heart", "ruin_altar", "sky_brick", "cloud_block",
+                    "umbral_ore", "sanguinite_ore", "ruin_grass", "blight_grass", "prism_grass", "prism_stone",
+                ];
+                for (k, n) in names.iter().enumerate() {
+                    if let Some(id) = self.items.id(n) {
+                        self.surv.inv.slots[k] = Some(voxel::item::ItemStack::new(id, 1));
+                    }
+                }
+                self.args.show_inventory = true;
             }
             s if self.test_tr_event(s) => {}
             _ => log::warn!("unknown MC_TR scene {scene}"),

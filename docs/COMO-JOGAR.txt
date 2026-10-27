@@ -513,6 +513,27 @@ EVENTOS (lado Terraria, lote 2)
     escurece; vêm Ceifadores, Vultos Brutais e a Mariposa do Eclipse. Caem Lascas Sombrias
     e, raro, a Foice do Eclipse.
 
+TERRAS QUE MUDAM O MUNDO (lado Terraria, lote 3)
+  Cada mundo tem uma terra má: a Ruína (roxa, com abismos) ou a Chaga (vermelha, com
+    cavernas). Ficam em manchas a algumas centenas de blocos umas das outras. A grama, a
+    pedra e a areia mudam de cor, as plantas morrem e o céu fica roxo ou vermelho.
+  No fundo dos abismos há Orbes da Ruína (ou Corações da Chaga). Quebrar um dá um prêmio
+    (Espinho Vil, Anel Estelar, Bastão da Chaga, barras...). O primeiro atrai um meteoro e
+    cada terceiro acorda o chefe da terra (o Verme das Profundezas ou a Mente da Chaga).
+  O altar no meio da mancha só quebra com picareta do modo difícil, e a terra em volta
+    apodrece quando ele quebra.
+  Minérios: Sombraço (Ruína) e Sanguinita (Chaga), na pedra das manchas. O Grande Olho
+    também deixa 30 minérios ao cair. Com eles se fazem picaretas, espadas e armaduras.
+  Prisma: depois do Quebra-Mundos surgem manchas de cores claras, com Fadas e Unicórnios.
+    Na era do Quebra-Mundos todas essas terras se espalham devagar pelos blocos vizinhos.
+  Pó Purificador (cogumelo marrom + pó de pedra luminosa = 5): devolve a terra em volta ao
+    normal. O Pó Vil faz o contrário.
+  Ilhas do céu: flutuam na altura 150, com uma casinha de Tijolo Celeste e um baú
+    (ferradura, balão, nuvem na garrafa, Lâmina Celeste, estrelas).
+  Pirâmide: no deserto, com um corredor e uma escada até a sala do tesouro embaixo.
+  Armaduras novas: Sombraço, Sanguinita, Abelha (cera), Selva (esporos), Fóssil, Necro
+    (ossos) e Ninja (cai do Rei Geleia). Cada uma tem seu bônus de conjunto.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

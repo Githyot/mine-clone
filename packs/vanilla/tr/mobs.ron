@@ -66,7 +66,7 @@
     // The Jelly King: a huge hopping jelly with a gold crown. Sheds jellies as it is hurt.
     (
         name: "king_jelly", display_name: "Rei Geleia", kind: Hostile, health: 420, speed: 2.0, attack: 6,
-        drops: [(item: "gel", min: 20, max: 40), (item: "jelly_hook", chance: 0.5), (item: "jelly_staff", chance: 0.5), (item: "royal_gel"), (item: "lesser_healing_potion", min: 3, max: 6)], xp: 90,
+        drops: [(item: "gel", min: 20, max: 40), (item: "jelly_hook", chance: 0.5), (item: "jelly_staff", chance: 0.5), (item: "royal_gel"), (item: "lesser_healing_potion", min: 3, max: 6), (item: "ninja_helmet", chance: 0.34), (item: "ninja_chestplate", chance: 0.34), (item: "ninja_leggings", chance: 0.34), (item: "ninja_boots", chance: 0.34)], xp: 90,
         width: 3.2, height: 2.6, spawn: Never, hops: true, scale: 4.5, boss: true,
         parts: [
             (size: (12, 10, 12), origin: (-6, 0, -6), uv: (0, 0)),
@@ -223,5 +223,72 @@
             (size: (6, 6, 6), origin: (-3, 5, 8), uv: (0, 40), anim: Head, pivot: (0, 8, 8)),
         ],
         layers: [(part: 0, inflate: 0.6)],
+    ),
+    // Lote 3: the evil lands and the Prism.
+    (
+        name: "soul_eater", display_name: "Devorador de Almas", kind: Hostile, health: 34, speed: 0.1, attack: 5,
+        drops: [(item: "rotten_flesh", chance: 0.5), (item: "shadow_scale", chance: 0.08), (item: "vile_powder", chance: 0.2)], xp: 6,
+        width: 0.8, height: 0.7, spawn: Never, scale: 1.4, flies: true,
+        parts: [
+            (size: (8, 8, 10), origin: (-4, 0, -2), uv: (0, 0), anim: Head, pivot: (0, 4, 0)),
+            (size: (6, 6, 8), origin: (-3, 1, -10), uv: (0, 20)),
+            (size: (8, 1, 6), origin: (-12, 6, -6), uv: (0, 36), anim: Wing(0), pivot: (-3, 6, -3)),
+            (size: (8, 1, 6), origin: (4, 6, -6), uv: (0, 36), anim: Wing(1), pivot: (3, 6, -3)),
+        ],
+        layers: [(part: 0, inflate: 0.5)],
+    ),
+    (
+        name: "blight_flyer", display_name: "Voador da Chaga", kind: Hostile, health: 34, speed: 0.1, attack: 5,
+        drops: [(item: "rotten_flesh", chance: 0.5), (item: "blight_tissue", chance: 0.08)], xp: 6,
+        width: 0.8, height: 0.7, spawn: Never, scale: 1.4, flies: true,
+        parts: [
+            (size: (8, 8, 10), origin: (-4, 0, -2), uv: (0, 0), anim: Head, pivot: (0, 4, 0)),
+            (size: (6, 6, 8), origin: (-3, 1, -10), uv: (0, 20)),
+            (size: (8, 1, 6), origin: (-12, 6, -6), uv: (0, 36), anim: Wing(0), pivot: (-3, 6, -3)),
+            (size: (8, 1, 6), origin: (4, 6, -6), uv: (0, 36), anim: Wing(1), pivot: (3, 6, -3)),
+        ],
+        layers: [(part: 0, inflate: 0.5)],
+    ),
+    (
+        name: "blight_brute", display_name: "Rosto da Chaga", kind: Hostile, health: 70, speed: 2.4, attack: 7,
+        drops: [(item: "rotten_flesh", min: 1, max: 2), (item: "blight_tissue", chance: 0.1)], xp: 8,
+        width: 0.9, height: 2.2, spawn: Never, scale: 1.1,
+        parts: [
+            (size: (10, 12, 6), origin: (-5, 12, -3), uv: (0, 0)),
+            (size: (10, 10, 8), origin: (-5, 24, -4), uv: (0, 20), anim: Head, pivot: (0, 24, 0)),
+            (size: (4, 14, 4), origin: (-9, 10, -2), uv: (36, 0), anim: ArmForward(0), pivot: (-7, 23, 0)),
+            (size: (4, 14, 4), origin: (5, 10, -2), uv: (36, 0), anim: ArmForward(1), pivot: (7, 23, 0)),
+            (size: (4, 12, 4), origin: (-5, 0, -2), uv: (0, 40), anim: Leg(0), pivot: (-3, 12, 0)),
+            (size: (4, 12, 4), origin: (1, 0, -2), uv: (0, 40), anim: Leg(1), pivot: (3, 12, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.4), (part: 1, inflate: 0.5)],
+    ),
+    (
+        name: "prism_pixie", display_name: "Fada Prismática", kind: Hostile, health: 40, speed: 0.1, attack: 7,
+        drops: [(item: "pixie_dust", min: 1, max: 3)], xp: 8,
+        width: 0.6, height: 0.8, spawn: Never, scale: 1.3, flies: true,
+        parts: [
+            (size: (4, 4, 4), origin: (-2, 6, -2), uv: (0, 0), anim: Head, pivot: (0, 6, 0)),
+            (size: (4, 6, 2), origin: (-2, 0, -1), uv: (0, 10)),
+            (size: (6, 8, 1), origin: (-8, 2, -1), uv: (16, 0), anim: Wing(0), pivot: (-2, 4, 0)),
+            (size: (6, 8, 1), origin: (2, 2, -1), uv: (16, 0), anim: Wing(1), pivot: (2, 4, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.4)],
+    ),
+    (
+        name: "prism_unicorn", display_name: "Unicórnio Prismático", kind: Hostile, health: 110, speed: 4.5, attack: 9,
+        drops: [(item: "unicorn_horn", chance: 0.4), (item: "pixie_dust", min: 1, max: 2)], xp: 14,
+        width: 1.3, height: 1.9, spawn: Never, scale: 1.1,
+        parts: [
+            (size: (10, 10, 20), origin: (-5, 12, -10), uv: (0, 0)),
+            (size: (6, 12, 6), origin: (-3, 18, 8), uv: (0, 30), anim: Head, pivot: (0, 20, 10)),
+            (size: (6, 5, 8), origin: (-3, 26, 12), uv: (24, 30), anim: Head, pivot: (0, 20, 10)),
+            (size: (2, 7, 2), origin: (-1, 31, 16), uv: (52, 30), anim: Head, pivot: (0, 20, 10)),
+            (size: (4, 12, 4), origin: (-5, 0, 5), uv: (0, 48), anim: Leg(0), pivot: (-3, 12, 7)),
+            (size: (4, 12, 4), origin: (1, 0, 5), uv: (0, 48), anim: Leg(1), pivot: (3, 12, 7)),
+            (size: (4, 12, 4), origin: (-5, 0, -9), uv: (0, 48), anim: Leg(1), pivot: (-3, 12, -7)),
+            (size: (4, 12, 4), origin: (1, 0, -9), uv: (0, 48), anim: Leg(0), pivot: (3, 12, -7)),
+        ],
+        layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.4)],
     ),
 ])
