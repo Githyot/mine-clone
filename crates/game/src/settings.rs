@@ -114,6 +114,9 @@ pub struct Settings {
     pub taa: bool,
     /// Glowing bits of ore textures stay bright in the dark (Continuity's emissive textures).
     pub emissive_textures: bool,
+    /// Block depth (parallax occlusion mapping, as in shader packs): 0 off, then the steps of
+    /// `PARALLAX_LEVELS`. Needs the "Bonito" quality.
+    pub parallax: u8,
     /// Inventory and hotbar animations (Immersive UI idea); off = reduce motion.
     pub ui_animations: bool,
     /// "pt" (Portuguese, the game's own) or "en" (English, through lang.rs).
@@ -163,6 +166,7 @@ impl Default for Settings {
             water_reflections: true,
             taa: false,
             emissive_textures: true,
+            parallax: 2,
             ui_animations: true,
             language: "pt".into(),
             subtitles: false,
@@ -229,6 +233,9 @@ mod tests {
 }
 
 /// Names of the shadow settings, as shown in the menu.
+/// Block depth choices: menu name and how deep the darkest texels sink, in blocks.
+pub const PARALLAX_LEVELS: [(&str, f32); 4] = [("Não", 0.0), ("Rasa", 0.06), ("Média", 0.1), ("Funda", 0.16)];
+
 pub const SHADOW_LEVELS: [&str; 3] = ["Desligadas", "Rápidas", "Bonitas"];
 
 /// Names of the difficulty levels, as shown in the menu.
