@@ -1592,6 +1592,22 @@ def structures_l3():
          temple, [f"sink: {tsink}"],
          [("idol_core", 1, 1, 0.5), ("turtle_shell", 1, 2, 0.4), ("beetle_husk", 1, 3, 0.3), ("emerald", 3, 8, 0.7), ("super_healing_potion", 1, 3, 0.5), ("sun_stone_staff", 1, 1, 0.15)],
          None)
+    (lake, lsink), oasis, grave = structures_l9()
+    emit("lago_cintilante", ["Plains", "Forest", "Birch Forest", "Meadow", "Flower Forest", "Taiga", "Savanna"], 48, 0.5,
+         [("S", "stone"), ("~", "shimmer"), ("a", "amethyst_block"), ("c", "shimmer_crystal"), ("K", "chest"), ("L", "ladder")],
+         lake, [f"sink: {lsink}"],
+         [("shimmer_crystal", 2, 6, 0.8), ("magic_mirror", 1, 1, 0.3), ("teleport_potion", 1, 2, 0.4), ("amethyst", 2, 6, 0.6), ("fallen_star", 2, 5, 0.5)],
+         None)
+    emit("oasis", ["Desert"], 20, 0.45,
+         [("w", "water"), ("G", "grass_block"), ("f", "short_grass"), ("T", "jungle_log"), ("e", "jungle_leaves"), ("K", "chest")],
+         oasis, ["sink: 1", "rough: 3"],
+         [("magic_conch", 1, 1, 0.35), ("sandstorm_bottle", 1, 1, 0.2), ("javelin", 6, 16, 0.6), ("recall_potion", 1, 3, 0.5), ("gravity_potion", 1, 2, 0.3), ("gold_ingot", 2, 5, 0.5)],
+         None)
+    emit("cemiterio", ["Plains", "Forest", "Dark Forest", "Taiga", "Birch Forest"], 30, 0.4,
+         [("P", "podzol"), ("F", "oak_fence"), ("t", "tombstone"), ("K", "chest"), ("d", "dead_bush")],
+         grave, ["sink: 1", "rough: 3"],
+         [("bone_javelin", 8, 16, 0.6), ("ectoplasm", 1, 3, 0.15), ("magic_mirror", 1, 1, 0.25), ("wormhole_potion", 1, 2, 0.4), ("bone", 4, 12, 0.8), ("tombstone", 1, 3, 0.5)],
+         [("zombie", 3), ("skeleton", 2)])
     lines += ["])", ""]
     (OUT / "structures.ron").write_text("\n".join(lines))
 
@@ -3118,6 +3134,410 @@ SHAPELESS_L8 = [
 ]
 
 
+
+# ==============================================================================================
+# Lote 9: the crafting stations (Infernal Forge, Arcane Anvil, Titanic Forge, Alchemy Table),
+# the utility potions, the magic mirror and conch, the PDA, the piggy bank and safe, the combo
+# accessories, the sprayer, javelins, the Shimmer Lake with its permanent upgrades, the oasis
+# and the graveyard
+# ==============================================================================================
+
+MIRROR = [
+    "................",
+    ".....11111......",
+    "....1aaaaa1.....",
+    "...1abbbbaa1....",
+    "..1abccbbbaa1...",
+    "..1abcbbbbba1...",
+    "..1abbbbbbba1...",
+    "..1abbbbbbba1...",
+    "...1aabbbba1....",
+    "....1aaaaa1.....",
+    ".....11111......",
+    "......323.......",
+    "......323.......",
+    "......424.......",
+    "......444.......",
+    "................",
+]
+CONCH = [
+    "................",
+    "................",
+    "........11......",
+    "......112211....",
+    ".....12233221...",
+    "....1233443321..",
+    "...123445543321.",
+    "...12345aa54321.",
+    "...1234aaaa4321.",
+    "....123a44a321..",
+    ".....1223332211.",
+    "......11222111..",
+    "........1111....",
+    "................",
+    "................",
+    "................",
+]
+PDA = [
+    "................",
+    "....11111111....",
+    "...1222222221...",
+    "...12aaaaaa21...",
+    "...12abbbba21...",
+    "...12abccba21...",
+    "...12abbbba21...",
+    "...12aaaaaa21...",
+    "...1222222221...",
+    "...1232323221...",
+    "...1223232321...",
+    "...1232323221...",
+    "...1222222221...",
+    "....11111111....",
+    "................",
+    "................",
+]
+BOOTS = [
+    "................",
+    "................",
+    "....1111........",
+    "....1221........",
+    "....1231........",
+    "....1231........",
+    "....1231........",
+    "....1231........",
+    "...12331........",
+    "..1a2331........",
+    "..1a23332111....",
+    "..1aa2333333211.",
+    "..1bbbbbbbbbb1..",
+    "...1111111111...",
+    "................",
+    "................",
+]
+BALLOONS = [
+    "................",
+    "..111.....111...",
+    ".1aab1...1ccd1..",
+    ".1abb1.111cdd1..",
+    ".1bbb11222dd1...",
+    "..111123321.....",
+    "....1233321.....",
+    "....12333321....",
+    ".....1222211....",
+    "......1111......",
+    ".......5.5......",
+    "........5.......",
+    "........5.......",
+    ".......5........",
+    "........5.......",
+    "................",
+]
+SPRAYER = [
+    "................",
+    "................",
+    "................",
+    "..........aa....",
+    ".........abba...",
+    "..11111111aa....",
+    ".1222222221.....",
+    "13333333321.....",
+    ".1222222221aaa..",
+    "..1111111aabba..",
+    ".....12221aa....",
+    ".....12221......",
+    ".....1221.......",
+    "....1221........",
+    "....111.........",
+    "................",
+]
+JAVELIN = [
+    "...............1",
+    "..............12",
+    ".............121",
+    "............a21.",
+    "...........a1...",
+    "..........a.....",
+    ".........a......",
+    "........a.......",
+    ".......a........",
+    "......b.........",
+    ".....b..........",
+    "....a...........",
+    "...a............",
+    "..a.............",
+    ".a..............",
+    "................",
+]
+PIGGY = pal("#7a3a4a", "#b45a70", "#e08aa0", "#f8b8c8", "#ffe0e8")
+SHIMMER = pal("#3a2a6a", "#6a4aa8", "#a07ad8", "#d4b0f8", "#fff0ff")
+GOLDEN = pal("#6a4a08", "#a07c16", "#d4aa18", "#f4ca28", "#fff0a0")
+GLASS_P = pal("#5a7a8a", "#a8d0e0", "#e8f8ff")
+FLASK = pal("#5a3a1a", "#c4a060")
+
+POTIONS_L9 = [
+    ("recall_potion", "Poção de Retorno", pal("#c8d2dc", "#2a6aa0", "#5ab4f0", "#d0f0ff")),
+    ("teleport_potion", "Poção de Teletransporte", pal("#c8d2dc", "#7a2aa0", "#c45ad4", "#ffc0ff")),
+    ("gravity_potion", "Poção de Gravidade", pal("#c8d2dc", "#4a3a8a", "#8a7ad4", "#e0d8ff")),
+    ("wormhole_potion", "Poção do Buraco de Minhoca", pal("#c8d2dc", "#18887a", "#3ac4a8", "#a8ffe8")),
+]
+SOLUTIONS_L9 = [
+    ("pure_solution", "Solução Pura", pal("#c8d2dc", "#2a8a2a", "#6ad46a", "#d0ffd0")),
+    ("vile_solution", "Solução Vil", pal("#c8d2dc", "#5a1a6a", "#a04ac4", "#f0c0ff")),
+]
+
+
+def items_l9():
+    stack1 = "max_stack: Some(1)"
+    out = [(n, d, icon2(POTION, p, FLASK), "max_stack: Some(16)") for n, d, p in POTIONS_L9 + SOLUTIONS_L9]
+    out += [
+        ("magic_mirror", "Espelho Mágico", icon2(MIRROR, GOLDEN, GLASS_P), stack1),
+        ("magic_conch", "Concha Mágica", icon2(CONCH, pal("#6a3a2a", "#b46a4a", "#e0a080", "#f8d0b0", "#fff0e0"), pal("#f8c8d0")), stack1),
+        ("pda", "PDA do Explorador", icon2(PDA, pal("#14141a", "#3a3a48", "#6a6a80"), pal("#0e3a2a", "#2a8a6a", "#a8ffe0")), stack1),
+        ("money_trough", "Cocho do Cofrinho", icon2(MIRROR, PIGGY, pal("#3a2410", "#7a5a2a", "#c4a060")), stack1),
+        ("terraspark_boots", "Botas Terrafagulha", icon2(BOOTS, pal("#3a0e08", "#7a2210", "#c4461a", "#f08a3a"), pal("#5ab4f0", "#d0f0ff")), stack1),
+        ("bundle_of_balloons", "Cacho de Balões", icon2(BALLOONS, pal("#3a3a48", "#c8d2dc", "#eef2f8", "#ffffff", "#8a8a9a"), pal("#c4461a", "#f08a3a", "#5ab4f0", "#d0f0ff")), stack1),
+        ("sprayer", "Aspersor", icon2(SPRAYER, STEEL, pal("#2a8a2a", "#6ad46a", "#d0ffd0")), stack1),
+        ("javelin", "Azagaia", icon2(JAVELIN, STEEL, WOOD), "max_stack: Some(64)"),
+        ("bone_javelin", "Azagaia de Osso", icon2(JAVELIN, pal("#8a8270", "#c8c0a8", "#f0ead8"), WOOD), "max_stack: Some(64)"),
+        ("sun_javelin", "Azagaia do Sol", icon2(JAVELIN, SOLAR, pal("#a03008", "#f89a30")), "max_stack: Some(64)"),
+        ("vital_crystal", "Cristal Vital", icon(SHARD, pal("#5a0a1a", "#a02a3a", "#e05a6a", "#ffb0c0", "#ffffff")), ""),
+        ("arcane_shard", "Lasca Arcana", icon(SHARD, pal("#0a1a5a", "#2a4aa0", "#5a8ae0", "#b0d0ff", "#ffffff")), ""),
+        ("aegis_fruit", "Fruta da Égide", icon2(APPLE, SHIMMER, pal("#3a2a10", "#7a4ab4")), ""),
+    ]
+    return out
+
+
+BLOCKS_L9 = [
+    '(name: "infernal_forge", display_name: Some("Forja Infernal"), light: 10, hardness: 5.0, tool: Some(Pickaxe), textures: (top: Some("infernal_forge_top"), side: Some("infernal_forge_side"), bottom: Some("infernal_forge_side")))',
+    '(name: "arcane_anvil", display_name: Some("Bigorna Arcana"), light: 4, hardness: 6.0, tool: Some(Pickaxe), tier: 3, textures: (top: Some("arcane_anvil_top"), side: Some("arcane_anvil_side"), bottom: Some("arcane_anvil_side")))',
+    '(name: "titanic_forge", display_name: Some("Forja Titânica"), light: 12, hardness: 8.0, tool: Some(Pickaxe), tier: 4, textures: (top: Some("titanic_forge_top"), side: Some("titanic_forge_side"), bottom: Some("titanic_forge_side")))',
+    '(name: "alchemy_table", display_name: Some("Mesa de Alquimia"), light: 3, hardness: 2.0, tool: Some(Axe), textures: (top: Some("alchemy_table_top"), side: Some("alchemy_table_side"), bottom: Some("alchemy_table_side")))',
+    '(name: "piggy_bank", display_name: Some("Cofrinho"), hardness: 0.8, textures: (top: Some("piggy_bank_top"), side: Some("piggy_bank_side"), front: Some("piggy_bank_front"), bottom: Some("piggy_bank_side")))',
+    '(name: "safe", display_name: Some("Cofre"), hardness: 10.0, tool: Some(Pickaxe), textures: (top: Some("safe_top"), side: Some("safe_top"), front: Some("safe_front"), bottom: Some("safe_top")))',
+    '(name: "shimmer", display_name: Some("Brilho Cintilante"), shape: Liquid, transparency: Translucent, solid: false, light: 11, hardness: 100.0, in_inventory: false, drops: Some([]))',
+    '(name: "shimmer_crystal", display_name: Some("Cristal Cintilante"), light: 13, hardness: 1.5, tool: Some(Pickaxe), transparency: Cutout)',
+    '(name: "tombstone", display_name: Some("Lápide"), shape: Wall, hardness: 2.0, tool: Some(Pickaxe), textures: (all: Some("tombstone")))',
+]
+
+
+def blocks_l9():
+    def rim(x, y, w=1):
+        return min(x, y, 15 - x, 15 - y) < w
+
+    def brick(x, y):
+        row = y // 4
+        off = 4 if row % 2 else 0
+        return 0.12 if y % 4 == 3 or (x + off) % 8 == 7 else 0.45 + 0.2 * (((x + off) // 8 + row) % 2)
+
+    def forge_top(x, y):
+        if rim(x, y, 2):
+            return brick(x, y)
+        return 0.75 + 0.2 * ((x * 3 + y * 5) % 7 > 3)
+
+    def forge_side(x, y):
+        mouth = 4 <= x <= 11 and 6 <= y <= 11
+        return 0.9 - 0.04 * abs(y - 9) if mouth else brick(x, y)
+
+    def anvil_top(x, y):
+        return 0.2 if rim(x, y) else 0.6 + 0.25 * (abs(x - 7.5) + abs(y - 7.5) < 4)
+
+    def anvil_side(x, y):
+        body = (y < 5) or (6 <= x <= 9 and y < 11) or (y >= 11 and 2 <= x <= 13)
+        return 0.15 if not body else (0.95 if (x + y) % 9 == 0 else 0.55 + 0.02 * (8 - y))
+
+    def ti_top(x, y):
+        dx, dy = abs(x - 7.5), abs(y - 7.5)
+        return 0.15 if rim(x, y) else (0.95 if dx < 3 and dy < 3 else 0.5 + 0.1 * ((x // 4 + y // 4) % 2))
+
+    def ti_side(x, y):
+        plate = x % 8 in (0, 7) or y % 8 in (0, 7)
+        glow = 6 <= x <= 9 and 4 <= y <= 11
+        return 0.95 if glow else (0.25 if plate else 0.55)
+
+    def alch_top(x, y):
+        bottle = any((x - cx) ** 2 + (y - cy) ** 2 < 5 for cx, cy in ((4, 4), (11, 5), (7, 11)))
+        return 0.9 if bottle else (0.15 if rim(x, y) else 0.45 + 0.08 * (y % 3 == 0))
+
+    def alch_side(x, y):
+        return 0.2 if y < 2 or (y > 3 and x in (1, 2, 13, 14)) else (0.5 if y < 4 else 0.08)
+
+    def piggy_side(x, y):
+        return 0.3 if rim(x, y) else 0.6 + 0.15 * (((x - 7.5) ** 2 + (y - 7.5) ** 2) < 20)
+
+    def piggy_front(x, y):
+        snout = 5 <= x <= 10 and 8 <= y <= 12
+        nostril = y == 10 and x in (6, 9)
+        eye = y == 5 and x in (4, 11)
+        return 0.05 if nostril or eye else (0.85 if snout else piggy_side(x, y))
+
+    def piggy_top(x, y):
+        return 0.05 if 5 <= x <= 10 and y in (7, 8) else piggy_side(x, y)
+
+    def safe_top(x, y):
+        return 0.2 if rim(x, y) else 0.5 + 0.06 * ((x + y) % 4 == 0)
+
+    def safe_front(x, y):
+        d = ((x - 8) ** 2 + (y - 8) ** 2) ** 0.5
+        return 0.95 if d < 1.5 else (0.75 if d < 3.5 else (0.3 if d < 4.3 else safe_top(x, y)))
+
+    def crystal(x, y):
+        dx, dy = abs(x - 7.5), abs(y - 7.5)
+        spikes = (dx < 2 and y > 1) or (abs(x - 3.5) < 1.6 and y > 5) or (abs(x - 11.5) < 1.6 and y > 4)
+        return 0.0 if not spikes else 0.6 + 0.35 * (1 - dy / 8)
+
+    def stone(x, y):
+        cross = (7 <= x <= 8 and 2 <= y <= 9) or (5 <= x <= 10 and 4 <= y <= 5)
+        return 0.2 if cross else 0.5 + 0.1 * ((x * 7 + y * 3) % 5 == 0)
+
+    hot = pal("#2a0a04", "#6a1a08", "#c43a10", "#f88a20", "#ffe080")
+    dark = pal("#1a1418", "#2e262c", "#4a3e44", "#6a5a60", "#8a787e")
+    arcane = pal("#14183a", "#2a3a7a", "#4a6ab4", "#8ab0f0", "#e0f0ff")
+    titan = pal("#1a1a22", "#3a3a4a", "#6a6a84", "#a8a8c4", "#f0ffe0")
+    wood = pal("#3a2410", "#5a3a1a", "#7a5a2a", "#a07c3a", "#c4a060")
+    alch = pal("#3a2410", "#5a3a1a", "#7a5a2a", "#a07c3a", "#b8f0e0")
+    steel = pal("#2a2e36", "#4a505c", "#6a7280", "#9aa2b0", "#d0d8e0")
+    rock = pal("#3a3a3e", "#5a5a60", "#7a7a80", "#9a9aa0", "#babac0")
+    out = {
+        "infernal_forge_top": block_noise(90, forge_top, hot),
+        "infernal_forge_side": block_noise(91, lambda x, y: forge_side(x, y), [*dark[:3], *hot[3:]]),
+        "arcane_anvil_top": block_noise(92, anvil_top, arcane),
+        "arcane_anvil_side": block_noise(93, anvil_side, arcane),
+        "titanic_forge_top": block_noise(94, ti_top, titan),
+        "titanic_forge_side": block_noise(95, ti_side, titan),
+        "alchemy_table_top": block_noise(96, alch_top, alch),
+        "alchemy_table_side": block_noise(97, alch_side, wood),
+        "piggy_bank_top": block_noise(98, piggy_top, PIGGY),
+        "piggy_bank_side": block_noise(99, piggy_side, PIGGY),
+        "piggy_bank_front": block_noise(100, piggy_front, PIGGY),
+        "safe_top": block_noise(101, safe_top, steel),
+        "safe_front": block_noise(102, safe_front, steel),
+        "shimmer": block_noise(103, lambda x, y: 0.55 + 0.3 * ((x + 2 * y) % 6 < 2) - 0.1 * ((x * y) % 5 == 0), SHIMMER),
+        "tombstone": block_noise(105, stone, rock),
+    }
+    cr = block_noise(104, crystal, SHIMMER)
+    for y in range(N):
+        for x in range(N):
+            if crystal(x, y) == 0.0:
+                cr[y, x, 3] = 0
+    out["shimmer_crystal"] = cr
+    return out
+
+
+SHAPED_L9 = [
+    (["OMO", "MFM", "OOO"], {"O": "obsidian", "M": "magmarite_ore", "F": "furnace"}, "infernal_forge", 1),
+    (["MMM", " A ", "MMM"], {"M": "mythril_ingot", "A": "anvil"}, "arcane_anvil", 1),
+    (["MMM", " A ", "MMM"], {"M": "orichalcum_ingot", "A": "anvil"}, "arcane_anvil", 1),
+    (["AEA", "AFA", "AAA"], {"A": "adamantite_ingot", "E": "ectoplasm", "F": "infernal_forge"}, "titanic_forge", 1),
+    (["AEA", "AFA", "AAA"], {"A": "titanium_ingot", "E": "ectoplasm", "F": "infernal_forge"}, "titanic_forge", 1),
+    (["CCC", "CGC", "CCC"], {"C": "clay_ball", "G": "gold_nugget"}, "piggy_bank", 1),
+    (["III", "IGI", "III"], {"I": "iron_ingot", "G": "gold_ingot"}, "safe", 1),
+    (["GgG", "gRg", "GgG"], {"G": "gold_ingot", "g": "glass", "R": "recall_potion"}, "magic_mirror", 1),
+    (["RRB", " K ", " R "], {"R": "radiant_ingot", "B": "bucket", "K": "redstone"}, "sprayer", 1),
+    (["  F", " S ", "S  "], {"F": "flint", "S": "stick"}, "javelin", 8),
+    (["  F", " S ", "S  "], {"F": "bone", "S": "stick"}, "bone_javelin", 8),
+    (["  F", " S ", "S  "], {"F": "solar_fragment", "S": "stick"}, "sun_javelin", 16),
+]
+SHAPELESS_L9 = [
+    (["brewing_stand", "glass_bottle", "crafting_table"], "alchemy_table", 1),
+    (["glass_bottle", "glowstone_dust", "feather"], "recall_potion", 1),
+    (["glass_bottle", "ender_pearl", "chorus_fruit"], "teleport_potion", 1),
+    (["glass_bottle", "phantom_membrane", "feather"], "gravity_potion", 1),
+    (["glass_bottle", "ender_pearl", "prismarine_shard"], "wormhole_potion", 1),
+    (["purification_powder", "glass_bottle"], "pure_solution", 4),
+    (["vile_powder", "glass_bottle"], "vile_solution", 4),
+    (["piggy_bank", "bucket"], "money_trough", 1),
+    (["explorer_kit", "creature_radar", "battle_tally", "ore_finder", "magic_mirror"], "pda", 1),
+    (["frost_spark_boots", "obsidian_charm", "water_walking_boots"], "terraspark_boots", 1),
+    (["cloud_bottle", "blizzard_bottle", "sandstorm_bottle", "shiny_balloon"], "bundle_of_balloons", 1),
+]
+
+
+def structures_l9():
+    """The Shimmer Lake: a hidden cave 30 blocks down with a shaft of crystals; the oasis (a
+    pool under palms in the desert); the graveyard (tombstones, a fence and a chest)."""
+    W, H, UP = 15, 7, 24
+    lake = []
+    for y in range(H + UP):
+        rows = []
+        for z in range(W):
+            row = ""
+            for x in range(W):
+                if y >= H:
+                    # The shaft: a ladder on a stone spine; two crystals mark it on the surface.
+                    top = y >= H + UP - 2
+                    ch = "L" if (x, z) == (2, 7) else ("c" if top and (x, z) == (3, 7) else ("S" if (x, z) == (3, 7) else " "))
+                    row += ch
+                    continue
+                d = ((x - 7) ** 2 + (z - 7) ** 2) ** 0.5
+                edge = x in (0, W - 1) or z in (0, W - 1) or y in (0, H - 1)
+                if edge:
+                    ch = "S"
+                elif y == 1 and d < 4.6:
+                    ch = "~"
+                elif y == 1:
+                    ch = "a"
+                elif y == 2 and 3.6 < d < 4.6:
+                    ch = "a"
+                elif y in (2, 3) and (x, z) in ((2, 2), (12, 2), (2, 12), (12, 12)):
+                    ch = "c"
+                elif y == 2 and (x, z) == (12, 7):
+                    ch = "K"
+                else:
+                    ch = "."
+                if (x, z) == (2, 7) and y > 0:
+                    ch = "L"
+                if (x, z) == (3, 7) and y > 1:
+                    ch = "S"
+                row += ch
+            rows.append(row)
+        lake.append(rows)
+    oasis = []
+    for y in range(7):
+        rows = []
+        for z in range(11):
+            row = ""
+            for x in range(11):
+                d = ((x - 5) ** 2 + (z - 5) ** 2) ** 0.5
+                palm = (x, z) in ((1, 1), (9, 9))
+                ch = " "
+                if y == 0:
+                    ch = "w" if d < 3.2 else ("G" if d < 5.2 else " ")
+                elif y == 1 and d >= 3.2 and d < 4.5 and (x + z) % 3 == 0:
+                    ch = "f"
+                if palm and 1 <= y <= 5:
+                    ch = "T"
+                if y == 6 and any(abs(x - px) + abs(z - pz) <= 2 for px, pz in ((1, 1), (9, 9))):
+                    ch = "e"
+                if y == 1 and (x, z) == (9, 1):
+                    ch = "K"
+                row += ch
+            rows.append(row)
+        oasis.append(rows)
+    grave = []
+    for y in range(3):
+        rows = []
+        for z in range(11):
+            row = ""
+            for x in range(11):
+                fence = (x in (0, 10) or z in (0, 10)) and not (z == 10 and x == 5)
+                ch = " "
+                if y == 0:
+                    ch = "P"
+                elif y == 1:
+                    if fence:
+                        ch = "F"
+                    elif x % 3 == 2 and z % 3 == 2 and (x, z) != (5, 5):
+                        ch = "t"
+                    elif (x, z) == (5, 5):
+                        ch = "K"
+                    elif (x * 3 + z) % 7 == 0:
+                        ch = "d"
+                row += ch
+            rows.append(row)
+        grave.append(rows)
+    return (lake, H + UP - 2), oasis, grave
+
+
 def write_skins(skins):
     parsed, layers = g.parse_mobs(str(OUT / "mobs.ron"))
     assert set(parsed) == set(skins), sorted(set(parsed) ^ set(skins))
@@ -3134,10 +3554,10 @@ def write_skins(skins):
 
 
 def main():
-    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8()
-    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7
+    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8() + items_l9()
+    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7 + BLOCKS_L9
     mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6() + mobs_l7() + mobs_l8()
-    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8, SMELTING_L2 + SMELTING_L3)
+    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9, SMELTING_L2 + SMELTING_L3)
     structures_l3()
     skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6(), **skins_l7(), **skins_l8()})
     pics = []
@@ -3145,7 +3565,7 @@ def main():
         im = gt.to_image(img)
         im.save(os.path.join(gi.ITEM_DIR, name + ".png"))
         pics.append(im)
-    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7()}
+    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7(), **blocks_l9()}
     for name, img in all_blocks.items():
         im = gt.to_image(img)
         im.save(os.path.join(gi.BLOCK_DIR, name + ".png"))

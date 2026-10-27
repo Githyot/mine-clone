@@ -119,6 +119,8 @@ const fn acc(name: &'static str, desc: &'static str, mods: &'static [M]) -> AccD
 pub const ACCESSORIES: &[AccDef] = &[
     acc("running_boots", "", &[M::Move(0.3)]),
     acc("frost_spark_boots", "", &[M::Move(0.5), M::Immune(&[CHILLED, FROZEN])]),
+    acc("terraspark_boots", "Corre muito, anda sobre a água e a lava não queima", &[M::Move(0.5), M::Immune(&[CHILLED, FROZEN]), M::Lava, M::Fire]),
+    acc("bundle_of_balloons", "Três pulos a mais no ar e pulos mais altos", &[M::Jump(0.3)]),
     acc("cloud_bottle", "Um segundo pulo no ar", &[]),
     acc("lucky_horseshoe", "", &[M::NoFall]),
     acc("wind_cape", "Toque duas vezes A ou D para avançar", &[]),
@@ -694,6 +696,19 @@ impl Game {
                 s.defense += a.armor as f32;
                 s.move_speed *= a.move_speed;
             }
+        }
+        // Info items in the backpack and the Shimmer's upgrades (tr_utility.rs).
+        s.info |= self.t5.tr.util.inv_info;
+        let perma = self.t5.tr.util.perma;
+        if perma & crate::tr_utility::PERMA_VITAL != 0 {
+            s.regen += 0.25;
+        }
+        if perma & crate::tr_utility::PERMA_ARCANE != 0 {
+            s.apply(&M::Mana(4.0));
+            s.apply(&M::ManaRegen(1.0));
+        }
+        if perma & crate::tr_utility::PERMA_AEGIS != 0 {
+            s.defense += 4.0;
         }
         s.set = self.full_set();
         if let Some(i) = s.set {

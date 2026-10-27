@@ -518,16 +518,16 @@ impl Game {
     }
 
     /// Right click with purification or vile powder: the blocks around you turn.
-    pub(crate) fn use_powder(&mut self, pure: bool) -> bool {
+    /// Purify (or spread the world's evil over) a ball of this radius; returns blocks changed.
+    pub(crate) fn convert_area(&mut self, me: IVec3, r: i32, pure: bool) -> u32 {
         self.land_ids();
         let ids = self.t5.tr.lands.ids.take().unwrap();
         let evil = world_evil(self.seed);
-        let me = self.body.pos.floor().as_ivec3();
         let mut n = 0;
-        for dx in -5..=5 {
-            for dy in -3..=3 {
-                for dz in -5..=5 {
-                    if dx * dx + dy * dy + dz * dz > 25 {
+        for dx in -r..=r {
+            for dy in -(r * 3 / 5)..=(r * 3 / 5) {
+                for dz in -r..=r {
+                    if dx * dx + dy * dy + dz * dz > r * r {
                         continue;
                     }
                     let q = me + IVec3::new(dx, dy, dz);
@@ -548,6 +548,12 @@ impl Game {
             }
         }
         self.t5.tr.lands.ids = Some(ids);
+        n
+    }
+
+    pub(crate) fn use_powder(&mut self, pure: bool) -> bool {
+        let me = self.body.pos.floor().as_ivec3();
+        let n = self.convert_area(me, 5, pure);
         let glow = self.glow_layer();
         let tint = if pure { [0.8, 1.8, 0.8] } else { [1.2, 0.5, 1.8] };
         for _ in 0..40 {

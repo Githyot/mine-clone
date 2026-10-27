@@ -626,6 +626,31 @@ PESCA E INVASÕES (lado Terraria, lote 8)
       Chefe: Disco Voador.
     Defesa do Cristal: Cristal Etéreo. Proteja o cristal por 5 ondas. Chefe: Mago Sombrio.
 
+ESTAÇÕES, VIAGEM E O LAGO CINTILANTE (lado Terraria, lote 9)
+  Estações (a até 4 blocos de você, a receita só aparece na mesa perto delas):
+    Forja Infernal (fornalha + obsidiana + minério de magmarita): armas e armaduras de magmarita.
+    Bigorna Arcana (bigorna + barras de mitril ou oricalco): mitril, oricalco, adamantita,
+      titânio, radiante, verdita, espectral, esporita, besouro e tartaruga.
+    Forja Titânica (forja infernal + adamantita ou titânio + ectoplasma): lumita e o fim.
+    Mesa de Alquimia (suporte de poções + garrafa + bancada): as poções novas e as soluções.
+  Poções de viagem: Retorno (volta para a cama), Teletransporte (lugar aleatório longe),
+    Gravidade (3 min: segure Espaço no ar para flutuar, sem dano de queda) e Buraco de
+    Minhoca (vai até a casa de um morador da cidade, um de cada vez).
+  Espelho Mágico: o Retorno que não se gasta. Concha Mágica: leva até a praia mais perto.
+  PDA do Explorador: todos os informativos mesmo na mochila, e volta para casa no clique.
+    Os outros informativos (medidor, relógio, radar...) também valem na mochila agora.
+  Cofrinho e Cofre: cada um guarda as mesmas coisas em todos os que você fizer.
+    O Cocho do Cofrinho abre o cofrinho de qualquer lugar.
+  Botas Terrafagulha: botas de faísca + botas de andar na água + amuleto de obsidiana.
+  Cacho de Balões: as três garrafas de pulo + balão, num espaço só.
+  Aspersor: espalha Solução Pura (ou Vil) longe, onde você mira. Gasta uma por jato.
+  Azagaias: de pedra, de osso (sangra) e do Sol (queima). Jogue com o direito.
+  Lago Cintilante: escondido uns 25 blocos abaixo das planícies e florestas; cristais
+    marcam a escada. Jogue itens nele: as barras trocam de par (cobre/estanho, ouro/platina...),
+    o resto se desmancha no que o fez. Cristal de Vida, Cristal de Mana e Maçã Dourada viram
+    melhorias para sempre: Cristal Vital, Lasca Arcana e Fruta da Égide.
+  Mundo: oásis no deserto (concha, azagaias) e cemitérios com lápides (e zumbis).
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

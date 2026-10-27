@@ -65,6 +65,7 @@ mod tr_town;
 mod tr_endgame;
 mod tr_fishing;
 mod tr_invasions;
+mod tr_utility;
 mod tr_weapons;
 mod tr_world;
 mod glyphs;

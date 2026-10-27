@@ -1004,6 +1004,8 @@ impl Game {
                     }
                     "reforge_table" => return self.t5_use_block("reforge_table"),
                     "scale_altar" => return self.use_scale_altar(hit.block),
+                    "piggy_bank" => return self.open_bank(0),
+                    "safe" => return self.open_bank(1),
                     n if n.starts_with("pylon_") => {
                         let kind = n.trim_start_matches("pylon_").to_string();
                         return self.use_pylon(hit.block, &kind);
@@ -2105,7 +2107,7 @@ impl Game {
     fn craft_result(&self) -> Option<ItemStack> {
         let n = self.surv.grid_size();
         let grid: Vec<Option<ItemStack>> = (0..n * n).map(|i| self.surv.craft[i]).collect();
-        self.recipes.craft(&grid, n)
+        self.recipes.craft(&grid, n).filter(|r| self.station_ok(r.item))
     }
 
     pub(crate) fn slot_get(&self, slot: Slot) -> Option<ItemStack> {
@@ -3013,8 +3015,8 @@ impl Game {
                 item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, result, rx + 8.0 * s, gy + cell, 16.0 * s);
                 let rows = cells.len().div_ceil(*rw);
                 let need = (*rw).max(rows);
-                let label = if need <= 2 { "Grade 2x2" } else { "Mesa 3x3" };
-                self.ui.text(gx, gy + 3.0 * cell + 3.0 * s, label, [200, 200, 200, 255]);
+                let label = format!("{}{}", if need <= 2 { "Grade 2x2" } else { "Mesa 3x3" }, self.station_label(result.item));
+                self.ui.text(gx, gy + 3.0 * cell + 3.0 * s, &label, [200, 200, 200, 255]);
                 fill = Some((*rw, cells.clone()));
             }
             BookRecipe::Smelt { input, result } => {

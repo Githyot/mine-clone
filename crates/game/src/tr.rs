@@ -42,6 +42,9 @@ struct Saved {
     /// The angler's quests done (tr_fishing.rs).
     #[serde(default)]
     quests_done: u32,
+    /// Permanent upgrades from the Shimmer (tr_utility.rs).
+    #[serde(default)]
+    perma: u32,
 }
 
 #[derive(Default)]
@@ -55,6 +58,7 @@ pub struct Tr {
     pub(crate) end: crate::tr_endgame::Endgame,
     pub(crate) fish: crate::tr_fishing::Fishing,
     pub(crate) inv: crate::tr_invasions::Invasions,
+    pub(crate) util: crate::tr_utility::Utility,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -74,6 +78,7 @@ impl Tr {
         tr.town.pylons = s.pylons.into_iter().map(|(k, (x, y, z))| (k, glam::IVec3::new(x, y, z))).collect();
         tr.end.pillars = s.pillars;
         tr.fish.quests_done = s.quests_done;
+        tr.util.perma = s.perma;
         tr.town.animals = s.animals.into_iter().map(|(k, (x, y, z))| (k, Vec3::new(x, y, z))).collect();
         tr
     }
@@ -89,6 +94,7 @@ impl Tr {
             pylons: self.town.pylons.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
             pillars: self.end.pillars.clone(),
             quests_done: self.fish.quests_done,
+            perma: self.util.perma,
             animals: self.town.animals.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
@@ -113,6 +119,7 @@ impl Game {
         self.update_endgame(dt);
         self.update_tr_fishing(dt);
         self.update_invasions(dt);
+        self.update_tr_utility(dt);
     }
 
     /// Right click with an item of this file; true when it did something.
@@ -133,6 +140,9 @@ impl Game {
             return Some(r);
         }
         if let Some(r) = self.invasion_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.tr_utility_use(name) {
             return Some(r);
         }
         match name {
@@ -375,6 +385,7 @@ impl Game {
             "weapons" => self.test_tr_weapons(),
             "pets" | "mounts" | "harpies" | "wings" => self.test_tr_pets(scene),
             "town" | "townshop" => self.test_tr_town(scene),
+            "stations" | "shimmer" => self.test_tr_utility(scene),
             "harvest" | "winter" | "pirates" | "martians" | "crystal" => {
                 self.test_invasion(scene);
             }
