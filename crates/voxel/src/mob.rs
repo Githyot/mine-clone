@@ -148,6 +148,35 @@ pub struct MobDef {
     /// the bank, and flops about when stranded. See `Mob::aquatic_steer`.
     #[serde(default = "d_false")]
     pub aquatic: bool,
+    /// Hints for the procedural animation (game/src/anim.rs). Everything it leaves out is
+    /// worked out from the model, the mob's size and what kind of creature it is.
+    #[serde(default)]
+    pub motion: MotionDef,
+}
+
+/// How a mob moves, for the animation. All optional.
+#[derive(Deserialize, Clone, Debug, Default)]
+pub struct MotionDef {
+    /// Body plan: "biped", "quadruped", "bird", "spider", "hopper", "flyer", "swimmer", "floater".
+    #[serde(default)]
+    pub style: Option<String>,
+    /// 0 light and quick .. 1 big and heavy (slower, rolling steps, small bounce).
+    #[serde(default)]
+    pub heavy: Option<f32>,
+    /// How much the tail wags (dogs 1, cats 0.3).
+    #[serde(default)]
+    pub wag: Option<f32>,
+    /// Lowers its head to graze now and then while standing.
+    #[serde(default)]
+    pub graze: Option<bool>,
+    /// Extra bounce in the step (1 = normal).
+    #[serde(default)]
+    pub bounce: Option<f32>,
+    /// Parts to treat as tails or ears, when guessing from the model gets them wrong.
+    #[serde(default)]
+    pub tails: Vec<usize>,
+    #[serde(default)]
+    pub ears: Vec<usize>,
 }
 
 fn d_range() -> f32 {
@@ -231,6 +260,8 @@ pub struct Mob {
     pub max_health: f32,
     /// Seconds since last hurt (for the red flash and the health bar).
     pub hurt_age: f32,
+    /// Seconds since it last struck, bit or shot (drives the attack animation).
+    pub attack_age: f32,
     /// Walk cycle phase.
     pub walk: f32,
     pub walk_speed: f32,
@@ -308,6 +339,7 @@ impl Mob {
             health: def.health,
             max_health: def.health,
             hurt_age: 100.0,
+            attack_age: 100.0,
             walk: 0.0,
             walk_speed: 0.0,
             age: 0.0,
@@ -398,6 +430,7 @@ impl Mob {
     ) {
         self.age += dt;
         self.hurt_age += dt;
+        self.attack_age += dt;
         self.attack_cd -= dt;
         self.fed -= dt;
         self.panic -= dt;
@@ -494,6 +527,7 @@ impl Mob {
                 }
                 if self.attack_cd <= 0.0 && dist < def.range {
                     self.attack_cd = 2.0 + self.rng.f32();
+                    self.attack_age = 0.0;
                     let hit = self.rng.chance((1.0 - dist / 22.0).clamp(0.2, 0.85));
                     let from = self.body.pos + Vec3::Y * (def.height * 0.75);
                     out.push(MobEvent::Shoot { damage: def.attack, from, at: player, hit });
@@ -502,6 +536,7 @@ impl Mob {
                 wish = flat.normalize_or_zero();
             } else if self.attack_cd <= 0.0 {
                 self.attack_cd = 1.0;
+                self.attack_age = 0.0;
                 out.push(MobEvent::Hit { damage: def.attack, from: self.body.center() });
             }
         } else if let Some(prey) = self.prey.filter(|_| self.hungry(def)) {
@@ -515,6 +550,7 @@ impl Mob {
                 wish = d.normalize_or_zero();
             } else if self.attack_cd <= 0.0 {
                 self.attack_cd = 1.0;
+                self.attack_age = 0.0;
                 out.push(MobEvent::Bite { damage: def.attack.max(2.0) });
             }
         } else if flee_player || panicking {

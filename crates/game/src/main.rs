@@ -4,6 +4,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod ambient;
+mod anim;
 mod deep;
 mod keybinds;
 mod lang;
@@ -1119,7 +1120,7 @@ impl Game {
             show_perf,
             perf: monitor::FpsStats::new(),
             sysmon: monitor::SysMonitor::new(),
-            hide_hud: false,
+            hide_hud: std::env::var("MC_NO_HUD").is_ok(),
             toast: None,
             packs,
             textures_name,
@@ -2019,6 +2020,12 @@ impl Game {
                     p.cells(defs).iter().all(|&c| world.block(c - n).is_none() || voxel::physics::Terrain::solid(world, c - n))
                 });
             }
+        }
+        // Mob animation runs on frame time (smooth for guests too), and holds still with the
+        // world in a paused single-player game.
+        if self.world_open && !menus_stop {
+            let adt = if self.args.screenshot.is_some() { 0.0 } else { dt };
+            self.mobs.animate(self.body.pos, adt);
         }
 
         let sit = self.situation();
@@ -2956,7 +2963,9 @@ impl Game {
                 // Face the camera.
                 let m = self.mobs.list.last_mut().unwrap();
                 let to = self.body.pos - at;
-                m.yaw = to.x.atan2(to.z);
+                // MC_FACE=degrees turns them (90 = side-on, to see the legs move).
+                let turn = std::env::var("MC_FACE").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0).to_radians();
+                m.yaw = to.x.atan2(to.z) + turn;
             }
         }
         // An arrow on its way, frozen in the air, for the test picture.
@@ -4398,7 +4407,7 @@ impl Game {
                 let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
                 let bones = self.anim.bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
                 let pv = def.parts[2].pivot;
-                held_third = self.held_item_third_person(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32));
+                held_third = self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32));
                 items.extend(self.armor_instances(&bones));
                 items.push((pd, bones));
             } else if self.screen == Screen::Playing && !self.hide_hud {

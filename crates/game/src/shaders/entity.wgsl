@@ -4,6 +4,8 @@ struct Bones {
     m: array<mat4x4<f32>, 16>,
     // x: sky light 0..1, y: block light 0..1, z: hurt flash 0..1, w: swell (exploding mobs)
     light: vec4<f32>,
+    // Knees and elbows: joint height, joint depth, bend angle (model pixels, radians).
+    bend: array<vec4<f32>, 16>,
 };
 
 @group(1) @binding(0) var skins: texture_2d_array<f32>;
@@ -35,7 +37,18 @@ fn vs_entity(
     let part = packed & 15u;
     let shade = f32((packed >> 4u) & 255u) / 255.0;
     let b = inst[ii];
-    let p = b.m[part] * vec4<f32>(pos, 1.0);
+    var q = pos;
+    let j = b.bend[part];
+    if (j.z != 0.0) {
+        // Below the joint the limb turns with the lower half; a pixel either side blends.
+        let a = j.z * clamp(0.5 - (q.y - j.x) * 0.5, 0.0, 1.0);
+        let c = cos(a);
+        let s = sin(a);
+        let dy = q.y - j.x;
+        let dz = q.z - j.y;
+        q = vec3<f32>(q.x, j.x + dy * c - dz * s, j.y + dy * s + dz * c);
+    }
+    let p = b.m[part] * vec4<f32>(q, 1.0);
     var o: EOut;
     o.clip = g.view_proj * p;
     o.uv = uv;

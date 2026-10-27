@@ -159,6 +159,10 @@ impl Animator {
 
         // Whole-body transform: squash on landing, crouch, swim and fly tilt.
         let mut root = Mat4::from_translation(rel) * Mat4::from_rotation_y(self.body_yaw);
+        // A spring in the step: the body rises as each leg passes under it and the weight
+        // shifts from foot to foot.
+        let step = if p.on_ground && !p.sitting && p.crawling < 0.5 && !p.in_water { a.min(1.2) } else { 0.0 };
+        root = root * Mat4::from_translation(Vec3::new(0.0, t.cos().abs() * (0.04 + p.sprinting as u8 as f32 * 0.03) * step, 0.0)) * Mat4::from_rotation_z(t.sin() * 0.02 * step);
         let squash = self.land * 0.12;
         root = root * Mat4::from_translation(Vec3::new(0.0, -crouch * 0.18 - squash * 0.5, 0.0));
         // Lying down: the body tips flat and sinks to the ground.
@@ -294,6 +298,67 @@ impl Animator {
                 }
             }
         }
+        // Knees and elbows (the limb meshes are split at the joint, see entity::joint).
+        // Positive swings the lower half back: knees bend that way, elbows the other.
+        let mut bend = [0.0f32; 6];
+        let knee_k = if p.sprinting { 1.3 } else { 0.95 } * a.min(1.2);
+        // A knee folds while its foot swings forward.
+        bend[R_LEG] = (-t.cos()).max(0.0) * knee_k + 0.04 * a.min(1.0);
+        bend[L_LEG] = t.cos().max(0.0) * knee_k + 0.04 * a.min(1.0);
+        let pump = if p.sprinting && a > 0.8 { 0.9 } else { 0.0 };
+        bend[R_ARM] = -(0.1 + pump + (-arm).max(0.0) * 0.45 + if p.holding { 0.3 } else { 0.0 });
+        bend[L_ARM] = -(0.1 + pump + arm.max(0.0) * 0.45);
+        if airborne && self.swim < 0.5 {
+            if self.air_time < 0.5 && !p.in_water {
+                bend[R_LEG] = 1.0;
+                bend[L_LEG] = 0.35;
+                bend[R_ARM] = -0.3;
+                bend[L_ARM] = -0.3;
+            } else {
+                let f = self.time * 14.0;
+                bend[R_LEG] = 0.45 + (f * 0.7).sin() * 0.3;
+                bend[L_LEG] = 0.45 - (f * 0.7).sin() * 0.3;
+                bend[R_ARM] = -0.25 - f.cos().max(0.0) * 0.4;
+                bend[L_ARM] = -0.25 - f.sin().max(0.0) * 0.4;
+            }
+        }
+        if self.swim > 0.05 {
+            let k = self.swim;
+            let kick = (self.time * 9.0).sin();
+            bend[R_LEG] = bend[R_LEG] * (1.0 - k) + (0.25 + kick.max(0.0) * 0.4) * k;
+            bend[L_LEG] = bend[L_LEG] * (1.0 - k) + (0.25 + (-kick).max(0.0) * 0.4) * k;
+            let s = (self.time * 3.2).sin() * 0.5 + 0.5;
+            bend[R_ARM] = bend[R_ARM] * (1.0 - k) - (0.2 + (1.0 - s) * 0.8) * k;
+            bend[L_ARM] = bend[L_ARM] * (1.0 - k) - (0.2 + (1.0 - s) * 0.8) * k;
+        }
+        if crouch > 0.01 {
+            bend[R_LEG] += 0.6 * crouch;
+            bend[L_LEG] += 0.6 * crouch;
+            bend[R_ARM] -= 0.3 * crouch;
+            bend[L_ARM] -= 0.3 * crouch;
+        }
+        if prone > 0.05 {
+            bend[R_LEG] = bend[R_LEG] * (1.0 - prone) + 0.25 * prone;
+            bend[L_LEG] = bend[L_LEG] * (1.0 - prone) + 0.25 * prone;
+            bend[R_ARM] = bend[R_ARM] * (1.0 - prone) - 0.7 * prone;
+            bend[L_ARM] = bend[L_ARM] * (1.0 - prone) - 0.7 * prone;
+        }
+        if p.sitting {
+            // Thighs forward, shins hanging straight down.
+            bend[R_LEG] = 1.45;
+            bend[L_LEG] = 1.45;
+            bend[R_ARM] = -0.5;
+            bend[L_ARM] = -0.5;
+        }
+        if p.burning {
+            bend[R_ARM] = -0.8;
+            bend[L_ARM] = -0.8;
+        }
+        if self.swing > 0.0 {
+            // Cocked before the blow, nearly straight at its height.
+            let s = (self.swing * PI).sin();
+            bend[R_ARM] = -0.15 - 0.8 * (1.0 - s);
+        }
         // Head follows the camera, relative to the body.
         let head_yaw = wrap(p.look_yaw + PI - self.body_yaw).clamp(-1.3, 1.3);
         // Lying down the head lifts to look ahead instead of at the ground.
@@ -311,6 +376,9 @@ impl Animator {
             };
             let own = if i == BODY { Mat4::IDENTITY } else { Mat4::from_translation(pivot) * Mat4::from_quat(rot[i]) * Mat4::from_translation(-pivot) };
             b.m[i] = (root * body * Mat4::from_translation(shift[i]) * own).to_cols_array_2d();
+            if bend[i] != 0.0 {
+                b.set_bend(i, part, bend[i]);
+            }
         }
         b
     }
