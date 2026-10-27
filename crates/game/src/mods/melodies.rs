@@ -361,10 +361,50 @@ pub fn synth_tune(inst: u8, tune: u16, seed: u32) -> Vec<f32> {
     out
 }
 
+/// How long melody `tune` lasts on instrument `inst`, in seconds.
+pub fn melody_seconds(tune: usize, inst: u8) -> f32 {
+    store().lock().ok().and_then(|s| s.get(tune).map(|m| m.notes.iter().map(|n| n.1).sum::<f32>() * m.beat * if inst == 2 { 1.25 } else { 1.0 })).unwrap_or(6.0)
+}
+
+/// The note sounding `t` seconds into melody `tune` on instrument `inst`, for the hands.
+pub fn note_at(tune: usize, inst: u8, t: f32) -> crate::instruments::Play {
+    let s = store().lock().ok();
+    let Some(m) = s.as_ref().and_then(|s| s.get(tune)) else { return crate::instruments::Play::steady(t) };
+    let beat = m.beat * if inst == 2 { 1.25 } else { 1.0 };
+    let mut t0 = 0.0;
+    let mut last = crate::instruments::Play { since: t, dur: 0.5, pitch: 0.4, note: 0, t };
+    for (k, &(note, beats)) in m.notes.iter().enumerate() {
+        let dur = beats * beat;
+        if let Some(midi) = note {
+            if t0 > t {
+                break;
+            }
+            last = crate::instruments::Play { since: t - t0, dur, pitch: ((midi - 40.0) / 24.0).clamp(0.0, 1.0), note: k, t };
+        }
+        t0 += dur;
+    }
+    last
+}
+
+/// A melody being played by the player.
+pub struct Playing {
+    pub inst: usize,
+    pub tune: usize,
+    /// Its length in seconds (the cooldown it started with).
+    pub len: f32,
+}
+
 #[derive(Default)]
 pub struct Melodies {
     /// The melody picked for the instruments.
     pub pick: usize,
+    pub playing: Option<Playing>,
+}
+
+impl Melodies {
+    pub fn play_at(&self, inst: usize, tune: usize, t: f32) -> crate::instruments::Play {
+        note_at(tune, inst as u8, t)
+    }
 }
 
 impl Game {
@@ -385,9 +425,9 @@ impl Game {
         }
         let pick = self.mods.melodies.pick % n;
         self.sfx(Sfx::Tune(inst as u8, pick as u16));
-        let secs = store().lock().ok().and_then(|s| s.get(pick).map(|m| m.notes.iter().map(|n| n.1).sum::<f32>() * m.beat)).unwrap_or(6.0);
+        let secs = melody_seconds(pick, inst as u8);
         self.melody_cd = secs.clamp(2.0, MAX_SECONDS);
-        self.anim.start_swing();
+        self.mods.melodies.playing = Some(Playing { inst, tune: pick, len: self.melody_cd });
         let glow = self.glow_layer();
         let at = self.body.eye() + self.forward() * 0.6;
         for k in 0..8 {
