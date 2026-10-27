@@ -124,6 +124,8 @@ pub struct Settings {
     pub reduce_motion: bool,
     /// Keyboard keys moved from their defaults: action → key (`keybinds.rs`).
     pub key_binds: BTreeMap<String, String>,
+    /// Voice chat (voice.rs).
+    pub voice: crate::voice::VoiceSettings,
 }
 
 impl Default for Settings {
@@ -168,6 +170,7 @@ impl Default for Settings {
             subtitles: false,
             reduce_motion: false,
             key_binds: BTreeMap::new(),
+            voice: Default::default(),
         }
     }
 }

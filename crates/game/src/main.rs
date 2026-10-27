@@ -71,6 +71,7 @@ mod juice;
 mod menus;
 mod monitor;
 mod multiplayer;
+mod voice;
 mod mods;
 mod lod;
 mod mobs;
@@ -502,6 +503,8 @@ pub(crate) enum Screen {
     Packs,
     /// Moving the keyboard keys (keybinds.rs).
     Keys,
+    /// Voice chat options (voice.rs).
+    Voice,
     /// Shader packs and their options.
     Shaders,
     /// Writing on a sign.
@@ -765,6 +768,7 @@ struct Game {
     grabbed: bool,
     /// Multiplayer: hosting, or a guest in someone else's world.
     net: multiplayer::Net,
+    voice: voice::VoiceState,
 }
 
 fn level_path_hint(base: &Path, name: &str) -> PathBuf {
@@ -1116,6 +1120,7 @@ impl Game {
             screenshot_request: false,
             grabbed: false,
             net: Default::default(),
+            voice: Default::default(),
         };
         game.apply_shader();
         if start_dim != voxel::worldgen::Dim::Overworld {
@@ -1186,6 +1191,7 @@ impl Game {
         match std::env::var("MC_SCREEN").as_deref() {
             Ok("options") => game.set_screen(Screen::Options),
             Ok("keys") => game.set_screen(Screen::Keys),
+            Ok("voice") => game.set_screen(Screen::Voice),
             _ => {}
         }
         game
@@ -1437,6 +1443,9 @@ impl Game {
         if self.net_key(code, pressed) {
             return;
         }
+        if !repeat && self.voice_key(code) {
+            return;
+        }
         if self.screen == Screen::CreateWorld && code != KeyCode::Escape {
             self.form_key(code);
             return;
@@ -1462,7 +1471,7 @@ impl Game {
                     self.extras.book = None;
                     self.set_screen(Screen::Playing);
                 }
-                Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs | Screen::Keys => self.menu_back(),
+                Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice => self.menu_back(),
                 Screen::Loading | Screen::Dead | Screen::Title => {}
             },
             KeyCode::KeyE => match self.screen {
@@ -1622,6 +1631,7 @@ impl Game {
             self.plugins_tick(dt);
         }
         self.net_update(dt);
+        self.voice_update(dt);
         // A guest in the host's dimension gets the world's own changes from the host.
         let sim = self.net_simulates();
         if self.world_open && self.screen != Screen::Loading {
@@ -1882,7 +1892,7 @@ impl Game {
 
         // Singleplayer: the pause menu (and the option screens opened from it) stop the world.
         // With friends in it, it keeps going.
-        let paused = self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Options | Screen::Controls | Screen::Packs | Screen::Keys | Screen::Shaders);
+        let paused = self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Options | Screen::Controls | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders);
         if !paused && self.net.rules.daylight_cycle {
             self.time_of_day = (self.time_of_day + dt * 20.0) % 24000.0;
         }
@@ -1921,7 +1931,7 @@ impl Game {
             }
             self.update_mods(if self.args.screenshot.is_some() { 0.0 } else { dt });
         }
-        let menus_stop = !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Keys | Screen::Shaders);
+        let menus_stop = !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders);
         if self.world_open && sim && self.screen != Screen::Loading && !menus_stop {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
@@ -3537,7 +3547,7 @@ impl Game {
             let wave = 0.85 + 0.15 * (self.now as f32 * 4.0).sin();
             self.ui.rect(0.0, 0.0, w, h, [110, 30, 170, (haze * wave * 170.0) as u8]);
         }
-        let menu_screen = self.is_title_screen() || matches!(self.screen, Screen::Options | Screen::Packs | Screen::Keys);
+        let menu_screen = self.is_title_screen() || matches!(self.screen, Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice);
         if !self.hide_hud && !matches!(self.screen, Screen::Paused | Screen::Dead | Screen::Shaders) && !menu_screen {
             // Crosshair.
             if self.screen == Screen::Playing {
@@ -3679,6 +3689,7 @@ impl Game {
         }
 
         self.draw_net_overlay(w, h);
+        self.draw_voice_overlay();
         match self.screen {
             Screen::Paused => {
                 self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 140]);
@@ -3752,7 +3763,7 @@ impl Game {
             Screen::Sign if self.cmdblocks.edit.is_some() => self.draw_cmdblock_editor(w, h),
             Screen::Sign => self.draw_sign_editor(w, h),
             Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer => self.draw_title_menus(w, h, mouse),
-            Screen::Options | Screen::Packs | Screen::Keys => {
+            Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice => {
                 if self.world_open {
                     self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 150]);
                 } else {
@@ -3763,6 +3774,8 @@ impl Game {
                     self.draw_options(w, h, mouse);
                 } else if self.screen == Screen::Keys {
                     self.draw_keys(w, h, mouse);
+                } else if self.screen == Screen::Voice {
+                    self.draw_voice_options(w, h, mouse);
                 } else {
                     self.draw_packs(w, h, mouse);
                 }
@@ -4070,7 +4083,7 @@ impl Game {
                         }
                         Screen::Shaders => self.set_screen(Screen::Paused),
                         Screen::Dead | Screen::Title => {}
-                        Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs | Screen::Keys => self.menu_back(),
+                        Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice => self.menu_back(),
                         _ => self.set_screen(Screen::Playing),
                     }
                 }
