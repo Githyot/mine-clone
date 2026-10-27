@@ -31,6 +31,37 @@ const WHEEL_X: f32 = 0.84;
 /// high and 2 wide); the distances above are in model blocks, times SIZE in the world.
 const SIZE: f32 = 1.1;
 /// Most the front may turn against the bed.
+/// A wheel takes a step up or down over this much ground, front axle first, then the rear.
+const RAMP: f32 = 1.5;
+/// It starts this far before the edge, so the wheel clears the corner.
+const LEAD: f32 = 0.3;
+const RAMP_N: usize = 25;
+
+/// Offsets along the way where `wheel_rise` wants the ground: under the wheel, then a ramp's
+/// worth ahead, then behind.
+fn ramp_d(n: usize) -> f32 {
+    let step = RAMP / (RAMP_N - 1) as f32;
+    match n {
+        0..3 => (n as f32 - 1.0) * 0.25,
+        _ if n < 3 + RAMP_N => LEAD + (n - 3) as f32 * step,
+        _ => -LEAD - (n - 3 - RAMP_N) as f32 * step,
+    }
+}
+const SAMPLES: usize = 3 + 2 * RAMP_N;
+
+/// Where a wheel sits over ground sampled at the `ramp_d` offsets: a weighted look ahead
+/// (climbing) or behind (going down), whichever is higher, so it rises smoothly and clears
+/// the edge it passes, and never lower than the ground right under it.
+fn wheel_rise(g: &[f32; SAMPLES]) -> f32 {
+    let (mut ahead, mut behind, mut wsum) = (0.0, 0.0, 0.0);
+    for k in 0..RAMP_N {
+        let w = 1.0 - k as f32 / RAMP_N as f32;
+        ahead += g[3 + k] * w;
+        behind += g[3 + RAMP_N + k] * w;
+        wsum += w;
+    }
+    (ahead / wsum).max(behind / wsum).max(g[0]).max(g[1]).max(g[2])
+}
 const MAX_ARTIC: f32 = 0.6;
 /// Wagons further than this from the player are taken away (blocks).
 const FAR: f32 = 150.0;
@@ -109,6 +140,8 @@ pub struct Wagon {
     front_yaw: f32,
     pitch: f32,
     roll: f32,
+    /// Side to side lean from the ground under the wheels.
+    tilt: f32,
     load: Load,
     team: Team,
     animals: Vec<Mob>,
@@ -210,6 +243,25 @@ impl Game {
         None
     }
 
+    /// Height of an axle over the ground and its tilt across: each wheel eases up and over a
+    /// block edge along a smooth ramp instead of jumping a whole block at once. None where the
+    /// chunk is not loaded.
+    fn axle_ground(&self, at: Vec3, yaw: f32, near: f32) -> Option<(f32, f32)> {
+        let f = fwd(yaw);
+        let side = Vec3::new(f.z, 0.0, -f.x);
+        let mut h = [0.0; 2];
+        let mut g = [0.0; SAMPLES];
+        for (i, s) in [-WHEEL_X * SIZE, WHEEL_X * SIZE].into_iter().enumerate() {
+            for (n, y) in g.iter_mut().enumerate() {
+                let p = at + side * s + f * ramp_d(n);
+                *y = self.wagon_ground(p.x, p.z, near)?.0;
+            }
+            h[i] = wheel_rise(&g);
+        }
+        let tilt = ((h[1] - h[0]) / (2.0 * WHEEL_X * SIZE)).atan().clamp(-0.25, 0.25);
+        Some(((h[0] + h[1]) * 0.5, tilt))
+    }
+
     /// Can the wagon and its team pass this way? Some(road bonus) or None when blocked.
     fn wagon_way(&self, w: &Wagon, yaw: f32) -> Option<f32> {
         let f = fwd(yaw);
@@ -277,6 +329,7 @@ impl Game {
             front_yaw: yaw,
             pitch: 0.0,
             roll: 0.0,
+            tilt: 0.0,
             load,
             team,
             animals,
@@ -475,24 +528,27 @@ impl Game {
     fn settle_wagon(&self, w: &mut Wagon) {
         let f = fwd(w.yaw);
         let near = w.pos.y + 1.0;
-        let yf = self.wagon_ground(w.pos.x + f.x * (HALF_BASE * SIZE), w.pos.z + f.z * (HALF_BASE * SIZE), near).map(|g| g.0);
-        let yb = self.wagon_ground(w.pos.x - f.x * (HALF_BASE * SIZE), w.pos.z - f.z * (HALF_BASE * SIZE), near).map(|g| g.0);
+        let yf = self.axle_ground(w.pos + f * (HALF_BASE * SIZE), w.yaw, near);
+        let yb = self.axle_ground(w.pos - f * (HALF_BASE * SIZE), w.yaw, near);
         if let (Some(a), Some(b)) = (yf, yb) {
-            w.pos.y = (a + b) * 0.5;
+            w.pos.y = (a.0 + b.0) * 0.5;
             if !w.broken {
-                w.pitch = ((a - b) / (2.0 * (HALF_BASE * SIZE))).atan().clamp(-0.5, 0.5);
+                w.pitch = ((a.0 - b.0) / (2.0 * (HALF_BASE * SIZE))).atan().clamp(-0.5, 0.5);
+                w.tilt = (a.1 + b.1) * 0.5;
             }
         }
-        self.place_team(w);
+        self.place_team(w, 1.0);
     }
 
-    fn place_team(&self, w: &mut Wagon) {
+    /// `ease` 1 sets the animals straight on the ground; less lets them step up and down.
+    fn place_team(&self, w: &mut Wagon, ease: f32) {
         let k = w.pos + fwd(w.yaw) * (KINGPIN * SIZE);
         let f = fwd(w.front_yaw);
         let side = Vec3::new(f.z, 0.0, -f.x);
         for (m, (s, a)) in w.animals.iter_mut().zip(w.team.places()) {
             let p = k + (f * *a - side * *s) * SIZE;
             let y = self.wagon_ground(p.x, p.z, w.pos.y + 1.0).map(|g| g.0).unwrap_or(w.pos.y);
+            let y = if ease >= 1.0 || (m.body.pos.y - y).abs() > 2.5 { y } else { m.body.pos.y + (y - m.body.pos.y) * ease };
             m.body.pos = Vec3::new(p.x, y, p.z);
             m.yaw = w.front_yaw;
         }
@@ -575,20 +631,22 @@ impl Game {
             // Height and tilt from the ground under the axles, eased.
             let f = fwd(w.yaw);
             let near = w.pos.y + 1.0;
-            let yf = self.wagon_ground(w.pos.x + f.x * (HALF_BASE * SIZE), w.pos.z + f.z * (HALF_BASE * SIZE), near).map(|g| g.0);
-            let yb = self.wagon_ground(w.pos.x - f.x * (HALF_BASE * SIZE), w.pos.z - f.z * (HALF_BASE * SIZE), near).map(|g| g.0);
+            let yf = self.axle_ground(w.pos + f * (HALF_BASE * SIZE), w.yaw, near);
+            let yb = self.axle_ground(w.pos - f * (HALF_BASE * SIZE), w.yaw, near);
             if let (Some(a), Some(b)) = (yf, yb) {
-                let y = (a + b) * 0.5;
-                w.pos.y += (y - w.pos.y) * (dt * 8.0).min(1.0);
-                let p = ((a - b) / (2.0 * (HALF_BASE * SIZE))).atan().clamp(-0.5, 0.5);
-                w.pitch += (p - w.pitch) * (dt * 6.0).min(1.0);
+                // The ground shape is already smooth; the easing only takes out the jitter.
+                let y = (a.0 + b.0) * 0.5;
+                w.pos.y += (y - w.pos.y) * (dt * 12.0).min(1.0);
+                let p = ((a.0 - b.0) / (2.0 * (HALF_BASE * SIZE))).atan().clamp(-0.5, 0.5);
+                w.pitch += (p - w.pitch) * (dt * 10.0).min(1.0);
+                w.tilt += ((a.1 + b.1) * 0.5 - w.tilt) * (dt * 10.0).min(1.0);
             }
         } else {
             w.wheel_back += step / (WHEEL_R * SIZE);
         }
         w.wheel_front += step / (WHEEL_R * SIZE);
         // A little sway on rough ground.
-        w.roll = (w.age * 2.3).sin() * 0.012 * v.min(1.0);
+        w.roll = w.tilt + (w.age * 2.3).sin() * 0.012 * v.min(1.0);
         let pace = v / cruise.max(0.1);
         let old: Vec<f32> = w.animals.iter().map(|m| m.walk).collect();
         for m in w.animals.iter_mut() {
@@ -601,7 +659,7 @@ impl Game {
         if let Some(d) = w.driver.as_mut() {
             d.head_yaw = ((d.age * 0.17 + d.phase * 9.0).sin() * 0.9).clamp(-0.6, 0.6) * ((d.age * 0.05).sin().abs());
         }
-        self.place_team(w);
+        self.place_team(w, (dt * 7.0).min(1.0));
         // Hooves: one clop as each foot comes down (four a stride), softer on soft ground.
         let half = std::f32::consts::FRAC_PI_2;
         for (i, m) in w.animals.iter().enumerate().take(2) {
@@ -860,4 +918,38 @@ fn driver_bones(m: &Mob, def: &voxel::mob::MobDef, body: Mat4, speed: f32, light
         b.m[i] = (model * part).to_cols_array_2d();
     }
     b
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Rolling over a one-block step, up and down, the axle never jumps and never sinks into
+    /// the edge.
+    #[test]
+    fn wheels_ease_over_steps() {
+        for up in [1.0f32, -1.0] {
+            let ground = |x: f32| if x >= 0.0 { up.max(0.0) } else { (-up).max(0.0) };
+            let mut last = None;
+            let mut x = -3.0;
+            while x < 3.0 {
+                let mut g = [0.0; SAMPLES];
+                for (n, y) in g.iter_mut().enumerate() {
+                    *y = ground(x + ramp_d(n));
+                }
+                let h = wheel_rise(&g);
+                assert!(h >= ground(x) - 1e-4, "sinks at {x}: {h}");
+                // The wheel clears the corner of the step.
+                let r = WHEEL_R * SIZE;
+                let corner = Vec3::new(x, h + r, 0.0) - Vec3::new(0.0, 1.0, 0.0);
+                assert!(corner.length() > r - 0.05, "clips the edge at {x}: {h}");
+                if let Some(l) = last {
+                    let dh: f32 = h - l;
+                    assert!(dh.abs() < 0.1, "jumps {dh} at {x}");
+                }
+                last = Some(h);
+                x += 0.02;
+            }
+        }
+    }
 }
