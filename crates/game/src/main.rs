@@ -3308,6 +3308,13 @@ impl Game {
             put(w, x, 0, 6, "glass_pane");
             put(w, x, 1, 6, "glass_pane");
         }
+        put(w, 6, 0, 7, "glass_pane");
+        put(w, 6, 1, 7, "glass_pane");
+        // A row of wooden windows: one unbroken window, no gaps between or inside them.
+        for x in 1..=6 {
+            put(w, x, 0, 10, "cherry_window");
+            put(w, x, 1, 10, "cherry_window");
+        }
         // Doors: closed and open, and trapdoors.
         put(w, -4, 0, 9, "oak_door:2");
         put(w, -4, 1, 9, "oak_door:10");

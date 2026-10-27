@@ -131,17 +131,38 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
                 out.push(if up { flip_y(b) } else { b });
             }
         }
-        Shape::Fence | Shape::Wall | Shape::Pane => {
+        Shape::Pane => {
+            // One sheet per axis it joins along, running unbroken through the middle (two
+            // half arms would leave a gap at the centre post). A pane joined on one side only
+            // still spans the whole block, so the end of a window has no stub.
+            let (px, nx, pz, nz) = (conn & CONN_PX != 0, conn & CONN_NX != 0, conn & CONN_PZ != 0, conn & CONN_NZ != 0);
+            let (along_x, along_z) = (px || nx, pz || nz);
+            if !along_x && !along_z {
+                out.push([7, 0, 7, 9, 16, 9]);
+                return;
+            }
+            let (x0, x1) = if along_z { (if nx { 0 } else { 7 }, if px { 16 } else { 9 }) } else { (0, 16) };
+            if along_x {
+                out.push([x0, 0, 7, x1, 16, 9]);
+                // The z sheet meets the x one in the middle: only its parts outside it.
+                if nz {
+                    out.push([7, 0, 0, 9, 16, 7]);
+                }
+                if pz {
+                    out.push([7, 0, 9, 9, 16, 16]);
+                }
+            } else {
+                out.push([7, 0, 0, 9, 16, 16]);
+            }
+        }
+        Shape::Fence | Shape::Wall => {
             let (lo, hi, top, arm_lo, arm_hi, arm_top) = match shape {
                 Shape::Fence => (6, 10, 16, 7, 9, 15),
-                Shape::Wall => (4, 12, 16, 5, 11, 14),
-                _ => (7, 9, 16, 7, 9, 16),
+                _ => (4, 12, 16, 5, 11, 14),
             };
-            let tall = if collision && shape != Shape::Pane { 24 } else { top };
-            let arm_tall = if collision && shape != Shape::Pane { 24 } else { arm_top };
-            if !(shape == Shape::Pane && conn != 0) {
-                out.push([lo, 0, lo, hi, tall, hi]);
-            }
+            let tall = if collision { 24 } else { top };
+            let arm_tall = if collision { 24 } else { arm_top };
+            out.push([lo, 0, lo, hi, tall, hi]);
             let arm_y = if shape == Shape::Fence && !collision { 6 } else { 0 };
             let arm = |b: PBox, out: &mut Vec<PBox>| {
                 if shape == Shape::Fence && !collision {
@@ -152,18 +173,17 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
                     out.push(b);
                 }
             };
-            let (a0, a1) = if shape == Shape::Pane { (7, 9) } else { (lo, hi) };
             if conn & CONN_PX != 0 {
-                arm([a1, arm_y, arm_lo, 16, arm_tall, arm_hi], out);
+                arm([hi, arm_y, arm_lo, 16, arm_tall, arm_hi], out);
             }
             if conn & CONN_NX != 0 {
-                arm([0, arm_y, arm_lo, a0, arm_tall, arm_hi], out);
+                arm([0, arm_y, arm_lo, lo, arm_tall, arm_hi], out);
             }
             if conn & CONN_PZ != 0 {
-                arm([arm_lo, arm_y, a1, arm_hi, arm_tall, 16], out);
+                arm([arm_lo, arm_y, hi, arm_hi, arm_tall, 16], out);
             }
             if conn & CONN_NZ != 0 {
-                arm([arm_lo, arm_y, 0, arm_hi, arm_tall, a0], out);
+                arm([arm_lo, arm_y, 0, arm_hi, arm_tall, lo], out);
             }
         }
         Shape::Door => {
@@ -420,6 +440,25 @@ mod tests {
         // Facing south: the back stands on the north side.
         assert!(v[5][2] < 8 && v[5][4] == 16);
         assert!(joins(Shape::Table, Shape::Table, false) && !joins(Shape::Table, Shape::Cube, true));
+    }
+
+    #[test]
+    fn panes_have_no_gap_in_the_middle() {
+        let mut v = Vec::new();
+        // In a row, and at the end of one: a single sheet across the whole block.
+        for conn in [CONN_PX | CONN_NX, CONN_PX, CONN_NX] {
+            v.clear();
+            boxes(Shape::Pane, 0, conn, false, &mut v);
+            assert_eq!(v, vec![[0, 0, 7, 16, 16, 9]]);
+        }
+        // A corner: both sheets reach the centre and together cover it with no overlap.
+        v.clear();
+        boxes(Shape::Pane, 0, CONN_PX | CONN_NZ, false, &mut v);
+        assert_eq!(v, vec![[7, 0, 7, 16, 16, 9], [7, 0, 0, 9, 16, 7]]);
+        // A crossing: the x sheet runs through and the z sheet stops at it.
+        v.clear();
+        boxes(Shape::Pane, 0, CONN_PX | CONN_NX | CONN_PZ | CONN_NZ, false, &mut v);
+        assert_eq!(v, vec![[0, 0, 7, 16, 16, 9], [7, 0, 0, 9, 16, 7], [7, 0, 9, 9, 16, 16]]);
     }
 
     #[test]
