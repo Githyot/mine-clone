@@ -191,7 +191,7 @@ impl Game {
 
     pub(crate) fn is_title_screen(&self) -> bool {
         matches!(self.screen, Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer)
-            || (!self.world_open && matches!(self.screen, Screen::Options | Screen::Packs | Screen::Keys))
+            || (!self.world_open && matches!(self.screen, Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice))
     }
 
     fn click_sound(&mut self) {
@@ -498,6 +498,7 @@ impl Game {
             format!("Idioma: {}", crate::lang::language_name(&st.language)),
             "Teclas...".to_string(),
             "Controle...".to_string(),
+            "Chat de voz...".to_string(),
             "Pacotes de textura...".to_string(),
         ]
     }
@@ -594,6 +595,7 @@ impl Game {
                 self.options_back = self.screen;
                 self.set_screen(Screen::Controls);
             }
+            22 => self.set_screen(Screen::Voice),
             _ => {
                 self.packs = textures::list_resource_packs(&self.base.join("resourcepacks"));
                 self.set_screen(Screen::Packs);
@@ -648,6 +650,7 @@ impl Game {
         let to = match self.screen {
             Screen::Worlds | Screen::Multiplayer => Screen::Title,
             Screen::CreateWorld => Screen::Worlds,
+            Screen::Voice => Screen::Options,
             Screen::Options | Screen::Packs | Screen::Keys => {
                 if self.world_open {
                     Screen::Paused

@@ -201,11 +201,24 @@ impl Game {
         if self.audio.is_none() || self.args.screenshot.is_some() {
             return;
         }
+        let Some((gain, pan, muffle)) = self.place_sound(pos, range) else { return };
+        let vol = vol * gain * self.settings.sound_volume;
+        if let Some(c) = crate::subtitles::caption(s) {
+            if vol > 0.02 {
+                self.subtitle(c, Some(pos));
+            }
+        }
+        self.sfx_raw(s, vol, pan, muffle);
+    }
+
+    /// Where a sound at `pos` sits for our ears: its gain (distance and walls), pan (-1 left
+    /// .. 1 right) and muffling (0..1). None past `range`. Voices use it too (voice.rs).
+    pub(crate) fn place_sound(&self, pos: Vec3, range: f32) -> Option<(f32, f32, f32)> {
         let eye = self.body.eye();
         let to = pos - eye;
         let d = to.length();
         if d > range {
-            return;
+            return None;
         }
         let gain = (1.0 - d / range).powf(1.3);
         let right = self.listener_right();
@@ -233,13 +246,7 @@ impl Game {
         }
         let occ = (walls as f32 / 3.0).min(1.0);
         let muffle = occ * 0.85 + (d / range) * 0.3;
-        let vol = vol * gain * (1.0 - 0.5 * occ) * self.settings.sound_volume;
-        if let Some(c) = crate::subtitles::caption(s) {
-            if vol > 0.02 {
-                self.subtitle(c, Some(pos));
-            }
-        }
-        self.sfx_raw(s, vol, pan, muffle);
+        Some((gain * (1.0 - 0.5 * occ), pan, muffle))
     }
 
     /// Play a sound with no place (in the head, or all around), but still in stereo and

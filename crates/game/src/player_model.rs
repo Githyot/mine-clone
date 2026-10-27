@@ -8,7 +8,7 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use glam::{IVec3, Mat4, Quat, Vec3};
 use voxel::mob::MobDef;
 
-use crate::entity::Bones;
+use crate::entity::{Bones, MOUTH_PART};
 
 /// Body part indexes in the "player" model of mobs.ron.
 const HEAD: usize = 0;
@@ -63,6 +63,8 @@ pub struct Animator {
     /// 0..1 head under water, and the breaststroke phase for the first-person arms.
     pub underwater: f32,
     stroke: f32,
+    /// 0..1 how open the mouth is (voice chat, voice.rs).
+    pub talk: f32,
 }
 
 fn wrap(a: f32) -> f32 {
@@ -311,6 +313,12 @@ impl Animator {
             };
             let own = if i == BODY { Mat4::IDENTITY } else { Mat4::from_translation(pivot) * Mat4::from_quat(rot[i]) * Mat4::from_translation(-pivot) };
             b.m[i] = (root * body * Mat4::from_translation(shift[i]) * own).to_cols_array_2d();
+        }
+        // Talking: the mouth opens downward from its top edge, two pixels above the chin.
+        if self.talk > 0.03 && def.parts.len() <= MOUTH_PART {
+            let top = def.parts[HEAD].origin.1 as f32 + 2.0;
+            let open = Mat4::from_translation(Vec3::Y * top) * Mat4::from_scale(Vec3::new(1.0, 0.2 + self.talk * 1.1, 1.0)) * Mat4::from_translation(-Vec3::Y * top);
+            b.m[MOUTH_PART] = (Mat4::from_cols_array_2d(&b.m[HEAD]) * open).to_cols_array_2d();
         }
         b
     }

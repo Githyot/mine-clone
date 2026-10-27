@@ -39,6 +39,18 @@ JOGAR COM AMIGOS
   (inventário, vida, onde parou) ficam salvas no mundo de quem hospeda
   (saves/<mundo>/players/).
 
+CHAT DE VOZ (Opções > Chat de voz...)
+  Proximidade (padrão): segure Caps Lock para falar. Sua voz sai do seu personagem:
+    quem está do seu lado esquerdo ouve pela esquerda, mais baixo de longe (some depois
+    de 48 blocos) e abafado atrás de paredes.
+  Grupo (como uma chamada): todos no mesmo grupo (1 a 9) se ouvem no volume cheio,
+    estejam onde estiverem. O microfone fica aberto e só envia quando você fala (ajuste
+    a Sensibilidade olhando o medidor) ou, se preferir, use Caps Lock para falar.
+  K liga e desliga o seu microfone. Quem está falando aparece no canto de cima.
+  A boca do personagem mexe enquanto ele fala, nos dois modos.
+  Nas opções: escolha o microfone, o volume das vozes e o volume de cada jogador
+    (ou deixe alguém mudo). Funciona também pela ponte e em servidor dedicado.
+
 COMANDOS (chat: T, depois /; funcionam também jogando sozinho)
   /tempo dia | meio-dia | noite | meia-noite | <0-24000>
   /clima limpo | chuva | tempestade

@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a message changes shape. Host and guest must match.
-pub const PROTOCOL: u32 = 4;
+pub const PROTOCOL: u32 = 5;
 
 /// Default UDP port for hosted worlds.
 pub const DEFAULT_PORT: u16 = 24454;
@@ -52,6 +52,9 @@ pub enum ToHost {
     },
     /// The guest's own things (inventory, health, where it stands) for the host to keep.
     SavePlayer(String),
+    /// Voice chat: the group the guest listens to (0 = none) and whether its voice is on at
+    /// all. The voice itself travels as datagrams (see `voice`).
+    VoiceSet { group: u8, on: bool },
 }
 
 /// Host → guest.
