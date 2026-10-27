@@ -30,6 +30,11 @@ pub enum Kind {
     Glow,
     /// Ambient bits (Subtle Effects idea): a leaf, ash or dust drifting slowly down, swaying.
     Mote,
+    /// A lick of flame: rises faster and faster, white-yellow turning orange then red as it
+    /// burns out, at full brightness.
+    Flame,
+    /// An ember thrown up off a fire: rises, slows, wanders and fades.
+    Spark,
 }
 
 struct Particle {
@@ -127,6 +132,24 @@ impl Particles {
         self.push(p);
     }
 
+    /// A lick of flame off a torch or fire at `at`, moving along with `carry` (the holder's
+    /// speed, so a carried torch's flame stays on it). `red`: redstone dust instead.
+    pub fn flame(&mut self, at: Vec3, carry: Vec3, layer: u16, size: f32, life: f32, red: bool) {
+        let j = Vec3::new(self.rand() - 0.5, self.rand() * 0.5, self.rand() - 0.5);
+        let (kind, tint) = if red { (Kind::Spark, [1.3, 0.12, 0.08]) } else { (Kind::Flame, [1.0; 3]) };
+        let vel = carry + Vec3::new(j.x * 0.25, 0.5 + j.y, j.z * 0.25);
+        let p = Particle { pos: at + j * Vec3::new(0.1, 0.06, 0.1), vel, life: life * (0.7 + self.rand() * 0.6), size: size * (0.7 + self.rand() * 0.6), layer: layer as u32, uv: [0.4, 0.4], tint, kind };
+        self.push(p);
+    }
+
+    /// An ember flying up off a fire.
+    pub fn spark(&mut self, at: Vec3, carry: Vec3, layer: u16) {
+        let a = self.rand() * std::f32::consts::TAU;
+        let vel = carry + Vec3::new(a.cos() * 0.5, 1.6 + self.rand() * 1.2, a.sin() * 0.5);
+        let p = Particle { pos: at, vel, life: 0.8 + self.rand() * 0.7, size: 0.018, layer: layer as u32, uv: [0.4, 0.4], tint: [1.5, 0.75, 0.25], kind: Kind::Spark };
+        self.push(p);
+    }
+
     /// A slow drifting bit lit like the world around it: a falling leaf, ash, dust.
     pub fn mote(&mut self, at: Vec3, layer: u16, tint: [f32; 3], size: f32, fall: f32, life: f32) {
         let a = self.rand() * std::f32::consts::TAU;
@@ -165,6 +188,18 @@ impl Particles {
                 Kind::Glow => {
                     p.vel *= 1.0 - dt * 2.5;
                     p.pos += p.vel * dt;
+                }
+                Kind::Flame => {
+                    // Hot air: pulled up harder the longer it burns, a little shimmy sideways.
+                    let t = p.life * 23.0 + p.pos.x * 7.0;
+                    p.vel.y += 3.5 * dt;
+                    p.pos += (p.vel + Vec3::new(t.sin() * 0.12, 0.0, t.cos() * 0.12)) * dt;
+                }
+                Kind::Spark => {
+                    let t = p.life * 9.0 + p.pos.z * 5.0;
+                    p.vel.y -= 1.2 * dt;
+                    p.vel *= 1.0 - dt * 1.2;
+                    p.pos += (p.vel + Vec3::new(t.sin() * 0.3, 0.0, t.cos() * 0.3)) * dt;
                 }
                 Kind::Mote => {
                     // Sway side to side as it sinks; gone once it touches the ground.
@@ -210,13 +245,26 @@ impl Particles {
         self.list
             .iter()
             .map(|p| {
-                let l = if p.kind == Kind::Glow { 0xff } else { world.light(p.pos.floor().as_ivec3()) };
+                let bright = matches!(p.kind, Kind::Glow | Kind::Flame | Kind::Spark);
+                let l = if bright { 0xff } else { world.light(p.pos.floor().as_ivec3()) };
                 // Shrink away at the end of life.
-                let s = p.size * (p.life / 0.25).clamp(0.0, 1.0);
+                let mut s = p.size * (p.life / 0.25).clamp(0.0, 1.0);
+                let mut tint = p.tint;
+                if p.kind == Kind::Flame {
+                    // White-yellow at the root, orange, then a deep red as it dies; it swells a
+                    // little on the way up before shrinking away.
+                    let k = (p.life / 0.45).clamp(0.0, 1.0);
+                    let hot = [1.6, 1.35, 0.75];
+                    let mid = [1.5, 0.7, 0.18];
+                    let cold = [0.9, 0.22, 0.06];
+                    let (a, b, f) = if k > 0.5 { (mid, hot, (k - 0.5) * 2.0) } else { (cold, mid, k * 2.0) };
+                    tint = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+                    s *= 1.0 + (1.0 - k) * 0.6;
+                }
                 GpuParticle {
                     pos: [p.pos.x - c.x, p.pos.y - c.y, p.pos.z - c.z, s],
                     uv: [p.uv[0], p.uv[1], p.layer as f32, (l >> 4) as f32 / 15.0],
-                    tint: [p.tint[0], p.tint[1], p.tint[2], (l & 15) as f32 / 15.0],
+                    tint: [tint[0], tint[1], tint[2], (l & 15) as f32 / 15.0],
                 }
             })
             .collect()

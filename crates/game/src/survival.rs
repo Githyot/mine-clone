@@ -2603,7 +2603,7 @@ impl Game {
                 let y = (tip + side) * std::f32::consts::FRAC_1_SQRT_2;
                 let q = rot * Quat::from_mat3(&Mat3::from_cols(x, y, face));
                 let (yaw, pitch, roll) = q.to_euler(EulerRot::YXZ);
-                out.push(GpuItem { pos: [fist.x, fist.y, fist.z, 0.62], info: [yaw, 1.0, b.light[0], b.light[1]], layers: [bow; 4], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
+                out.push(GpuItem { pos: [fist.x, fist.y, fist.z, 0.62], info: [yaw, 1.0, b.light[0], b.light[1]], layers: [bow, bow, bow, 0.0], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
             }
         }
         out.extend(self.bobber_instance(cam_block));
@@ -2623,7 +2623,7 @@ impl Game {
                 let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
                 let p = a.pos - c;
                 for pitch in [0.0, std::f32::consts::FRAC_PI_2] {
-                    out.push(GpuItem { pos: [p.x, p.y, p.z, 0.5], info: [yaw, 1.0, sky, blk], layers: [arrow; 4], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
+                    out.push(GpuItem { pos: [p.x, p.y, p.z, 0.5], info: [yaw, 1.0, sky, blk], layers: [arrow, arrow, arrow, 0.0], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
                 }
             }
         }
@@ -2673,6 +2673,10 @@ impl Game {
         let it = self.items.get(st.item);
         if crate::instruments::index(&it.name).is_some() {
             // Instruments are 3D models held in both hands (instruments.rs).
+            return None;
+        }
+        if crate::torch::index(&it.name).is_some() {
+            // Torches are 3D models with a live flame (torch.rs).
             return None;
         }
         let tool = it.tool.is_some() || it.name.ends_with("_sword") || matches!(it.name.as_str(), "stick" | "blaze_rod" | "breeze_rod" | "bone" | "mace" | "trident") || it.name.ends_with("_rod");

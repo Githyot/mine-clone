@@ -776,12 +776,12 @@ fn wing_mesh(layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
     (mb.verts, mb.indices)
 }
 
-/// A musical instrument (instruments.rs): its boxes, each face painted with its material's
-/// swatch, the grain running along the longer side.
-fn instrument_mesh(i: usize, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
+/// A model built from painted boxes (instruments.rs, torch.rs): each face painted with its
+/// material's swatch, the grain running along the longer side.
+fn instrument_mesh(model: Vec<crate::instruments::Piece>, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
     let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
     let light = Vec3::new(0.2, 0.6, 0.8).normalize();
-    for p in crate::instruments::model(i) {
+    for p in model {
         for b in &p.boxes {
             for axis in 0..3 {
                 for s in [-1.0f32, 1.0] {
@@ -835,7 +835,9 @@ impl EntityRenderer {
             skins.push(Skin { pixels: crate::wings::paint(w, SKIN_DETAIL), scale: SKIN_DETAIL }.rescaled(scale));
         }
         let instrument_layer = skins.len();
-        skins.push(Skin { pixels: crate::instruments::paint_skin(SKIN_DETAIL), scale: SKIN_DETAIL }.rescaled(scale));
+        let mut kit = crate::instruments::paint_skin(SKIN_DETAIL);
+        crate::torch::paint(&mut kit, SKIN_DETAIL);
+        skins.push(Skin { pixels: kit, scale: SKIN_DETAIL }.rescaled(scale));
         let layers = skins.len().max(1) as u32;
         let (tw, th) = (SKIN_W * scale, SKIN_H * scale);
         let levels = scale.trailing_zeros() + 1;
@@ -972,8 +974,10 @@ impl EntityRenderer {
             first
         });
         let instrument_meshes = meshes.len();
-        for i in 0..crate::instruments::COUNT {
-            let (v, idx) = instrument_mesh(i, instrument_layer as u32);
+        // The held torches right after the instruments, in the same skin.
+        let models = (0..crate::instruments::COUNT).map(crate::instruments::model).chain((0..crate::torch::COUNT).map(crate::torch::model));
+        for model in models {
+            let (v, idx) = instrument_mesh(model, instrument_layer as u32);
             meshes.push(MobMesh {
                 vbuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("instrument verts"), contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX }),
                 ibuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("instrument idx"), contents: bytemuck::cast_slice(&idx), usage: wgpu::BufferUsages::INDEX }),
@@ -1014,6 +1018,11 @@ impl EntityRenderer {
     /// Mesh index of musical instrument `i`.
     pub fn instrument_mesh(&self, i: usize) -> Option<usize> {
         (i < crate::instruments::COUNT).then_some(self.instrument_meshes + i)
+    }
+
+    /// Mesh index of held torch model `i` (torch.rs).
+    pub fn torch_mesh(&self, i: usize) -> Option<usize> {
+        (i < crate::torch::COUNT).then_some(self.instrument_meshes + crate::instruments::COUNT + i)
     }
 
     /// Mesh index of a painting, for `prepare`.

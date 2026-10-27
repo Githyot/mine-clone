@@ -876,11 +876,11 @@ impl Game {
             let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
             let p = s.pos - c;
             if matches!(s.kind, ShotKind::WindCharge) {
-                out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [s.age * 8.0, 0.0, sky, blk], layers: [layer; 4], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
+                out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [s.age * 8.0, 0.0, sky, blk], layers: [layer, layer, layer, 0.0], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
                 continue;
             }
             for pitch in [0.0, std::f32::consts::FRAC_PI_2] {
-                out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [yaw, 1.0, sky, blk], layers: [layer; 4], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
+                out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [yaw, 1.0, sky, blk], layers: [layer, layer, layer, 0.0], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
             }
         }
         out
