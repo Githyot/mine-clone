@@ -609,6 +609,23 @@ CHEFES DO FIM (lado Terraria, lote 7)
     Nebulosa, Ioiô de Pó Estelar. Asas: de Cristal, das Marés, da Imperatriz.
   Os 4 fragmentos juntos também fazem o Selo Celeste.
 
+PESCA E INVASÕES (lado Terraria, lote 8)
+  Poder de pesca: a vara + a melhor isca da bolsa + a Poção de Pesca. Mais poder, mordidas
+    mais rápidas, mais caixas e mais chance do peixe do Pescador.
+  Varas: Reforçada (20), de Magma (30, pesca na lava), Dourada (45, presente do Pescador).
+  Iscas na bolsa: de Aprendiz, de Viajante, de Mestre. Elas se gastam ao pescar.
+  Caixas: de Madeira, Ferro e Dourada, e da Selva, Congelada, do Oceano, de Arenito,
+    Corrompida, Prismática e de Obsidiana (lava). Clique com o direito para abrir.
+  Missões: converse com o Pescador. Ele pede um peixe por dia e dá um presente.
+  Poções: Pesca (mais poder), Caixas (o dobro de caixas), Sonar (o peixe fica mais no anzol).
+  Invasões em ondas (no modo difícil; derrote as criaturas para encher a barra):
+    Lua da Colheita: Medalhão de Abóbora, à noite. Chefe: Rei Abóbora.
+    Lua do Inverno: Medalhão de Gelo, à noite. Chefe: Rainha do Gelo.
+    Saqueadores do Mar: Mapa do Tesouro. Chefe: Capitão Saqueador.
+    Visitantes das Estrelas: depois do Ídolo, uma sonda pode aparecer. Se ela fugir, eles vêm.
+      Chefe: Disco Voador.
+    Defesa do Cristal: Cristal Etéreo. Proteja o cristal por 5 ondas. Chefe: Mago Sombrio.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

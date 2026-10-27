@@ -22,7 +22,7 @@ use crate::Game;
 
 /// Bosses fought entirely in this file (bosses.rs leaves them alone).
 pub fn own_ai(name: &str) -> bool {
-    matches!(name, "king_jelly" | "great_eye" | "blight_mind" | "hive_queen") || crate::tr_endgame::own_ai(name)
+    matches!(name, "king_jelly" | "great_eye" | "blight_mind" | "hive_queen") || crate::tr_endgame::own_ai(name) || crate::tr_invasions::own_ai(name)
 }
 
 /// (summon item, boss, where it works)
@@ -34,7 +34,7 @@ const SUMMONS: &[(&str, &str, &str)] = &[
     ("frost_horn", "frost_colossus", "snow"),
 ];
 
-const SMALL_FLYERS: [&str; 11] = ["vortex_hornet", "nebula_eye", "dungeon_spirit", "harpy", "servant_eye", "hive_drone", "blight_creeper", "meteor_head", "dune_wraith", "reaper", "eclipse_moth"];
+const SMALL_FLYERS: [&str; 12] = ["ether_wyvern", "vortex_hornet", "nebula_eye", "dungeon_spirit", "harpy", "servant_eye", "hive_drone", "blight_creeper", "meteor_head", "dune_wraith", "reaper", "eclipse_moth"];
 
 #[derive(Default)]
 pub struct Fight {

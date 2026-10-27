@@ -39,6 +39,9 @@ struct Saved {
     /// The celestial pillars (tr_endgame.rs).
     #[serde(default)]
     pillars: Vec<crate::tr_endgame::Pillar>,
+    /// The angler's quests done (tr_fishing.rs).
+    #[serde(default)]
+    quests_done: u32,
 }
 
 #[derive(Default)]
@@ -50,6 +53,8 @@ pub struct Tr {
     pub(crate) pets: crate::tr_pets::Pets,
     pub(crate) town: crate::tr_town::TownLife,
     pub(crate) end: crate::tr_endgame::Endgame,
+    pub(crate) fish: crate::tr_fishing::Fishing,
+    pub(crate) inv: crate::tr_invasions::Invasions,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -68,6 +73,7 @@ impl Tr {
         tr.pets.out = s.pets;
         tr.town.pylons = s.pylons.into_iter().map(|(k, (x, y, z))| (k, glam::IVec3::new(x, y, z))).collect();
         tr.end.pillars = s.pillars;
+        tr.fish.quests_done = s.quests_done;
         tr.town.animals = s.animals.into_iter().map(|(k, (x, y, z))| (k, Vec3::new(x, y, z))).collect();
         tr
     }
@@ -82,6 +88,7 @@ impl Tr {
             pets: self.pets.out.clone(),
             pylons: self.town.pylons.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
             pillars: self.end.pillars.clone(),
+            quests_done: self.fish.quests_done,
             animals: self.town.animals.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
@@ -104,6 +111,8 @@ impl Game {
         self.update_tr_pets(dt);
         self.update_tr_town(dt);
         self.update_endgame(dt);
+        self.update_tr_fishing(dt);
+        self.update_invasions(dt);
     }
 
     /// Right click with an item of this file; true when it did something.
@@ -118,6 +127,12 @@ impl Game {
             return Some(r);
         }
         if let Some(r) = self.endgame_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.tr_fishing_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.invasion_use(name) {
             return Some(r);
         }
         match name {
@@ -360,6 +375,9 @@ impl Game {
             "weapons" => self.test_tr_weapons(),
             "pets" | "mounts" | "harpies" | "wings" => self.test_tr_pets(scene),
             "town" | "townshop" => self.test_tr_town(scene),
+            "harvest" | "winter" | "pirates" | "martians" | "crystal" => {
+                self.test_invasion(scene);
+            }
             "queen2" | "idol" | "duke" | "empress" | "prophet" | "pillars" => {
                 self.test_tr_endgame(scene);
             }

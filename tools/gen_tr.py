@@ -2860,6 +2860,264 @@ def structures_l7():
     return layers, H + UP - 3
 
 
+# ==============================================================================================
+# Lote 8: fishing (power, baits, rods, crates, the angler's quests, lava fishing, potions) and
+# the invasions (Harvest Moon, Winter Moon, sea raiders, star visitors, Crystal Defense)
+# ==============================================================================================
+
+CRATE = [
+    "................",
+    "................",
+    "..111111111111..",
+    "..1aaaaaaaaaa1..",
+    "..1a23333332a1..",
+    "..1a32222223a1..",
+    "..1a3b2222b3a1..",
+    "..1aaaaaaaaaa1..",
+    "..1a3b2222b3a1..",
+    "..1a32222223a1..",
+    "..1a23333332a1..",
+    "..1aaaaaaaaaa1..",
+    "..111111111111..",
+    "................",
+    "................",
+    "................",
+]
+FISH_ICON = [
+    "................",
+    "................",
+    "................",
+    "........111.....",
+    "......1133311...",
+    "11...123444321..",
+    "121.12344445a31.",
+    ".12123444444441.",
+    ".12123444444441.",
+    "121.12344444331.",
+    "11...123333321..",
+    "......1122211...",
+    "........111.....",
+    "................",
+    "................",
+    "................",
+]
+ROD = [
+    "...............1",
+    "..............12",
+    ".............12.",
+    "............12.a",
+    "...........12..a",
+    "..........12...a",
+    ".........12....a",
+    "........12.....a",
+    ".......12......a",
+    "......12.......a",
+    ".....b3.......aa",
+    "....b3........a.",
+    "...33.........b.",
+    "..33............",
+    ".33.............",
+    "33..............",
+]
+POTION = [
+    "................",
+    "......aaaa......",
+    "......abba......",
+    ".......bb.......",
+    "......1111......",
+    ".....1....1.....",
+    "....1......1....",
+    "...1........1...",
+    "...1.222222.1...",
+    "...1.233332.1...",
+    "...1.234432.1...",
+    "...1.233332.1...",
+    "....1.2222.1....",
+    ".....111111.....",
+    "................",
+    "................",
+]
+MEDAL = [
+    "................",
+    "......a..a......",
+    ".....a....a.....",
+    "......a..a......",
+    ".......aa.......",
+    ".....111111.....",
+    "....12222221....",
+    "...1233333321...",
+    "...1234554321...",
+    "...1234554321...",
+    "...1233333321...",
+    "....12222221....",
+    ".....111111.....",
+    "................",
+    "................",
+    "................",
+]
+MAP = [
+    "................",
+    "................",
+    "..11111111111...",
+    "..14444444441...",
+    "..1444a44a441...",
+    "..14444aa4441...",
+    "..1444a44a441...",
+    "..14444444441...",
+    "..144b4444441...",
+    "..1444b444441...",
+    "..14444b44441...",
+    "..1444444b441...",
+    "..11111111111...",
+    "................",
+    "................",
+    "................",
+]
+
+CRATES_L8 = [
+    ("wooden_crate", "Caixa de Madeira", WOOD, pal("#2a1a0a", "#5a3a1a")),
+    ("iron_crate", "Caixa de Ferro", STEEL, pal("#2a2e36", "#5a606c")),
+    ("golden_crate", "Caixa Dourada", pal("#6a4a08", "#a07c16", "#d4aa18", "#f4ca28", "#fff0a0"), pal("#3a2a04", "#8a6a10")),
+    ("jungle_crate", "Caixa da Selva", pal("#0e2a10", "#1e4a1c", "#3a7a2a", "#6aaa4a", "#b4e08a"), pal("#2a1a0a", "#5a3a1a")),
+    ("frozen_crate", "Caixa Congelada", pal("#2a4a6a", "#4a7aa0", "#7aaed4", "#b4daf4", "#eef8ff"), pal("#1a2a3a", "#3a5a7a")),
+    ("ocean_crate", "Caixa do Oceano", pal("#0a2a4a", "#14508a", "#2080c4", "#5ab4f0", "#d0f0ff"), pal("#5a3a1a", "#c4a060")),
+    ("sandstone_crate", "Caixa de Arenito", pal("#8a6a3a", "#b08a50", "#d4b070", "#ead09a", "#f8ecc8"), pal("#5a3a1a", "#7a5a2e")),
+    ("ruin_crate", "Caixa Corrompida", pal("#1a1028", "#3a2458", "#5a3a84", "#8a64b8", "#c8a8f0"), pal("#0a0a0e", "#2a1a3a")),
+    ("prism_crate", "Caixa Prismática", CRYSTAL, pal("#6a5008", "#f0d060")),
+    ("obsidian_crate", "Caixa de Obsidiana", pal("#0a0814", "#1a1428", "#2a2040", "#4a3a6a", "#8a6aa0"), pal("#5a1404", "#e05a10")),
+]
+
+# item, display, palette (the angler's quest fish first, then lava fish)
+FISH_L8 = [
+    ("mud_king", "Rei do Lodo", pal("#2a2010", "#4a3a1a", "#6a5a2a", "#8a7a44", "#c4b07a")),
+    ("frost_minnow", "Piaba Gelada", pal("#2a4a6a", "#4a7aa0", "#7aaed4", "#b4daf4", "#eef8ff")),
+    ("sand_eel", "Enguia da Areia", pal("#8a6a3a", "#b08a50", "#d4b070", "#ead09a", "#f8ecc8")),
+    ("sky_trout", "Truta do Céu", pal("#6a7aa0", "#8a9ac4", "#b0c0e4", "#d8e4f8", "#ffffff")),
+    ("lantern_fish", "Peixe-Lanterna", pal("#0a1a2a", "#1a3a5a", "#2a5a8a", "#f0d060", "#fff8c0")),
+    ("vile_carp", "Carpa Vil", pal("#1a1028", "#3a2458", "#5a3a84", "#8a64b8", "#c8a8f0")),
+    ("prism_guppy", "Barrigudinho Prismático", CRYSTAL),
+    ("moon_sunfish", "Peixe-Lua", pal("#5a5a6a", "#8a8a9a", "#b4b4c4", "#dcdce8", "#ffffff")),
+    ("lava_koi", "Carpa de Lava", SOLAR),
+    ("obsidian_fish", "Peixe de Obsidiana", pal("#0a0814", "#1a1428", "#2a2040", "#4a3a6a", "#8a6aa0")),
+]
+
+PERSON_L8 = {
+    # name: (display, hp, attack, scale, colours, boss)
+    "scarecrow": ("Espantalho", 140, 10, 1.0, dict(PSKIN=pal("#8a6a2a", "#a8823a", "#c49a4a", "#d8b060", "#ecc87a"), PHAIR=pal("#c4a020", "#d4b02a", "#e4c034", "#f0d03e", "#f8e048"), PTUNIC=pal("#5a2a14", "#6c341a", "#7e3e20", "#904826", "#a2522c"), PTROUSER=pal("#3a4a6a", "#44547a", "#4e5e8a", "#58689a"), PLEATHER=pal("#5a3a1a", "#6a4420", "#7a4e26", "#8a582c"), PIRIS=(20, 10, 0)), False),
+    "headless_rider": ("Cavaleiro Sem Cabeça", 400, 16, 1.3, dict(PSKIN=pal("#1a1a1a", "#242424", "#2e2e2e", "#383838", "#424242"), PHAIR=pal("#e05a10", "#f07a20", "#f89a30", "#ffb040", "#ffd060"), PTUNIC=pal("#1a1a24", "#22222e", "#2a2a38", "#323242", "#3a3a4c"), PTROUSER=pal("#1a1a24", "#22222e", "#2a2a38", "#323242"), PLEATHER=pal("#5a1a1a", "#6e2222", "#822a2a", "#963232"), PIRIS=(255, 140, 20)), False),
+    "pumpkin_king": ("Rei Abóbora", 3000, 18, 2.4, dict(PSKIN=pal("#a04a08", "#c4600e", "#e07a18", "#f09a30", "#f8b84a"), PHAIR=pal("#2a5a1a", "#3a7a22", "#4a9a2a", "#5aba34", "#7ad44a"), PTUNIC=pal("#1a1014", "#24161c", "#2e1c24", "#38222c", "#42283a"), PTROUSER=pal("#1a1014", "#24161c", "#2e1c24", "#38222c"), PLEATHER=pal("#e05a10", "#f07a20", "#f89a30", "#ffb040"), PIRIS=(255, 200, 40)), True),
+    "evil_elf": ("Elfo Malvado", 110, 9, 0.7, dict(PSKIN=pal("#c49070", "#d4a080", "#e0b090", "#eac0a0", "#f2d0b4"), PHAIR=pal("#8a1a1a", "#a02020", "#b82828", "#cc3030", "#e03838"), PTUNIC=pal("#1a5a1a", "#226a22", "#2a7a2a", "#328a32", "#3a9a3a"), PTROUSER=pal("#8a1a1a", "#a02020", "#b82828", "#cc3030"), PLEATHER=pal("#e4c040", "#ecca50", "#f4d460", "#f8de70"), PIRIS=(220, 30, 30)), False),
+    "snowman_gunner": ("Boneco Atirador", 160, 10, 1.1, dict(PSKIN=pal("#c8d2dc", "#dce4ec", "#eaf0f6", "#f6f9fc", "#ffffff"), PHAIR=pal("#141414", "#1c1c1c", "#242424", "#2c2c2c", "#343434"), PTUNIC=pal("#c8d2dc", "#dce4ec", "#eaf0f6", "#f6f9fc", "#ffffff"), PTROUSER=pal("#c8d2dc", "#dce4ec", "#eaf0f6", "#f6f9fc"), PLEATHER=pal("#a03030", "#b83a3a", "#d04444", "#e84e4e"), PIRIS=(20, 20, 20)), False),
+    "pirate_deckhand": ("Marujo Saqueador", 120, 10, 1.0, dict(PSKIN=pal("#a8694a", "#b97a58", "#c78a65", "#d29a74", "#dca984"), PHAIR=pal("#8a1a1a", "#a02020", "#b82828", "#cc3030", "#e03838"), PTUNIC=pal("#c8c0b0", "#d4ccbc", "#e0d8c8", "#ece4d4", "#f8f0e0"), PTROUSER=pal("#1a2e5a", "#22386c", "#2a427e", "#344e90"), PLEATHER=pal("#5a3a1a", "#6a4420", "#7a4e26", "#8a582c"), PIRIS=(60, 40, 30)), False),
+    "pirate_gunner": ("Atirador Saqueador", 120, 10, 1.0, dict(PSKIN=pal("#6a3e2a", "#7a4a32", "#8a563a", "#9a6242", "#aa6e4a"), PHAIR=pal("#141414", "#1c1c1c", "#242424", "#2c2c2c", "#343434"), PTUNIC=pal("#1a2e5a", "#22386c", "#2a427e", "#344e90", "#3e5aa2"), PTROUSER=pal("#3a2a1a", "#463220", "#523a26", "#5e422c"), PLEATHER=pal("#c49a10", "#d4aa18", "#e4ba20", "#f4ca28"), PIRIS=(60, 40, 30)), False),
+    "pirate_captain": ("Capitão Saqueador", 2200, 16, 1.6, dict(PSKIN=pal("#a8694a", "#b97a58", "#c78a65", "#d29a74", "#dca984"), PHAIR=pal("#141414", "#1c1c1c", "#242424", "#2c2c2c", "#343434"), PTUNIC=pal("#8a1a1a", "#a02020", "#b82828", "#cc3030", "#e03838"), PTROUSER=pal("#141414", "#1c1c1c", "#242424", "#2c2c2c"), PLEATHER=pal("#e4c040", "#ecca50", "#f4d460", "#f8de70"), PIRIS=(40, 30, 20)), True),
+    "martian_soldier": ("Soldado Estelar", 180, 12, 1.0, dict(PSKIN=pal("#3a6a2a", "#4a8a34", "#5aa03e", "#6ab84a", "#7ad05a"), PHAIR=pal("#5a606c", "#6e7682", "#8a92a0", "#a4acb8", "#c0c8d4"), PTUNIC=pal("#5a606c", "#6e7682", "#8a92a0", "#a4acb8", "#c0c8d4"), PTROUSER=pal("#3a3e48", "#4c515c", "#646a78", "#7e8492"), PLEATHER=pal("#2a80c4", "#3a90d4", "#4aa0e4", "#5ab0f4"), PIRIS=(20, 20, 20)), False),
+    "martian_officer": ("Oficial Estelar", 260, 14, 1.15, dict(PSKIN=pal("#3a6a2a", "#4a8a34", "#5aa03e", "#6ab84a", "#7ad05a"), PHAIR=pal("#c41420", "#e02028", "#f03a3a", "#ff5a4a", "#ff7a6a"), PTUNIC=pal("#3a3e48", "#4c515c", "#646a78", "#7e8492", "#9aa0ae"), PTROUSER=pal("#2a2c32", "#383b42", "#484c54", "#5a5e68"), PLEATHER=pal("#c41420", "#e02028", "#f03a3a", "#ff5a4a"), PIRIS=(20, 20, 20)), False),
+    "ether_goblin": ("Goblin Etéreo", 150, 11, 0.9, dict(PSKIN=pal("#4a2a6a", "#5a347a", "#6a3e8a", "#7a489a", "#8a52aa"), PHAIR=pal("#141414", "#1c1c1c", "#242424", "#2c2c2c", "#343434"), PTUNIC=pal("#2a1436", "#341a44", "#3e2052", "#482660", "#522c6e"), PTROUSER=pal("#1e1a26", "#262030", "#2e263a", "#362c44"), PLEATHER=pal("#c45ad4", "#d46ae0", "#e47aec", "#f08af8"), PIRIS=(255, 120, 255)), False),
+    "dark_mage": ("Mago Sombrio", 2400, 14, 1.5, dict(PSKIN=pal("#5a5a6a", "#6a6a7a", "#7a7a8a", "#8a8a9a", "#9a9aaa"), PHAIR=pal("#2a0a3a", "#3a1a4a", "#4a2a5a", "#5a3a6a", "#6a4a7a"), PTUNIC=pal("#2a0a3a", "#4a1466", "#7a2aa0", "#c45ad4", "#ffc0ff"), PTROUSER=pal("#1a0a2a", "#2a1a3a", "#3a2a4a", "#4a3a5a"), PLEATHER=pal("#c49a10", "#d4aa18", "#e4ba20", "#f4ca28"), PIRIS=(255, 120, 255)), True),
+}
+
+SAUCER_PARTS = """[
+            (size: (14, 3, 14), origin: (-7, 0, -7), uv: (0, 0)),
+            (size: (8, 5, 8), origin: (-4, 3, -4), uv: (0, 17)),
+        ]"""
+CRYSTAL_PARTS = """[
+            (size: (6, 12, 6), origin: (-3, 0, -3), uv: (0, 0)),
+        ]"""
+
+
+def mobs_l8():
+    out = ["    // Lote 8: the invasions' folk."]
+    for name, (disp, hp, atk, scale, _, boss) in PERSON_L8.items():
+        flag = ", boss: true" if boss else ""
+        out.append(f"""    (
+        name: "{name}", display_name: "{disp}", kind: Hostile, health: {hp}, speed: 2.4, attack: {atk},
+        drops: [], xp: {min(250, hp // 10)},
+        width: {round(0.6 * scale, 2)}, height: {round(1.95 * scale, 2)}, spawn: Never, scale: {scale}{flag},
+        parts: {PERSON_PARTS},
+        layers: {PERSON_LAYERS},
+    ),""")
+    flyers = [
+        ("ice_queen", "Rainha do Gelo", 3200, 16, EMPRESS_PARTS, 2.4, 1.6, 3.2, ", boss: true", "[(part: 1, inflate: 0.5)]"),
+        ("saucer", "Disco Voador", 3600, 16, SAUCER_PARTS, 3.5, 3.6, 2.0, ", boss: true", "[]"),
+        ("ether_wyvern", "Serpe Etérea", 140, 11, HARPY_PARTS, 1.3, 0.8, 1.6, "", "[(part: 1, inflate: 0.5)]"),
+        ("martian_probe", "Sonda Estelar", 60, 0, EYE_PARTS, 0.6, 0.6, 0.6, "", "[(part: 0, inflate: 0.5)]"),
+        ("ether_crystal_mob", "Cristal Etéreo", 600, 0, CRYSTAL_PARTS, 1.8, 0.8, 1.6, "", "[]"),
+    ]
+    for name, disp, hp, atk, parts, scale, w, h, flag, layers in flyers:
+        kind = "Passive" if name == "ether_crystal_mob" else "Hostile"
+        out.append(f"""    (
+        name: "{name}", display_name: "{disp}", kind: {kind}, health: {hp}, speed: 0.1, attack: {atk},
+        drops: [], xp: {min(250, hp // 10)},
+        width: {w}, height: {h}, spawn: Never, scale: {scale}, flies: true{flag},
+        parts: {parts},
+        layers: {layers},
+    ),""")
+    return out
+
+
+def skins_l8():
+    person = lambda name, col: (g.ROLES["player"], g.townsfolk(name, g.PAINTERS["player"], col), g.townsfolk(name, g.OVERLAYS["player"], col))
+    out = {name: person(name, v[4]) for name, v in PERSON_L8.items()}
+    ICE = pal("#2a4a6a", "#4a7aa0", "#7aaed4", "#b4daf4", "#eef8ff")
+    out["ice_queen"] = (["body", "head", "wing", "wing", "skirt"], zoned({"head": eyes_on(shade(ICE), (40, 80, 160), (3,)), "*": shade(ICE)}), None)
+    METAL = pal("#3a3e48", "#4c515c", "#646a78", "#7e8492", "#9aa0ae")
+    out["saucer"] = (["disc", "dome"], zoned({"disc": bands(METAL, 3), "dome": shade(pal("#2a6a4a", "#4aa07a", "#7ad4a8", "#b0f0d0", "#e8fff4"))}), None)
+    WYV = pal("#2a1436", "#4a2a6a", "#7a4aa0", "#a87ad0", "#e0c8ff")
+    out["ether_wyvern"] = (["body", "head", "wing", "wing", "leg", "leg"], zoned({"head": eyes_on(shade(WYV), (255, 140, 255), (2,)), "*": shade(WYV)}), None)
+    out["martian_probe"] = (["eye", "stalk", "stalk", "stalk"], e5s.eye_painter(pal("#a8acb4", "#bcc0c8", "#d0d4dc"), pal("#2a2c32", "#383b42", "#484c54"), pal("#2a80c4", "#5ab4f0", "#c0f0ff"), metal=pal("#383b42", "#5a5e68", "#767b86")), e5s.eye_overlay(pal("#2a2c32", "#383b42", "#484c54"), metal=pal("#484c54", "#5a5e68", "#767b86")))
+    out["ether_crystal_mob"] = (["crystal"], wisp_painter(pal("#2a0a3a", "#7a2aa0", "#c45ad4", "#ffc0ff", "#ffffff")), None)
+    return out
+
+
+def items_l8():
+    stack1 = "max_stack: Some(1)"
+    gi.MATERIALS["pumpkin"] = pal("#5a2a04", "#a04a08", "#e07a18", "#f8b84a", "#fff0a0")
+    gi.MATERIALS["cutlass"] = pal("#5a606c", "#8a92a0", "#c0c8d4", "#eef2f8", "#ffffff")
+    gi.WAND_GEMS["blizzard"] = pal("#2a4a6a", "#4a7aa0", "#7aaed4", "#b4daf4", "#eef8ff")
+    out = [(n, d, icon2(CRATE, p, edge), "max_stack: Some(16)") for n, d, p, edge in CRATES_L8]
+    out += [(n, d, icon2(FISH_ICON, p, pal("#141418")), "") for n, d, p in FISH_L8]
+    out += [
+        ("apprentice_bait", "Isca de Aprendiz", icon(BAIT, pal("#3a2a1a", "#6a4a2a", "#9a6a3a", "#c49a5a", "#e8c890")), ""),
+        ("journeyman_bait", "Isca de Viajante", icon(BAIT, pal("#3a0a1a", "#8a2a4a", "#c45a7a", "#f09ab0", "#ffe0e8")), ""),
+        ("master_bait", "Isca de Mestre", icon(BAIT, pal("#0a2a4a", "#2a6aa0", "#5ab4f0", "#b0e8ff", "#ffffff")), ""),
+        ("reinforced_rod", "Vara Reforçada", icon2(ROD, STEEL, pal("#c8c0b0", "#5a3a1a", "#3a2410")), stack1 + ", tool: Some((kind: Hoe, tier: 0, speed: 1.0, damage: 1.0, durability: 400))"),
+        ("magma_rod", "Vara de Magma", icon2(ROD, SOLAR, pal("#c8c0b0", "#5a3a1a", "#3a2410")), stack1 + ", tool: Some((kind: Hoe, tier: 0, speed: 1.0, damage: 1.0, durability: 600))"),
+        ("golden_rod", "Vara Dourada", icon2(ROD, pal("#6a4a08", "#a07c16", "#d4aa18", "#f4ca28", "#fff0a0"), pal("#c8c0b0", "#5a3a1a", "#3a2410")), stack1 + ", tool: Some((kind: Hoe, tier: 0, speed: 1.0, damage: 1.0, durability: 1200))"),
+        ("fishing_potion", "Poção de Pesca", icon2(POTION, pal("#c8d2dc", "#2080c4", "#5ab4f0", "#d0f0ff"), pal("#5a3a1a", "#c4a060")), "max_stack: Some(16)"),
+        ("crate_potion", "Poção de Caixas", icon2(POTION, pal("#c8d2dc", "#a07c16", "#d4aa18", "#fff0a0"), pal("#5a3a1a", "#c4a060")), "max_stack: Some(16)"),
+        ("sonar_potion", "Poção de Sonar", icon2(POTION, pal("#c8d2dc", "#18887a", "#3ac4a8", "#a8ffe8"), pal("#5a3a1a", "#c4a060")), "max_stack: Some(16)"),
+        ("pumpkin_medallion", "Medalhão de Abóbora", icon2(MEDAL, pal("#5a2a04", "#a04a08", "#e07a18", "#f8b84a", "#fff0a0"), pal("#c49a10", "#f4ca28")), ""),
+        ("frost_medallion", "Medalhão de Gelo", icon2(MEDAL, pal("#2a4a6a", "#4a7aa0", "#7aaed4", "#b4daf4", "#eef8ff"), pal("#c8d2dc", "#ffffff")), ""),
+        ("pirate_map", "Mapa do Tesouro", icon2(MAP, pal("#6a5a3a", "#a89470", "#d8c8a0", "#ece0c0", "#f8f0dc"), pal("#a03030", "#3a2a1a")), ""),
+        ("ether_crystal", "Cristal Etéreo", icon(SHARD, pal("#2a0a3a", "#7a2aa0", "#c45ad4", "#ffc0ff", "#ffffff")), ""),
+        ("horseman_blade", "Lâmina do Cavaleiro", gi.tool("pumpkin", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 4, speed: 8.0, damage: 10.0, durability: 2000))"),
+        ("cutlass", "Alfanje", gi.tool("cutlass", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 4, speed: 10.0, damage: 9.0, durability: 1800))"),
+        ("blizzard_staff", "Cajado da Nevasca", gi.staff("blizzard", "silver"), stack1),
+        ("laser_rifle", "Rifle de Laser", icon2(RAPID, pal("#2a6a4a", "#4aa07a", "#7ad4a8", "#b0f0d0", "#e8fff4"), STEEL), stack1),
+        ("flame_sentry_rod", "Cajado da Sentinela de Chamas", icon2(SENTRY, SOLAR, WOOD), stack1),
+    ]
+    return out
+
+
+SHAPED_L8 = [
+    (["  I", " IS", "R S"], {"I": "iron_ingot", "S": "string", "R": "fishing_rod"}, "reinforced_rod", 1),
+    (["  M", " MS", "R S"], {"M": "magmarite_ingot", "S": "string", "R": "fishing_rod"}, "magma_rod", 1),
+    ([" E ", "EPE", " S "], {"E": "ectoplasm", "P": "pumpkin", "S": "soul_of_night"}, "pumpkin_medallion", 1),
+    ([" E ", "ESE", " R "], {"E": "ectoplasm", "S": "snowball", "R": "radiant_ingot"}, "frost_medallion", 1),
+    (["PPP", "PCP", "PGP"], {"P": "paper", "C": "compass", "G": "gold_ingot"}, "pirate_map", 1),
+    ([" A ", "ALA", " A "], {"A": "amethyst", "L": "soul_of_light"}, "ether_crystal", 1),
+]
+SHAPELESS_L8 = [
+    (["wheat_seeds", "rotten_flesh"], "apprentice_bait", 3),
+    (["spider_eye", "glow_berries"], "journeyman_bait", 3),
+    (["glow_ink_sac", "gold_nugget"], "master_bait", 3),
+    (["glass_bottle", "cod", "glowstone_dust"], "fishing_potion", 1),
+    (["glass_bottle", "gold_nugget", "salmon"], "crate_potion", 1),
+    (["glass_bottle", "pufferfish", "ink_sac"], "sonar_potion", 1),
+]
+
+
 def write_skins(skins):
     parsed, layers = g.parse_mobs(str(OUT / "mobs.ron"))
     assert set(parsed) == set(skins), sorted(set(parsed) ^ set(skins))
@@ -2876,12 +3134,12 @@ def write_skins(skins):
 
 
 def main():
-    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7()
+    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8()
     blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7
-    mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6() + mobs_l7()
-    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7, SMELTING_L2 + SMELTING_L3)
+    mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6() + mobs_l7() + mobs_l8()
+    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8, SMELTING_L2 + SMELTING_L3)
     structures_l3()
-    skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6(), **skins_l7()})
+    skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6(), **skins_l7(), **skins_l8()})
     pics = []
     for name, _, img, _ in items:
         im = gt.to_image(img)
