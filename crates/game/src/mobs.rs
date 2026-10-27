@@ -23,6 +23,10 @@ pub struct Mobs {
     pub arrows: Vec<Arrow>,
     /// Peaceful difficulty: no monsters at all.
     pub peaceful: bool,
+    /// A calm night (tr_events.rs): no monsters spawn on the surface, the ones there stay.
+    pub calm: bool,
+    /// World difficulty (tr_modes.rs): monsters spawn with this much more health.
+    pub hp_scale: f32,
     /// Blocks each mob may spawn on (from `MobDef::ground`), resolved on first use.
     ground: Vec<Vec<BlockId>>,
     /// Multiplayer: the other players in this dimension (where, creative), so monsters hunt
@@ -95,7 +99,7 @@ impl Mobs {
     }
 
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, arrows: Vec::new(), ground: Vec::new(), others: Vec::new() }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, calm: false, hp_scale: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new() }
     }
 
     fn next_rand(&mut self) -> u64 {
@@ -114,8 +118,17 @@ impl Mobs {
     pub fn spawn(&mut self, name: &str, pos: Vec3) -> bool {
         let Some(i) = self.reg.id(name) else { return false };
         let s = self.next_rand();
-        self.list.push(Mob::new(i, &self.reg.defs[i], pos, s));
+        self.push_mob(Mob::new(i, &self.reg.defs[i], pos, s));
         true
+    }
+
+    /// Add a mob; monsters get the world difficulty's extra health.
+    fn push_mob(&mut self, mut m: Mob) {
+        if self.hp_scale != 1.0 && self.reg.defs[m.def].kind == Kind::Hostile {
+            m.health *= self.hp_scale;
+            m.max_health *= self.hp_scale;
+        }
+        self.list.push(m);
     }
 
     /// Natural spawning around the player: animals on grass in the light, monsters in the dark.
@@ -178,7 +191,7 @@ impl Mobs {
                         && match d.spawn {
                             SpawnRule::Grass => animals && !water && self.ground[*i].contains(&below),
                             SpawnRule::Water => animals && water,
-                            SpawnRule::Dark => dark && !water && hostile < MAX_HOSTILE && !self.peaceful && (self.reg.defs[*i].ground.is_empty() || self.ground[*i].contains(&below)),
+                            SpawnRule::Dark => dark && !water && hostile < MAX_HOSTILE && !self.peaceful && !self.calm && (self.reg.defs[*i].ground.is_empty() || self.ground[*i].contains(&below)),
                             SpawnRule::Never => false,
                         }
                 })
@@ -210,7 +223,7 @@ impl Mobs {
             for k in 0..n {
                 let off = Vec3::new((k % 2) as f32 * 1.2 - 0.6, 0.0, (k / 2) as f32 * 1.2);
                 let s = self.next_rand();
-                self.list.push(Mob::new(pick, &self.reg.defs[pick], pos + off, s));
+                self.push_mob(Mob::new(pick, &self.reg.defs[pick], pos + off, s));
             }
             return;
         }
@@ -243,16 +256,16 @@ impl Mobs {
             }
             let uw = Layer::at(p.y) == Layer::Underworld;
             let names: &[(&str, u32)] = if uw {
-                &[("fire_imp", 6), ("magma_cube", 5), ("wither_skeleton", 3), ("blaze", 3), ("ember_wraith", 3), ("ash_skeleton", 4)]
+                &[("fire_imp", 6), ("magma_cube", 5), ("wither_skeleton", 3), ("blaze", 3), ("ember_wraith", 3), ("ash_skeleton", 4), ("jelly_lava", 4)]
             } else {
                 match world.gen.ubiome_at(p.x, p.y, p.z) {
-                    UBiome::Ice => &[("frost_archer", 5), ("skeleton", 4), ("zombie", 2)],
+                    UBiome::Ice => &[("frost_archer", 5), ("skeleton", 4), ("zombie", 2), ("jelly_ice", 3)],
                     UBiome::Desert => &[("mummy", 6), ("spider", 3), ("skeleton", 2)],
-                    UBiome::Jungle => &[("ooze", 5), ("cave_spider", 3), ("zombie", 3)],
+                    UBiome::Jungle => &[("ooze", 5), ("cave_spider", 3), ("zombie", 3), ("hive_drone", 2)],
                     UBiome::Spider => &[("cave_spider", 7), ("spider", 5)],
                     UBiome::Mushroom => &[("ooze", 3), ("zombie", 2)],
-                    _ if Layer::at(p.y) == Layer::Caverns => &[("skeleton", 5), ("zombie", 4), ("stalker", 3), ("spider", 3), ("wither_skeleton", 1), ("ooze", 2)],
-                    _ => &[("zombie", 5), ("skeleton", 5), ("spider", 3), ("stalker", 2), ("cave_spider", 1)],
+                    _ if Layer::at(p.y) == Layer::Caverns => &[("skeleton", 5), ("zombie", 4), ("stalker", 3), ("spider", 3), ("wither_skeleton", 1), ("ooze", 2), ("jelly_red", 3), ("jelly_pink", 1)],
+                    _ => &[("zombie", 5), ("skeleton", 5), ("spider", 3), ("stalker", 2), ("cave_spider", 1), ("jelly_blue", 2), ("jelly_red", 1)],
                 }
             };
             let total: u32 = names.iter().map(|n| n.1).sum();

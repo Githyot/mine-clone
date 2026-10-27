@@ -51,6 +51,12 @@ pub struct Moves {
     pub flying: bool,
 }
 
+/// Accessories that are several in one (Lote 9): wearing one counts as wearing its parts.
+const COMBOS: &[(&str, &[&str])] = &[
+    ("terraspark_boots", &["frost_spark_boots", "water_walking_boots", "obsidian_charm"]),
+    ("bundle_of_balloons", &["cloud_bottle", "blizzard_bottle", "sandstorm_bottle", "shiny_balloon"]),
+];
+
 /// Extra jumps in the air, used in this order: (accessory, upward speed).
 const JUMPS: &[(&str, f32)] = &[
     ("cloud_bottle", 9.5),
@@ -63,7 +69,9 @@ const JUMPS: &[(&str, f32)] = &[
 impl Game {
     /// Seconds of lift in the air: wings, then rocket boots, then steam boots.
     fn flight_max(&self) -> f32 {
-        if self.wears("angel_wings") {
+        if let Some(t) = self.tr_wing().map(|w| w.1) {
+            t
+        } else if self.wears("angel_wings") {
             3.2
         } else if self.wears("comet_boots") {
             2.6
@@ -78,7 +86,10 @@ impl Game {
 
     /// Is this accessory worn (in an open slot)?
     pub(crate) fn wears(&self, name: &str) -> bool {
-        self.t5.acc[..self.acc_slots()].iter().flatten().any(|s| self.items.get(s.item).name == name)
+        self.t5.acc[..self.acc_slots()].iter().flatten().any(|s| {
+            let worn = &self.items.get(s.item).name;
+            worn == name || COMBOS.iter().any(|(c, parts)| c == worn && parts.contains(&name))
+        })
     }
 
     /// Melee damage multiplier: emblems, sets, buffs (rpg.rs).
@@ -197,7 +208,7 @@ impl Game {
         let glow = self.glow_layer();
         let hooked = self.t5.hook.attached();
         if !ground && !hooked && self.seat.is_none() && self.riding.is_none() {
-            let wings = self.wears("angel_wings") || self.wears("feather_wings");
+            let wings = self.wears("angel_wings") || self.wears("feather_wings") || self.tr_wing().is_some();
             let rocket = !wings && (self.wears("rocket_boots") || self.wears("comet_boots"));
             let steam = !wings && !rocket && self.wears("steam_boots");
             let next = if pressed {
@@ -262,7 +273,13 @@ impl Game {
                 }
                 self.fall_peak = self.body.pos.y;
                 if self.surv.rng.f32() < dt * 20.0 {
-                    let tint = if self.wears("angel_wings") { [1.5, 1.4, 0.8] } else { [1.2, 1.2, 1.2] };
+                    let tint = if let Some(w) = self.tr_wing() {
+                        w.2
+                    } else if self.wears("angel_wings") {
+                        [1.5, 1.4, 0.8]
+                    } else {
+                        [1.2, 1.2, 1.2]
+                    };
                     self.particles.glow(self.body.pos + Vec3::Y * 1.2, Vec3::new(0.0, -1.5, 0.0), glow, tint, 0.08, 0.5);
                 }
             }
@@ -305,7 +322,7 @@ impl Game {
         }
         self.t5.moves.a_was = a;
         self.t5.moves.d_was = d;
-        let shield = self.wears("charge_shield");
+        let shield = self.wears("charge_shield") || self.wears("watcher_shield");
         if dash != 0.0 && self.t5.moves.dash_cd <= 0.0 && (shield || self.wears("wind_cape") || self.wears("shadow_gear")) {
             self.t5.moves.dash_cd = 1.0;
             let right = Vec3::new(self.yaw.cos(), 0.0, -self.yaw.sin());

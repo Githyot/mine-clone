@@ -56,6 +56,7 @@
             outro: "Agora sim, você parece um aventureiro. Lá embaixo, nas profundezas, tem coisa ainda melhor.",
             reward: [("iron_ingot", 4), ("bucket", 1)],
             goals: [
+                (id: "rei_geleia", text: "Derrote o Rei Geleia", hint: "Junte gel das geleias e faça a Coroa Gelatinosa (gel em volta de uma barra de ouro). Use na superfície.", need: Boss("king_jelly"), optional: true),
                 (id: "cobre", text: "Funda cobre ou estanho", hint: "Minério alaranjado (cobre) ou cinza-claro (estanho) perto da superfície. Derreta na fornalha.", need: Item(["copper_ingot", "tin_ingot"])),
                 (id: "ferro", text: "Funda ferro ou chumbo", hint: "Minério com pontos bege (ferro) ou azulados (chumbo), mais fundo. Precisa de picareta de pedra ou melhor.", need: Item(["iron_ingot", "lead_ingot"])),
                 (id: "armadura", text: "Vista uma peça de armadura", hint: "Na bancada, lingotes no formato do capacete, peitoral, calça ou botas. Cada ponto de armadura tira 4% do dano.", need: Item(["*_helmet", "*_chestplate", "*_leggings", "*_boots"])),
@@ -73,6 +74,7 @@
             outro: "Mais vida, mais força. Esses cristais coloridos que você achou guardam magia. Quer aprender?",
             reward: [("torch", 16), ("cooked_beef", 6)],
             goals: [
+                (id: "grande_olho", text: "Derrote o Grande Olho", hint: "Seis lentes e um olho de aranha fazem o Olho Suspeito; use à noite. Com 15 corações ele pode vir sozinho.", need: Boss("great_eye"), optional: true),
                 (id: "fundo", text: "Desça até a camada 16", hint: "Cave para baixo em escada (nunca reto embaixo de você!). Aperte F3 para ver a altura.", need: Depth(16)),
                 (id: "prata", text: "Funda prata ou tungstênio", hint: "Metais das cavernas fundas. A prata é boa contra mortos-vivos.", need: Item(["silver_ingot", "tungsten_ingot"])),
                 (id: "ouro", text: "Funda ouro ou platina", hint: "O metal precioso mais fundo antes do diamante.", need: Item(["gold_ingot", "platinum_ingot"])),
@@ -104,6 +106,8 @@
             outro: "Você derrotou o Guardião! Um ferreiro ouviu falar e quer morar aqui. Ele forja metais melhores.",
             reward: [("diamond", 2), ("life_crystal", 1)],
             goals: [
+                (id: "mente_chaga", text: "Derrote a Mente da Chaga", hint: "A Espinha da Chaga se usa abaixo da altura 0. Mate os rastejantes antes: eles protegem a Mente.", need: Boss("blight_mind"), optional: true),
+                (id: "rainha_colmeia", text: "Derrote a Rainha da Colmeia", hint: "Quebre a larva no meio de uma colmeia gigante, embaixo da selva, ou use o Favo Real na selva.", need: Boss("hive_queen"), optional: true),
                 (id: "musgo", text: "Junte pedregulho com musgo", hint: "Aparece em ruínas, criptas e cavernas úmidas.", need: Item(["mossy_cobblestone"])),
                 (id: "semente", text: "Faça a Semente Ancestral", hint: "Na bancada: mudas nos cantos, maçãs nos lados e pedregulho com musgo no meio.", need: Item(["ancient_seed"])),
                 (id: "chefe", text: "Derrote o Guardião da Floresta", hint: "Use a semente à noite. Na metade da vida ele fica bravo e chama mortos. Fique longe da pisada.", need: Boss("forest_guardian")),
@@ -117,6 +121,7 @@
             outro: "O Lich virou pó! Com uma picareta de diamante você já corta obsidiana. Sabe o que isso quer dizer?",
             reward: [("ender_pearl", 2), ("obsidian", 4)],
             goals: [
+                (id: "colosso", text: "Derrote o Colosso do Gelo", hint: "Use o Chifre Gelado na neve. Pule as linhas de espinhos de gelo.", need: Boss("frost_colossus"), optional: true),
                 (id: "diamante", text: "Ache um diamante", hint: "Bem fundo, perto da rocha escura. Precisa de picareta de ferro ou melhor.", need: Item(["diamond"])),
                 (id: "picareta_diamante", text: "Faça uma picareta de diamante", hint: "Três diamantes e dois gravetos. É a única que minera obsidiana.", need: Item(["diamond_pickaxe"])),
                 (id: "filacteria", text: "Faça a filactéria", hint: "Ossos nos cantos, safiras nos lados e um cristal de mana no meio.", need: Item(["lich_phylactery"])),

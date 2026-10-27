@@ -74,7 +74,7 @@ pub struct Extras {
     pub burning: f32,
     burn_tick: f32,
     /// The jukebox playing now.
-    playing: Option<IVec3>,
+    pub(crate) playing: Option<IVec3>,
     /// The pitch of each note block that was tuned (0..24).
     notes: HashMap<[i32; 3], u8>,
     /// Every book written in this world, by number (1-based in item stacks).
@@ -862,6 +862,7 @@ impl Game {
         self.plugins_block(p, was, false);
         let name = self.reg.get(was).name.clone();
         self.infested_broken(p, &name);
+        self.tr_block_broken(p, &name);
         self.pale_broken(p, was);
         if self.world.is_wet(was) && self.extras.water != AIR && self.world.block_or_air(p) == AIR {
             self.world.set_block(p, self.extras.water);

@@ -43,7 +43,7 @@ pub const MORE_FISH: &[(&[&str], &str, u32)] = &[
 pub const MORE_JUNK: &[(&str, u32)] = &[("driftwood", 3), ("tin_can", 2)];
 
 pub fn is_rod(name: &str) -> bool {
-    name == "fishing_rod" || name == ROD
+    name == "fishing_rod" || name == ROD || crate::tr_fishing::rod_power(name).is_some()
 }
 
 impl Game {

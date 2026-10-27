@@ -35,7 +35,7 @@ impl Game {
     }
 
     /// A free spot (floor under, two air cells) around `center`, dark (`cave`) or under the sky.
-    fn spot_near(&mut self, center: Vec3, min: f32, max: f32, cave: bool) -> Option<Vec3> {
+    pub(crate) fn spot_near(&mut self, center: Vec3, min: f32, max: f32, cave: bool) -> Option<Vec3> {
         for _ in 0..40 {
             let a = self.wander.rand() * std::f32::consts::TAU;
             let r = min + (max - min) * self.wander.rand();
