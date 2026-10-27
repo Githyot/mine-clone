@@ -534,6 +534,23 @@ TERRAS QUE MUDAM O MUNDO (lado Terraria, lote 3)
   Armaduras novas: Sombraço, Sanguinita, Abelha (cera), Selva (esporos), Fóssil, Necro
     (ossos) e Ninja (cai do Rei Geleia). Cada uma tem seu bônus de conjunto.
 
+ARMAS NOVAS (lado Terraria, lote 4)
+  Ioiôs: segure o botão direito e o ioiô vai até onde você mira, batendo no que encostar.
+    Solte e ele volta. Madeira, Selva (veneno), Sombraço, Sanguinita (sangra), Magma (fogo).
+  Bumerangues e manguais: botão direito joga, e eles voltam para a mão. O mangual é curto
+    e pesado. Bumerangue de madeira, encantado (estrela caída), de gelo, Chakram, de fogo.
+  Armas de fogo: usam Balas de Mosquete (1 barra de chumbo = 50) ou Balas de Meteoro
+    (atravessam). Pistola de Pederneira, Mosquete, Espingarda (4 chumbos) e Metralhadora
+    Leve (segure para atirar sem parar).
+  Arremessáveis: Shuriken e Faca de Arremesso. Bomba e Dinamite abrem o chão; a Granada
+    só machuca os monstros.
+  Arcos de minério: cobre, prata, platina, sombraço e sanguinita (puxam como o arco
+    normal e batem mais forte).
+  Cajado da Balista: põe uma balista no chão que atira nos monstros por 2 minutos.
+  Espada Encantada: cada golpe solta um raio azul. Sabre Estelar: estrelas caem onde
+    você mira.
+  Magias: Raio d'Água, Foice Demoníaca.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

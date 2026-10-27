@@ -60,6 +60,7 @@ mod boss_ai;
 mod tr;
 mod tr_bosses;
 mod tr_events;
+mod tr_weapons;
 mod tr_world;
 mod glyphs;
 mod hardmode;

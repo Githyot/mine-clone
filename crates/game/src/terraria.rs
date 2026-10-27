@@ -185,7 +185,7 @@ impl Game {
         self.update_spell_extras(dt);
         self.update_fight(dt);
         self.update_hardmode(dt);
-        self.update_tr(dt);
+        self.update_tr(dt, use_held);
     }
 
     /// Right click with an item of the Terraria side; true when it did something.

@@ -79,6 +79,8 @@ const SPELLS: &[SpellDef] = &[
     SpellDef { item: "ice_spike_staff", school: 1, cost: 10.0, cooldown: 1.2, damage: 7.0, speed: 22.0, life: 0.8, shot: Shot::Ring(14) },
     SpellDef { item: "void_tome", school: 3, cost: 14.0, cooldown: 2.5, damage: 2.0, speed: 6.0, life: 4.0, shot: Shot::Vortex },
     SpellDef { item: "hive_staff", school: 4, cost: 5.0, cooldown: 0.35, damage: 4.0, speed: 16.0, life: 2.5, shot: Shot::Homing },
+    SpellDef { item: "water_bolt", school: 1, cost: 5.0, cooldown: 0.4, damage: 6.0, speed: 20.0, life: 3.0, shot: Shot::Bolt },
+    SpellDef { item: "demon_scythe", school: 3, cost: 9.0, cooldown: 0.7, damage: 8.0, speed: 12.0, life: 2.5, shot: Shot::Fan(2) },
     SpellDef { item: "ruin_thorn", school: 3, cost: 5.0, cooldown: 0.5, damage: 5.0, speed: 22.0, life: 1.0, shot: Shot::Fan(3) },
     SpellDef { item: "blight_rod", school: 4, cost: 7.0, cooldown: 0.9, damage: 6.0, speed: 14.0, life: 2.5, shot: Shot::Burst(2.0) },
     SpellDef { item: "meteor_blaster", school: 0, cost: 4.0, cooldown: 0.22, damage: 4.0, speed: 36.0, life: 1.0, shot: Shot::Bolt },

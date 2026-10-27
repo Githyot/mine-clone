@@ -2608,6 +2608,7 @@ impl Game {
         }
         out.extend(self.bobber_instance(cam_block));
         out.extend(self.shot_instances(cam_block));
+        out.extend(self.tr_weapon_instances(cam_block));
         if let Some(arrow) = sprite("arrow") {
             let c = cam_block.as_vec3();
             for a in &self.mobs.arrows {

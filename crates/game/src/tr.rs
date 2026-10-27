@@ -35,6 +35,7 @@ pub struct Tr {
     pub(crate) fight: crate::tr_bosses::Fight,
     pub(crate) ev: crate::tr_events::Events,
     pub(crate) lands: crate::tr_world::Lands,
+    pub(crate) wep: crate::tr_weapons::Weapons,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -72,15 +73,19 @@ impl Tr {
 
 impl Game {
     /// Everything of this file that runs each frame in a world.
-    pub(crate) fn update_tr(&mut self, dt: f32) {
+    pub(crate) fn update_tr(&mut self, dt: f32, use_held: bool) {
         self.update_tr_fight(dt);
         self.great_eye_nights(dt);
         self.update_tr_events(dt);
         self.update_lands(dt);
+        self.update_tr_weapons(dt, use_held);
     }
 
     /// Right click with an item of this file; true when it did something.
     pub(crate) fn tr_use(&mut self, name: &str) -> Option<bool> {
+        if let Some(r) = self.tr_weapon_use(name) {
+            return Some(r);
+        }
         match name {
             "solar_tablet" => return Some(self.use_solar_tablet()),
             "purification_powder" => return Some(self.use_powder(true)),
@@ -316,6 +321,7 @@ impl Game {
                 }
                 self.args.show_inventory = true;
             }
+            "weapons" => self.test_tr_weapons(),
             s if self.test_tr_event(s) => {}
             _ => log::warn!("unknown MC_TR scene {scene}"),
         }

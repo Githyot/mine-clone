@@ -1591,6 +1591,420 @@ def structures_l3():
 
 
 # ==============================================================================================
+# Lote 4: weapons (yoyos, boomerangs, flails, guns and bullets, throwables, bombs, ore bows,
+# sentries, swords that shoot, two more spells)
+# ==============================================================================================
+
+def icon2(rows, p1, p2):
+    return outline(from_map(rows, {**pmap(p1), **pmap(p2, "abcde")}))
+
+
+YOYO = [
+    "................",
+    "..a.............",
+    "...a............",
+    "....a...........",
+    ".....a..........",
+    "......a.........",
+    ".......a1111....",
+    "......112222....",
+    ".....12233221...",
+    ".....12344321...",
+    ".....12355321...",
+    ".....12344321...",
+    ".....12233221...",
+    "......1222211...",
+    ".......1111.....",
+    "................",
+]
+
+BOOMERANG = [
+    "................",
+    "................",
+    "..1111..........",
+    "..13321.........",
+    "..123321........",
+    "...123321.......",
+    "....123321......",
+    ".....12332111...",
+    "......12333321..",
+    ".......1234441..",
+    ".......1233331..",
+    "........11111...",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+
+FLAIL = [
+    "..........1111..",
+    ".........134431.",
+    "........1345531.",
+    "........1344431.",
+    "........1233321.",
+    ".......b.11111..",
+    "......b.........",
+    ".....b..........",
+    "....b...........",
+    "...aa...........",
+    "..aab...........",
+    ".aab............",
+    ".ab.............",
+    "aa..............",
+    "a...............",
+    "................",
+]
+
+PISTOL = [
+    "................",
+    "................",
+    "................",
+    "....1111111111..",
+    "...133333333331.",
+    "...144444444441.",
+    "...1333311111...",
+    "...aaab1........",
+    "..aabba.........",
+    "..abba..........",
+    ".aabba..........",
+    ".abba...........",
+    ".aaa............",
+    "................",
+    "................",
+    "................",
+]
+
+MUSKET = [
+    "................",
+    "................",
+    "................",
+    "................",
+    "...........11111",
+    ".........1133331",
+    "......11133441..",
+    "....aa13341.....",
+    "..aabbb11.......",
+    ".aabbba.........",
+    "aabba...........",
+    "abba............",
+    "aa..............",
+    "................",
+    "................",
+    "................",
+]
+
+SHOTGUN = [
+    "................",
+    "................",
+    "................",
+    "...........1111.",
+    ".........113331.",
+    ".........134441.",
+    "......1113331...",
+    "....aa133431....",
+    "..aabbb1111.....",
+    ".aabbba.........",
+    "aabba...........",
+    "abba............",
+    "aa..............",
+    "................",
+    "................",
+    "................",
+]
+
+RAPID = [
+    "................",
+    "................",
+    "................",
+    "...........111..",
+    "....1111111341..",
+    "...13333333441..",
+    "...14444444431..",
+    "...1333113331...",
+    "...aab1..1331...",
+    "..aabb1...11....",
+    "..abba..........",
+    ".aabb...........",
+    ".aaa............",
+    "................",
+    "................",
+    "................",
+]
+
+BALL = [
+    "................",
+    "................",
+    "................",
+    "................",
+    "...111....111...",
+    "..13321..13321..",
+    "..13421..13421..",
+    "...111....111...",
+    "......111.......",
+    ".....13321......",
+    ".....13421......",
+    "......111.......",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+
+SHURIKEN = [
+    "................",
+    "................",
+    ".......1........",
+    "......141.......",
+    "......141.......",
+    "......131.......",
+    "..111.121.111...",
+    "..14433233441...",
+    "..111.121.111...",
+    "......131.......",
+    "......141.......",
+    "......141.......",
+    ".......1........",
+    "................",
+    "................",
+    "................",
+]
+
+KNIFE = [
+    "................",
+    "..............1.",
+    ".............141",
+    "............1431",
+    "...........1431.",
+    "..........1431..",
+    ".........1431...",
+    "........1431....",
+    ".......1431.....",
+    "....b.1321......",
+    ".....b121.......",
+    ".....aab........",
+    "....aab.b.......",
+    "...aab..........",
+    "...aa...........",
+    "................",
+]
+
+BOMB = [
+    "................",
+    "..........a.....",
+    ".........a.b....",
+    "........aa......",
+    ".......11.......",
+    ".....111111.....",
+    "....12222221....",
+    "...1233222221...",
+    "...1243222221...",
+    "...1232222221...",
+    "...1222222221...",
+    "...1222222221...",
+    "....12222221....",
+    ".....111111.....",
+    "................",
+    "................",
+]
+
+GRENADE = [
+    "................",
+    "................",
+    "......aaa.......",
+    ".....a..ab......",
+    "......111.......",
+    ".....13331......",
+    "....1344331.....",
+    "....1232321.....",
+    "....1323231.....",
+    "....1232321.....",
+    "....1323231.....",
+    "....1232321.....",
+    ".....12221......",
+    "......111.......",
+    "................",
+    "................",
+]
+
+DYNAMITE = [
+    "................",
+    "........ab......",
+    ".......a........",
+    "......a.........",
+    ".....1111.......",
+    ".....1441.......",
+    ".....1331.......",
+    ".....1221.......",
+    ".....1dd1.......",
+    ".....1dd1.......",
+    ".....1221.......",
+    ".....1221.......",
+    ".....1221.......",
+    ".....1111.......",
+    "................",
+    "................",
+]
+
+BOW = [
+    "................",
+    ".........1111...",
+    "........1a..21..",
+    ".......1a....21.",
+    "......1a......1.",
+    ".....1a.......1.",
+    "....1a........21",
+    "...1a.........21",
+    "..1a..........21",
+    ".1a...........21",
+    ".1............1.",
+    ".1...........21.",
+    ".12.........21..",
+    "..12.......21...",
+    "...12111121.....",
+    "....1111........",
+]
+
+SENTRY = [
+    "................",
+    "........11111...",
+    ".......1344431..",
+    ".......1355531..",
+    ".......1344431..",
+    "........1aaa1...",
+    ".........ab.....",
+    "........ab......",
+    ".......ab.......",
+    "......ab........",
+    ".....ab.........",
+    "....ab..........",
+    "...ab...........",
+    "..ab............",
+    "..a.............",
+    "................",
+]
+
+SCYTHE = [
+    "................",
+    "....1111........",
+    "...133331.......",
+    "..13444431......",
+    "..1431..1331....",
+    "..131....1a1....",
+    "..11.....a1.....",
+    ".........a......",
+    "........a.......",
+    ".......a........",
+    "......a.........",
+    ".....a..........",
+    "....a...........",
+    "...a............",
+    "................",
+    "................",
+]
+
+WOOD = pal("#3a2410", "#6a4a24", "#8e6a3a", "#b08a52", "#d4b07a")
+STEEL = pal("#2a2e36", "#5a606c", "#8a92a0", "#c0c8d4", "#eef2f8")
+STRING = pal("#c8c0b0", "#e8e0d0")
+FIRE = pal("#5a1404", "#b03a08", "#e86a10", "#f8a830", "#fff0a0")
+
+
+def items_l4():
+    gi.MATERIALS["enchanted"] = pal("#1a2a6a", "#2a4ab0", "#4a7ae8", "#8ab4ff", "#e0f0ff")
+    gi.MATERIALS["star"] = pal("#5a3a04", "#c49418", "#ecc434", "#fce47a", "#ffffff")
+    gi.WAND_GEMS["water"] = pal("#0a2a5a", "#1a5aa8", "#3a8ae8", "#8ac4ff", "#ffffff")
+    umbral = ARMOR_L3["umbral"][1]
+    sang = ARMOR_L3["sanguinite"][1]
+    jungle = ARMOR_L3["jungle"][1]
+    ice = pal("#2a4a6a", "#4a7aa0", "#7aaed4", "#b4daf4", "#eef8ff")
+    copper = gi.MATERIALS["copper"]
+    silver = gi.MATERIALS["silver"]
+    plat = gi.MATERIALS["platinum"]
+    gun = STEEL
+    stack1 = "max_stack: Some(1)"
+    out = [
+        ("wood_yoyo", "Ioiô de Madeira", icon2(YOYO, WOOD, STRING), stack1),
+        ("jungle_yoyo", "Ioiô da Selva", icon2(YOYO, jungle, STRING), stack1),
+        ("umbral_yoyo", "Ioiô de Sombraço", icon2(YOYO, umbral, STRING), stack1),
+        ("sanguinite_yoyo", "Ioiô de Sanguinita", icon2(YOYO, sang, STRING), stack1),
+        ("magma_yoyo", "Ioiô de Magma", icon2(YOYO, FIRE, STRING), stack1),
+        ("wood_boomerang", "Bumerangue de Madeira", icon(BOOMERANG, WOOD), stack1),
+        ("enchanted_boomerang", "Bumerangue Encantado", icon(BOOMERANG, gi.MATERIALS["enchanted"]), stack1),
+        ("ice_boomerang", "Bumerangue de Gelo", icon(BOOMERANG, ice), stack1),
+        ("thorn_chakram", "Chakram de Espinhos", icon(SHURIKEN, jungle), stack1),
+        ("flame_boomerang", "Bumerangue de Fogo", icon(BOOMERANG, FIRE), stack1),
+        ("iron_flail", "Mangual de Ferro", icon2(FLAIL, STEEL, WOOD), stack1),
+        ("umbral_flail", "Bola da Ruína", icon2(FLAIL, umbral, STEEL), stack1),
+        ("sanguinite_flail", "Mangual de Sanguinita", icon2(FLAIL, sang, STEEL), stack1),
+        ("sun_flail", "Fúria do Sol", icon2(FLAIL, FIRE, STEEL), stack1),
+        ("flintlock_pistol", "Pistola de Pederneira", icon2(PISTOL, gun, WOOD), stack1),
+        ("musket", "Mosquete", icon2(MUSKET, gun, WOOD), stack1),
+        ("boomstick", "Espingarda", icon2(SHOTGUN, gun, WOOD), stack1),
+        ("rapid_gun", "Metralhadora Leve", icon2(RAPID, pal("#2a3a4a", "#4a6a8a", "#7aa0c4", "#b4d4f0", "#eef8ff"), WOOD), stack1),
+        ("musket_ball", "Bala de Mosquete", icon(BALL, pal("#2a2e36", "#5a606c", "#8a92a0", "#c0c8d4")), ""),
+        ("meteor_shot", "Bala de Meteoro", icon(BALL, METEOR), ""),
+        ("shuriken", "Shuriken", icon(SHURIKEN, STEEL), ""),
+        ("throwing_knife", "Faca de Arremesso", icon2(KNIFE, STEEL, WOOD), ""),
+        ("bomb", "Bomba", icon2(BOMB, pal("#0e0e14", "#2a2a36", "#5a5a6e", "#9a9ab0"), pal("#5a3a1a", "#f8a830")), "max_stack: Some(16)"),
+        ("grenade", "Granada", icon2(GRENADE, pal("#1a2a14", "#2e4a24", "#4a6a3a", "#7a9a5a"), STEEL), "max_stack: Some(16)"),
+        ("dynamite", "Dinamite", icon2(DYNAMITE, pal("#5a0e0e", "#a01c1c", "#d83a2a", "#f88a6a"), pal("#5a3a1a", "#f8a830", "#e8dcc0", "#e8dcc0")), "max_stack: Some(16)"),
+        ("copper_bow", "Arco de Cobre", icon2(BOW, copper, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 300))"),
+        ("silver_bow", "Arco de Prata", icon2(BOW, silver, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 450))"),
+        ("platinum_bow", "Arco de Platina", icon2(BOW, plat, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 600))"),
+        ("umbral_bow", "Arco de Sombraço", icon2(BOW, umbral, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 800))"),
+        ("sanguinite_bow", "Arco de Sanguinita", icon2(BOW, sang, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 800))"),
+        ("ballista_rod", "Cajado da Balista", icon2(SENTRY, pal("#3a2a14", "#7a5a2e", "#c4a060", "#f0d890", "#fff8e0"), WOOD), stack1),
+        ("enchanted_sword", "Espada Encantada", gi.tool("enchanted", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 2, speed: 8.0, damage: 6.0, durability: 900))"),
+        ("star_saber", "Sabre Estelar", gi.tool("star", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 3, speed: 8.0, damage: 7.0, durability: 1200))"),
+        ("water_bolt", "Raio d'Água", gi.wand("water"), stack1),
+        ("demon_scythe", "Foice Demoníaca", icon2(SCYTHE, umbral, WOOD), stack1),
+    ]
+    return out
+
+
+SHAPED_L4 = [
+    ([" PS", "PRS", " PS"], {"P": "oak_planks", "S": "string", "R": "stick"}, "wood_yoyo", 1),
+    ([" P ", "PSP", " P "], {"P": "jungle_spore", "S": "string"}, "jungle_yoyo", 1),
+    ([" P ", "PSP", " P "], {"P": "umbral_ingot", "S": "string"}, "umbral_yoyo", 1),
+    ([" P ", "PSP", " P "], {"P": "sanguinite_ingot", "S": "string"}, "sanguinite_yoyo", 1),
+    ([" P ", "PSP", " P "], {"P": "magmarite_ingot", "S": "string"}, "magma_yoyo", 1),
+    (["PP ", " P ", " PP"], {"P": "oak_planks"}, "wood_boomerang", 1),
+    (["PP ", " F ", " PP"], {"P": "wood_boomerang", "F": "fallen_star"}, "enchanted_boomerang", 1),
+    (["PP ", " F ", " PP"], {"P": "ice", "F": "frost_shard"}, "ice_boomerang", 1),
+    ([" J ", "JSJ", " J "], {"J": "jungle_spore", "S": "cactus"}, "thorn_chakram", 1),
+    (["PP ", " F ", " PP"], {"P": "magmarite_ingot", "F": "blaze_powder"}, "flame_boomerang", 1),
+    (["  I", " C ", "S  "], {"I": "iron_block", "C": "chain", "S": "stick"}, "iron_flail", 1),
+    (["  I", " C ", "S  "], {"I": "umbral_ingot", "C": "chain", "S": "stick"}, "umbral_flail", 1),
+    (["  I", " C ", "S  "], {"I": "sanguinite_ingot", "C": "chain", "S": "stick"}, "sanguinite_flail", 1),
+    (["  I", " C ", "S  "], {"I": "magmarite_ingot", "C": "chain", "S": "stick"}, "sun_flail", 1),
+    (["III", " WF"], {"I": "iron_ingot", "W": "oak_planks", "F": "flint"}, "flintlock_pistol", 1),
+    (["  I", " I ", "WF "], {"I": "iron_ingot", "W": "oak_planks", "F": "flint"}, "musket", 1),
+    (["III", "IWF"], {"I": "iron_ingot", "W": "oak_planks", "F": "gunpowder"}, "boomstick", 1),
+    (["III", "IGI", " W "], {"I": "iron_ingot", "G": "gunpowder", "W": "lens"}, "rapid_gun", 1),
+    ([" I ", "ISI", " I "], {"I": "iron_ingot", "S": "stick"}, "shuriken", 8),
+    (["  I", " I ", "S  "], {"I": "iron_ingot", "S": "stick"}, "throwing_knife", 6),
+    ([" S ", "GIG", " G "], {"S": "string", "G": "gunpowder", "I": "iron_nugget"}, "bomb", 2),
+    ([" S ", "GIG"], {"S": "string", "G": "gunpowder", "I": "iron_ingot"}, "grenade", 3),
+    (["S", "T", "T"], {"S": "string", "T": "tnt"}, "dynamite", 1),
+    ([" IS", "I S", " IS"], {"I": "copper_ingot", "S": "string"}, "copper_bow", 1),
+    ([" IS", "I S", " IS"], {"I": "silver_ingot", "S": "string"}, "silver_bow", 1),
+    ([" IS", "I S", " IS"], {"I": "platinum_ingot", "S": "string"}, "platinum_bow", 1),
+    ([" IS", "I S", " IS"], {"I": "umbral_ingot", "S": "string"}, "umbral_bow", 1),
+    ([" IS", "I S", " IS"], {"I": "sanguinite_ingot", "S": "string"}, "sanguinite_bow", 1),
+    (["GWG", " S ", " S "], {"G": "gold_ingot", "W": "crossbow", "S": "stick"}, "ballista_rod", 1),
+    (["F", "F", "S"], {"F": "fallen_star", "S": "iron_sword"}, "enchanted_sword", 1),
+    (["FFF", "FSF", "FFF"], {"F": "fallen_star", "S": "sky_blade"}, "star_saber", 1),
+    (["WBW", "WWW"], {"W": "water_bucket", "B": "book"}, "water_bolt", 1),
+    (["UUU", "U S", "  S"], {"U": "umbral_ingot", "S": "dark_shard"}, "demon_scythe", 1),
+]
+SHAPELESS_L4 = [
+    (["lead_ingot"], "musket_ball", 50),
+    (["iron_nugget", "iron_nugget", "gunpowder"], "musket_ball", 25),
+    (["meteorite_ingot", "musket_ball", "musket_ball", "musket_ball", "musket_ball", "musket_ball"], "meteor_shot", 5),
+]
+
+
+# ==============================================================================================
 
 def write_data(items, blocks, mobs, shaped, shapeless, smelting):
     OUT.mkdir(parents=True, exist_ok=True)
@@ -1659,10 +2073,10 @@ def write_skins(skins):
 
 
 def main():
-    items = items_l1() + items_l2() + items_l3()
+    items = items_l1() + items_l2() + items_l3() + items_l4()
     blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3
     mobs = mobs_l1() + mobs_l2() + mobs_l3()
-    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3, SMELTING_L2 + SMELTING_L3)
+    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4, SMELTING_L2 + SMELTING_L3)
     structures_l3()
     skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3()})
     pics = []

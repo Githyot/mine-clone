@@ -187,7 +187,7 @@ impl Game {
         let layer = (self.item_base + l) as f32;
         let lp = self.bobber_pos()?.floor().as_ivec3();
         let light = self.world.light(lp);
-        Some(GpuItem { pos: [p.x, p.y + 0.05, p.z, 0.3], info: [-self.yaw, 1.0, (light >> 4) as f32 / 15.0, (light & 15) as f32 / 15.0], layers: [layer; 4], rot: [0.0, 0.0, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() })
+        Some(GpuItem { pos: [p.x, p.y + 0.05, p.z, 0.3], info: [-self.yaw, 1.0, (light >> 4) as f32 / 15.0, (light & 15) as f32 / 15.0], layers: [layer, layer, layer, 0.0], rot: [0.0, 0.0, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() })
     }
 
     /// The fishing line from the rod tip to the float, sagging a little.
