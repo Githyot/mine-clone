@@ -327,6 +327,13 @@ SHADERS
                 água ondulante
     Suave       só um pouco de brilho e cores mais quentes (leve)
   Qualidade: Rápido ou Bonito (Bonito tem brilho mais largo e raios de sol mais finos).
+  Profundidade (Esc > Shaders): Não, Rasa, Média ou Funda. Dá relevo de verdade às texturas,
+  como o POM dos shaders do Minecraft: a argamassa afunda entre os tijolos, as frestas da
+  pedra e do pedregulho ficam fundas e as partes salientes escondem o que está atrás conforme
+  o ângulo. A altura vem da própria textura (funciona com qualquer pacote de texturas). Só
+  perto da câmera, só na qualidade Bonito, com ou sem shader. Com Sombras ligadas, o fundo das
+  frestas também fica na sombra do sol. Um pacote de shader pode ter a opção "profundidade"
+  (veja shaderpacks/LEIA-ME.txt).
   Distância LOD (Esc > Shaders): desenha o relevo além da distância de visão (256, 512, 1024 ou 2048
   blocos a mais), em blocos grandes e simples, como o mod Distant Horizons. Montanhas,
   florestas e o mar aparecem no horizonte sem carregar chunks. Funciona com ou sem shader.
@@ -475,5 +482,5 @@ STATUS, ACESSÓRIOS E POÇÕES (lado Terraria)
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)
-  --shader NOME (ou off)   --shaders-menu   --lod BLOCOS   --server   --bench SEGUNDOS
+  --shader NOME (ou off)   --shaders-menu   --lod BLOCOS   --parallax 0-3   --server   --bench SEGUNDOS
   --relay [PORTA]

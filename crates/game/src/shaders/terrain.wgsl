@@ -191,16 +191,19 @@ fn shade(c: vec3<f32>, in: VOut) -> vec3<f32> {
 // the top-left, so stone, bark and bricks look carved instead of painted. Two extra texture
 // reads, only near the camera. `texels` is how many texels one screen pixel covers: further
 // away the bumps are read from a smaller mip level, so 64x textures don't shimmer.
-fn relief(c: vec4<f32>, in: VOut, texels: f32) -> f32 {
+fn relief(c: vec4<f32>, uv: vec2<f32>, in: VOut, texels: f32) -> f32 {
     let strength = g.sun_dir.w * (1.0 - smoothstep(16.0, 32.0, in.dist));
     if (strength <= 0.0) {
         return 1.0;
     }
     let full = textureDimensions(tex).x;
-    let level = u32(clamp(floor(log2(max(texels, 1.0))), 0.0, 3.0));
+    // The columns are at most 32 to a block: finer art keeps its colours but shares heights in
+    // 2x2 groups, which halves the walk on 64x textures (packs are mostly 16x anyway).
+    let coarsest = u32(max(log2(f32(full) / 16.0), 0.0));
+    let level = max(u32(clamp(floor(log2(max(texels, 1.0))), 0.0, 3.0)), coarsest);
     let size = f32(max(full >> level, 1u));
     let lv = f32(level);
-    let px = fract(in.uv) * size;
+    let px = fract(uv) * size;
     let cell = (floor(px) + 0.5) / size;
     let here = textureSampleLevel(tex, samp, cell, in.layer, lv);
     let up = textureSampleLevel(tex, samp, cell - vec2<f32>(0.0, 1.0 / size), in.layer, lv);
@@ -235,14 +238,170 @@ fn ctm_sample(in: VOut) -> vec4<f32> {
     return textureSampleGrad(tex, samp, uv, in.layer, dx, dy);
 }
 
+const LUM = vec3<f32>(0.3, 0.59, 0.11);
+
+// Block depth (parallax occlusion mapping, as in shader packs). The height of each texel comes
+// from the texture itself: texels darker than the texture's average sink into the face
+// (mortar, cracks, the gaps between cobbles), brighter ones stay on top. Textures are pixel art,
+// so the face is treated as a field of little square columns, one per texel: the view ray is
+// walked texel by texel into the face (no layers, no smearing) until it meets a column's top or
+// side. Sides are darker, and a short walk toward the sun darkens the bottoms of crevices.
+// Only on plain block faces near the camera (`g.pom`).
+struct Parallax {
+    uv: vec2<f32>,
+    // Multiplies the colour: 1 lit, lower on a column's side or in a crevice the sun can't reach.
+    light: f32,
+    // How much of the full depth is used here (0 = none: too far, or not a plain face).
+    weight: f32,
+};
+
+// Brightness and colourfulness of a texel: what its height is read from.
+fn pom_tone(c: vec3<f32>) -> vec2<f32> {
+    let hi = max(c.r, max(c.g, c.b));
+    let lo = min(c.r, min(c.g, c.b));
+    return vec2<f32>(dot(c, LUM), (hi - lo) / max(hi, 0.2));
+}
+
+// How far below the face a texel lies, 0 (top) to 1 (full depth). Darker than the texture's
+// average sinks (cracks, the gaps between cobbles); so does greyer than average, which puts
+// pale mortar below red bricks and leaves moss and ore bits standing out.
+fn pom_depth(cell: vec2<f32>, size: f32, layer: u32, lv: f32, avg: vec2<f32>) -> f32 {
+    let k = avg - pom_tone(textureSampleLevel(tex, samp, (cell + 0.5) / size, layer, lv).rgb);
+    return clamp(k.x * 2.4 + k.y * 2.2 + 0.12, 0.0, 1.0);
+}
+
+// `t` and `b`: how far the point moves (blocks, relative to the camera) per unit of u and v.
+fn parallax(in: VOut, t: vec3<f32>, b: vec3<f32>, texels: f32) -> Parallax {
+    var out = Parallax(in.uv, 1.0, 0.0);
+    let weight = 1.0 - smoothstep(g.pom.z * 0.6, g.pom.z, in.dist);
+    let depth = g.pom.x * weight;
+    // Not on plants, liquids or connected glass.
+    if (depth <= 0.002 || (in.kind & 0x7bu) != 0u) {
+        return out;
+    }
+    let n = face_normal((in.kind >> 8u) & 7u);
+    let tt = t / max(dot(t, t), 1e-8);
+    let bb = b / max(dot(b, b), 1e-8);
+    let e = g.cam_pos.xyz - in.rel;
+    let ez = dot(e, n);
+    if (ez <= 1e-4 || abs(dot(t, n)) + abs(dot(b, n)) > 0.05) {
+        return out;
+    }
+    // Texture shift per block of depth going into the face (kept sane at grazing angles).
+    var ray = vec2<f32>(dot(e, tt), dot(e, bb)) / ez;
+    ray *= min(1.0, 4.0 / max(length(ray), 1e-4));
+    let full = textureDimensions(tex).x;
+    // The columns are at most 32 to a block: finer art keeps its colours but shares heights in
+    // 2x2 groups, which halves the walk on 64x textures (packs are mostly 16x anyway).
+    let coarsest = u32(max(log2(f32(full) / 16.0), 0.0));
+    let level = max(u32(clamp(floor(log2(max(texels, 1.0))), 0.0, 3.0)), coarsest);
+    let lv = f32(level);
+    let size = f32(max(full >> level, 1u));
+    let avg = pom_tone(textureSampleLevel(tex, samp, in.uv, in.layer, f32(textureNumLevels(tex) - 1u)).rgb);
+    // In texels: start point and movement over the whole depth (d = 0 → 1).
+    let p0 = in.uv * size;
+    let dir = -ray * depth * size;
+    var cell = floor(p0);
+    let stp = sign(dir);
+    let inv = 1.0 / max(abs(dir), vec2<f32>(1e-6));
+    // Depth at which the ray leaves the current column through an x or a y side.
+    var next = (select(p0 - cell, cell + 1.0 - p0, dir > vec2<f32>(0.0))) * inv;
+    var d_in = 0.0;
+    var side = 0;
+    var hit_d = 1.0;
+    var h = pom_depth(cell, size, in.layer, lv, avg);
+    let most = i32(g.pom.y);
+    for (var i = 0; i < 48; i = i + 1) {
+        if (h <= d_in) {
+            // The ray met this column's side as it came in.
+            hit_d = d_in;
+            break;
+        }
+        let d_out = min(min(next.x, next.y), 1.0);
+        if (h <= d_out || i >= most || d_out >= 1.0) {
+            // It comes down on this column's top.
+            hit_d = min(h, d_out);
+            side = 0;
+            break;
+        }
+        if (next.x < next.y) {
+            cell.x += stp.x;
+            next.x += inv.x;
+            side = 1;
+        } else {
+            cell.y += stp.y;
+            next.y += inv.y;
+            side = 2;
+        }
+        d_in = d_out;
+        h = pom_depth(cell, size, in.layer, lv, avg);
+    }
+    // Stay inside the column that was hit, so the colour comes from it and not a neighbour.
+    let p = clamp(p0 + dir * hit_d, cell + 0.002, cell + 0.998);
+    out.uv = p / size;
+    out.weight = weight;
+    // Deeper is darker: less of the sky reaches the bottom of a crack.
+    out.light = 1.0 - hit_d * 0.3 * weight;
+    let l = shadow_light();
+    let sun = g.fog_color.w * in.light.x * smoothstep(0.02, 0.2, abs(l.y));
+    if (side != 0 && hit_d > 0.0) {
+        // A column's side: it faces back toward where the ray came from.
+        let sn = select(-b * stp.y, -t * stp.x, side == 1);
+        let facing = max(dot(normalize(sn), l), 0.0);
+        out.light *= 0.8 + 0.2 * facing * sun;
+    }
+    if (g.pom.w > 0.5 && hit_d > 0.03 && sun > 0.0) {
+        let lz = dot(l, n);
+        if (lz > 0.05) {
+            var lray = vec2<f32>(dot(l, tt), dot(l, bb)) / lz;
+            lray *= min(1.0, 4.0 / max(length(lray), 1e-4));
+            // Two looks toward the light: a third and two thirds of the way up.
+            let up = lray * depth * size * hit_d;
+            let o1 = hit_d * 0.67 - pom_depth(floor(p + up * 0.33), size, in.layer, lv, avg);
+            let o2 = hit_d * 0.33 - pom_depth(floor(p + up * 0.67), size, in.layer, lv, avg);
+            let occ = max(o1, o2) * 8.0;
+            out.light *= 1.0 - clamp(occ, 0.0, 1.0) * 0.4 * sun;
+        }
+    }
+    return out;
+}
+
 @fragment
 fn fs_solid(in: VOut) -> @location(0) vec4<f32> {
     let fw = fwidth(in.uv) * f32(textureDimensions(tex).x);
-    let c = ctm_sample(in);
+    let texels = max(fw.x, fw.y);
+    // The face's texture directions in the world, from how position and uv change across the
+    // screen (works for every face and model without storing tangents in the mesh).
+    let dx = dpdx(in.uv);
+    let dy = dpdy(in.uv);
+    let px = dpdx(in.rel);
+    let py = dpdy(in.rel);
+    let det = dx.x * dy.y - dx.y * dy.x;
+    var c = ctm_sample(in);
     if (c.a < 0.5) {
         discard;
     }
-    return vec4<f32>(shade(c.rgb * relief(c, in, max(fw.x, fw.y)), in), 1.0);
+    var p = Parallax(in.uv, 1.0, 0.0);
+    if (g.pom.x > 0.0 && abs(det) > 1e-12) {
+        let t = (px * dy.y - py * dx.y) / det;
+        let b = (py * dx.x - px * dy.x) / det;
+        p = parallax(in, t, b, texels);
+        if (p.weight > 0.0) {
+            let moved = textureSampleGrad(tex, samp, p.uv, in.layer, dx, dy);
+            // A cut-out texture (torch, ladder) keeps its outline: never shift onto a hole.
+            if (moved.a >= 0.5) {
+                c = moved;
+            } else {
+                p = Parallax(in.uv, 1.0, 0.0);
+            }
+        }
+    }
+    // Close up the depth already shows the bumps: the flat relief only takes over as it fades.
+    var r = 1.0;
+    if (p.weight < 1.0) {
+        r = mix(relief(c, p.uv, in, texels), 1.0, p.weight);
+    }
+    return vec4<f32>(shade(c.rgb * r * p.light, in), 1.0);
 }
 
 // Slope of a few travelling waves at a world position (for rippling water).

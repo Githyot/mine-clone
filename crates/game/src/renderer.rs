@@ -52,6 +52,9 @@ pub struct Globals {
     pub extra: [f32; 4],
     /// x, y: screen size in pixels; z: near plane; w: far plane (set by the renderer).
     pub screen: [f32; 4],
+    /// Block depth (parallax occlusion mapping): x depth in blocks (0 = off), y most steps
+    /// per pixel, z distance in blocks where it has faded out, w self-shadows 0/1.
+    pub pom: [f32; 4],
 }
 
 #[repr(C)]
