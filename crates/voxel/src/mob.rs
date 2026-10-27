@@ -258,6 +258,8 @@ pub struct Mob {
     /// Seconds left burning (fire spells) and slowed (frost spells).
     pub on_fire: f32,
     pub chill: f32,
+    /// Rain is falling on it (set by the game each tick): undead don't burn in sunlight then.
+    pub rained_on: bool,
     /// Lasting harm the game put on it (Terraria-style debuffs: poison, frostburn, ichor...):
     /// effect id and seconds left. The game ticks them; `vuln` is how much more a hit hurts.
     pub debuffs: Vec<(u8, f32)>,
@@ -328,6 +330,7 @@ impl Mob {
             fed: 20.0 + rng.f32() * 40.0,
             on_fire: 0.0,
             chill: 0.0,
+            rained_on: false,
             debuffs: Vec::new(),
             vuln: 0.0,
             home: None,
@@ -433,7 +436,7 @@ impl Mob {
         }
         self.chill = (self.chill - dt).max(0.0);
         self.body.speed_override = Some(def.speed * if self.chill > 0.0 { 0.4 } else { 1.0 });
-        if def.burns_in_daylight && daylight && sky_light_at_head >= 14 && !self.body.in_water {
+        if def.burns_in_daylight && daylight && sky_light_at_head >= 14 && !self.body.in_water && !self.rained_on {
             self.burn_tick += dt;
             if self.burn_tick > 1.0 {
                 self.burn_tick = 0.0;
@@ -741,6 +744,24 @@ mod tests {
         }
         assert!(m.body.pos.x > 5.0, "{}", m.body.pos.x);
         assert!(ev.iter().any(|e| matches!(e, MobEvent::Hit { .. })));
+    }
+
+    #[test]
+    fn zombie_burns_in_sun_but_not_in_rain() {
+        let reg = vanilla();
+        let z = reg.id("zombie").unwrap();
+        let def = &reg.defs[z];
+        let far = Vec3::new(500.0, 10.0, 0.5);
+        for rain in [false, true] {
+            let mut m = Mob::new(z, def, Vec3::new(0.5, 10.0, 0.5), 3);
+            let mut ev = Vec::new();
+            for _ in 0..200 {
+                m.rained_on = rain;
+                m.tick(def, &Flat, far, false, 15, true, 0.02, &mut ev);
+            }
+            let burned = ev.iter().any(|e| matches!(e, MobEvent::Burning));
+            assert_eq!(burned, !rain, "rain={rain}");
+        }
     }
 
     fn vanilla() -> MobRegistry {
