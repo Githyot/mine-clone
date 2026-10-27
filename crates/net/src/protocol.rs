@@ -283,6 +283,8 @@ pub struct PlayerState {
     /// Item names: in hand, then head, chest, legs, feet ("" = nothing).
     pub held: String,
     pub armor: [String; 4],
+    /// The chest this player has open, so everyone sees its lid up.
+    pub chest: Option<[i32; 3]>,
 }
 
 impl PlayerState {
