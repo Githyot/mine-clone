@@ -51,6 +51,8 @@ struct Slot {
 pub enum MeshEvent {
     /// Replace all sections of the chunk (sections not listed are empty).
     Set(ChunkPos, Vec<(usize, SectionMesh)>),
+    /// Replace only these sections of an already drawn chunk (None = now empty).
+    Sections(ChunkPos, Vec<(usize, Option<SectionMesh>)>),
     Remove(ChunkPos),
 }
 
@@ -96,6 +98,8 @@ pub struct World {
     pub swings: Vec<(IVec3, BlockId, BlockId)>,
     /// Blocks the chunk meshes leave out while they are drawn moving.
     hidden: HashSet<IVec3>,
+    /// Blocks the player just placed or broke, whose sections are meshed on the spot.
+    edits: Vec<IVec3>,
     /// Blocks with a turning model drawn over them (windmill sails), by block id.
     spins: Vec<bool>,
     /// Where those blocks are in the loaded chunks, kept up to date as chunks come and go and
@@ -193,6 +197,7 @@ impl World {
             extra_centers: Vec::new(),
             swings: Vec::new(),
             hidden: HashSet::new(),
+            edits: Vec::new(),
             spins,
             spinners: HashMap::new(),
         }
@@ -288,12 +293,33 @@ impl World {
                     if ver != s.light_ver {
                         continue;
                     }
-                    if let Some(c) = s.chunk.as_mut() {
-                        Arc::make_mut(c).light = light;
+                    // Only chunks whose mesh sees light that changed are remeshed: an edit out in
+                    // the open often changes none (the edit itself asks for its own chunks).
+                    let first = s.light_done == 0;
+                    let old = s.chunk.as_ref().map(|c| &c.light);
+                    let (lo, hi) = match old {
+                        Some(old) if !first && old.len() == light.len() => light_change(old, &light),
+                        _ => Some(([0, 0], [15, 15])),
+                    }
+                    .map_or((IVec2::ONE, IVec2::NEG_ONE), |(a, b)| (IVec2::from(a), IVec2::from(b)));
+                    if lo.x <= hi.x {
+                        if let Some(c) = s.chunk.as_mut() {
+                            Arc::make_mut(c).light = light;
+                        }
                     }
                     s.light_done = ver;
                     for i in 0..9 {
-                        let p = pos + IVec2::new(i % 3 - 1, i / 3 - 1);
+                        let o = IVec2::new(i % 3 - 1, i / 3 - 1);
+                        // The neighbour's mesh border is our edge row facing it.
+                        let near = |o: i32, lo: i32, hi: i32| match o {
+                            -1 => lo == 0,
+                            1 => hi == 15,
+                            _ => true,
+                        };
+                        if lo.x > hi.x || !near(o.x, lo.x, hi.x) || !near(o.y, lo.y, hi.y) {
+                            continue;
+                        }
+                        let p = pos + o;
                         if let Some(n) = self.slots.get_mut(&p) {
                             if n.mesh_done == n.mesh_ver {
                                 n.mesh_ver += 1;
@@ -481,6 +507,7 @@ impl World {
             if let Some(s) = self.slots.get_mut(&n) {
                 if s.chunk.is_some() {
                     s.light_ver += 1;
+                    s.mesh_ver += 1;
                     s.urgent = true;
                 }
             }
@@ -549,10 +576,75 @@ impl World {
                 if s.chunk.is_some() {
                     s.light_ver += 1;
                     s.urgent = true;
+                    // Remesh the chunks whose mesh border holds the block; a mesh still in
+                    // flight is thrown away when it comes back.
+                    let (dx, dz) = (p.x - n.x * 16, p.z - n.y * 16);
+                    if (-1..=16).contains(&dx) && (-1..=16).contains(&dz) {
+                        s.mesh_ver += 1;
+                    }
                 }
             }
         }
         true
+    }
+
+    /// Show the change at `p` in this very frame: its sections are meshed on the main thread at
+    /// the next `remesh_edits` (with the old light; the workers bring the new light soon after).
+    pub fn mesh_now(&mut self, p: IVec3) {
+        if self.edits.len() < 8 && !self.edits.contains(&p) {
+            self.edits.push(p);
+        }
+    }
+
+    /// Mesh the sections around the blocks given to `mesh_now`, a few at most, so placing or
+    /// breaking a block never waits for the workers.
+    pub fn remesh_edits(&mut self) {
+        let edits = std::mem::take(&mut self.edits);
+        if edits.is_empty() || self.headless {
+            return;
+        }
+        // Sections touched, by chunk (a block on an edge shows in its neighbours' meshes too).
+        let mut todo: Vec<(ChunkPos, Vec<usize>)> = Vec::new();
+        for &p in &edits {
+            for d in [IVec3::ZERO, IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z] {
+                let q = p + d;
+                if q.y < 0 || q.y >= CHUNK_HEIGHT as i32 {
+                    continue;
+                }
+                let cp = split_xz(q.x, q.z).0;
+                let s = (q.y >> 4) as usize;
+                if !self.slots.get(&cp).is_some_and(|s| s.mesh_done > 0) {
+                    continue;
+                }
+                match todo.iter_mut().find(|t| t.0 == cp) {
+                    Some(t) if !t.1.contains(&s) => t.1.push(s),
+                    Some(_) => {}
+                    None => todo.push((cp, vec![s])),
+                }
+            }
+        }
+        for (cp, secs) in todo {
+            let Some(n) = self.neighbours(cp) else { continue };
+            let refs: [Option<&Chunk>; 9] = std::array::from_fn(|i| n[i].as_deref());
+            let (lo, hi) = (*secs.iter().min().unwrap(), *secs.iter().max().unwrap());
+            let mut input = MeshInput::new_sections(refs, lo, hi);
+            for h in &self.hidden {
+                input.hide(h.x - cp.x * 16, h.y, h.z - cp.y * 16);
+            }
+            for &p in &edits {
+                if self.block_or_air(p) == AIR {
+                    input.guess_light(p.x - cp.x * 16, p.y, p.z - cp.y * 16);
+                }
+            }
+            let out = secs
+                .into_iter()
+                .map(|s| {
+                    let m = input.section_has_blocks(s).then(|| mesh_section(&self.tables, &input, s));
+                    (s, m.filter(|m| !m.is_empty() || m.vis != VIS_ALL))
+                })
+                .collect();
+            self.events.push(MeshEvent::Sections(cp, out));
+        }
     }
 
     /// Leave a block out of the chunk meshes (or put it back), remeshing the chunks it touches.
@@ -766,4 +858,23 @@ impl World {
         }
         c
     }
+}
+
+/// The x/z bounds of the columns where two light arrays of a chunk differ (None: the same).
+fn light_change(old: &[u8], new: &[u8]) -> Option<([i32; 2], [i32; 2])> {
+    let (mut lo, mut hi) = ([16, 16], [-1, -1]);
+    // One layer is 256 columns (x | z << 4): equal layers are skipped whole.
+    for (a, b) in old.chunks(256).zip(new.chunks(256)) {
+        if a == b {
+            continue;
+        }
+        for (i, (x, y)) in a.iter().zip(b).enumerate() {
+            if x != y {
+                let (cx, cz) = ((i & 15) as i32, (i >> 4) as i32);
+                lo = [lo[0].min(cx), lo[1].min(cz)];
+                hi = [hi[0].max(cx), hi[1].max(cz)];
+            }
+        }
+    }
+    (hi[0] >= 0).then_some((lo, hi))
 }
