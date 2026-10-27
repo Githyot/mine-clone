@@ -802,8 +802,8 @@ def stronghold():
 
 
 def windmill():
-    """A windmill (Towns and Towers idea): a cobblestone base, a plank cap and four sails of
-    wool on fence arms over the north side."""
+    """A windmill (Towns and Towers idea): a cobblestone base, a plank cap and turning sails
+    over the north side."""
     W, D, H = 9, 6, 13
     layers = [grid(W, D) for _ in range(H)]
     for y in range(H):
@@ -823,18 +823,9 @@ def windmill():
     layers[3][1][4] = "G"
     layers[1][2][3] = "c"
     layers[1][4][5] = "K"
-    # Sails on the north face: a cross of fence arms with wool panels.
-    hub = (4, 6)  # x, y
-    layers[hub[1]][0][hub[0]] = "L"
-    for k in range(1, 5):
-        for (dx, dy) in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-            x, y = hub[0] + dx * k, hub[1] + dy * k
-            if 0 <= x < W and 1 <= y < H:
-                layers[y][0][x] = "f"
-                # The sail beside each arm, turning the same way round.
-                sx, sy = x + dy, y - dx
-                if 0 <= sx < W and 1 <= sy < H and k >= 2:
-                    layers[sy][0][sx] = "W"
+    # The sails on the north face: a hub block whose sails the game draws turning in the
+    # wind (windmill.rs), facing north (variant 0) and turned with the structure.
+    layers[6][0][4] = "H"
     return {
         "name": "moinho",
         "biomes": ["Plains", "Savanna", "Cherry Grove"],
@@ -842,7 +833,7 @@ def windmill():
         "chance": 0.35,
         "foundation": "cobblestone",
         "palette": {"C": "cobblestone", "P": "oak_planks", "s": "oak_slab", "G": "glass_pane", "d": "oak_door:2", "u": "oak_door:10",
-                    "c": "chest", "K": "crafting_table", "L": "oak_log", "f": "oak_fence", "W": "white_wool"},
+                    "c": "chest", "K": "crafting_table", "H": "windmill_sails"},
         "layers": [rows(l) for l in layers],
         "loot": [("", "oak_sapling", 1, 3, 0.5), ("", "apple", 1, 4, 0.5), ("", "string", 1, 4, 0.4), ("", "iron_ingot", 1, 2, 0.3)],
     }
