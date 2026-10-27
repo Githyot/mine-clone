@@ -663,12 +663,70 @@ impl Game {
         }
         let d = (p.as_vec3() + Vec3::splat(0.5)).distance(self.body.eye());
         let k = (1.0 - d / JUKEBOX_RANGE).clamp(0.0, 1.0);
-        a.set_disc_volume(self.settings.music_volume.max(0.2) * k * k);
+        let (cut, echo, delay, walls) = self.jukebox_tone(p);
+        let Some(a) = self.audio.as_mut() else { return };
+        a.disc_tone.set(cut, echo, delay);
+        a.set_disc_volume(self.settings.sound_volume * self.settings.volumes.records * k * k * walls);
         // A few drifting notes over the box.
         if self.surv.rng.f32() < 0.02 {
             let glow = self.glow_layer();
             self.particles.glow(p.as_vec3() + Vec3::new(0.5, 1.2, 0.5), Vec3::Y * 0.6, glow, [0.5, 1.0, 0.6], 0.06, 1.5);
         }
+    }
+
+    /// How a record sounds from where the player stands: (low-pass, echo, echo delay, volume
+    /// factor). The block under the jukebox counts most, then the blocks hugging its sides
+    /// (wool and carpet muffle, wood warms, stone and metal ring), then every solid block
+    /// between the box and the ear, and last the space the listener is in (cave echo, water).
+    pub(crate) fn jukebox_tone(&self, p: IVec3) -> (f32, f32, f32, f32) {
+        let mut cut = 0.0;
+        let mut echo = 0.0;
+        let mut delay: f32 = 0.08;
+        let around = [(-IVec3::Y, 0.5), (IVec3::Y, 0.1), (IVec3::X, 0.1), (-IVec3::X, 0.1), (IVec3::Z, 0.1), (-IVec3::Z, 0.1)];
+        for (off, w) in around {
+            let b = self.world.block_or_air(p + off);
+            let (c, e) = if b == AIR || !self.reg.get(b).solid && !self.reg.get(b).name.contains("carpet") {
+                (1.0, 0.0)
+            } else {
+                let m = Material::of(&self.reg.get(b).name);
+                if m == Material::Metal && off == -IVec3::Y {
+                    delay = 0.05;
+                }
+                material_tone(m)
+            };
+            cut += c * w;
+            echo += e * w;
+        }
+        // Walls between the box and the ear.
+        let from = p.as_vec3() + Vec3::splat(0.5);
+        let eye = self.body.eye();
+        let span = eye - from;
+        let steps = (span.length() * 2.0).ceil().min(96.0) as i32;
+        let mut seen = HashSet::new();
+        let mut walls: f32 = 1.0;
+        for i in 1..steps {
+            let q = (from + span * (i as f32 / steps as f32)).floor().as_ivec3();
+            if q == p || q == eye.floor().as_ivec3() || !seen.insert(q) {
+                continue;
+            }
+            let b = self.world.block_or_air(q);
+            if b == AIR || !self.reg.get(b).opaque {
+                continue;
+            }
+            let (c, _) = material_tone(Material::of(&self.reg.get(b).name));
+            cut *= 0.35 + c * 0.25;
+            walls *= 0.8;
+        }
+        if let Some(a) = self.audio.as_ref() {
+            echo += a.room.echo * 0.5;
+            if a.room.echo > 0.05 {
+                delay = delay.max(a.room.delay);
+            }
+            if a.room.underwater {
+                cut = cut.min(0.05);
+            }
+        }
+        (cut, echo, delay, walls.max(0.15))
     }
 
     pub(crate) fn play_note_block(&mut self, p: IVec3) {
@@ -1243,6 +1301,20 @@ impl Game {
         }
         let help = if write { "Digite. Setas: páginas. Ctrl+Enter: assinar. Esc: fecha" } else { "Setas: páginas. Esc: fecha" };
         self.ui.text_centered(w / 2.0, y + bh + 10.0 * s, help, [255, 255, 255, 255]);
+    }
+}
+
+/// What a block does to a record touching it: (low-pass, echo). Soft things swallow the
+/// top of the sound, hard ones send a little of it back.
+fn material_tone(m: Material) -> (f32, f32) {
+    match m {
+        Material::Cloth => (0.07, 0.0),
+        Material::Leaves | Material::Snow | Material::Grass => (0.25, 0.0),
+        Material::Sand | Material::Dirt | Material::Gravel => (0.4, 0.02),
+        Material::Wood => (0.55, 0.12),
+        Material::Glass => (0.8, 0.2),
+        Material::Stone | Material::Ore => (0.85, 0.3),
+        Material::Metal => (0.9, 0.45),
     }
 }
 

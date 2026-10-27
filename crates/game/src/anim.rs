@@ -451,6 +451,27 @@ impl Animator {
             }
         }
     }
+
+    /// Like `bones`, without touching the animator: for mobs drawn outside the mob list
+    /// (wagon teams) or drawn again (a playing musician).
+    pub fn bones_now(&self, mob: &Mob, def: &MobDef, def_index: usize, cam_block: IVec3, sky: f32, blk: f32) -> Bones {
+        let fresh;
+        let rig = match self.rigs.get(def_index) {
+            Some(r) => r,
+            None => {
+                fresh = Rig::new(def);
+                &fresh
+            }
+        };
+        match self.states.get(&mob.net_id) {
+            Some(st) => bones_for(mob, def, rig, st, cam_block, sky, blk),
+            None => {
+                let mut st = MobAnim::default();
+                st.update(mob, def, rig, Vec3::splat(1e6), 0.0);
+                bones_for(mob, def, rig, &st, cam_block, sky, blk)
+            }
+        }
+    }
 }
 
 /// Part matrices for one mob at this moment.
@@ -489,7 +510,7 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
         let settle = if d > 0.85 { ((d - 0.85) / 0.15 * PI).sin() * 0.08 } else { 0.0 };
         model = model * Mat4::from_translation(Vec3::new(0.0, -fall * 0.4 - buckle * 0.1, 0.0)) * Mat4::from_rotation_z(fall * FRAC_PI_2 - settle) * Mat4::from_rotation_x(buckle * 0.15 * (1.0 - fall));
     }
-    let scale = def.scale / 16.0 * (1.0 + swell * 0.3);
+    let scale = def.scale * mob.size / 16.0 * (1.0 + swell * 0.3);
     model *= Mat4::from_scale(Vec3::splat(scale));
 
     // The whole body, in model pixels around the feet.

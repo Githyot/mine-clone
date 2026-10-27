@@ -29,7 +29,7 @@ pub fn describe(name: &str) -> Option<String> {
 /// Movement state the accessories need from frame to frame.
 #[derive(Default)]
 pub struct Moves {
-    wing_t: f32,
+    pub(crate) wing_t: f32,
     jumped_twice: bool,
     space_was: bool,
     was_ground: bool,
@@ -69,16 +69,14 @@ const JUMPS: &[(&str, f32)] = &[
 impl Game {
     /// Seconds of lift in the air: wings, then rocket boots, then steam boots.
     fn flight_max(&self) -> f32 {
-        if let Some(t) = self.tr_wing().map(|w| w.1) {
+        if let Some(k) = self.worn_wings() {
+            crate::wings::WINGS[k].flight
+        } else if let Some(t) = self.tr_wing().map(|w| w.1) {
             t
-        } else if self.wears("angel_wings") {
-            3.2
         } else if self.wears("comet_boots") {
             2.6
         } else if self.wears("rocket_boots") {
             1.8
-        } else if self.wears("feather_wings") {
-            1.6
         } else {
             0.9
         }
@@ -103,7 +101,7 @@ impl Game {
 
     /// Falls don't hurt (horseshoe, angel wings, flying on feather wings).
     pub(crate) fn no_fall_damage(&self) -> bool {
-        self.t5.rpg.stats.no_fall || self.wears("feather_wings") && self.t5.moves.flying
+        self.t5.rpg.stats.no_fall || self.worn_wings().is_some() && self.t5.moves.flying
     }
 
     pub(crate) fn no_knockback(&self) -> bool {
@@ -132,7 +130,9 @@ impl Game {
             return true;
         }
         let n = self.acc_slots();
-        let i = self.t5.acc[..n].iter().position(|a| a.is_none()).unwrap_or(0);
+        // One pair of wings at a time: new wings take the place of the old.
+        let wing_slot = crate::wings::wing_of(&name).and_then(|_| self.t5.acc[..n].iter().position(|a| a.is_some_and(|a| crate::wings::wing_of(&self.items.get(a.item).name).is_some())));
+        let i = wing_slot.unwrap_or_else(|| self.t5.acc[..n].iter().position(|a| a.is_none()).unwrap_or(0));
         self.surv.inv.slots[sel] = self.t5.acc[i].take();
         self.t5.acc[i] = Some(st);
         self.sfx(Sfx::Place(crate::audio::Material::Cloth));
@@ -173,6 +173,7 @@ impl Game {
         let ground = self.body.on_ground || self.body.in_water;
         if ground {
             self.t5.moves.jumped_twice = false;
+            // Each pair flies for its own time; steam boots give a short lift, no glide.
             self.t5.moves.jumps_used = 0;
             self.t5.moves.wing_t = self.flight_max();
             self.t5.moves.flying = false;
@@ -208,7 +209,10 @@ impl Game {
         let glow = self.glow_layer();
         let hooked = self.t5.hook.attached();
         if !ground && !hooked && self.seat.is_none() && self.riding.is_none() {
-            let wings = self.wears("angel_wings") || self.wears("feather_wings") || self.tr_wing().is_some();
+            // The painted pairs (wings.rs) first, then the Terraria side's own (tr_pets.rs).
+            let worn = self.worn_wings();
+            let tr_wing = if worn.is_none() { self.tr_wing() } else { None };
+            let wings = worn.is_some() || tr_wing.is_some();
             let rocket = !wings && (self.wears("rocket_boots") || self.wears("comet_boots"));
             let steam = !wings && !rocket && self.wears("steam_boots");
             let next = if pressed {
@@ -263,22 +267,27 @@ impl Game {
                     self.particles.glow(self.body.pos, Vec3::new(0.0, -2.0, 0.0), glow, [1.1, 1.1, 1.1], 0.1, 0.4);
                 }
             } else if space && wings {
+                let (lift, speed) = worn.map_or((7.5, 1.35), |k| (crate::wings::WINGS[k].lift, crate::wings::WINGS[k].speed));
                 if self.t5.moves.wing_t > 0.0 {
                     self.t5.moves.wing_t -= dt;
-                    self.body.vel.y = (self.body.vel.y + 45.0 * dt).min(7.0);
+                    self.body.vel.y = (self.body.vel.y + 45.0 * dt).min(lift);
                     self.t5.moves.flying = true;
+                    // Faster through the air than on foot.
+                    let base = self.body.speed_override.unwrap_or(WALK_SPEED);
+                    self.body.speed_override = Some(base * speed);
                 } else if self.body.vel.y < -2.5 {
                     // Out of flight time: glide down.
                     self.body.vel.y = -2.5;
                 }
                 self.fall_peak = self.body.pos.y;
                 if self.surv.rng.f32() < dt * 20.0 {
-                    let tint = if let Some(w) = self.tr_wing() {
-                        w.2
-                    } else if self.wears("angel_wings") {
-                        [1.5, 1.4, 0.8]
-                    } else {
-                        [1.2, 1.2, 1.2]
+                    let tint = match (worn, tr_wing) {
+                        (Some(k), _) => {
+                            let c = crate::wings::WINGS[k].colors[2];
+                            [c[0] as f32 / 200.0, c[1] as f32 / 200.0, c[2] as f32 / 200.0]
+                        }
+                        (None, Some(w)) => w.2,
+                        _ => [1.2, 1.2, 1.2],
                     };
                     self.particles.glow(self.body.pos + Vec3::Y * 1.2, Vec3::new(0.0, -1.5, 0.0), glow, tint, 0.08, 0.5);
                 }
@@ -391,7 +400,11 @@ impl Game {
             let tw = self.ui.text_width("C: status", self.ui.scale);
             self.ui.text(px - 4.0 * s - tw, py + ph - 10.0 * s, "C: status", [230, 230, 230, 255]);
         }
-        (0..n).map(|i| (Slot::Acc(i), px + 1.0 * s, py + (12.0 + i as f32 * 18.0) * s)).collect()
+        let mut slots: Vec<(Slot, f32, f32)> = (0..n).map(|i| (Slot::Acc(i), px + 1.0 * s, py + (12.0 + i as f32 * 18.0) * s)).collect();
+        if !self.t5.rpg.sheet {
+            slots.extend(self.visual_slots(px - 2.0 * s, py));
+        }
+        slots
     }
 
     pub(crate) fn draw_accessory_hud(&mut self, _w: f32, h: f32) {
@@ -405,6 +418,11 @@ impl Game {
             let k = (self.t5.moves.wing_t / max).clamp(0.0, 1.0);
             self.ui.rect(4.0 * s, h - 34.0 * s, 40.0 * s, 3.0 * s, [30, 30, 30, 200]);
             self.ui.rect(4.0 * s, h - 34.0 * s, 40.0 * s * k, 3.0 * s, [240, 230, 160, 230]);
+        }
+        // A flying mount's flight left.
+        if let Some(k) = self.mount_flight_left() {
+            self.ui.rect(4.0 * s, h - 34.0 * s, 40.0 * s, 3.0 * s, [30, 30, 30, 200]);
+            self.ui.rect(4.0 * s, h - 34.0 * s, 40.0 * s * k, 3.0 * s, [250, 210, 90, 230]);
         }
     }
 }

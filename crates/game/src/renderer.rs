@@ -19,7 +19,7 @@ use crate::textures::{mip_chain, TextureSet};
 use crate::ui::{UiBatch, UiVertex};
 use crate::world::MeshEvent;
 use voxel::chunk::ChunkPos;
-use voxel::mesh::Vertex;
+use voxel::mesh::{SectionMesh, Vertex};
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Default)]
@@ -53,6 +53,9 @@ pub struct Globals {
     pub extra: [f32; 4],
     /// x, y: screen size in pixels; z: near plane; w: far plane (set by the renderer).
     pub screen: [f32; 4],
+    /// Block depth (parallax occlusion mapping): x depth in blocks (0 = off), y most steps
+    /// per pixel, z distance in blocks where it has faded out, w self-shadows 0/1.
+    pub pom: [f32; 4],
 }
 
 #[repr(C)]
@@ -785,35 +788,52 @@ impl Renderer {
                     }
                 }
                 MeshEvent::Set(p, meshes) => {
-                    let mut v = Vec::with_capacity(meshes.len());
-                    for (s, m) in meshes {
-                        let mut mk = |verts: &[Vertex], label: &str| -> Option<(wgpu::Buffer, u32)> {
-                            if verts.is_empty() {
-                                return None;
-                            }
-                            let quads = (verts.len() / 4) as u32;
-                            if quads > self.quad_cap {
-                                self.quad_cap = quads.next_power_of_two();
-                                self.quad_ibuf = Self::make_quad_ibuf(&self.device, self.quad_cap);
-                            }
-                            let b = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                                label: Some(label),
-                                contents: bytemuck::cast_slice(verts),
-                                usage: wgpu::BufferUsages::VERTEX,
-                            });
-                            Some((b, quads))
-                        };
-                        let solid = mk(&m.solid, "section solid");
-                        let translucent = mk(&m.translucent, "section translucent");
-                        v.push(GpuSection { section: s, vis: m.vis, solid, translucent });
-                    }
+                    let v: Vec<GpuSection> = meshes.into_iter().map(|(s, m)| self.upload_section(s, m)).collect();
                     self.vram_bytes += v.iter().map(section_bytes).sum::<u64>();
                     if let Some(old) = self.chunks.insert(p, v) {
                         self.vram_bytes -= old.iter().map(section_bytes).sum::<u64>();
                     }
                 }
+                MeshEvent::Sections(p, meshes) => {
+                    if !self.chunks.contains_key(&p) {
+                        continue;
+                    }
+                    for (s, m) in meshes {
+                        let new = m.map(|m| self.upload_section(s, m));
+                        let v = self.chunks.get_mut(&p).unwrap();
+                        if let Some(i) = v.iter().position(|g| g.section == s) {
+                            self.vram_bytes -= section_bytes(&v.remove(i));
+                        }
+                        if let Some(g) = new {
+                            self.vram_bytes += section_bytes(&g);
+                            v.push(g);
+                        }
+                    }
+                }
             }
         }
+    }
+
+    fn upload_section(&mut self, section: usize, m: SectionMesh) -> GpuSection {
+        let mut mk = |verts: &[Vertex], label: &str| -> Option<(wgpu::Buffer, u32)> {
+            if verts.is_empty() {
+                return None;
+            }
+            let quads = (verts.len() / 4) as u32;
+            if quads > self.quad_cap {
+                self.quad_cap = quads.next_power_of_two();
+                self.quad_ibuf = Self::make_quad_ibuf(&self.device, self.quad_cap);
+            }
+            let b = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(label),
+                contents: bytemuck::cast_slice(verts),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+            Some((b, quads))
+        };
+        let solid = mk(&m.solid, "section solid");
+        let translucent = mk(&m.translucent, "section translucent");
+        GpuSection { section, vis: m.vis, solid, translucent }
     }
 
     /// Cave culling: walk from the camera's section outwards, entering a neighbour only through

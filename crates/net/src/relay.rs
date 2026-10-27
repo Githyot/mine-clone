@@ -6,7 +6,9 @@
 //! On the wire, each side opens one stream to the relay and starts it with a byte: `H` (a
 //! host, answered with its room as two bytes) or `J` and the room (a guest). For each guest
 //! the relay opens a new stream to the host, starting with the guest's address (16 bytes of
-//! IPv6, IPv4 mapped, and the port), and then copies both ways.
+//! IPv6, IPv4 mapped, and the port) and its lane (4 bytes), and then copies both ways.
+//! Datagrams (voice) pass too: from a guest they reach the host led by the guest's lane, and
+//! the host leads its datagrams with the lane they are for.
 //!
 //! Each hop is encrypted, but the relay itself sees the game's messages: use one you trust.
 
@@ -19,7 +21,7 @@ use tokio::io::AsyncReadExt;
 
 use crate::transport::{client_endpoint, resolve_relay, runtime, server_config};
 
-pub(crate) const ALPN: &[u8] = b"mine-clone-relay/1";
+pub(crate) const ALPN: &[u8] = b"mine-clone-relay/2";
 /// The relay's usual port (one past the game's).
 pub const DEFAULT_PORT: u16 = crate::protocol::DEFAULT_PORT + 1;
 /// Rooms one relay holds at most.
@@ -68,16 +70,23 @@ fn addr_bytes(a: SocketAddr) -> [u8; 18] {
     b
 }
 
-/// As a host: the address a relayed guest came from.
-pub(crate) async fn read_addr(recv: &mut quinn::RecvStream) -> Option<SocketAddr> {
-    let mut b = [0u8; 18];
+/// As a host: the address a relayed guest came from, and its lane for datagrams.
+pub(crate) async fn read_addr(recv: &mut quinn::RecvStream) -> Option<(SocketAddr, u32)> {
+    let mut b = [0u8; 22];
     recv.read_exact(&mut b).await.ok()?;
     let ip = Ipv6Addr::from(<[u8; 16]>::try_from(&b[..16]).ok()?);
     let ip = ip.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(IpAddr::V6(ip));
-    Some(SocketAddr::new(ip, u16::from_le_bytes([b[16], b[17]])))
+    Some((SocketAddr::new(ip, u16::from_le_bytes([b[16], b[17]])), u32::from_le_bytes([b[18], b[19], b[20], b[21]])))
 }
 
-type Rooms = Arc<Mutex<HashMap<u16, quinn::Connection>>>;
+struct Room {
+    host: quinn::Connection,
+    /// Guests by lane, for the host's datagrams.
+    guests: HashMap<u32, quinn::Connection>,
+    next: u32,
+}
+
+type Rooms = Arc<Mutex<HashMap<u16, Room>>>;
 
 /// Run a relay on `port` until the process ends.
 pub fn run(port: u16) -> Result<(), String> {
@@ -112,9 +121,25 @@ async fn visitor(incoming: quinn::Incoming, rooms: Rooms) {
                 while room == 0 || r.contains_key(&room) {
                     room = (rand_u32() % 32767 + 1) as u16;
                 }
-                r.insert(room, conn.clone());
+                r.insert(room, Room { host: conn.clone(), guests: HashMap::new(), next: 1 });
                 room
             };
+            // The host's datagrams: a lane, then the bytes for that guest.
+            {
+                let (conn, rooms) = (conn.clone(), rooms.clone());
+                tokio::spawn(async move {
+                    while let Ok(d) = conn.read_datagram().await {
+                        if d.len() < 4 {
+                            continue;
+                        }
+                        let lane = u32::from_le_bytes([d[0], d[1], d[2], d[3]]);
+                        let g = rooms.lock().unwrap().get(&room).and_then(|r| r.guests.get(&lane).cloned());
+                        if let Some(g) = g {
+                            let _ = g.send_datagram(d.slice(4..));
+                        }
+                    }
+                });
+            }
             log::info!("room {room}: host {}", conn.remote_address());
             if send.write_all(&room.to_le_bytes()).await.is_err() {
                 rooms.lock().unwrap().remove(&room);
@@ -126,17 +151,46 @@ async fn visitor(incoming: quinn::Incoming, rooms: Rooms) {
         }
         b'J' => {
             let Ok(room) = recv.read_u16_le().await else { return };
-            let host = rooms.lock().unwrap().get(&room).cloned();
-            let Some(host) = host else {
+            let host = rooms.lock().unwrap().get_mut(&room).map(|r| {
+                let lane = r.next;
+                r.next = r.next.wrapping_add(1).max(1);
+                r.guests.insert(lane, conn.clone());
+                (r.host.clone(), lane)
+            });
+            let Some((host, lane)) = host else {
                 conn.close(2u32.into(), "sala não encontrada na ponte".as_bytes());
                 return;
             };
+            let forget = {
+                let rooms = rooms.clone();
+                move || {
+                    if let Some(r) = rooms.lock().unwrap().get_mut(&room) {
+                        r.guests.remove(&lane);
+                    }
+                }
+            };
             let Ok((mut hsend, mut hrecv)) = host.open_bi().await else {
+                forget();
                 conn.close(3u32.into(), "o anfitrião saiu da ponte".as_bytes());
                 return;
             };
-            if hsend.write_all(&addr_bytes(conn.remote_address())).await.is_err() {
+            let mut head = addr_bytes(conn.remote_address()).to_vec();
+            head.extend_from_slice(&lane.to_le_bytes());
+            if hsend.write_all(&head).await.is_err() {
+                forget();
                 return;
+            }
+            // The guest's datagrams go to the host led by its lane.
+            {
+                let (conn, host) = (conn.clone(), host.clone());
+                tokio::spawn(async move {
+                    while let Ok(d) = conn.read_datagram().await {
+                        let mut v = Vec::with_capacity(4 + d.len());
+                        v.extend_from_slice(&lane.to_le_bytes());
+                        v.extend_from_slice(&d);
+                        let _ = host.send_datagram(v.into());
+                    }
+                });
             }
             log::info!("room {room}: guest {}", conn.remote_address());
             // Guest to host; when the guest stops, the host sees its stream end.
@@ -147,6 +201,7 @@ async fn visitor(incoming: quinn::Incoming, rooms: Rooms) {
             // Host to guest; when the host ends the stream (left, or kicked them), hang up.
             let _ = tokio::io::copy(&mut hrecv, &mut send).await;
             let _ = send.finish();
+            forget();
             tokio::time::sleep(Duration::from_millis(500)).await;
             conn.close(0u32.into(), b"fim");
         }
@@ -201,6 +256,7 @@ mod tests {
             })
         });
         assert_eq!(said, "pela ponte");
+        crate::transport::tests::voice_both_ways(&host, &guest, id);
         host.send(id, &ToGuest::PlayerLeft(3));
         wait(|| guest.poll().into_iter().find(|e| matches!(e, GuestEvent::Message(ToGuest::PlayerLeft(3)))).map(|_| ()));
         // A kick ends only that guest; the room stays.

@@ -228,6 +228,13 @@ impl UiBatch {
 
     /// A clickable button; returns true when the mouse is over it.
     pub fn button(&mut self, x: f32, y: f32, w: f32, h: f32, label: &str, mouse: (f32, f32)) -> bool {
+        self.button_text(x, y, w, h, label, mouse, self.scale)
+    }
+
+    /// A button whose label is drawn at most at `text_scale` (lists use a smaller one so their
+    /// labels all match).
+    #[allow(clippy::too_many_arguments)]
+    pub fn button_text(&mut self, x: f32, y: f32, w: f32, h: f32, label: &str, mouse: (f32, f32), text_scale: f32) -> bool {
         let hover = mouse.0 >= x && mouse.0 < x + w && mouse.1 >= y && mouse.1 < y + h;
         let s = self.scale;
         self.rect(x, y, w, h, if hover { [40, 40, 40, 255] } else { [0, 0, 0, 255] });
@@ -237,7 +244,7 @@ impl UiBatch {
         // Long labels shrink, then lose their end, so they never spill out of the button.
         let color = if hover { YELLOW } else { [224, 224, 224, 255] };
         let room = w - 6.0 * s;
-        let mut sc = s;
+        let mut sc = text_scale;
         while sc > 1.0 && self.text_width(label, sc) > room {
             sc -= 1.0;
         }

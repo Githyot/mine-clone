@@ -23,12 +23,7 @@ const WINGS: &[(&str, f32, [f32; 3])] = &[
     ("empress_wings", 3.6, [1.6, 1.2, 1.8]),
     ("tide_wings", 3.2, [0.5, 1.4, 1.5]),
     ("crystal_wings", 3.0, [1.5, 1.0, 1.7]),
-    ("flame_wings", 2.8, [2.0, 0.9, 0.3]),
-    ("leaf_wings", 2.6, [0.6, 1.6, 0.5]),
     ("frost_wings", 2.6, [0.8, 1.3, 2.0]),
-    ("fairy_wings", 2.4, [1.6, 1.2, 1.8]),
-    ("demon_wings", 2.4, [1.2, 0.4, 0.8]),
-    ("bee_wings", 2.2, [1.8, 1.4, 0.4]),
 ];
 
 /// (item, pet mob, light pet?)
@@ -334,12 +329,11 @@ impl Game {
         if self.camera_mode == 0 || self.screen == crate::Screen::Dead {
             return Vec::new();
         }
-        let name = match self.tr_wing() {
-            Some(w) => w.0,
-            None if self.wears("angel_wings") => "angel_wings",
-            None if self.wears("feather_wings") => "feather_wings",
-            None => return Vec::new(),
-        };
+        // Pairs painted in wings.rs draw on the player model instead (vanity.rs).
+        if self.worn_wings().is_some() {
+            return Vec::new();
+        }
+        let Some((name, _, _)) = self.tr_wing() else { return Vec::new() };
         let Some(id) = self.items.id(name) else { return Vec::new() };
         let voxel::item::Look::Sprite(l) = self.items.get(id).look else { return Vec::new() };
         let layer = (self.item_base + l) as f32;

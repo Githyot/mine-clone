@@ -94,10 +94,19 @@ pub struct Survival {
     pub cursor: Option<ItemStack>,
     pub craft: [Option<ItemStack>; 9],
     pub open: Open,
-    /// The open shop: goods, their prices in emeralds and the seller's name.
+    /// The open shop: goods, their prices in copper and the seller's name.
     pub shop: Inventory,
-    pub shop_prices: Vec<u8>,
+    pub shop_prices: Vec<u32>,
     pub shop_name: String,
+    /// What the open settler buys, and for how much each (money.rs).
+    pub shop_want: Option<(ItemId, u64)>,
+    /// First offer row shown, and whether the mouse is over the offer list.
+    pub shop_scroll: usize,
+    pub shop_hover: bool,
+    /// The wallet, in copper (money.rs).
+    pub money: u64,
+    /// Coins just picked up and until when they show beside the hotbar.
+    pub money_flash: (u64, f32),
     pub hunger: f32,
     pub saturation: f32,
     pub exhaustion: f32,
@@ -170,6 +179,11 @@ impl Survival {
             shop: Inventory::new(0),
             shop_prices: Vec::new(),
             shop_name: String::new(),
+            shop_want: None,
+            shop_scroll: 0,
+            shop_hover: false,
+            money: 0,
+            money_flash: (0, 0.0),
             hunger: 20.0,
             saturation: 5.0,
             exhaustion: 0.0,
@@ -296,6 +310,9 @@ struct Saved {
     /// Boats: where, which way and which wood.
     #[serde(default)]
     boats: Vec<([f32; 3], f32, String)>,
+    /// The wallet, in copper.
+    #[serde(default)]
+    money: u64,
 }
 
 fn save_stacks(items: &ItemRegistry, inv: &Inventory) -> Vec<SavedStack> {
@@ -338,6 +355,7 @@ impl Survival {
                 .iter()
                 .map(|c| (c.pos.to_array(), c.yaw, c.items.iter().map(|s| Some(save_stack(items, s))).collect()))
                 .collect(),
+            money: self.money,
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
@@ -379,6 +397,7 @@ impl Survival {
         sv.boats = s.boats.iter().map(|(p, yaw, item)| crate::boats::Boat::new(Vec3::from(*p), *yaw, item)).collect();
         sv.saplings = s.saplings.into_iter().map(|(p, t)| (IVec3::from(p), t)).collect();
         sv.offhand = load_stacks(items, std::slice::from_ref(&s.offhand), 1).slots[0];
+        sv.money = s.money;
         sv
     }
 }
@@ -510,6 +529,9 @@ pub(crate) enum Slot {
     Offhand,
     /// Worn accessories (Etapa 5).
     Acc(usize),
+    /// Lote 11: armour worn for looks, and dyes (vanity.rs).
+    Vanity(usize),
+    Dye(usize),
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -856,6 +878,10 @@ impl Game {
                 }
             }
             self.spawn_orbs(pos + Vec3::Y * 0.5, xp);
+            if self.survival {
+                let v = self.mob_coins(def);
+                self.drop_coins(pos + Vec3::Y * 0.5, v);
+            }
         }
     }
 
@@ -1498,6 +1524,12 @@ impl Game {
         let mut sound = false;
         for &i in picked.iter().rev() {
             let s = self.surv.drops[i].stack;
+            // Coins go into the wallet, never the inventory.
+            if self.pocket_coins(&s) {
+                self.surv.drops.swap_remove(i);
+                sound = true;
+                continue;
+            }
             match self.surv.inv.add(&self.items, s) {
                 None => {
                     self.surv.drops.swap_remove(i);
@@ -1667,18 +1699,6 @@ impl Game {
     pub(crate) fn drop_instances(&self, cam_block: IVec3) -> Vec<GpuItem> {
         let c = cam_block.as_vec3();
         let mut out = Vec::with_capacity(self.surv.drops.len() + self.surv.orbs.len());
-        // The block just placed swells a touch and settles back into place.
-        if let Some((pos, id, at)) = self.place_pop {
-            let k = (self.now - at) / 0.16;
-            if (0.0..1.0).contains(&k) && self.world.block_or_air(pos) == id {
-                let bl = self.reg.get(id);
-                let l = self.world.light(pos + IVec3::Y);
-                let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
-                let p = pos.as_vec3() + Vec3::splat(0.5) - c;
-                let size = 1.0 + 0.1 * (k * std::f32::consts::PI).sin() + 0.01;
-                out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [0.0, 0.0, sky, blk], layers: [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32, 0.0], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
-            }
-        }
         out.extend(self.swing_instances(cam_block));
         // The orb sprite is loaded right after the item sprites.
         let orb_layer = (self.item_base as usize + self.items.textures.len()) as f32;
@@ -1828,7 +1848,14 @@ impl Game {
         };
         let extra = rows.saturating_sub(3) as f32 * 18.0;
         let (pw, ph) = (176.0 * s, (166.0 + extra) * s);
-        let x0 = ((w - pw) / 2.0).floor();
+        let mut x0 = ((w - pw) / 2.0).floor();
+        // A shop's offer list sits on the left: centre the two together when they fit.
+        if open == Open::Shop {
+            let left = (crate::money::LIST_W + 4.0) * s;
+            if left + pw + 24.0 * s <= w {
+                x0 = ((w - left - pw - 24.0 * s) / 2.0).floor() + left;
+            }
+        }
         // Opening slides the panel up into place and fades the backdrop in (Immersive UI idea).
         // Screenshots skip it so they show the panel where it rests.
         let since = *self.surv.opened_at.get_or_insert_with(std::time::Instant::now);
@@ -1869,6 +1896,7 @@ impl Game {
         }
         self.ui.label(x0 + 8.0 * s, y0 + (73.0 + extra) * s, "Inventário", dark, s);
         let n = self.surv.grid_size();
+        let mut over_shop = false;
         match open {
             Open::Craft | Open::Table => {
                 let (gx, gy, ox, oy, title) = if n == 3 { (30.0, 17.0, 124.0, 35.0, "Fabricação") } else { (88.0, 26.0, 146.0, 36.0, "Fabricação") };
@@ -1913,13 +1941,7 @@ impl Game {
                 self.ui.rect(ax, ay, 24.0 * s, 8.0 * s, [139, 139, 139, 255]);
                 self.ui.rect(ax, ay, 24.0 * s * cook.clamp(0.0, 1.0), 8.0 * s, [240, 240, 240, 255]);
             }
-            Open::Shop => {
-                let title = format!("{}: loja", self.surv.shop_name);
-                self.ui.label(x0 + 8.0 * s, y0 + 6.0 * s, &title, dark, s);
-                for i in 0..self.surv.shop.slots.len().min(18) {
-                    slots.push((Slot::Cont(i), x0 + (8 + (i % 9) * 18) as f32 * s, y0 + (18 + (i / 9) * 18) as f32 * s));
-                }
-            }
+            Open::Shop => over_shop = self.draw_shop(x0, y0, ph, mouse),
             Open::Station(st) => self.draw_station(st, x0, y0, &mut slots, mouse),
             Open::Chest(p) if self.apoth_table(p).is_some() => slots.extend(self.draw_apoth_table(p, x0, y0, mouse)),
             Open::Chest(p) => {
@@ -1983,6 +2005,8 @@ impl Game {
             }
         }
         let over_book = self.draw_recipe_book(x0, y0, pw, ph, w, h, mouse);
+        let over_wallet = self.survival && self.draw_wallet(x0 + pw - s, y0 + 74.0 * s + extra * s, mouse);
+        let over_book = over_book || over_shop || over_wallet;
         self.surv.want_recipe = false;
         self.surv.uses_pending = false;
         // Clicks.
@@ -2010,7 +2034,7 @@ impl Game {
         // Right-drag (like Mouse Tweaks): one item into each slot the mouse passes over.
         if self.rdown && !self.rclicked && open != Open::Shop {
             if let (Some(slot), Some(c)) = (hovered, self.surv.cursor) {
-                let fresh = self.surv.drag_last != Some(slot) && !matches!(slot, Slot::CraftOut | Slot::Armor(_) | Slot::Acc(_)) && !(slot == Slot::Cont(2) && matches!(open, Open::Furnace(_))) && !self.is_station_output(slot);
+                let fresh = self.surv.drag_last != Some(slot) && !matches!(slot, Slot::CraftOut | Slot::Armor(_) | Slot::Acc(_) | Slot::Vanity(_) | Slot::Dye(_)) && !(slot == Slot::Cont(2) && matches!(open, Open::Furnace(_))) && !self.is_station_output(slot);
                 let fits = match self.slot_get(slot) {
                     None => true,
                     Some(st) => st.stacks_with(&c) && st.count < self.items.get(st.item).max_stack,
@@ -2039,13 +2063,16 @@ impl Game {
                 None => None,
             };
             if let Some(st) = st {
-                let mut name = self.item_label(&st);
-                if let (Some(Slot::Cont(i)), Open::Shop) = (hovered, open) {
-                    let price = self.surv.shop_prices.get(i).copied().unwrap_or(0);
-                    name = format!("{name} x{}: {price} esmeralda(s)", st.count);
-                }
+                let name = self.item_label(&st);
                 let mut lines = vec![(name, self.gem_name_color(&st))];
                 lines.extend(self.item_details(&st));
+                // In a shop, what the trader would pay for it.
+                if open == Open::Shop && matches!(hovered, Some(Slot::Inv(_))) {
+                    lines.push(match self.sell_price(st.item) {
+                        Some(p) => (format!("Vende por: {} (Shift+clique)", crate::money::text(p * st.count as u64)), [255, 220, 120, 255]),
+                        None => ("O vendedor não compra isso".to_string(), [170, 170, 170, 255]),
+                    });
+                }
                 self.draw_tooltip_lines(&lines, mouse);
             }
         }
@@ -2060,7 +2087,12 @@ impl Game {
             self.surv.juice.cursor(mouse, None, s, anim);
             self.surv.juice.draw_sparks(&mut self.ui);
         }
-        self.ui.text_centered(w / 2.0, y0 + ph + 4.0 * s, "Esq.: pegar  Dir.: metade  Shift: mover  Roda: 1 a 1  R: receita  U: usos", WHITE);
+        let hint = if open == Open::Shop {
+            "Clique: comprar  Shift: 5x  Shift+clique no inventário: vender"
+        } else {
+            "Esq.: pegar  Dir.: metade  Shift: mover  Roda: 1 a 1  R: receita  U: usos"
+        };
+        self.ui.text_centered(w / 2.0, y0 + ph + 4.0 * s, hint, WHITE);
     }
 
     /// Extra tooltip lines (Durability Tooltip idea): wear left in colour, attack, armour, food.
@@ -2123,6 +2155,8 @@ impl Game {
             Slot::Armor(i) => self.surv.armor[i],
             Slot::Offhand => self.surv.offhand,
             Slot::Acc(i) => self.t5.acc[i],
+            Slot::Vanity(i) => self.t5.look.vanity[i],
+            Slot::Dye(i) => self.t5.look.dyes[i],
             Slot::Cont(i) => match self.open_container_inv() {
                 Some(inv) => inv.slots.get(i).copied().flatten(),
                 None => None,
@@ -2138,6 +2172,8 @@ impl Game {
             Slot::Armor(i) => self.surv.armor[i] = v,
             Slot::Offhand => self.surv.offhand = v,
             Slot::Acc(i) => self.t5.acc[i] = v,
+            Slot::Vanity(i) => self.t5.look.vanity[i] = v,
+            Slot::Dye(i) => self.t5.look.dyes[i] = v,
             Slot::Cont(i) => {
                 if let Some(inv) = self.open_container_inv_mut() {
                     if i < inv.slots.len() {
@@ -2186,9 +2222,18 @@ impl Game {
         if self.apoth_socket_click(slot, right) {
             return;
         }
-        if let (Slot::Cont(i), Open::Shop) = (slot, self.surv.open) {
-            self.buy(i);
-            return;
+        // Shift-click: coins go into the wallet; in a shop, anything else is sold.
+        if let (Slot::Inv(k), true, true) = (slot, shift, self.survival) {
+            if let Some(st) = self.surv.inv.slots[k] {
+                if self.pocket_coins(&st) {
+                    self.surv.inv.slots[k] = None;
+                    return;
+                }
+                if self.surv.open == Open::Shop {
+                    self.sell_slot(k);
+                    return;
+                }
+            }
         }
         if self.station_click(slot, shift) {
             return;
@@ -2207,6 +2252,11 @@ impl Game {
         }
         if let (Slot::Acc(_), Some(c)) = (slot, self.surv.cursor) {
             if !crate::accessories::is_accessory(&self.items.get(c.item).name) {
+                return;
+            }
+        }
+        if let (Slot::Vanity(_) | Slot::Dye(_), Some(c)) = (slot, self.surv.cursor) {
+            if !self.visual_fits(slot, &self.items.get(c.item).name.clone()) {
                 return;
             }
         }
@@ -2329,7 +2379,7 @@ impl Game {
     pub(crate) fn wheel_move(&mut self, up: bool) -> bool {
         let Some(slot) = self.surv.hover_slot else { return false };
         let Some(st) = self.slot_get(slot) else { return false };
-        if self.surv.cursor.is_some() || matches!(slot, Slot::CraftOut | Slot::Armor(_) | Slot::Acc(_)) || self.surv.open == Open::Shop || self.is_station_output(slot) {
+        if self.surv.cursor.is_some() || matches!(slot, Slot::CraftOut | Slot::Armor(_) | Slot::Acc(_) | Slot::Vanity(_) | Slot::Dye(_)) || self.surv.open == Open::Shop || self.is_station_output(slot) {
             return false;
         }
         let container = matches!(self.surv.open, Open::Chest(_) | Open::Furnace(_) | Open::Station(_));
@@ -2616,7 +2666,7 @@ impl Game {
                 let y = (tip + side) * std::f32::consts::FRAC_1_SQRT_2;
                 let q = rot * Quat::from_mat3(&Mat3::from_cols(x, y, face));
                 let (yaw, pitch, roll) = q.to_euler(EulerRot::YXZ);
-                out.push(GpuItem { pos: [fist.x, fist.y, fist.z, 0.62], info: [yaw, 1.0, b.light[0], b.light[1]], layers: [bow; 4], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
+                out.push(GpuItem { pos: [fist.x, fist.y, fist.z, 0.62], info: [yaw, 1.0, b.light[0], b.light[1]], layers: [bow, bow, bow, 0.0], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
             }
         }
         out.extend(self.bobber_instance(cam_block));
@@ -2638,7 +2688,7 @@ impl Game {
                 let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
                 let p = a.pos - c;
                 for pitch in [0.0, std::f32::consts::FRAC_PI_2] {
-                    out.push(GpuItem { pos: [p.x, p.y, p.z, 0.5], info: [yaw, 1.0, sky, blk], layers: [arrow; 4], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
+                    out.push(GpuItem { pos: [p.x, p.y, p.z, 0.5], info: [yaw, 1.0, sky, blk], layers: [arrow, arrow, arrow, 0.0], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
                 }
             }
         }
@@ -2647,18 +2697,8 @@ impl Game {
 
     /// The armour the player wears, drawn over the player model with the same bones.
     pub(crate) fn armor_instances(&self, bones: &crate::entity::Bones) -> Vec<(usize, crate::entity::Bones)> {
-        let mut out = Vec::new();
-        for piece in 0..4 {
-            let Some(st) = self.shown_armor(piece) else { continue };
-            if let Some(mesh) = self.entities.armor_mesh(&self.armor_look(piece, &st), piece) {
-                out.push((mesh, *bones));
-                // Smithing trims show as a coloured pattern over the piece.
-                if let Some(t) = crate::smithing::trim_of(&st).and_then(|(_, m)| self.entities.trim_mesh(m, piece)) {
-                    out.push((t, *bones));
-                }
-            }
-        }
-        out
+        // Vanity, dyes and wings decide what shows (vanity.rs).
+        self.look_instances(bones)
     }
 
     /// The held item in the right hand of the player model, for the views from outside: the
@@ -2696,6 +2736,14 @@ impl Game {
     fn held_look(&self) -> Option<HeldLook> {
         let st = self.held_stack()?;
         let it = self.items.get(st.item);
+        if crate::instruments::index(&it.name).is_some() {
+            // Instruments are 3D models held in both hands (instruments.rs).
+            return None;
+        }
+        if crate::torch::index(&it.name).is_some() {
+            // Torches are 3D models with a live flame (torch.rs).
+            return None;
+        }
         let tool = it.tool.is_some() || it.name.ends_with("_sword") || matches!(it.name.as_str(), "stick" | "blaze_rod" | "breeze_rod" | "bone" | "mace" | "trident") || it.name.ends_with("_rod");
         Some(match it.look {
             Look::Block(b) => {
@@ -2755,6 +2803,9 @@ impl Game {
             if (m.on_fire > 0.0 || glows) && m.alive() {
                 found.push((m.body.pos.distance(eye), m.body.pos + Vec3::Y * 0.8, if glows { 0.7 } else { 0.85 }));
             }
+        }
+        for (p, l) in self.companion_lights() {
+            found.push((p.distance(eye), p, l));
         }
         found.retain(|f| f.0 < 48.0);
         found.sort_by(|a, b| a.0.total_cmp(&b.0));

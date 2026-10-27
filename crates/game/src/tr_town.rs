@@ -13,6 +13,7 @@ use voxel::item::ItemStack;
 use voxel::worldgen::{Biome, Dim};
 
 use crate::audio::{Material, Sfx};
+use crate::money::{g, s};
 use crate::Game;
 
 /// (mob, wish shown by the guide)
@@ -36,55 +37,55 @@ pub(crate) const NPCS: &[(&str, &str)] = &[
     ("npc_winter_elder", "o Velho do Inverno vem em dezembro, ou depois da Rainha do Gelo."),
 ];
 
-/// Shops of this file's town folk: (mob, goods: item, count, price in emeralds).
-pub(crate) const SHOPS: &[(&str, &[(&str, u8, u8)])] = &[
-    ("npc_dryad", &[("purification_powder", 5, 1), ("oak_sapling", 4, 1), ("jungle_sapling", 2, 1), ("wheat_seeds", 8, 1), ("pumpkin_seeds", 4, 1), ("melon_seeds", 4, 1), ("ancient_seed", 1, 4), ("bone_meal", 8, 1)]),
-    ("npc_demolitionist", &[("bomb", 4, 1), ("grenade", 4, 1), ("dynamite", 2, 2), ("tnt", 2, 2), ("gunpowder", 6, 1)]),
-    ("npc_arms_dealer", &[("musket_ball", 50, 1), ("flintlock_pistol", 1, 6), ("musket", 1, 9), ("boomstick", 1, 14), ("rapid_gun", 1, 22), ("arrow", 16, 1)]),
-    ("npc_angler", &[("fishing_rod", 1, 2), ("cod", 3, 1), ("salmon", 2, 1), ("bucket", 1, 2), ("tropical_fish", 1, 2), ("nautilus_shell", 1, 6)]),
-    ("npc_stylist", &[("shears", 1, 1), ("name_tag", 1, 3), ("poppy", 4, 1), ("dandelion", 4, 1), ("blue_orchid", 2, 1), ("lily_of_the_valley", 2, 1)]),
-    ("npc_dye_trader", &[("red_dye", 4, 1), ("yellow_dye", 4, 1), ("blue_dye", 4, 1), ("green_dye", 4, 1), ("purple_dye", 4, 1), ("orange_dye", 4, 1), ("pink_dye", 4, 1), ("black_dye", 4, 1), ("white_dye", 4, 1)]),
-    ("npc_painter", &[("lantern", 2, 1), ("candle", 4, 1), ("white_wool", 8, 1), ("red_dye", 4, 1), ("glass", 8, 1), ("brush", 1, 2)]),
-    ("npc_tailor", &[("white_wool", 8, 1), ("string", 8, 1), ("leather", 4, 1), ("leather_helmet", 1, 2), ("leather_chestplate", 1, 3), ("leather_boots", 1, 2), ("red_carpet", 8, 1)]),
-    ("npc_witch_doctor", &[("jungle_spore", 4, 1), ("honey_bottle", 3, 1), ("beeswax", 2, 2), ("jungle_sapling", 4, 1), ("vine", 8, 1), ("antidote_charm", 1, 8)]),
-    ("npc_zoologist", &[("cat_license", 1, 6), ("dog_license", 1, 6), ("bunny_license", 1, 4), ("lead", 2, 1), ("saddle", 1, 4), ("name_tag", 1, 3), ("bone", 8, 1)]),
-    ("npc_party_girl", &[("confetti", 10, 1), ("party_kit", 1, 6), ("firework_rocket", 8, 1), ("cake", 1, 2), ("note_block", 2, 1), ("jukebox", 1, 6)]),
-    ("npc_pirate", &[("spyglass", 1, 3), ("compass", 1, 2), ("map", 1, 2), ("gunpowder", 8, 1), ("gold_ingot", 2, 3), ("heart_of_the_sea", 1, 20)]),
-    ("npc_steampunker", &[("piston", 4, 2), ("observer", 2, 2), ("rail", 16, 2), ("powered_rail", 6, 3), ("minecart", 1, 3), ("clock", 1, 2), ("copper_ingot", 10, 1)]),
-    ("npc_cyborg", &[("firework_rocket", 16, 1), ("tnt", 4, 2), ("meteor_shot", 50, 2), ("redstone", 16, 1), ("rapid_gun", 1, 18)]),
-    ("npc_princess", &[("cake", 1, 2), ("golden_apple", 1, 6), ("diamond", 1, 6), ("gold_block", 1, 12), ("music_disc_first_light", 1, 8)]),
-    ("npc_mycologist", &[("glow_mushroom", 4, 1), ("brown_mushroom", 6, 1), ("red_mushroom", 6, 1), ("mushroom_stew", 1, 1), ("sporite_ingot", 2, 6), ("jungle_spore", 4, 1)]),
-    ("npc_winter_elder", &[("present", 1, 3), ("cookie", 8, 1), ("snow", 16, 1), ("spruce_sapling", 4, 1), ("firework_rocket", 8, 1), ("candle", 4, 1)]),
+/// Shops of this file's town folk: (mob, goods: item, count, price in copper).
+pub(crate) const SHOPS: &[(&str, &[(&str, u8, u32)])] = &[
+    ("npc_dryad", &[("purification_powder", 5, s(10)), ("oak_sapling", 4, s(10)), ("jungle_sapling", 2, s(10)), ("wheat_seeds", 8, s(10)), ("pumpkin_seeds", 4, s(10)), ("melon_seeds", 4, s(10)), ("ancient_seed", 1, s(40)), ("bone_meal", 8, s(10))]),
+    ("npc_demolitionist", &[("bomb", 4, s(10)), ("grenade", 4, s(10)), ("dynamite", 2, s(20)), ("tnt", 2, s(20)), ("gunpowder", 6, s(10))]),
+    ("npc_arms_dealer", &[("musket_ball", 50, s(10)), ("flintlock_pistol", 1, s(60)), ("musket", 1, s(90)), ("boomstick", 1, s(140)), ("rapid_gun", 1, s(220)), ("arrow", 16, s(10))]),
+    ("npc_angler", &[("fishing_rod", 1, s(20)), ("cod", 3, s(10)), ("salmon", 2, s(10)), ("bucket", 1, s(20)), ("tropical_fish", 1, s(20)), ("nautilus_shell", 1, s(60))]),
+    ("npc_stylist", &[("shears", 1, s(10)), ("name_tag", 1, s(30)), ("poppy", 4, s(10)), ("dandelion", 4, s(10)), ("blue_orchid", 2, s(10)), ("lily_of_the_valley", 2, s(10))]),
+    ("npc_dye_trader", &[("red_dye", 4, s(10)), ("yellow_dye", 4, s(10)), ("blue_dye", 4, s(10)), ("green_dye", 4, s(10)), ("purple_dye", 4, s(10)), ("orange_dye", 4, s(10)), ("pink_dye", 4, s(10)), ("black_dye", 4, s(10)), ("white_dye", 4, s(10))]),
+    ("npc_painter", &[("lantern", 2, s(10)), ("candle", 4, s(10)), ("white_wool", 8, s(10)), ("red_dye", 4, s(10)), ("glass", 8, s(10)), ("brush", 1, s(20))]),
+    ("npc_tailor", &[("white_wool", 8, s(10)), ("string", 8, s(10)), ("leather", 4, s(10)), ("leather_helmet", 1, s(20)), ("leather_chestplate", 1, s(30)), ("leather_boots", 1, s(20)), ("red_carpet", 8, s(10))]),
+    ("npc_witch_doctor", &[("jungle_spore", 4, s(10)), ("honey_bottle", 3, s(10)), ("beeswax", 2, s(20)), ("jungle_sapling", 4, s(10)), ("vine", 8, s(10)), ("antidote_charm", 1, s(80))]),
+    ("npc_zoologist", &[("cat_license", 1, s(60)), ("dog_license", 1, s(60)), ("bunny_license", 1, s(40)), ("lead", 2, s(10)), ("saddle", 1, s(40)), ("name_tag", 1, s(30)), ("bone", 8, s(10))]),
+    ("npc_party_girl", &[("confetti", 10, s(10)), ("party_kit", 1, s(60)), ("firework_rocket", 8, s(10)), ("cake", 1, s(20)), ("note_block", 2, s(10)), ("jukebox", 1, s(60))]),
+    ("npc_pirate", &[("spyglass", 1, s(30)), ("compass", 1, s(20)), ("map", 1, s(20)), ("gunpowder", 8, s(10)), ("gold_ingot", 2, s(30)), ("heart_of_the_sea", 1, s(200))]),
+    ("npc_steampunker", &[("piston", 4, s(20)), ("observer", 2, s(20)), ("rail", 16, s(20)), ("powered_rail", 6, s(30)), ("minecart", 1, s(30)), ("clock", 1, s(20)), ("copper_ingot", 10, s(10))]),
+    ("npc_cyborg", &[("firework_rocket", 16, s(10)), ("tnt", 4, s(20)), ("meteor_shot", 50, s(20)), ("redstone", 16, s(10)), ("rapid_gun", 1, s(180))]),
+    ("npc_princess", &[("cake", 1, s(20)), ("golden_apple", 1, s(60)), ("diamond", 1, s(60)), ("gold_block", 1, s(120)), ("music_disc_first_light", 1, s(80))]),
+    ("npc_mycologist", &[("glow_mushroom", 4, s(10)), ("brown_mushroom", 6, s(10)), ("red_mushroom", 6, s(10)), ("mushroom_stew", 1, s(10)), ("sporite_ingot", 2, s(60)), ("jungle_spore", 4, s(10))]),
+    ("npc_winter_elder", &[("present", 1, s(30)), ("cookie", 8, s(10)), ("snow", 16, s(10)), ("spruce_sapling", 4, s(10)), ("firework_rocket", 8, s(10)), ("candle", 4, s(10))]),
 ];
 
 /// Odd goods the peddler may bring (six a visit).
-const PEDDLER_POOL: &[(&str, u8, u8)] = &[
-    ("lucky_coin", 1, 12),
-    ("magnet_ring", 1, 9),
-    ("life_crystal", 1, 9),
-    ("mana_crystal", 1, 7),
-    ("totem_of_undying", 1, 24),
-    ("trident", 1, 20),
-    ("elytra", 1, 40),
-    ("enchanted_golden_apple", 1, 30),
-    ("ender_pearl", 4, 3),
-    ("blaze_rod", 2, 4),
-    ("diamond", 2, 8),
-    ("emerald_block", 1, 9),
-    ("experience_bottle", 6, 3),
-    ("cloud_bottle", 1, 9),
-    ("running_boots", 1, 8),
-    ("grappling_hook", 1, 5),
-    ("star_saber", 1, 18),
-    ("enchanted_sword", 1, 14),
-    ("fairy_bell", 1, 10),
-    ("wisp_jar", 1, 12),
-    ("blessed_apple", 1, 25),
-    ("jelly_saddle", 1, 14),
-    ("music_disc_embers", 1, 10),
-    ("sniffer_egg", 1, 15),
-    ("heart_of_the_sea", 1, 18),
-    ("nautilus_shell", 2, 4),
+const PEDDLER_POOL: &[(&str, u8, u32)] = &[
+    ("lucky_coin", 1, s(120)),
+    ("magnet_ring", 1, s(90)),
+    ("life_crystal", 1, s(90)),
+    ("mana_crystal", 1, s(70)),
+    ("totem_of_undying", 1, s(240)),
+    ("trident", 1, s(200)),
+    ("elytra", 1, s(400)),
+    ("enchanted_golden_apple", 1, s(300)),
+    ("ender_pearl", 4, s(30)),
+    ("blaze_rod", 2, s(40)),
+    ("diamond", 2, s(80)),
+    ("emerald_block", 1, s(90)),
+    ("experience_bottle", 6, s(30)),
+    ("cloud_bottle", 1, s(90)),
+    ("running_boots", 1, s(80)),
+    ("grappling_hook", 1, s(50)),
+    ("star_saber", 1, s(180)),
+    ("enchanted_sword", 1, s(140)),
+    ("fairy_bell", 1, s(100)),
+    ("wisp_jar", 1, s(120)),
+    ("blessed_apple", 1, s(250)),
+    ("jelly_saddle", 1, s(140)),
+    ("music_disc_embers", 1, s(100)),
+    ("sniffer_egg", 1, s(150)),
+    ("heart_of_the_sea", 1, s(180)),
+    ("nautilus_shell", 2, s(40)),
 ];
 
 /// (mob, land it likes, neighbours it loves, neighbours it can't stand)
@@ -135,7 +136,7 @@ pub struct TownLife {
     party: f32,
     confetti_t: f32,
     /// The peddler's goods while he is in town.
-    peddler: Vec<(&'static str, u8, u8)>,
+    peddler: Vec<(&'static str, u8, u32)>,
     last_time: f32,
 }
 
@@ -237,8 +238,8 @@ impl Game {
     }
 
     /// What a town NPC sells now, priced by their mood (None: not a seller).
-    pub(crate) fn npc_offers(&self, name: &str) -> Option<(Vec<(&'static str, u8, u8)>, String)> {
-        let mut offers: Vec<(&'static str, u8, u8)> = if name == "npc_peddler" {
+    pub(crate) fn npc_offers(&self, name: &str) -> Option<(Vec<(&'static str, u8, u32)>, String)> {
+        let mut offers: Vec<(&'static str, u8, u32)> = if name == "npc_peddler" {
             self.t5.tr.town.peddler.clone()
         } else {
             crate::npcs::SHOPS.iter().chain(crate::hardmode::SHOPS).chain(SHOPS).find(|s| s.0 == name)?.1.to_vec()
@@ -250,12 +251,12 @@ impl Game {
                 let zone = self.zone_at(home);
                 let pylon = PYLONS.iter().position(|p| *p == zone).map(|k| ["pylon_forest", "pylon_desert", "pylon_snow", "pylon_jungle", "pylon_ocean", "pylon_cave"][k]);
                 if let Some(p) = pylon {
-                    offers.push((p, 1, 10));
+                    offers.push((p, 1, g(1)));
                 }
             }
         }
         for o in offers.iter_mut() {
-            o.2 = ((o.2 as f32 * f).round() as u8).max(1);
+            o.2 = ((o.2 as f32 * f).round() as u32).max(1);
         }
         Some((offers, line))
     }
@@ -314,7 +315,7 @@ impl Game {
     }
 
     fn peddler_arrives(&mut self, at: Vec3) {
-        let mut pool: Vec<(&'static str, u8, u8)> = PEDDLER_POOL.iter().copied().filter(|o| self.items.id(o.0).is_some()).collect();
+        let mut pool: Vec<(&'static str, u8, u32)> = PEDDLER_POOL.iter().copied().filter(|o| self.items.id(o.0).is_some()).collect();
         let mut stock = Vec::new();
         while stock.len() < 6 && !pool.is_empty() {
             let k = (self.surv.rng.f32() * pool.len() as f32) as usize % pool.len();

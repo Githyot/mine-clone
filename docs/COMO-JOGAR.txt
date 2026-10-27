@@ -22,15 +22,19 @@ Tudo fica na mesma pasta do jogo:
   crash.txt        aparece só se o jogo fechar com erro (me mande esse arquivo)
 
 JOGAR COM AMIGOS
-  Hospedar: abra seu mundo e, no menu Esc, clique em "Abrir para amigos"
-    (ou Multijogador > Hospedar mundo...). O jogo mostra um código de convite
-    (ex.: K3F9Q-2ZB7M) no chat e no menu Esc. Mande o código para seus amigos.
-  Entrar: Multijogador > digite o código (ou IP:porta) > Entrar. Mundos abertos
-    na mesma rede (Wi-Fi/cabo) aparecem sozinhos na lista "Na sua rede".
+  Hospedar: abra seu mundo e, no menu Esc, clique em "Abrir para amigos...".
+    Na tela escolha: máximo de jogadores, senha, modo dos amigos, se eles usam
+    comandos, PvP, porta e alcance (só a mesma rede, internet pelo roteador ou
+    pela ponte). Clique em "Abrir mundo". A mesma tela mostra o código de
+    convite (ex.: K3F9Q-2ZB7M) com o botão "Copiar código", como está a conexão
+    e quem entrou (com Expulsar e Banir). Mande o código para seus amigos.
+  Entrar: Multijogador > cole o código (botão Colar ou Ctrl+V) > Entrar. Mundos
+    abertos na mesma rede (Wi-Fi/cabo) aparecem sozinhos na lista "Na sua rede".
   Pela internet: o jogo tenta abrir a porta UDP 24454 no roteador (UPnP). Se o
     roteador não deixar, abra essa porta (UDP) no roteador à mão, ou use um
     programa de rede virtual (Radmin VPN, ZeroTier, Tailscale) e entre pelo IP dele.
-  Senha (opcional): quem hospeda e quem entra preenchem o campo Senha.
+  Senha (opcional): quem hospeda põe na tela "Abrir para amigos"; quem entra
+    preenche o campo Senha em Multijogador.
   Todos precisam da mesma versão do jogo.
   T ou Enter = chat   / = comando   Tab = quem está jogando e o código
   Quem hospeda: /op <nome> deixa um amigo usar comandos (/deop tira),
@@ -38,6 +42,18 @@ JOGAR COM AMIGOS
   O mundo não pausa no menu Esc enquanto há amigos. As coisas de cada amigo
   (inventário, vida, onde parou) ficam salvas no mundo de quem hospeda
   (saves/<mundo>/players/).
+
+CHAT DE VOZ (Opções > Chat de voz...)
+  Proximidade (padrão): segure Caps Lock para falar. Sua voz sai do seu personagem:
+    quem está do seu lado esquerdo ouve pela esquerda, mais baixo de longe (some depois
+    de 48 blocos) e abafado atrás de paredes.
+  Grupo (como uma chamada): todos no mesmo grupo (1 a 9) se ouvem no volume cheio,
+    estejam onde estiverem. O microfone fica aberto e só envia quando você fala (ajuste
+    a Sensibilidade olhando o medidor) ou, se preferir, use Caps Lock para falar.
+  K liga e desliga o seu microfone. Quem está falando aparece no canto de cima.
+  A boca do personagem mexe enquanto ele fala, nos dois modos.
+  Nas opções: escolha o microfone, o volume das vozes e o volume de cada jogador
+    (ou deixe alguém mudo). Funciona também pela ponte e em servidor dedicado.
 
 COMANDOS (chat: T, depois /; funcionam também jogando sozinho)
   /tempo dia | meio-dia | noite | meia-noite | <0-24000>
@@ -52,6 +68,10 @@ COMANDOS (chat: T, depois /; funcionam também jogando sozinho)
 CONTROLES
   W A S D         andar
   Espaço          pular (aperte 2 vezes rápido para voar / parar de voar)
+  Espaço          perto de uma borda de até 2 blocos acima dos pés (parede, prateleira, mesmo
+                  logo acima da cabeça ou no meio do pulo): agarra a beirada e sobe puxando o
+                  corpo com as mãos. Vale andando para ela ou só olhando para ela. Cercas e
+                  muros não dá para escalar.
   Shift           agachar (a câmera abaixa e você não cai da beirada) / descer voando
   Ctrl ou W 2x    correr (a visão abre um pouco)
   Z               deitar / levantar (deitado você rasteja e passa por buracos de 1 bloco)
@@ -220,6 +240,10 @@ ESTRUTURAS
   descendo de uma abertura com musgo, baús com ouro, diamante e cristal de vida), acampamento
   com barraca de lã e santuário de pedra nas montanhas e na neve.
   Torre do mago (estantes e baú com varinhas e cristais de mana) e moinho de vento.
+  As hélices dos moinhos giram com o vento: mais rápido na chuva e na tempestade e no alto,
+  devagar em lugar abrigado e paradas num lugar fechado. Para fazer a sua: Hélice de Moinho
+  na mesa (lã nos cantos, gravetos em cruz e um tronco no meio). Coloque numa parede: as pás
+  giram na frente, viradas para você.
   Na chuva, as gotas respingam no chão em volta de você.
 
 NETHER
@@ -315,6 +339,13 @@ SHADERS
                 água ondulante
     Suave       só um pouco de brilho e cores mais quentes (leve)
   Qualidade: Rápido ou Bonito (Bonito tem brilho mais largo e raios de sol mais finos).
+  Profundidade (Esc > Shaders): Não, Rasa, Média ou Funda. Dá relevo de verdade às texturas,
+  como o POM dos shaders do Minecraft: a argamassa afunda entre os tijolos, as frestas da
+  pedra e do pedregulho ficam fundas e as partes salientes escondem o que está atrás conforme
+  o ângulo. A altura vem da própria textura (funciona com qualquer pacote de texturas). Só
+  perto da câmera, só na qualidade Bonito, com ou sem shader. Com Sombras ligadas, o fundo das
+  frestas também fica na sombra do sol. Um pacote de shader pode ter a opção "profundidade"
+  (veja shaderpacks/LEIA-ME.txt).
   Distância LOD (Esc > Shaders): desenha o relevo além da distância de visão (256, 512, 1024 ou 2048
   blocos a mais), em blocos grandes e simples, como o mod Distant Horizons. Montanhas,
   florestas e o mar aparecem no horizonte sem carregar chunks. Funciona com ou sem shader.
@@ -742,5 +773,5 @@ MODO JORNADA (lado Terraria)
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)
-  --shader NOME (ou off)   --shaders-menu   --lod BLOCOS   --server   --bench SEGUNDOS
+  --shader NOME (ou off)   --shaders-menu   --lod BLOCOS   --parallax 0-3   --server   --bench SEGUNDOS
   --relay [PORTA]

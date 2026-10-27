@@ -27,6 +27,9 @@ pub struct Fight {
     contact_t: f32,
     /// Small flyers (demon eyes) have their own velocities, by mob index.
     eyes: Vec<(usize, Vec3)>,
+    /// The player can't be hurt (creative): the boss loiters around this spot instead of
+    /// following them, and holds its attacks.
+    calm_at: Option<Vec3>,
 }
 
 impl Fight {
@@ -149,6 +152,12 @@ impl Game {
         self.t5.fight.contact_t -= dt;
         // Worms, flyers and the herald, one boss at a time.
         let boss = self.mobs.list.iter().position(|m| m.alive() && self.mobs.reg.defs[m.def].boss);
+        if self.hunted() {
+            self.t5.fight.calm_at = None;
+        } else if let Some(i) = boss {
+            let at = self.mobs.list[i].body.pos;
+            self.t5.fight.calm_at.get_or_insert(at);
+        }
         if let Some(i) = boss {
             let name = self.mobs.reg.defs[self.mobs.list[i].def].name.clone();
             match name.as_str() {
@@ -165,7 +174,7 @@ impl Game {
 
     /// Hurt the player when a flying or burrowing body touches them.
     fn contact(&mut self, pos: Vec3, radius: f32, damage: f32) {
-        if self.t5.fight.contact_t > 0.0 || !self.survival {
+        if self.t5.fight.contact_t > 0.0 || !self.hunted() {
             return;
         }
         let me = self.body.pos + Vec3::Y * 0.9;
@@ -180,7 +189,8 @@ impl Game {
             return;
         }
         let mech = name == "mech_worm";
-        let target = self.body.pos + Vec3::Y * 0.8;
+        let calm = self.t5.fight.calm_at;
+        let target = calm.unwrap_or(self.body.pos + Vec3::Y * 0.8);
         let (head_pos, angry) = {
             let m = &self.mobs.list[i];
             (m.body.pos, m.health < m.max_health * 0.5)
@@ -252,7 +262,7 @@ impl Game {
             prev = self.mobs.list[k].body.pos;
             self.contact(prev + Vec3::Y * 0.6, 0.9, seg_attack);
             // The steel serpent's links fire lasers now and then.
-            if mech && !tail && k % 3 == 0 && self.surv.rng.f32() < dt * if angry { 0.35 } else { 0.18 } {
+            if mech && !tail && calm.is_none() && k % 3 == 0 && self.surv.rng.f32() < dt * if angry { 0.35 } else { 0.18 } {
                 let from = prev + Vec3::Y * 0.7;
                 let dir = (self.body.eye() - from).normalize_or_zero();
                 self.enemy_bolt(from + dir, dir * 20.0, 3, 4.0);
@@ -290,7 +300,8 @@ impl Game {
         if dt == 0.0 {
             return;
         }
-        let me = self.body.eye();
+        let calm = self.t5.fight.calm_at;
+        let me = calm.unwrap_or(self.body.eye());
         let (pos, angry) = {
             let m = &self.mobs.list[i];
             (m.body.pos + Vec3::Y * 0.8, m.health < m.max_health * 0.5)
@@ -304,7 +315,7 @@ impl Game {
             let spot = me + Vec3::new(a.cos() * 7.0, 4.0, a.sin() * 7.0);
             let want = (spot - pos) * 2.0;
             f.vel += (want - f.vel) * (3.0 * dt).min(1.0);
-            if f.t > dash_every {
+            if f.t > dash_every && calm.is_none() {
                 f.t = 0.0;
                 f.mode = 1;
                 f.vel = (me - pos).normalize_or_zero() * if angry { 26.0 } else { 20.0 };
@@ -315,7 +326,7 @@ impl Game {
         }
         let vel = f.vel;
         f.shot_t -= dt;
-        let shoot = mech && angry && f.mode == 0 && f.shot_t <= 0.0;
+        let shoot = mech && angry && calm.is_none() && f.mode == 0 && f.shot_t <= 0.0;
         if shoot {
             f.shot_t = 0.9;
         }
@@ -342,7 +353,8 @@ impl Game {
             return;
         }
         let mech = name == "mech_skull";
-        let me = self.body.eye();
+        let calm = self.t5.fight.calm_at;
+        let me = calm.unwrap_or(self.body.eye());
         let (pos, angry) = {
             let m = &self.mobs.list[i];
             (m.body.pos + Vec3::Y * 1.0, m.health < m.max_health * 0.5)
@@ -355,7 +367,7 @@ impl Game {
             let spot = me + Vec3::Y * 6.0;
             let want = (spot - pos) * 1.6;
             f.vel += (want - f.vel) * (2.5 * dt).min(1.0);
-            if f.t > if angry { 5.0 } else { 7.0 } {
+            if f.t > if angry { 5.0 } else { 7.0 } && calm.is_none() {
                 f.t = 0.0;
                 f.mode = 1;
             }
@@ -368,7 +380,7 @@ impl Game {
             }
         }
         let vel = f.vel;
-        let shoot = !spinning && f.shot_t <= 0.0;
+        let shoot = !spinning && calm.is_none() && f.shot_t <= 0.0;
         if shoot {
             f.shot_t = if angry { 1.2 } else { 1.8 };
         }
@@ -401,7 +413,8 @@ impl Game {
         if dt == 0.0 {
             return;
         }
-        let me = self.body.eye();
+        let calm = self.t5.fight.calm_at;
+        let me = calm.unwrap_or(self.body.eye());
         let (pos, angry) = {
             let m = &self.mobs.list[i];
             (m.body.pos + Vec3::Y * 2.5, m.health < m.max_health * 0.5)
@@ -412,11 +425,11 @@ impl Game {
         let spot = me + Vec3::new((f.t * 0.6).sin() * 8.0, 7.0, (f.t * 0.6).cos() * 8.0);
         let want = (spot - pos) * 1.5;
         f.vel += (want - f.vel) * (2.0 * dt).min(1.0);
-        let blink = f.t > if angry { 4.0 } else { 6.0 };
+        let blink = f.t > if angry { 4.0 } else { 6.0 } && calm.is_none();
         if blink {
             f.t = 0.0;
         }
-        let stars = f.shot_t <= 0.0;
+        let stars = f.shot_t <= 0.0 && calm.is_none();
         if stars {
             f.shot_t = if angry { 1.4 } else { 2.2 };
         }
@@ -459,6 +472,7 @@ impl Game {
         }
         let Some(def) = self.mobs.reg.id("demon_eye") else { return };
         let me = self.body.eye() - Vec3::Y * 0.3;
+        let hunted = self.hunted();
         let mut eyes = std::mem::take(&mut self.t5.fight.eyes);
         eyes.retain(|&(k, _)| k < self.mobs.list.len() && self.mobs.list[k].def == def && self.mobs.list[k].alive());
         for k in 0..self.mobs.list.len() {
@@ -471,7 +485,9 @@ impl Game {
             let pos = self.mobs.list[*k].body.pos + Vec3::Y * 0.35;
             let to = me - pos;
             let wobble = Vec3::new(0.0, ((t * 0.05) + *k as f32).sin() * 2.0, 0.0);
-            let want = to.normalize_or_zero() * 6.0 + wobble;
+            // A player in creative is left alone: the eye drifts about on its own.
+            let drift = (t * 0.005 + *k as f32 * 1.7).sin_cos();
+            let want = if hunted { to.normalize_or_zero() * 6.0 } else { Vec3::new(drift.0, 0.0, drift.1) * 2.5 } + wobble;
             *vel += (want - *vel) * (1.5 * dt).min(1.0);
             let m = &mut self.mobs.list[*k];
             m.aggro = true;
@@ -483,9 +499,10 @@ impl Game {
             }
             m.body.vel = Vec3::ZERO;
             m.body.flying = true;
-            m.yaw = to.x.atan2(to.z);
-            m.head_pitch = (-to.y / to.length().max(0.1)).asin().clamp(-1.2, 1.2);
-            if to.length() < 1.0 && self.t5.fight.contact_t <= 0.0 && self.survival {
+            let look = if hunted { to } else { *vel };
+            m.yaw = look.x.atan2(look.z);
+            m.head_pitch = (-look.y / look.length().max(0.1)).asin().clamp(-1.2, 1.2);
+            if to.length() < 1.0 && self.t5.fight.contact_t <= 0.0 && hunted {
                 self.t5.fight.contact_t = 0.7;
                 *vel = -to.normalize_or_zero() * 8.0;
                 self.damage(3.0, Some(pos));

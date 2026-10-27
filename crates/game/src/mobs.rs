@@ -34,6 +34,8 @@ pub struct Mobs {
     /// Multiplayer: the other players in this dimension (where, creative), so monsters hunt
     /// them too and mobs spawn around them.
     pub others: Vec<(Vec3, bool)>,
+    /// It is raining in this dimension: mobs under open sky are wet and don't burn.
+    pub raining: bool,
     /// Smoothed animation for each mob (anim.rs).
     pub anim: crate::anim::Animator,
 }
@@ -103,7 +105,7 @@ impl Mobs {
     }
 
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, calm: false, hp_scale: 1.0, spawn_mult: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), anim: Default::default() }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, calm: false, hp_scale: 1.0, spawn_mult: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false, anim: Default::default() }
     }
 
     fn next_rand(&mut self) -> u64 {
@@ -334,7 +336,7 @@ impl Mobs {
                 .list
                 .iter()
                 .enumerate()
-                .filter(|(_, o)| o.alive() && def.prey.iter().any(|p| *p == self.reg.defs[o.def].name))
+                .filter(|(_, o)| o.alive() && !o.ghost && def.prey.iter().any(|p| *p == self.reg.defs[o.def].name))
                 .map(|(j, o)| (j, (o.body.pos - m.body.pos).length()))
                 .filter(|&(_, d)| d < 12.0)
                 .min_by(|a, b| a.1.total_cmp(&b.1))
@@ -365,6 +367,7 @@ impl Mobs {
                     (tp, tc, who) = (p, c, Some(k));
                 }
             }
+            m.rained_on = self.raining && sky >= 14;
             m.tick(def, world, tp, tc, sky, day, dt, &mut events);
             for e in &events {
                 match *e {
@@ -444,7 +447,7 @@ impl Mobs {
     pub fn pick(&self, origin: Vec3, dir: Vec3, max: f32) -> Option<(usize, f32)> {
         let mut best: Option<(usize, f32)> = None;
         for (i, m) in self.list.iter().enumerate() {
-            if !m.alive() {
+            if !m.alive() || m.ghost {
                 continue;
             }
             let (lo, hi) = m.body.aabb();
@@ -505,4 +508,12 @@ pub fn caster_school(name: &str) -> Option<u8> {
         "necromancer" => Some(3),
         _ => None,
     }
+}
+
+/// Every creature of the game, as the game loads them (for tests elsewhere).
+#[cfg(test)]
+pub fn registry_for_tests() -> voxel::mob::MobRegistry {
+    use crate::embedded;
+    let text = crate::terraria::with_extra(&crate::merge_list(embedded::MOBS_RON, embedded::FASE6_MOBS_RON), embedded::T5_MOBS_RON);
+    voxel::mob::MobRegistry::from_ron_many(&[&text, embedded::MODS_MOBS_RON, embedded::MODS_DIMS_MOBS_RON]).unwrap()
 }

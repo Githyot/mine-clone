@@ -396,7 +396,7 @@ impl Game {
         for (id, at) in calls {
             self.vm.cd.insert(id, 20.0);
             let vexes = self.mobs.list.iter().filter(|m| m.alive() && self.mobs.reg.defs[m.def].name == "vex").count();
-            if vexes >= 6 || !self.survival {
+            if vexes >= 6 || !self.hunted() {
                 continue;
             }
             for k in 0..3 {

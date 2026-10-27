@@ -35,6 +35,9 @@ pub struct Bones {
     pub m: [[[f32; 4]; 4]; MAX_PARTS],
     /// sky light, block light, hurt flash, swell
     pub light: [f32; 4],
+    /// A dye over the model (Lote 11): colour, and the mode in w (0 none, 1 dyed, 2 dyed and
+    /// glowing, 3 glowing only).
+    pub tint: [f32; 4],
     /// Knees and elbows, per part: (joint height, joint depth, bend angle, unused) in model
     /// pixels. Limb meshes are split at the joint (see `joint`), and the shader turns
     /// everything below it about the joint's X axis, blending over a pixel either side.
@@ -46,7 +49,9 @@ impl Default for Bones {
         let mut m = [Mat4::IDENTITY.to_cols_array_2d(); MAX_PARTS];
         // The last slot carries the eyelids (see `add_eyelids`): folded to a point = eyes open.
         m[EYELID_PART] = [[0.0; 4]; 4];
-        Bones { m, light: [1.0, 0.0, 0.0, 0.0], bend: [[0.0; 4]; MAX_PARTS] }
+        // And the one before it the player's mouth (see `add_mouth`): folded = closed.
+        m[MOUTH_PART] = [[0.0; 4]; 4];
+        Bones { m, light: [1.0, 0.0, 0.0, 0.0], tint: [1.0, 1.0, 1.0, 0.0], bend: [[0.0; 4]; MAX_PARTS] }
     }
 }
 
@@ -88,6 +93,8 @@ pub(crate) fn eyes_shut_test() -> bool {
 
 /// Part slot of the eyelid quads, for models with fewer parts than that.
 pub(crate) const EYELID_PART: usize = MAX_PARTS - 1;
+/// Part slot of the player's mouth (players have six parts; mobs never get a mouth here).
+pub(crate) const MOUTH_PART: usize = MAX_PARTS - 2;
 
 struct MobMesh {
     vbuf: wgpu::Buffer,
@@ -112,6 +119,10 @@ pub struct EntityRenderer {
     armor_meshes: Option<usize>,
     /// First armour trim mesh (trim material * 4 + piece), drawn just over the armour.
     trim_meshes: Option<usize>,
+    /// One mesh per pair of wings (wings.rs), both wings in it.
+    wing_meshes: usize,
+    /// First musical instrument mesh (instruments.rs order).
+    instrument_meshes: usize,
     /// (mesh, first instance, count) for this frame.
     draws: Vec<(usize, u32, u32)>,
     pub instance_count: usize,
@@ -344,23 +355,31 @@ impl MeshBuilder {
 
 fn build_mesh(def: &MobDef, skin: &Skin, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
     let mut mb = MeshBuilder::new(layer, Some(def));
+    // Boxes that share a face plane (a board flush with the side it meets, the floor and the
+    // walls of a cart) would flicker where both draw the same spot. Each part stands a hair
+    // further out than the one before, so one of them always wins. The head stays exact: its
+    // eyelids and mouth sit just in front of its face.
+    let head = def.parts.iter().position(|p| p.anim == Anim::Head);
+    let nudge = |pi: usize| if Some(pi) == head { 0.0 } else { pi as f32 * 0.012 };
     for (pi, p) in def.parts.iter().enumerate() {
-        let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32);
-        let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32);
+        let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32) - Vec3::splat(nudge(pi));
+        let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32) + Vec3::splat(2.0 * nudge(pi));
         let tex = (p.size.0 as i32, p.size.1 as i32, p.size.2 as i32);
         for f in faces(origin, size, p.uv, tex).iter() {
             mb.face(f, pi as u32);
         }
     }
     add_eyelids(&mut mb, def, skin);
+    add_mouth(&mut mb, def);
     for l in &def.layers {
         let p = &def.parts[l.part];
         let inflate = l.inflate.max(0.1);
-        let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32) - Vec3::splat(inflate);
-        let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32) + Vec3::splat(2.0 * inflate);
+        let out = inflate + nudge(l.part);
+        let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32) - Vec3::splat(out);
+        let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32) + Vec3::splat(2.0 * out);
         let tex = (p.size.0 as i32, p.size.1 as i32, p.size.2 as i32);
         for f in faces(origin, size, p.uv, tex).iter() {
-            mb.relief(f, skin, inflate, l.part as u32);
+            mb.relief(f, skin, out, l.part as u32);
         }
     }
     (mb.verts, mb.indices)
@@ -471,6 +490,30 @@ fn add_eyelids(mb: &mut MeshBuilder, def: &MobDef, skin: &Skin) {
     }
 }
 
+/// The player's mouth, for voice chat: a dark slit on the face (rows 6..7, columns 2..6 of
+/// the head's front), coloured with the skin's own lip pixel in deep shadow. It rides on its
+/// own part slot; `player_model` opens it by stretching that slot downward from its top edge
+/// with the voice, and folds it away while silent.
+fn add_mouth(mb: &mut MeshBuilder, def: &MobDef) {
+    if def.name != "player" || def.parts.len() > MOUTH_PART || def.parts.is_empty() {
+        return;
+    }
+    let p = &def.parts[0];
+    let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32);
+    let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32);
+    let tex = (p.size.0 as i32, p.size.1 as i32, p.size.2 as i32);
+    let f = &faces(origin, size, p.uv, tex)[0];
+    let (rx, ry, rw, rh) = f.rect;
+    if rw < 6 || rh < 8 {
+        return;
+    }
+    let (su, sv) = (f.u / rw as f32, f.v / rh as f32);
+    let uv = [(rx + rw / 2) as f32 + 0.5, (ry + rh - 2) as f32 + 0.5];
+    let uv = [uv[0] / SKIN_W as f32, uv[1] / SKIN_H as f32];
+    let c = f.corner + su * (rw as f32 / 2.0 - 2.0) + sv * (rh as f32 - 2.0) + f.n * 0.06;
+    mb.quad([c, c + su * 4.0, c + su * 4.0 + sv, c + sv], [uv; 4], f.n, 0.26, MOUTH_PART as u32);
+}
+
 /// A painting: a canvas one pixel thick, picture on the front, wood everywhere else.
 fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
     let mut mb = MeshBuilder::new(layer, None);
@@ -490,7 +533,7 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
 }
 
 /// Armour materials, by the item-name prefix, with their colour.
-pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 75] = [
+pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 79] = [
     ("leather", [134, 82, 46]),
     ("chainmail", [150, 150, 156]),
     ("iron", [206, 206, 206]),
@@ -549,6 +592,11 @@ pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 75] = [
     ("archevoker", [140, 120, 72]),
     // The gladiator set of the marble caves (tr_minis.rs).
     ("gladiator", [196, 154, 58]),
+    // Vanity outfits (Lote 11, vanity.rs): cloth, no armour points.
+    ("tuxedo", [44, 44, 54]),
+    ("pirate", [150, 40, 34]),
+    ("explorer", [168, 132, 84]),
+    ("royal", [112, 60, 168]),
     // Vanity clothes, worn over the armour (tr_style.rs).
     ("vanity_pirate", [154, 42, 34]),
     ("vanity_wizard", [74, 42, 138]),
@@ -829,6 +877,55 @@ fn armor_mesh_over(def: &MobDef, piece: usize, layer: u32, over: f32) -> (Vec<En
     (mb.verts, mb.indices)
 }
 
+/// Both wings of a pair: the same thin box on the two wing bones, hanging from the shoulder
+/// blade and reaching out along +X (the left bone mirrors it).
+fn wing_mesh(layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
+    let mut mb = MeshBuilder::new(layer, None);
+    let (w, h) = crate::wings::WING_SIZE;
+    for part in [crate::wings::WING_R, crate::wings::WING_L] {
+        for f in faces(Vec3::new(0.0, -h + 6.0, -0.5), Vec3::new(w, h, 1.0), (0, 0), (w as i32, h as i32, 1)).iter() {
+            mb.face(f, part as u32);
+        }
+    }
+    (mb.verts, mb.indices)
+}
+
+/// A model built from painted boxes (instruments.rs, torch.rs): each face painted with its
+/// material's swatch, the grain running along the longer side.
+fn instrument_mesh(model: Vec<crate::instruments::Piece>, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
+    let mut mb = MeshBuilder::new(layer, None);
+    let light = Vec3::new(0.2, 0.6, 0.8).normalize();
+    for p in model {
+        for b in &p.boxes {
+            for axis in 0..3 {
+                for s in [-1.0f32, 1.0] {
+                    let (t1, t2) = ((axis + 1) % 3, (axis + 2) % 3);
+                    let plane = if s > 0.0 { b.hi[axis] } else { b.lo[axis] };
+                    let corner = |a: f32, c: f32| {
+                        let mut v = Vec3::ZERO;
+                        v[axis] = plane;
+                        v[t1] = a;
+                        v[t2] = c;
+                        p.place.transform_point3(v)
+                    };
+                    let pts = [corner(b.lo[t1], b.lo[t2]), corner(b.hi[t1], b.lo[t2]), corner(b.hi[t1], b.hi[t2]), corner(b.lo[t1], b.hi[t2])];
+                    let (l1, l2) = (b.hi[t1] - b.lo[t1], b.hi[t2] - b.lo[t2]);
+                    let along = l1 >= l2;
+                    let (x, y, w, h) = if along { crate::instruments::swatch(b.mat, l1, l2) } else { crate::instruments::swatch(b.mat, l2, l1) };
+                    let uv = |u: f32, v: f32| [(x + u * w) / SKIN_W as f32, (y + v * h) / SKIN_H as f32];
+                    let uvs = if along { [uv(0.0, 0.0), uv(1.0, 0.0), uv(1.0, 1.0), uv(0.0, 1.0)] } else { [uv(0.0, 0.0), uv(0.0, 1.0), uv(1.0, 1.0), uv(1.0, 0.0)] };
+                    let mut n = Vec3::ZERO;
+                    n[axis] = s;
+                    let n = p.place.transform_vector3(n).normalize_or_zero();
+                    let shade = 0.6 + 0.4 * n.dot(light).max(0.0);
+                    mb.quad(pts, uvs, n, shade, p.part);
+                }
+            }
+        }
+    }
+    (mb.verts, mb.indices)
+}
+
 impl EntityRenderer {
     /// `texture_res` is the texture resolution setting (pixels per block face): skins get one
     /// texel per model pixel at 16, up to SKIN_DETAIL at 64 and above.
@@ -841,12 +938,20 @@ impl EntityRenderer {
         let player = reg.id("player").map(|i| &reg.defs[i]);
         let armor_layer0 = skins.len();
         if let Some(pd) = player {
-            skins.extend(ARMOR_MATERIALS.iter().map(|(n, c)| armor_skin(pd, *c, *n == "chainmail", *n == "leather", scale)));
+            skins.extend(ARMOR_MATERIALS.iter().map(|(n, c)| armor_skin(pd, *c, *n == "chainmail", *n == "leather" || crate::vanity::OUTFITS.contains(n), scale)));
         }
         let trim_layer0 = skins.len();
         if let Some(pd) = player {
             skins.extend(crate::smithing::MATERIALS.iter().map(|m| trim_skin(pd, m.2).rescaled(scale)));
         }
+        let wing_layer0 = skins.len();
+        for w in crate::wings::WINGS {
+            skins.push(Skin { pixels: crate::wings::paint(w, SKIN_DETAIL), scale: SKIN_DETAIL }.rescaled(scale));
+        }
+        let instrument_layer = skins.len();
+        let mut kit = crate::instruments::paint_skin(SKIN_DETAIL);
+        crate::torch::paint(&mut kit, SKIN_DETAIL);
+        skins.push(Skin { pixels: kit, scale: SKIN_DETAIL }.rescaled(scale));
         let layers = skins.len().max(1) as u32;
         let (tw, th) = (SKIN_W * scale, SKIN_H * scale);
         let levels = scale.trailing_zeros() + 1;
@@ -982,9 +1087,29 @@ impl EntityRenderer {
             }
             first
         });
+        let instrument_meshes = meshes.len();
+        // The held torches right after the instruments, in the same skin.
+        let models = (0..crate::instruments::COUNT).map(crate::instruments::model).chain((0..crate::torch::COUNT).map(crate::torch::model));
+        for model in models {
+            let (v, idx) = instrument_mesh(model, instrument_layer as u32);
+            meshes.push(MobMesh {
+                vbuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("instrument verts"), contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX }),
+                ibuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("instrument idx"), contents: bytemuck::cast_slice(&idx), usage: wgpu::BufferUsages::INDEX }),
+                indices: idx.len() as u32,
+            });
+        }
+        let wing_meshes = meshes.len();
+        for k in 0..crate::wings::WINGS.len() {
+            let (v, idx) = wing_mesh((wing_layer0 + k) as u32);
+            meshes.push(MobMesh {
+                vbuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("wing verts"), contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX }),
+                ibuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("wing idx"), contents: bytemuck::cast_slice(&idx), usage: wgpu::BufferUsages::INDEX }),
+                indices: idx.len() as u32,
+            });
+        }
         let particles = crate::particles::ParticleGpu::new(r);
         let items = crate::item_render::ItemGpu::new(r);
-        EntityRenderer { particles, items, pipelines, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, armor_meshes, trim_meshes, draws: Vec::new(), instance_count: 0 }
+        EntityRenderer { particles, items, pipelines, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, armor_meshes, trim_meshes, wing_meshes, instrument_meshes, draws: Vec::new(), instance_count: 0 }
     }
 
     /// Mesh index of an armour piece (0 helmet .. 3 boots) for the item named `item`.
@@ -997,6 +1122,21 @@ impl EntityRenderer {
     /// Mesh index of the trim over an armour piece, by trim material.
     pub fn trim_mesh(&self, material: usize, piece: usize) -> Option<usize> {
         Some(self.trim_meshes? + material * 4 + piece.min(3))
+    }
+
+    /// Mesh index of wings `k` (wings.rs).
+    pub fn wing_mesh(&self, k: usize) -> Option<usize> {
+        (k < crate::wings::WINGS.len()).then_some(self.wing_meshes + k)
+    }
+
+    /// Mesh index of musical instrument `i`.
+    pub fn instrument_mesh(&self, i: usize) -> Option<usize> {
+        (i < crate::instruments::COUNT).then_some(self.instrument_meshes + i)
+    }
+
+    /// Mesh index of held torch model `i` (torch.rs).
+    pub fn torch_mesh(&self, i: usize) -> Option<usize> {
+        (i < crate::torch::COUNT).then_some(self.instrument_meshes + crate::instruments::COUNT + i)
     }
 
     /// Mesh index of a painting, for `prepare`.

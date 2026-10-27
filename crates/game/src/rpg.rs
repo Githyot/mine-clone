@@ -146,15 +146,23 @@ pub const ACCESSORIES: &[AccDef] = &[
     acc("shiny_balloon", "", &[M::Jump(0.3)]),
     acc("feather_wings", "Segure Espaço no ar para voar um pouco e planar", &[]),
     acc("angel_wings", "Voa mais tempo e plana", &[M::NoFall]),
+    // Lote 11: more wings (wings.rs has their flight).
+    acc("harpy_wings", "Asas leves: voam 2,2 s e planam", &[]),
+    acc("demon_wings", "Voam 2,6 s e planam", &[M::Dmg(ALL_CLASSES, 0.03)]),
+    acc("bee_wings", "Voam 2,4 s e planam", &[]),
+    acc("fairy_wings", "Voam 2,8 s e brilham no escuro", &[]),
+    acc("butterfly_wings", "Voam 3 s e planam", &[M::Move(0.05)]),
+    acc("bone_wings", "Voam 3 s e planam", &[M::Def(1.0)]),
+    acc("leaf_wings", "Voam 3 s e planam", &[M::Regen(0.25)]),
+    acc("frozen_wings", "Voam 3,4 s e brilham no escuro", &[M::Immune(&[CHILLED, FROZEN])]),
+    acc("flame_wings", "Voam 3,4 s e brilham no escuro", &[M::Fire]),
+    acc("breaker_wings", "Voam 4 s, rápidas", &[M::NoFall]),
+    acc("celestial_wings", "Voam 4,8 s, as mais rápidas, e brilham", &[M::NoFall, M::Move(0.1)]),
+    // The Terraria side's own pairs (tr_pets.rs flies them).
     acc("crystal_wings", "Asas: voam 3 s e planam", &[M::NoFall, M::Move(0.1)]),
     acc("tide_wings", "Asas: voam 3,2 s e planam", &[M::NoFall, M::Move(0.1), M::Dmg(MELEE, 0.05)]),
     acc("empress_wings", "Asas: voam 3,6 s e planam", &[M::NoFall, M::Move(0.12), M::Dmg(ALL_CLASSES, 0.05)]),
-    acc("fairy_wings", "Asas: voam 2,4 s e planam", &[M::NoFall, M::Move(0.05)]),
-    acc("demon_wings", "Asas: voam 2,4 s e planam", &[M::NoFall, M::Dmg(ALL_CLASSES, 0.03)]),
-    acc("leaf_wings", "Asas: voam 2,6 s e planam", &[M::NoFall, M::Move(0.05)]),
     acc("frost_wings", "Asas: voam 2,6 s e planam", &[M::NoFall, M::Move(0.05)]),
-    acc("flame_wings", "Asas: voam 2,8 s e planam", &[M::NoFall, M::Move(0.08)]),
-    acc("bee_wings", "Asas: voam 2,2 s e planam", &[M::NoFall, M::Move(0.05)]),
     acc("mana_ring", "", &[M::ManaRegen(2.0)]),
     acc("star_amulet", "", &[M::Mana(10.0)]),
     acc("warrior_emblem", "", &[M::Dmg(MELEE, 0.15)]),
@@ -235,7 +243,7 @@ pub const ACCESSORIES: &[AccDef] = &[
     acc("climbing_gear", "Escala paredes, desliza com Shift e salta da parede com Espaço", &[M::NoFall]),
     // Handy.
     acc("magnet_ring", "", &[M::Pickup(3.0)]),
-    acc("lucky_coin", "Monstros às vezes deixam uma esmeralda", &[M::Luck(1.0)]),
+    acc("lucky_coin", "Monstros deixam 25% mais moedas", &[M::Luck(1.0)]),
     acc("sky_stone", "", &[M::Dmg(ALL_CLASSES, 0.08), M::Crit(ALL_CLASSES, 0.04), M::MeleeSpeed(0.08), M::Def(2.0), M::Regen(0.25), M::Move(0.05)]),
     // Info.
     acc("pocket_watch", "", &[M::Info(INFO_TIME)]),
@@ -384,6 +392,20 @@ const MOB_DEBUFFS: &[(&str, u8, f32, f32)] = &[
 
 /// Rare drops (Terraria's idea of accessories from monsters): (mob, item, chance).
 const DROPS: &[(&str, &str, f32)] = &[
+    // Lote 11: souls of flight from fliers, wings, mounts and pets from the right monsters.
+    ("nightwing", "soul_of_flight", 0.35),
+    ("soul_vulture", "soul_of_flight", 0.4),
+    ("vex", "soul_of_flight", 0.3),
+    ("ghast", "soul_of_flight", 0.25),
+    ("bee", "bee_wings", 0.01),
+    ("world_breaker", "breaker_wings", 0.34),
+    ("celestial_herald", "celestial_wings", 0.2),
+    ("ooze", "slime_saddle", 0.006),
+    ("vine_queen", "honeyed_goggles", 0.3),
+    ("fox", "fox_bell", 0.01),
+    ("penguin", "frozen_fish", 0.02),
+    ("allay", "allay_bell", 0.05),
+    ("mech_eye", "wisp_lantern", 0.1),
     ("zombie", "bandage_wrap", 0.015),
     ("zombie", "lesser_healing_potion", 0.04),
     ("skeleton", "steel_polish", 0.015),
@@ -1072,18 +1094,14 @@ impl Game {
         self.mobs.list[i].hurt((dmg * 0.3).max(2.0), c + Vec3::Y * 2.0);
     }
 
-    /// A monster died: the rare drops above (luck helps), and an emerald from the lucky coin.
+    /// A monster died: the rare drops above (luck helps). The lucky coin adds to its coins (money.rs).
     pub(crate) fn rpg_drops(&mut self, def: usize, at: Vec3) {
         if !self.survival {
             return;
         }
         let name = self.mobs.reg.defs[def].name.clone();
-        let hostile = self.mobs.reg.defs[def].kind == voxel::mob::Kind::Hostile;
         let luck = 1.0 + 0.5 * self.t5.rpg.stats.luck + 0.25 * self.effect_level(LUCK) as f32;
-        let mut out: Vec<&str> = DROPS.iter().filter(|d| d.0 == name && self.surv.rng.f32() < d.2 * luck).map(|d| d.1).collect();
-        if hostile && self.wears("lucky_coin") && self.surv.rng.f32() < 0.05 {
-            out.push("emerald");
-        }
+        let out: Vec<&str> = DROPS.iter().filter(|d| d.0 == name && self.surv.rng.f32() < d.2 * luck).map(|d| d.1).collect();
         for item in out {
             if let Some(id) = self.items.id(item) {
                 let v = Vec3::new(self.surv.rng.f32() - 0.5, 3.0, self.surv.rng.f32() - 0.5);

@@ -55,19 +55,75 @@ pub struct NetConfig {
     pub last_addr: String,
     pub recent: Vec<String>,
     pub port: u16,
-    /// Ask the router to open the port (UPnP) when hosting.
-    pub upnp: bool,
-    /// Empty = anyone with the code may come in.
+    /// Who can reach a world we open: only the same network, the internet (the router opens
+    /// the port by UPnP) or the internet through a relay.
+    pub reach: Reach,
+    /// The password typed to join someone's world.
     pub password: String,
+    /// The password our own open world asks for. Empty = anyone with the code may come in.
+    pub host_password: String,
     /// A relay (`mine-clone --relay`) to also take guests through, when the router won't open
     /// the port. Empty = none.
     pub relay: String,
+    /// Players at once in a world we open, ourselves included.
+    pub max_players: u8,
+    /// Guests play in: 0 = the same mode as the host, 1 = survival, 2 = creative.
+    pub guest_mode: u8,
+    /// Every guest may use the commands that change things (not only those in ops.txt).
+    pub guest_cheats: bool,
 }
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Reach {
+    /// Same network only (the LAN list and the LAN code).
+    Lan,
+    /// Also the internet: ask the router to open the port (UPnP).
+    #[default]
+    Internet,
+    /// Also the internet, through a relay (no port to open).
+    Relay,
+}
+
+impl Reach {
+    fn label(self) -> &'static str {
+        match self {
+            Reach::Lan => "Só a mesma rede",
+            Reach::Internet => "Internet (roteador)",
+            Reach::Relay => "Internet pela ponte",
+        }
+    }
+
+    fn next(self) -> Reach {
+        match self {
+            Reach::Lan => Reach::Internet,
+            Reach::Internet => Reach::Relay,
+            Reach::Relay => Reach::Lan,
+        }
+    }
+}
+
+/// Choices for the most players at once.
+const MAX_PLAYERS: [u8; 11] = [2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 32];
+const GUEST_MODES: [&str; 3] = ["Igual ao meu", "Sobrevivência", "Criativo"];
+const GREEN: [u8; 4] = [85, 255, 85, 255];
+const RED: [u8; 4] = [255, 110, 110, 255];
 
 impl Default for NetConfig {
     fn default() -> Self {
         let name = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).unwrap_or_else(|_| "Jogador".into());
-        NetConfig { name: clean_name(&name), last_addr: String::new(), recent: Vec::new(), port: net::DEFAULT_PORT, upnp: true, password: String::new(), relay: String::new() }
+        NetConfig {
+            name: clean_name(&name),
+            last_addr: String::new(),
+            recent: Vec::new(),
+            port: net::DEFAULT_PORT,
+            reach: Reach::Internet,
+            password: String::new(),
+            host_password: String::new(),
+            relay: String::new(),
+            max_players: 8,
+            guest_mode: 0,
+            guest_cheats: false,
+        }
     }
 }
 
@@ -94,6 +150,11 @@ impl Remote {
         let p = Vec3::from(state.pos);
         Remote { name, shown: p, shown_yaw: state.yaw, state, anim: player_model::Animator::default() }
     }
+
+    /// How open their mouth is while they talk (voice.rs).
+    pub(crate) fn set_talk(&mut self, open: f32) {
+        self.anim.talk = open;
+    }
 }
 
 struct ChatLine {
@@ -109,6 +170,10 @@ enum Field {
     Name,
     Addr,
     Password,
+    /// "Abrir para amigos" screen.
+    HostPassword,
+    Port,
+    Relay,
 }
 
 /// Everything multiplayer, kept in one field of `Game`.
@@ -155,6 +220,12 @@ pub struct Net {
     /// Dedicated server (`--server`): no player of our own, commands from the console.
     pub(crate) server: bool,
     pub(crate) console: Option<std::sync::mpsc::Receiver<String>>,
+    /// The system clipboard (kept open: on Linux what we copy lives as long as it does).
+    clip: Option<arboard::Clipboard>,
+    /// The port typed on the "Abrir para amigos" screen.
+    port_text: String,
+    /// "Abrir para amigos" screen: a line saying what just happened ("Copiado!"), and when.
+    friends_note: (String, f32),
 }
 
 #[derive(Default)]
@@ -174,6 +245,8 @@ struct GuestInfo {
     view: i32,
     /// Containers as last sent to (or heard from) this guest.
     containers: HashMap<IVec3, u64>,
+    /// Voice chat: the group it listens to (0 = none) and whether its voice is on.
+    voice: (u8, bool),
 }
 
 /// A dimension the host is not in, kept on disk for guests who are.
@@ -189,7 +262,10 @@ struct HostState {
     _beacon: Beacon,
     upnp: Option<crossbeam_channel::Receiver<Result<net::upnp::Mapping, String>>>,
     external: Option<SocketAddrV4>,
-    upnp_note: String,
+    /// What the router said, for people: (sentence, worked).
+    upnp_note: (String, Option<bool>),
+    /// What the relay said, for people (empty = no relay).
+    relay_note: String,
     /// The code through the relay, once it gave us a room.
     relay_code: Option<String>,
     relay_waiting: bool,
@@ -367,6 +443,10 @@ impl Game {
             swing: self.anim.swing,
             held: name(&self.held_stack()),
             armor: std::array::from_fn(|i| name(&self.surv.armor[i])),
+            chest: match self.surv.open {
+                Open::Chest(p) if self.screen == Screen::Inventory => Some(p.to_array()),
+                _ => None,
+            },
         }
     }
 
@@ -516,6 +596,17 @@ impl Game {
             self.net.host_when_ready = false;
             self.start_hosting();
         }
+        // Test hook MC_FRIENDS=1: open the "Abrir para amigos" screen once playing (and hosting,
+        // when MC_HOST is set too).
+        static FRIENDS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if self.world_open
+            && self.screen == Screen::Playing
+            && !self.net.host_when_ready
+            && std::env::var("MC_FRIENDS").is_ok()
+            && !FRIENDS.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            self.net_pause_button();
+        }
         if self.screen == Screen::Multiplayer {
             if self.net.lan.is_none() {
                 self.net.lan = Some(Listener::start());
@@ -617,6 +708,45 @@ impl Game {
         self.send_chat(line);
     }
 
+    /// Voice chat: tell the network who hears whom. The host keeps the table (its own place
+    /// and each guest's, from where they stand and what they chose); a guest tells the host
+    /// what it chose whenever that changes.
+    pub(crate) fn voice_routes(&mut self) {
+        let vs = &self.settings.voice;
+        let on = vs.mode != crate::voice::VoiceMode::Off && self.world_open && !self.net.server;
+        let group = if vs.mode == crate::voice::VoiceMode::Group { vs.group } else { 0 };
+        match &self.net.mode {
+            Mode::Host(h) => {
+                let me = net::Listener { dim: self.dim.as_u8(), pos: self.body.eye().to_array(), group, on };
+                h.host.set_voice_listener(net::HOST_CONN, (on && self.audio.is_some()).then_some(me));
+                for (id, g) in &h.guests {
+                    let l = g.state.as_ref().filter(|_| g.welcomed && g.voice.1).map(|s| net::Listener { dim: s.dim, pos: [s.pos[0], s.pos[1] + 1.6, s.pos[2]], group: g.voice.0, on: true });
+                    h.host.set_voice_listener(*id, l);
+                }
+            }
+            Mode::Guest(g) if g.joined => {
+                if self.voice.told != Some((group, on)) {
+                    g.guest.send(&ToHost::VoiceSet { group, on });
+                    self.voice.told = Some((group, on));
+                }
+            }
+            _ => self.voice.told = None,
+        }
+    }
+
+    pub(crate) fn net_guest_joined(&self) -> bool {
+        matches!(&self.net.mode, Mode::Guest(g) if g.joined)
+    }
+
+    /// Where our voice goes and others' comes from, in the game we are in.
+    pub(crate) fn net_voice_link(&self) -> Option<(net::VoiceOut, crossbeam_channel::Receiver<Vec<u8>>)> {
+        match &self.net.mode {
+            Mode::Host(h) => Some((h.host.voice_out(), h.host.voice_in())),
+            Mode::Guest(g) if g.joined => Some((g.guest.voice_out(), g.guest.voice_in())),
+            _ => None,
+        }
+    }
+
     /// Our own player id in the game we are in.
     pub(crate) fn net_my_id(&self) -> u32 {
         match &self.net.mode {
@@ -669,14 +799,17 @@ impl Game {
         }) {
             Ok(h) => h,
             Err(e) => {
-                self.toast(format!("Não deu para hospedar: {e}"), 6.0);
+                log::error!("could not host: {e}");
+                self.toast("Não deu para abrir o mundo: a rede do computador recusou", 6.0);
                 return;
             }
         };
         let port = host.port;
         let beacon = Beacon::start(&self.world_name, &self.net.cfg.name, port);
-        let upnp = self.net.cfg.upnp.then(|| net::upnp::open(port));
-        let relay = std::env::var("MC_RELAY").unwrap_or_else(|_| self.net.cfg.relay.clone());
+        let reach = self.net.cfg.reach;
+        let upnp = (reach == Reach::Internet).then(|| net::upnp::open(port));
+        // The relay: when chosen, or as a second way in when the router may refuse.
+        let relay = std::env::var("MC_RELAY").unwrap_or_else(|_| if reach == Reach::Lan { String::new() } else { self.net.cfg.relay.clone() });
         if !relay.trim().is_empty() {
             host.use_relay(&relay);
         }
@@ -692,7 +825,15 @@ impl Game {
             _beacon: beacon,
             upnp,
             external: None,
-            upnp_note: if self.net.cfg.upnp { "abrindo a porta no roteador...".into() } else { "UPnP desligado".into() },
+            upnp_note: match reach {
+                Reach::Internet => ("pedindo ao roteador para abrir a porta...".into(), None),
+                _ => ("não pedida (só a mesma rede ou a ponte)".into(), None),
+            },
+            relay_note: if relay.trim().is_empty() {
+                if reach == Reach::Relay { "escreva o endereço da ponte".into() } else { String::new() }
+            } else {
+                "conectando...".into()
+            },
             relay_code: None,
             relay_waiting: !relay.trim().is_empty(),
             lan_ip: net::upnp::lan_ip(),
@@ -707,17 +848,8 @@ impl Game {
             bans,
             ops,
         }));
-        let lan = self.net_lan_line();
-        self.net_say(format!("Mundo aberto para amigos. Na mesma rede: {lan}"), YELLOW);
-        self.toast("Mundo aberto para amigos (Esc mostra o convite)", 5.0);
-    }
-
-    fn net_lan_line(&self) -> String {
-        let Mode::Host(h) = &self.net.mode else { return String::new() };
-        match h.lan_ip {
-            Some(ip) => format!("{ip}:{}", h.host.port),
-            None => format!("porta {}", h.host.port),
-        }
+        self.net_say("Mundo aberto para amigos", YELLOW);
+        self.toast("Mundo aberto para amigos (Esc > Amigos mostra o convite)", 5.0);
     }
 
     /// The code friends type to join: the router's address when UPnP worked, else the relay's,
@@ -767,15 +899,21 @@ impl Game {
             let h = self.host();
             h.upnp = None;
             match r {
+                Ok(m) if m.shared_address() => {
+                    // Opened, but on a router that is itself behind another (CGNAT).
+                    log::warn!("upnp: router's outside address {} is not public", m.external);
+                    net::upnp::close(h.host.port);
+                    h.upnp_note = ("sua internet não aceita conexões de fora (CGNAT): use a ponte".into(), Some(false));
+                }
                 Ok(m) => {
                     h.external = Some(m.external);
-                    h.upnp_note = format!("pela internet: {}", m.external);
+                    h.upnp_note = (format!("porta aberta no roteador ({})", m.external), Some(true));
                 }
-                Err(e) => h.upnp_note = format!("{e}; abra a porta UDP {} no roteador para jogar pela internet", h.host.port),
+                Err(e) => h.upnp_note = (format!("{e}. Para amigos de fora: abra a porta UDP {} no roteador ou use a ponte", h.host.port), Some(false)),
             }
-            let h = self.host_ref();
-            let line = if h.external.is_none() && h.relay_code.is_some() { "pela ponte".to_string() } else { h.upnp_note.clone() };
-            self.net_say(format!("Convite: {} ({line})", self.net_invite_code().unwrap_or_default()), YELLOW);
+            let worked = self.host_ref().external.is_some();
+            let code = self.net_invite_code().unwrap_or_default();
+            self.net_say(if worked { format!("Convite pela internet: {code}") } else { format!("Convite (mesma rede): {code}") }, YELLOW);
         }
 
         // Relay answer.
@@ -790,9 +928,14 @@ impl Game {
                             a => format!("{a}#{room}"),
                         };
                         h.relay_code = Some(code.clone());
+                        h.relay_note = "conectada".into();
                         self.net_say(format!("Convite pela ponte: {code}"), YELLOW);
                     }
-                    Err(e) => self.net_say(format!("A ponte não respondeu: {e}"), YELLOW),
+                    Err(e) => {
+                        log::warn!("relay: {e}");
+                        h.relay_note = "não respondeu (o endereço está certo? ela está ligada?)".into();
+                        self.net_say("A ponte não respondeu", YELLOW);
+                    }
                 }
             }
         }
@@ -804,7 +947,7 @@ impl Game {
                     log::info!("guest {id} connected from {addr}");
                     self.host()
                         .guests
-                        .insert(id, GuestInfo { name: String::new(), welcomed: false, state: None, sent: HashSet::new(), view: 8, containers: HashMap::new() });
+                        .insert(id, GuestInfo { name: String::new(), welcomed: false, state: None, sent: HashSet::new(), view: 8, containers: HashMap::new(), voice: (0, false) });
                 }
                 HostEvent::Left(id, why) => {
                     if let Some(g) = self.host().guests.remove(&id) {
@@ -888,10 +1031,14 @@ impl Game {
                     Some("versão diferente do jogo".to_string())
                 } else if content != self.content_hash() {
                     Some("conteúdo diferente (blocos, itens ou mobs): use a mesma versão do jogo".to_string())
-                } else if !self.net.cfg.password.is_empty() && password != self.net.cfg.password {
+                } else if !self.net.cfg.host_password.is_empty() && password.is_empty() {
+                    Some("este mundo pede senha: escreva no campo Senha".to_string())
+                } else if !self.net.cfg.host_password.is_empty() && password != self.net.cfg.host_password {
                     Some("senha errada".to_string())
                 } else if self.host_ref().bans.contains(&clean_name(&name).to_lowercase()) {
                     Some("banido deste mundo".to_string())
+                } else if self.net_player_count() >= self.net.cfg.max_players.max(2) as usize {
+                    Some(format!("o mundo está cheio ({} de {})", self.net_player_count(), self.net.cfg.max_players))
                 } else {
                     None
                 };
@@ -916,13 +1063,17 @@ impl Game {
                     world: self.world_name.clone(),
                     seed: self.seed,
                     spread: self.settings.structure_spread(),
-                    survival: self.survival,
+                    survival: match self.net.cfg.guest_mode {
+                        1 => true,
+                        2 => false,
+                        _ => self.survival,
+                    },
                     difficulty: self.settings.difficulty,
                     time: self.time_of_day,
                     raining: self.weather.state.raining,
                     thunder: self.weather.state.thunder,
                     player,
-                    op: self.host_ref().ops.contains(&name.to_lowercase()),
+                    op: self.net.cfg.guest_cheats || self.host_ref().ops.contains(&name.to_lowercase()),
                 };
                 let files = self.plugins.files();
                 let h = self.host();
@@ -1033,13 +1184,18 @@ impl Game {
                     log::error!("could not keep {name}'s things: {e}");
                 }
             }
+            ToHost::VoiceSet { group, on } => {
+                if let Some(g) = self.host().guests.get_mut(&id) {
+                    g.voice = (group.min(9), on);
+                }
+            }
         }
     }
 
     /// Chat commands a guest may use.
     fn guest_command(&mut self, id: ConnId, text: &str) {
         let name = self.host_ref().guests.get(&id).map(|g| g.name.to_lowercase()).unwrap_or_default();
-        let op = self.host_ref().ops.contains(&name);
+        let op = self.net.cfg.guest_cheats || self.host_ref().ops.contains(&name);
         let cmd = text.split_whitespace().next().unwrap_or("").to_lowercase();
         let reply = match cmd.as_str() {
             "/lista" | "/list" => self.player_list_line(),
@@ -1770,6 +1926,7 @@ impl Game {
             self.quit_to_title();
         }
         self.net.status = if joined { format!("Desconectado de {addr}: {why}") } else { format!("Não deu para entrar em {addr}: {why}") };
+        log::info!("multiplayer: {}", self.net.status);
         self.set_screen(Screen::Multiplayer);
     }
 
@@ -1854,6 +2011,8 @@ impl Game {
                     hurt: s.has(flags::HURT),
                     sitting: s.has(flags::SITTING),
                     holding: !s.held.is_empty(),
+                    torch: crate::torch::index(&s.held).is_some(),
+                    ..Default::default()
                 };
                 (pose, s.swing, s.armor.clone(), s.held.clone())
             };
@@ -1863,7 +2022,13 @@ impl Game {
             let r = self.net.remotes.get_mut(&id).unwrap();
             r.anim.update(&pose, dt);
             r.anim.swing = swing;
-            let bones = r.anim.bones(def, &pose, block, sky, blk);
+            let mut bones = r.anim.bones(def, &pose, block, sky, blk);
+            // An instrument in their hands: held with both, in 3D.
+            if let Some(i) = crate::instruments::index(&item) {
+                if let (Some(ib), Some(mesh)) = (crate::instruments::pose(def, &mut bones, i, None), self.entities.instrument_mesh(i)) {
+                    models.push((mesh, ib));
+                }
+            }
             for (piece, name) in armor.iter().enumerate() {
                 if !name.is_empty() {
                     if let Some(m) = self.entities.armor_mesh(name, piece) {
@@ -1872,6 +2037,12 @@ impl Game {
                 }
             }
             models.push((pd, bones));
+            // A torch is a 3D model with its flame (torch.rs).
+            if let Some((t, mesh)) = crate::torch::index(&item).and_then(|t| Some((t, self.entities.torch_mesh(t)?))) {
+                let pv = def.parts[2].pivot;
+                let (tb, _) = crate::torch::hold(t, bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 1.0, 0.62, self.now, [sky, 1.0, 0.0, 0.0]);
+                models.push((mesh, tb));
+            }
             // What they hold, put in our hand for a moment to reuse the same drawing.
             if let Some(it) = self.items.id(&item) {
                 let pv = def.parts[2].pivot;
@@ -1999,30 +2170,35 @@ impl Game {
             self.net.skip_text = true;
             return true;
         }
-        if self.screen == Screen::Multiplayer && self.net.field != Field::None {
-            let f = match self.net.field {
-                Field::Name => &mut self.net.cfg.name,
-                Field::Addr => &mut self.net.cfg.last_addr,
-                Field::Password => &mut self.net.cfg.password,
-                Field::None => unreachable!(),
-            };
+        let ctrl = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
+        let friends = self.screen == Screen::Friends;
+        if (self.screen == Screen::Multiplayer || friends) && self.net.field != Field::None {
             match code {
+                KeyCode::KeyV if ctrl => {
+                    self.paste_into_field();
+                }
                 KeyCode::Backspace => {
-                    f.pop();
+                    self.field_text(self.net.field).0.pop();
                 }
                 KeyCode::Tab => {
                     self.net.field = match self.net.field {
                         Field::Name => Field::Addr,
                         Field::Addr => Field::Password,
-                        _ => Field::Name,
+                        Field::Password => Field::Name,
+                        Field::HostPassword if !self.net.is_host() => Field::Port,
+                        Field::Port if self.net.cfg.reach != Reach::Lan => Field::Relay,
+                        _ => Field::HostPassword,
                     }
                 }
-                KeyCode::Enter | KeyCode::NumpadEnter => {
+                KeyCode::Enter | KeyCode::NumpadEnter if !friends => {
                     let a = self.net.cfg.last_addr.clone();
                     self.net.field = Field::None;
                     self.join(&a);
                 }
-                KeyCode::Escape => self.net.field = Field::None,
+                KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Escape => {
+                    self.net.field = Field::None;
+                    self.net.save_config(&self.base);
+                }
                 _ => {}
             }
             return true;
@@ -2043,15 +2219,11 @@ impl Game {
             }
             return true;
         }
-        if self.screen == Screen::Multiplayer && self.net.field != Field::None {
-            let (f, max) = match self.net.field {
-                Field::Name => (&mut self.net.cfg.name, 16),
-                Field::Addr => (&mut self.net.cfg.last_addr, 64),
-                Field::Password => (&mut self.net.cfg.password, 32),
-                Field::None => unreachable!(),
-            };
+        if matches!(self.screen, Screen::Multiplayer | Screen::Friends) && self.net.field != Field::None {
+            let digits = self.net.field == Field::Port;
+            let (f, max) = self.field_text(self.net.field);
             for c in text.chars() {
-                if !c.is_control() && f.chars().count() < max {
+                if !c.is_control() && f.chars().count() < max && (!digits || c.is_ascii_digit()) {
                     f.push(c);
                 }
             }
@@ -2213,38 +2385,348 @@ impl Game {
     /// Pause menu button text.
     pub(crate) fn net_pause_label(&self) -> String {
         match &self.net.mode {
-            Mode::Off => "Abrir para amigos".into(),
-            Mode::Host(h) => match self.net_invite_code() {
-                Some(c) => format!("Convite: {c} ({} aqui)", h.guests.values().filter(|g| g.welcomed).count()),
-                None => "Aberto para amigos".into(),
-            },
+            Mode::Off => "Abrir para amigos...".into(),
+            Mode::Host(_) => format!("Amigos: {} de {}...", self.net_player_count(), self.net.cfg.max_players),
             Mode::Guest(g) => format!("Mundo de {} ({} ms)", g.host_name, g.guest.ping().unwrap_or(0)),
         }
     }
 
     pub(crate) fn net_pause_button(&mut self) {
         match &self.net.mode {
-            Mode::Off => {
-                if self.world_name == GUEST_WORLD {
-                    return;
-                }
-                self.start_hosting();
-            }
-            Mode::Host(h) => {
-                let lines = vec![
-                    format!("Código: {}", self.net_invite_code().unwrap_or_default()),
-                    format!("Mesma rede: {}", self.net_lan_line()),
-                    h.upnp_note.clone(),
-                ];
-                for l in lines {
-                    self.net_say(l, YELLOW);
-                }
-                self.toast("O convite está no chat (T)", 4.0);
-            }
             Mode::Guest(_) => {
                 let l = self.player_list_line();
                 self.net_say(l, YELLOW);
             }
+            _ if self.world_name == GUEST_WORLD => {}
+            _ => {
+                self.net.load_config(&self.base.clone());
+                self.net.port_text = self.net.cfg.port.to_string();
+                self.net.field = Field::None;
+                self.set_screen(Screen::Friends);
+            }
+        }
+    }
+
+    /// Players in the world we host, ourselves included.
+    fn net_player_count(&self) -> usize {
+        match &self.net.mode {
+            Mode::Host(h) => h.guests.values().filter(|g| g.welcomed).count() + usize::from(!self.net.server),
+            _ => 1,
+        }
+    }
+
+    /// Put text on the system clipboard. False when there is none (a bare server, no display).
+    fn clip_set(&mut self, text: &str) -> bool {
+        if self.net.clip.is_none() {
+            self.net.clip = arboard::Clipboard::new().map_err(|e| log::warn!("clipboard: {e}")).ok();
+        }
+        self.net.clip.as_mut().is_some_and(|c| c.set_text(text.to_string()).map_err(|e| log::warn!("clipboard: {e}")).is_ok())
+    }
+
+    /// The clipboard's text, made fit for a one-line field (first line, no control characters).
+    fn clip_get(&mut self) -> Option<String> {
+        if self.net.clip.is_none() {
+            self.net.clip = arboard::Clipboard::new().map_err(|e| log::warn!("clipboard: {e}")).ok();
+        }
+        let t = self.net.clip.as_mut()?.get_text().ok()?;
+        let line = t.lines().map(str::trim).find(|l| !l.is_empty())?;
+        // "Convite: K3F9Q-2ZB7M" pasted whole from a chat message still works.
+        let line = line.rsplit_once(": ").map_or(line, |(_, code)| code).trim();
+        Some(line.chars().filter(|c| !c.is_control()).collect())
+    }
+
+    /// Paste into the focused field. True = there was a field and something to paste.
+    fn paste_into_field(&mut self) -> bool {
+        if self.net.field == Field::None {
+            return false;
+        }
+        let Some(t) = self.clip_get() else {
+            self.toast("Nada para colar", 2.0);
+            return true;
+        };
+        let (f, max) = self.field_text(self.net.field);
+        f.clear();
+        f.extend(t.chars().take(max));
+        true
+    }
+
+    /// The text behind a field and its longest length.
+    fn field_text(&mut self, field: Field) -> (&mut String, usize) {
+        let c = &mut self.net.cfg;
+        match field {
+            Field::Name => (&mut c.name, 16),
+            Field::Addr => (&mut c.last_addr, 64),
+            Field::Password => (&mut c.password, 32),
+            Field::HostPassword => (&mut c.host_password, 32),
+            Field::Relay => (&mut c.relay, 64),
+            Field::Port => (&mut self.net.port_text, 5),
+            Field::None => unreachable!("no field"),
+        }
+    }
+
+    fn friends_note(&mut self, text: impl Into<String>) {
+        self.net.friends_note = (text.into(), self.now);
+    }
+
+    /// "Abrir para amigos": how the world opens (before and while open), the invite to copy,
+    /// how people can reach it, and who is in (with a button to send them away).
+    pub(crate) fn draw_friends_menu(&mut self, w: f32, h: f32, mouse: (f32, f32)) {
+        // A busy screen: one interface size smaller when the window is short.
+        let full = self.ui.scale;
+        self.ui.scale = (h / 300.0).floor().clamp(1.0, full);
+        self.draw_friends_inner(w, h, mouse);
+        self.ui.scale = full;
+    }
+
+    fn draw_friends_inner(&mut self, w: f32, h: f32, mouse: (f32, f32)) {
+        let s = self.ui.scale;
+        let hosting = self.net.is_host();
+        self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 190]);
+        let pw = (440.0 * s).min(w - 16.0 * s);
+        let x0 = (w - pw) / 2.0;
+        let gap = 10.0 * s;
+        let cw = (pw - gap) / 2.0;
+        let (lx, rx) = (x0, x0 + cw + gap);
+        let bh = 18.0 * s;
+        let top = 8.0 * s;
+        self.ui.text_centered(w / 2.0, top, if hosting { "Mundo aberto para amigos" } else { "Abrir para amigos" }, WHITE);
+        if self.clicked {
+            self.net.field = Field::None;
+        }
+        let clicked = self.clicked;
+        let click = |hit: bool| hit && clicked;
+
+        // ---- left: settings ----
+        let mut y = top + 18.0 * s;
+        self.ui.text(lx, y, "Configurações", YELLOW);
+        y += 12.0 * s;
+        let cfg = self.net.cfg.clone();
+        let rows = [
+            format!("Máximo de jogadores: {}", cfg.max_players),
+            format!("Modo dos amigos: {}", GUEST_MODES[cfg.guest_mode.min(2) as usize]),
+            format!("Amigos usam comandos: {}", if cfg.guest_cheats { "Sim" } else { "Não" }),
+            format!("PvP: {}", if self.net.rules.pvp { "Sim" } else { "Não" }),
+            format!("Alcance: {}", cfg.reach.label()),
+        ];
+        let mut pressed = None;
+        for (i, l) in rows.iter().enumerate() {
+            // How far the world reaches is chosen before it opens.
+            let locked = hosting && i == 4;
+            let hit = self.ui.button(lx, y, cw, bh, l, mouse);
+            if locked {
+                self.ui.rect(lx, y, cw, bh, [0, 0, 0, 110]);
+            } else if click(hit) {
+                pressed = Some(i);
+            }
+            y += bh + 3.0 * s;
+        }
+        let back = self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight);
+        match pressed {
+            Some(0) => {
+                let i = MAX_PLAYERS.iter().position(|&m| m >= cfg.max_players).unwrap_or(0);
+                let n = MAX_PLAYERS.len();
+                self.net.cfg.max_players = MAX_PLAYERS[if back { (i + n - 1) % n } else { (i + 1) % n }];
+            }
+            Some(1) => self.net.cfg.guest_mode = (cfg.guest_mode + if back { 2 } else { 1 }) % 3,
+            Some(2) => {
+                self.net.cfg.guest_cheats = !cfg.guest_cheats;
+                // Guests already in get (or lose) the commands right away; ops.txt keeps its own.
+                if let Mode::Host(hs) = &self.net.mode {
+                    for (id, g) in hs.guests.iter().filter(|(_, g)| g.welcomed) {
+                        let op = self.net.cfg.guest_cheats || hs.ops.contains(&g.name.to_lowercase());
+                        hs.host.send(*id, &ToGuest::Op(op));
+                    }
+                }
+            }
+            Some(3) => {
+                self.net.rules.pvp = !self.net.rules.pvp;
+                self.save_rules();
+                let t = format!("PvP {}", if self.net.rules.pvp { "ligado" } else { "desligado" });
+                if hosting {
+                    self.net_announce(t);
+                }
+            }
+            Some(_) => self.net.cfg.reach = cfg.reach.next(),
+            None => {}
+        }
+        if pressed.is_some() {
+            self.sfx(Sfx::Click);
+            self.net.save_config(&self.base);
+        }
+        y += 9.0 * s;
+        let pass = self.net.cfg.host_password.clone();
+        self.text_field(lx, y, cw, "Senha (vazio = sem senha)", &pass, Field::HostPassword, true, mouse);
+        y += 28.0 * s;
+        if hosting {
+            let port = self.host_ref().host.port;
+            self.ui.text(lx, y - 9.0 * s, "Porta (UDP)", GRAY);
+            self.ui.text(lx + 4.0 * s, y + 4.0 * s, &port.to_string(), WHITE);
+        } else {
+            let pt = self.net.port_text.clone();
+            self.text_field(lx, y, cw * 0.4, "Porta (UDP)", &pt, Field::Port, false, mouse);
+        }
+        if self.net.cfg.reach != Reach::Lan {
+            let relay = self.net.cfg.relay.clone();
+            let label = if self.net.cfg.reach == Reach::Relay { "Endereço da ponte" } else { "Ponte (opcional)" };
+            let fx = lx + cw * 0.4 + 6.0 * s;
+            if hosting {
+                self.ui.text(fx, y - 9.0 * s, label, GRAY);
+                self.ui.text(fx + 4.0 * s, y + 4.0 * s, if relay.is_empty() { "nenhuma" } else { &relay }, WHITE);
+            } else {
+                self.text_field(fx, y, cw - cw * 0.4 - 6.0 * s, label, &relay, Field::Relay, false, mouse);
+            }
+        }
+        y += 22.0 * s;
+        let hint = match (hosting, self.net.cfg.reach) {
+            (true, _) => "Senha, jogadores, modo e comandos valem para quem entrar agora.",
+            (false, Reach::Lan) => "Só quem está no mesmo Wi-Fi ou cabo consegue entrar.",
+            (false, Reach::Internet) => "O jogo pede ao roteador para abrir a porta (UPnP). Se ele recusar, amigos da mesma rede ainda entram.",
+            (false, Reach::Relay) => "A ponte é um computador com porta aberta rodando mine-clone --relay.",
+        };
+        for line in wrap_text(&self.ui, hint, cw, s) {
+            self.ui.text(lx, y, &line, GRAY);
+            y += 10.0 * s;
+        }
+
+        // ---- right: connection, invite, players ----
+        let mut y = top + 18.0 * s;
+        self.ui.text(rx, y, "Convite", YELLOW);
+        y += 12.0 * s;
+        if !hosting {
+            for line in wrap_text(&self.ui, "Abra o mundo para gerar o código do convite. O amigo cola o código em Multijogador > Entrar.", cw, s) {
+                self.ui.text(rx, y, &line, GRAY);
+                y += 10.0 * s;
+            }
+        } else {
+            let code = self.net_invite_code();
+            let hs = self.host_ref();
+            let lan_code = hs.lan_ip.map(|ip| net::codes::encode(SocketAddrV4::new(ip, hs.host.port)));
+            let lan_addr = hs.lan_ip.map(|ip| format!("{ip}:{}", hs.host.port)).unwrap_or_else(|| format!("porta {}", hs.host.port));
+            let via = if hs.external.is_some() {
+                "funciona pela internet"
+            } else if hs.relay_code.is_some() {
+                "pela ponte"
+            } else {
+                "só na mesma rede"
+            };
+            let (upnp_note, upnp_ok) = hs.upnp_note.clone();
+            let relay_note = hs.relay_note.clone();
+            let waiting = hs.upnp.is_some() || hs.relay_waiting;
+            // The big code and its copy button.
+            let code_txt = code.clone().unwrap_or_else(|| "...".into());
+            let bs = (s * 1.5).floor().max(s);
+            self.ui.rect(rx, y, cw, 24.0 * s, [0, 0, 0, 160]);
+            self.ui.text_scaled(rx + 5.0 * s, y + 12.0 * s - 4.0 * bs, &code_txt, WHITE, bs);
+            y += 26.0 * s;
+            for line in wrap_text(&self.ui, &format!("({via}{})", if waiting { ", verificando..." } else { "" }), cw, s) {
+                self.ui.text(rx, y, &line, GRAY);
+                y += 10.0 * s;
+            }
+            y += 1.0 * s;
+            let half = (cw - 4.0 * s) / 2.0;
+            let mut copy = None;
+            if click(self.ui.button(rx, y, half, bh, "Copiar código", mouse)) {
+                copy = code.clone();
+            }
+            if click(self.ui.button(rx + half + 4.0 * s, y, half, bh, "Copiar da rede", mouse)) {
+                copy = lan_code.clone();
+            }
+            if let Some(c) = copy {
+                self.sfx(Sfx::Click);
+                let ok = self.clip_set(&c);
+                self.friends_note(if ok { format!("Copiado: {c}") } else { "Não deu para copiar: anote o código".into() });
+            }
+            y += bh + 6.0 * s;
+            self.ui.text(rx, y, "Conexão", YELLOW);
+            y += 12.0 * s;
+            self.ui.text(rx, y, &format!("Mesma rede: {lan_addr}"), WHITE);
+            y += 10.0 * s;
+            let color = match upnp_ok {
+                Some(true) => GREEN,
+                Some(false) => RED,
+                None => GRAY,
+            };
+            for line in wrap_text(&self.ui, &format!("Internet: {upnp_note}"), cw, s) {
+                self.ui.text(rx, y, &line, color);
+                y += 10.0 * s;
+            }
+            if !relay_note.is_empty() {
+                for line in wrap_text(&self.ui, &format!("Ponte: {relay_note}"), cw, s) {
+                    self.ui.text(rx, y, &line, GRAY);
+                    y += 10.0 * s;
+                }
+            }
+            y += 4.0 * s;
+            // Who is in.
+            let n = self.net_player_count();
+            self.ui.text(rx, y, &format!("Jogadores ({n} de {})", self.net.cfg.max_players), YELLOW);
+            y += 12.0 * s;
+            if !self.net.server {
+                // (No "ê": the pack's font lacks it.)
+                self.ui.text(rx + 2.0 * s, y, &format!("{} (anfitrião)", self.net.cfg.name), WHITE);
+                y += 11.0 * s;
+            }
+            let mut list: Vec<(ConnId, String, u32)> = {
+                let hs = self.host_ref();
+                hs.guests.iter().filter(|(_, g)| g.welcomed).map(|(id, g)| (*id, g.name.clone(), hs.host.ping(*id).unwrap_or(0))).collect()
+            };
+            list.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+            let kw = self.ui.text_width("Expulsar", s) + 8.0 * s;
+            let bottom = h - 30.0 * s;
+            let mut kick = None;
+            for (id, name, ping) in &list {
+                if y + 16.0 * s > bottom {
+                    self.ui.text(rx + 2.0 * s, y, "...", GRAY);
+                    break;
+                }
+                self.ui.text(rx + 2.0 * s, y + 4.0 * s, &format!("{name}  {ping} ms"), WHITE);
+                if click(self.ui.button(rx + cw - kw * 2.0 - 3.0 * s, y, kw, 15.0 * s, "Expulsar", mouse)) {
+                    kick = Some((*id, name.clone(), false));
+                }
+                if click(self.ui.button(rx + cw - kw, y, kw, 15.0 * s, "Banir", mouse)) {
+                    kick = Some((*id, name.clone(), true));
+                }
+                y += 17.0 * s;
+            }
+            if list.is_empty() {
+                self.ui.text(rx + 2.0 * s, y, "Ninguém entrou ainda", GRAY);
+            }
+            if let Some((id, name, ban)) = kick {
+                self.sfx(Sfx::Click);
+                if ban {
+                    self.host().bans.push(name.to_lowercase());
+                    let file = level_path_hint(&self.base, &self.world_name).join("bans.txt");
+                    let _ = std::fs::write(&file, self.host_ref().bans.join("\n"));
+                }
+                self.host_ref().host.kick(id, if ban { "banido pelo anfitrião" } else { "expulso pelo anfitrião" });
+                self.net_say(format!("{name} saiu ({})", if ban { "banido" } else { "expulso" }), YELLOW);
+            }
+        }
+
+        // ---- bottom: what just happened, open/close, back ----
+        let (note, at) = self.net.friends_note.clone();
+        if !note.is_empty() && self.now - at < 4.0 {
+            self.ui.text_centered(w / 2.0, h - 42.0 * s, &note, GREEN);
+        }
+        let by = h - 26.0 * s;
+        let bw = (pw - 6.0 * s) / 2.0;
+        let main = if hosting { "Fechar para amigos" } else { "Abrir mundo" };
+        if click(self.ui.button(x0, by, bw, 20.0 * s, main, mouse)) {
+            self.sfx(Sfx::Click);
+            if hosting {
+                self.net_stop();
+                self.net_say("Mundo fechado para amigos", YELLOW);
+            } else {
+                self.net.cfg.port = self.net.port_text.trim().parse().ok().filter(|&p: &u16| p >= 1024).unwrap_or(net::DEFAULT_PORT);
+                self.net.port_text = self.net.cfg.port.to_string();
+                self.net.save_config(&self.base);
+                self.start_hosting();
+            }
+        }
+        if click(self.ui.button(x0 + bw + 6.0 * s, by, bw, 20.0 * s, "Voltar", mouse)) {
+            self.sfx(Sfx::Click);
+            self.net.save_config(&self.base);
+            self.set_screen(Screen::Paused);
         }
     }
 
@@ -2317,7 +2799,18 @@ impl Game {
         self.text_field(x + half + 6.0 * s, y, half, "Senha (opcional)", &pass, Field::Password, true, mouse);
         y += 30.0 * s;
         let jw = 60.0 * s;
-        self.text_field(x, y, bw - jw - 6.0 * s, "Código do convite ou endereço (IP:porta)", &addr, Field::Addr, false, mouse);
+        self.text_field(x, y, bw - jw * 2.0 - 10.0 * s, "Código do convite ou endereço (IP:porta)", &addr, Field::Addr, false, mouse);
+        if self.ui.button(x + bw - jw * 2.0 - 4.0 * s, y - 2.0 * s, jw, bh, "Colar", mouse) && self.clicked {
+            self.sfx(Sfx::Click);
+            match self.clip_get() {
+                Some(t) => {
+                    self.net.cfg.last_addr = t.chars().take(64).collect();
+                    self.net.status = "Código colado: clique em Entrar".into();
+                }
+                None => self.net.status = "Nada para colar (copie o código do convite primeiro)".into(),
+            }
+        }
+        let addr = self.net.cfg.last_addr.clone();
         let connecting = matches!(&self.net.mode, Mode::Guest(g) if !g.joined);
         if self.ui.button(x + bw - jw, y - 2.0 * s, jw, bh, if connecting { "Cancelar" } else { "Entrar" }, mouse) && self.clicked {
             self.sfx(Sfx::Click);
@@ -2368,7 +2861,14 @@ impl Game {
             self.join(&a);
         }
         y = y.max(h - 52.0 * s);
-        let upnp = format!("Abrir no roteador: {}", if self.net.cfg.upnp { "Sim" } else { "Não" });
+        let upnp = format!(
+            "Alcance: {}",
+            match self.net.cfg.reach {
+                Reach::Lan => "Rede local",
+                Reach::Internet => "Internet",
+                Reach::Relay => "Ponte",
+            }
+        );
         if self.ui.button(x, y, half, bh, "Hospedar mundo...", mouse) && self.clicked {
             self.sfx(Sfx::Click);
             self.worlds = crate::menus::list_worlds(&self.base);
@@ -2376,7 +2876,7 @@ impl Game {
         }
         if self.ui.button(x + half + 6.0 * s, y, half, bh, &upnp, mouse) && self.clicked {
             self.sfx(Sfx::Click);
-            self.net.cfg.upnp = !self.net.cfg.upnp;
+            self.net.cfg.reach = self.net.cfg.reach.next();
             self.net.save_config(&self.base);
         }
         y += bh + 4.0 * s;
@@ -2408,4 +2908,22 @@ impl Game {
             self.join(&a);
         }
     }
+}
+
+/// Break text into lines no wider than `max`.
+fn wrap_text(ui: &crate::ui::UiBatch, text: &str, max: f32, s: f32) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        let next = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
+        if ui.text_width(&next, s) > max && !line.is_empty() {
+            lines.push(std::mem::replace(&mut line, word.to_string()));
+        } else {
+            line = next;
+        }
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    lines
 }

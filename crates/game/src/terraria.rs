@@ -66,6 +66,15 @@ struct Saved {
     /// (four armour pieces, then the accessories).
     #[serde(default)]
     extra_slots: u8,
+    /// Lote 11: the pet and light pet called out (item names), vanity armour and dyes.
+    #[serde(default)]
+    pet: Option<String>,
+    #[serde(default)]
+    light_pet: Option<String>,
+    #[serde(default)]
+    vanity: Vec<SavedStack>,
+    #[serde(default)]
+    dyes: Vec<SavedStack>,
     #[serde(default)]
     loadout: usize,
     #[serde(default)]
@@ -93,6 +102,10 @@ pub struct Terraria {
     pub spirits: Vec<crate::magic::Spirit>,
     /// Vortexes of the void book, pulling mobs in.
     pub vortexes: Vec<crate::magic::Vortex>,
+    /// Lote 11: summoned mounts and pets, wings, vanity and dyes, sentries.
+    pub comp: crate::companions::Companions,
+    pub look: crate::vanity::Looks,
+    pub sentries: Vec<crate::sentries::Sentry>,
     /// Read from the world's folder yet (it loads on the first frame in a world).
     pub(crate) loaded: bool,
 }
@@ -128,6 +141,14 @@ impl Terraria {
         t.hard.verdite = s.verdite.into_iter().collect::<HashSet<_>>();
         t.hard.goblins_beaten = s.goblins_beaten;
         t.hard.mechanic_freed = s.mechanic_freed;
+        t.comp.pet = s.pet.as_deref().and_then(crate::companions::pet_of);
+        t.comp.light = s.light_pet.as_deref().and_then(crate::companions::pet_of);
+        for (i, st) in s.vanity.iter().enumerate().take(4) {
+            t.look.vanity[i] = stack(st);
+        }
+        for (i, st) in s.dyes.iter().enumerate().take(crate::vanity::DYE_SLOTS) {
+            t.look.dyes[i] = stack(st);
+        }
         t
     }
 
@@ -144,6 +165,10 @@ impl Terraria {
             goblins_beaten: self.hard.goblins_beaten,
             mechanic_freed: self.hard.mechanic_freed,
             extra_slots: self.rpg.extra_slots,
+            pet: self.comp.pet.map(|k| crate::companions::PETS[k].item.to_string()),
+            light_pet: self.comp.light.map(|k| crate::companions::PETS[k].item.to_string()),
+            vanity: self.look.vanity.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect(),
+            dyes: self.look.dyes.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect(),
             loadout: self.rpg.loadout,
             loadouts: self.rpg.loadouts.iter().map(|g| g.armor.iter().chain(g.acc.iter()).map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect()).collect(),
         };
@@ -180,6 +205,8 @@ impl Game {
         }
         self.update_rpg(dt);
         self.update_accessories(dt);
+        self.update_companions(dt);
+        self.update_sentries(dt);
         self.update_hook(dt, use_held);
         self.update_glyph_casting(dt, use_held);
         self.update_spell_extras(dt);
@@ -194,6 +221,12 @@ impl Game {
             return self.wear_accessory();
         }
         if let Some(r) = self.rpg_use(name) {
+            return r;
+        }
+        if let Some(r) = self.companion_use(name) {
+            return r;
+        }
+        if let Some(r) = self.sentry_use(name) {
             return r;
         }
         if crate::hook::is_hook(name) {
