@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use glam::{IVec2, IVec3, Mat4, Vec3, Vec4};
 use wgpu::util::DeviceExt;
+use voxel::chunk::MIN_Y;
 use winit::window::Window;
 
 use crate::post::{PostFx, PostUniform, HDR};
@@ -819,14 +820,15 @@ impl Renderer {
     /// faces the current section connects with open blocks and never turning back. Sections
     /// never reached are behind rock. Returns a grid of `reach` chunks around the camera.
     fn cave_visible(&self, cam: &Camera, reach: i32, visible: &dyn Fn(Vec3, Vec3) -> bool) -> Option<Vec<bool>> {
-        let csy = cam.block.y >> 4;
-        if !self.cave_cull || !(0..16).contains(&csy) {
+        const NS: i32 = voxel::chunk::SECTIONS as i32;
+        let csy = (cam.block.y - MIN_Y) >> 4;
+        if !self.cave_cull || !(0..NS).contains(&csy) {
             return None;
         }
         let (ccx, ccz) = (cam.block.x >> 4, cam.block.z >> 4);
         let n = 2 * reach + 1;
-        let index = |dx: i32, sy: i32, dz: i32| (((dx + reach) * n + dz + reach) * 16 + sy) as usize;
-        let mut seen = vec![false; (n * n * 16) as usize];
+        let index = |dx: i32, sy: i32, dz: i32| (((dx + reach) * n + dz + reach) * NS + sy) as usize;
+        let mut seen = vec![false; (n * n * NS) as usize];
         let vis_of = |dx: i32, sy: i32, dz: i32| -> u64 {
             match self.chunks.get(&IVec2::new(ccx + dx, ccz + dz)) {
                 Some(v) => v.iter().find(|s| s.section == sy as usize).map_or(voxel::mesh::VIS_ALL, |s| s.vis),
@@ -848,10 +850,10 @@ impl Renderer {
                     continue;
                 }
                 let (nx, ny, nz) = (x + sx, y + sy, z + sz);
-                if nx.abs() > reach || nz.abs() > reach || !(0..16).contains(&ny) || seen[index(nx, ny, nz)] {
+                if nx.abs() > reach || nz.abs() > reach || !(0..NS).contains(&ny) || seen[index(nx, ny, nz)] {
                     continue;
                 }
-                let o = Vec3::new(((ccx + nx) * 16 - cam.block.x) as f32, (ny * 16 - cam.block.y) as f32, ((ccz + nz) * 16 - cam.block.z) as f32);
+                let o = Vec3::new(((ccx + nx) * 16 - cam.block.x) as f32, (ny * 16 + MIN_Y - cam.block.y) as f32, ((ccz + nz) * 16 - cam.block.z) as f32);
                 if !visible(o, o + Vec3::splat(16.0)) {
                     continue;
                 }
@@ -948,13 +950,13 @@ impl Renderer {
                 continue;
             }
             for s in sections {
-                let origin = Vec3::new(cx, (s.section as i32 * 16 - cam.block.y) as f32, cz);
+                let origin = Vec3::new(cx, (s.section as i32 * 16 + MIN_Y - cam.block.y) as f32, cz);
                 if !visible(origin, origin + Vec3::splat(16.0)) {
                     continue;
                 }
                 if let Some(seen) = &seen {
                     let (dx, dz) = (pos.x - (cam.block.x >> 4), pos.y - (cam.block.z >> 4));
-                    if dx.abs() <= reach && dz.abs() <= reach && !seen[(((dx + reach) * (2 * reach + 1) + dz + reach) * 16) as usize + s.section] {
+                    if dx.abs() <= reach && dz.abs() <= reach && !seen[(((dx + reach) * (2 * reach + 1) + dz + reach) * voxel::chunk::SECTIONS as i32) as usize + s.section] {
                         continue;
                     }
                 }
@@ -999,7 +1001,7 @@ impl Renderer {
                     continue;
                 }
                 for s in sections {
-                    let y = (s.section as i32 * 16 - cam.block.y) as f32;
+                    let y = (s.section as i32 * 16 + MIN_Y - cam.block.y) as f32;
                     // Far below the camera nothing it casts can reach the lit area.
                     if y + 16.0 < -reach * 1.5 {
                         continue;

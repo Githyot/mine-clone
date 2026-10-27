@@ -891,7 +891,7 @@ impl Game {
         if !items.is_empty() {
             // Out of the void or lava, the body rests on the ground above.
             let mut pos = self.body.pos;
-            pos.y = pos.y.max(1.0);
+            pos.y = pos.y.max(voxel::chunk::MIN_Y as f32 + 6.0);
             let p = pos.floor().as_ivec3();
             let mut q = p;
             while q.y < p.y + 40 && (Terrain::solid(&self.world, q) || self.world.fluid(self.world.block_or_air(q)) == 2) {
@@ -1523,7 +1523,7 @@ impl Game {
                 i += 1;
             }
         }
-        self.surv.drops.retain(|d| d.age < DESPAWN && d.body.pos.y > -64.0);
+        self.surv.drops.retain(|d| d.age < DESPAWN && d.body.pos.y > voxel::chunk::MIN_Y as f32 - 64.0);
 
         // Experience orbs drift to the player.
         let mut gained = 0;

@@ -1,14 +1,17 @@
 //! Quick timing of the world pipeline: `cargo run --release -p voxel --example bench`.
 //! Also writes a top-down map of the generated area to `target/map.ppm`.
 use std::time::Instant;
-use voxel::chunk::{Chunk, ChunkPos};
+use voxel::chunk::{Chunk, ChunkPos, BASE_SECTION, SECTIONS};
 use voxel::light::compute_light;
 use voxel::mesh::{mesh_section, MeshInput, MeshTables};
 use voxel::worldgen::{Biome, Generator};
 use voxel::BlockRegistry;
 
+/// The band the game lights and draws for a player at the surface.
+const LO: usize = BASE_SECTION - 4;
+
 fn main() {
-    let reg = BlockRegistry::from_ron(include_str!("../../../packs/vanilla/blocks.ron")).unwrap();
+    let reg = BlockRegistry::from_ron_many(&[include_str!("../../../packs/vanilla/blocks.ron"), include_str!("../../../packs/vanilla/fase6/blocks.ron"), include_str!("../../../packs/vanilla/deep/blocks.ron")]).unwrap();
     let seed = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(12345u64);
     let g = Generator::new(seed, &reg);
     let r = 16i32;
@@ -30,13 +33,14 @@ fn main() {
     for z in -4..=4 {
         for x in -4..=4 {
             let nb: [Option<&Chunk>; 9] = std::array::from_fn(|i| at(x + i as i32 % 3 - 1, z + i as i32 / 3 - 1).map(|k| &chunks[k]));
-            lights.push((at(x, z).unwrap(), compute_light(&reg, nb)));
+            lights.push((at(x, z).unwrap(), compute_light(&reg, nb, LO, SECTIONS)));
             lit += 1;
         }
     }
     let light_t = t.elapsed();
     for (k, l) in lights {
         chunks[k].light = l;
+        (chunks[k].light_lo, chunks[k].light_hi) = (LO, SECTIONS);
     }
     let tables = MeshTables::new(&reg, (0..Biome::COUNT).map(|b| Biome::from_u8(b as u8).tint()).collect());
     let t = Instant::now();
@@ -44,8 +48,8 @@ fn main() {
     for z in -3..=3 {
         for x in -3..=3 {
             let nb: [Option<&Chunk>; 9] = std::array::from_fn(|i| at(x + i as i32 % 3 - 1, z + i as i32 / 3 - 1).map(|k| &chunks[k]));
-            let input = MeshInput::new(nb);
-            for s in 0..16 {
+            let input = MeshInput::band(nb, LO, SECTIONS);
+            for s in LO..SECTIONS {
                 if input.section_has_blocks(s) {
                     let m = mesh_section(&tables, &input, s);
                     verts += m.solid.len() + m.translucent.len();

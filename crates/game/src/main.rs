@@ -4,6 +4,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod ambient;
+mod deep;
 mod keybinds;
 mod lang;
 mod subtitles;
@@ -349,14 +350,18 @@ fn game_data(blocks: &str, items: &str, recipes: &str) -> Result<(BlockRegistry,
 /// and Fase 6 keep their data in their own files, joined onto the base lists.
 fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
     let b0 = terraria::with_extra(&merge_list(blocks[0], &fase6_text(None, "blocks.ron")), embedded::T5_BLOCKS_RON);
+    // The deep world's blocks and items (worldgen/deep.rs).
+    let b0 = terraria::with_extra(&b0, embedded::DEEP_BLOCKS_RON);
     let i0 = terraria::with_extra(&merge_list(items[0], &fase6_text(None, "items.ron")), embedded::T5_ITEMS_RON);
     // The stats content (rpg.rs) after the Terraria side's own items.
     let i0 = terraria::with_extra(&i0, embedded::RPG_ITEMS_RON);
+    let i0 = terraria::with_extra(&i0, embedded::DEEP_ITEMS_RON);
     let reg = BlockRegistry::from_ron_many(&[b0.as_str(), blocks[1]])?;
     let items = ItemRegistry::from_ron_many(&[i0.as_str(), items[1]], &reg)?;
     let mut recipes = Recipes::from_ron_many(&recipes, &items)?;
     terraria::add_recipes(&mut recipes, embedded::T5_RECIPES_RON, &items)?;
     terraria::add_recipes(&mut recipes, embedded::RPG_RECIPES_RON, &items)?;
+    terraria::add_recipes(&mut recipes, embedded::DEEP_RECIPES_RON, &items)?;
     let extra = fase6_text(None, "recipes.ron");
     if !extra.trim().is_empty() {
         let more = Recipes::from_ron(&extra, &items)?;
@@ -1178,6 +1183,10 @@ impl Game {
                 }
             }
         }
+        if let Ok(what) = std::env::var("MC_DEEP") {
+            // Test hook: somewhere deep down (deep.rs).
+            game.test_deep(&what);
+        }
         game.load_mods();
         game.mods_dim_test_hook();
         game.key_map = keybinds::KeyMap::new(&game.settings.key_binds);
@@ -1375,6 +1384,7 @@ impl Game {
             Screen::Loading => Situation::Title,
             _ if self.body.head_in_water => Situation::Underwater,
             _ if self.dim == voxel::worldgen::Dim::Nether => Situation::Nether,
+            _ if self.layer() == voxel::worldgen::deep::Layer::Underworld => Situation::Nether,
             _ if self.dim == voxel::worldgen::Dim::End => Situation::End,
             _ => Situation::Creative,
         }
@@ -1495,6 +1505,7 @@ impl Game {
                 }
             }
             KeyCode::KeyB if self.screen == Screen::Playing => self.quick_buff(),
+            KeyCode::KeyF if self.screen == Screen::Playing && self.survival => self.quick_hook(),
             KeyCode::KeyC if matches!(self.screen, Screen::Playing | Screen::Inventory) => self.t5.rpg.sheet = !self.t5.rpg.sheet,
             KeyCode::KeyR if self.screen == Screen::Inventory && self.survival => self.surv.want_recipe = true,
             KeyCode::KeyU if self.screen == Screen::Inventory && self.survival => {
@@ -1612,6 +1623,7 @@ impl Game {
         let rd = self.settings.render_distance;
         let eye = self.body.eye();
         let center = ChunkPos::new((eye.x.floor() as i32) >> 4, (eye.z.floor() as i32) >> 4);
+        self.world.set_focus(eye.y);
         self.world.update(center, rd);
         self.swing_update();
         let events = std::mem::take(&mut self.world.events);
@@ -4193,22 +4205,27 @@ impl Game {
         let eye = if playing_view { eye + self.shake_offset() } else { eye };
         let block = eye.floor().as_ivec3();
         let (top, horizon, daylight, sun) = self.sky();
+        // Deep down the sky fades out, and the Underworld glows red like the Nether (deep.rs).
+        let (top, horizon, daylight, underworld) = self.deep_sky(eye.y, top, horizon, daylight);
         let underwater = self.body.head_in_water;
         let rd = self.settings.render_distance as f32 * 16.0;
         // Distant terrain pushes the fog out to its own edge.
         // The Nether has a roof: no distant terrain there.
-        let nether = self.dim == voxel::worldgen::Dim::Nether;
+        let nether = self.dim == voxel::worldgen::Dim::Nether || underworld;
         let end = self.dim == voxel::worldgen::Dim::End;
         // The Otherside (mods/portals.rs) is a closed, dark world like the Nether.
         let other = self.dim == voxel::worldgen::Dim::Otherside;
         // Nor in the mod pack's dimensions (floating islands, closed caverns).
-        let extra = if self.dim != voxel::worldgen::Dim::Overworld { 0.0 } else { self.settings.lod_distance.max(0) as f32 };
+        let extra = if self.dim != voxel::worldgen::Dim::Overworld || eye.y < -24.0 { 0.0 } else { self.settings.lod_distance.max(0) as f32 };
         let view_end = rd + extra;
         let (fog_color, fog_start, fog_end) = if underwater {
             ([0.04, 0.12, 0.35], 0.0, 28.0)
         } else if end {
             // A dark violet void.
             ([0.03, 0.018, 0.045], rd * 0.45, rd - 2.0)
+        } else if underworld {
+            // The Underworld: a hot haze over the lava sea.
+            ([0.22, 0.06, 0.03], rd * 0.2, rd * 0.9)
         } else if nether {
             // A thick red haze instead of a sky.
             ([0.2, 0.035, 0.025], rd * 0.15, rd * 0.85)
@@ -4470,7 +4487,7 @@ impl Game {
         self.entities.items.prepare(&self.renderer, &drops);
         let grab_backdrop = self.want_backdrop && self.screen == Screen::Loading;
         self.renderer.extra_lines = self.fishing_line(block, third);
-        let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds && self.dim == voxel::worldgen::Dim::Overworld, Some(&self.entities), Some(&self.lod), &self.ui, capture || grab_backdrop);
+        let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds && self.dim == voxel::worldgen::Dim::Overworld && self.body.pos.y > -24.0, Some(&self.entities), Some(&self.lod), &self.ui, capture || grab_backdrop);
         let shot = if grab_backdrop {
             self.want_backdrop = false;
             if let Some((w, h, px)) = &shot {

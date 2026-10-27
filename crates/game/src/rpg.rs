@@ -186,6 +186,16 @@ pub const ACCESSORIES: &[AccDef] = &[
     acc("magma_boots", "", &[M::Lava, M::Fire]),
     acc("steam_boots", "Segure Espaço no ar para subir por um instante", &[]),
     acc("shadow_gear", "Avança com dois toques em A ou D e escala paredes", &[M::Dodge(0.1)]),
+    // From the deep world (accessories.rs): the jumps stack, one of each per jump.
+    acc("leap_boots", "Um pulo a mais no ar", &[M::Move(0.15), M::Jump(0.15)]),
+    acc("blizzard_bottle", "Um pulo a mais no ar, bem alto", &[]),
+    acc("sandstorm_bottle", "Um pulo a mais que continua subindo enquanto segura Espaço", &[]),
+    acc("cloud_balloon", "Um pulo a mais no ar e pulos mais altos", &[M::Jump(0.3), M::NoFall]),
+    acc("rocket_boots", "Segure Espaço no ar para subir com foguetes", &[M::Move(0.1)]),
+    acc("comet_boots", "Foguetes mais longos e corrida rápida", &[M::Move(0.4), M::Immune(&[CHILLED])]),
+    acc("water_walking_boots", "Anda sobre a água (Shift para afundar)", &[]),
+    acc("charge_shield", "Dois toques em A ou D: investida que derruba monstros", &[M::Def(2.0), M::NoKnock]),
+    acc("climbing_gear", "Escala paredes, desliza com Shift e salta da parede com Espaço", &[M::NoFall]),
     // Handy.
     acc("magnet_ring", "", &[M::Pickup(3.0)]),
     acc("lucky_coin", "Monstros às vezes deixam uma esmeralda", &[M::Luck(1.0)]),
@@ -229,6 +239,7 @@ pub const SETS: &[SetDef] = &[
     set("titanium", "", &[M::Endure(0.12), M::Dmg(ALL_CLASSES, 0.05)]),
     set("radiant", "Esquiva um golpe a cada 30 s", &[M::Dmg(ALL_CLASSES, 0.08)]),
     set("verdite", "Um cristal de folha atira nos monstros por perto", &[M::Dmg(ALL_CLASSES, 0.05)]),
+    set("magmarite", "Fogo e lava não queimam", &[M::Fire, M::Lava, M::Dmg(MELEE, 0.12), M::Def(2.0)]),
     set("lumite", "", &[M::Dmg(ALL_CLASSES, 0.1), M::Crit(ALL_CLASSES, 0.1), M::Minions(1), M::Move(0.1)]),
 ];
 
@@ -1603,6 +1614,10 @@ impl Game {
         if info & INFO_DEPTH != 0 {
             let depth = 64.0 - p.y;
             lines.push(if depth > 0.0 { format!("Profundidade: {:.0} abaixo do mar", depth) } else { format!("Altura: {:.0} acima do mar", -depth) });
+            // The layer, and the underground biome once below the surface (deep.rs).
+            let layer = self.layer();
+            let ub = self.ubiome();
+            lines.push(if p.y < 0.0 && ub != voxel::worldgen::deep::UBiome::Plain { format!("{} · {}", layer.name(), ub.name()) } else { layer.name().to_string() });
         }
         if info & INFO_COORDS != 0 {
             lines.push(format!("Posição: {:.0}, {:.0}", p.x, p.z));

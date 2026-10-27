@@ -16,6 +16,12 @@ const HOOKS: &[(&str, f32, f32, f32, [f32; 3])] = &[
     ("sapphire_hook", 24.0, 44.0, 14.0, [0.5, 0.8, 1.5]),
     ("ruby_hook", 26.0, 48.0, 15.0, [1.5, 0.45, 0.45]),
     ("verdite_hook", 32.0, 56.0, 18.0, [0.5, 1.5, 0.6]),
+    // From the deep world.
+    ("web_hook", 22.0, 30.0, 9.0, [1.3, 1.3, 1.35]),
+    ("ivy_hook", 30.0, 46.0, 14.0, [0.45, 1.2, 0.45]),
+    ("diamond_hook", 28.0, 50.0, 16.0, [0.5, 1.4, 1.4]),
+    ("dual_hook", 30.0, 54.0, 17.0, [1.1, 0.6, 1.5]),
+    ("magmarite_hook", 34.0, 60.0, 20.0, [1.6, 0.6, 0.25]),
 ];
 
 pub fn is_hook(name: &str) -> bool {
@@ -44,6 +50,24 @@ impl Hook {
 }
 
 impl Game {
+    /// The hook key (F): throws the best hook you carry, so the hand can keep its tool.
+    pub(crate) fn quick_hook(&mut self) {
+        let best = self
+            .surv
+            .inv
+            .slots
+            .iter()
+            .flatten()
+            .filter_map(|s| HOOKS.iter().position(|h| h.0 == self.items.get(s.item).name))
+            .max_by(|a, b| HOOKS[*a].1.total_cmp(&HOOKS[*b].1));
+        match best {
+            Some(k) => {
+                self.throw_hook(HOOKS[k].0);
+            }
+            None => self.toast("Nenhum gancho no inventário", 1.5),
+        }
+    }
+
     pub(crate) fn throw_hook(&mut self, name: &str) -> bool {
         if self.t5.hook.cd > 0.0 {
             return true;

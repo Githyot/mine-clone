@@ -24,6 +24,10 @@ const HARD_ORES: [(&str, &str, i32, i32, u32, u32); 3] = [
     ("adamantite_ore", "titanium_ore", 3, 30, 3, 5),
 ];
 
+/// The same ores further down in the deep world (worldgen/deep.rs), richer the deeper the tier:
+/// (from y, to y, veins). Only depths already generated get them.
+const DEEP_HARD_ORES: [(i32, i32, u32); 3] = [(-260, -20, 4), (-430, -160, 4), (-610, -320, 4)];
+
 const GOBLINS: [&str; 3] = ["goblin_warrior", "goblin_warrior", "goblin_archer"];
 
 /// A goblin invasion under way.
@@ -315,6 +319,9 @@ impl Game {
             let (common, rare) = if voxel::worldgen::common_metal(self.seed, 4 + i) { (a, b) } else { (b, a) };
             self.place_veins(cp, common, lo, hi, veins, size, 0x4A11 + i as u64);
             self.place_veins(cp, rare, lo, hi, (veins / 3).max(1), size.saturating_sub(2).max(3), 0x4B22 + i as u64);
+            let (dlo, dhi, dv) = DEEP_HARD_ORES[i];
+            self.place_veins(cp, common, dlo, dhi, dv, size + 1, 0x4C33 + i as u64);
+            self.place_veins(cp, rare, dlo, dhi, dv / 2, size, 0x4D44 + i as u64);
         }
     }
 

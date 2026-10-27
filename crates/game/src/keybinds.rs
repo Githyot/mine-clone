@@ -9,7 +9,7 @@ use winit::keyboard::KeyCode;
 use crate::{Game, Screen};
 
 /// (setting name, label, default key)
-pub(crate) const ACTIONS: [(&str, &str, KeyCode); 18] = [
+pub(crate) const ACTIONS: [(&str, &str, KeyCode); 19] = [
     ("forward", "Andar para frente", KeyCode::KeyW),
     ("back", "Andar para tras", KeyCode::KeyS),
     ("left", "Andar para a esquerda", KeyCode::KeyA),
@@ -28,6 +28,7 @@ pub(crate) const ACTIONS: [(&str, &str, KeyCode); 18] = [
     ("paintings", "Quadros", KeyCode::KeyP),
     ("music", "Próxima música", KeyCode::KeyM),
     ("glyphs", "Grimório", KeyCode::KeyG),
+    ("hook", "Gancho", KeyCode::KeyF),
 ];
 
 /// Every key that can be bound, so a name in settings.ron turns back into a key.

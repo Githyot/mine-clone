@@ -6,6 +6,7 @@ use voxel::{BlockId, AIR};
 
 use crate::entity::{bones_for, Bones};
 use crate::world::World;
+use voxel::physics::Terrain;
 
 const MAX_PASSIVE: usize = 14;
 const MAX_HOSTILE: usize = 12;
@@ -124,6 +125,13 @@ impl Mobs {
         // The Nether: everything lives in its caves, in the dark, and only its own creatures.
         // The End: always dark, on the islands' tops. Overworld creatures stay home.
         let nether = matches!(world.gen.dim, voxel::worldgen::Dim::Nether | voxel::worldgen::Dim::Otherside);
+        if world.gen.dim == voxel::worldgen::Dim::Overworld && player.y < -16.0 {
+            // The deep world has its own monsters, near the player's own depth.
+            if hostile < MAX_HOSTILE && !self.peaceful {
+                self.deep_spawn(world, player);
+            }
+            return;
+        }
         let away = world.gen.dim != voxel::worldgen::Dim::Overworld;
         for _ in 0..4 {
             let a = self.rand_f32() * std::f32::consts::TAU;
@@ -204,6 +212,60 @@ impl Mobs {
                 let s = self.next_rand();
                 self.list.push(Mob::new(pick, &self.reg.defs[pick], pos + off, s));
             }
+            return;
+        }
+    }
+
+    /// Monsters of the deep layers (worldgen/deep.rs): a cave floor in the dark within a few
+    /// blocks of the player's height, and a monster that fits the layer and underground biome.
+    fn deep_spawn(&mut self, world: &World, player: Vec3) {
+        use voxel::worldgen::deep::{Layer, UBiome};
+        for _ in 0..4 {
+            let a = self.rand_f32() * std::f32::consts::TAU;
+            let r = 14.0 + self.rand_f32() * 26.0;
+            let x = (player.x + a.cos() * r).floor() as i32;
+            let z = (player.z + a.sin() * r).floor() as i32;
+            let start = player.y as i32 + 16 - (self.next_rand() % 8) as i32;
+            let mut g = None;
+            for y in (start - 32..start).rev() {
+                let p = IVec3::new(x, y, z);
+                if world.block(p - IVec3::Y).is_none() {
+                    break;
+                }
+                if world.block_or_air(p) == AIR && world.block_or_air(p + IVec3::Y) == AIR && world.solid(p - IVec3::Y) {
+                    g = Some(p);
+                    break;
+                }
+            }
+            let Some(p) = g else { continue };
+            if world.light(p) & 15 >= 7 && self.rand_f32() < 0.8 {
+                continue;
+            }
+            let uw = Layer::at(p.y) == Layer::Underworld;
+            let names: &[(&str, u32)] = if uw {
+                &[("fire_imp", 6), ("magma_cube", 5), ("wither_skeleton", 3), ("blaze", 3), ("ember_wraith", 3), ("ash_skeleton", 4)]
+            } else {
+                match world.gen.ubiome_at(p.x, p.y, p.z) {
+                    UBiome::Ice => &[("frost_archer", 5), ("skeleton", 4), ("zombie", 2)],
+                    UBiome::Desert => &[("mummy", 6), ("spider", 3), ("skeleton", 2)],
+                    UBiome::Jungle => &[("ooze", 5), ("cave_spider", 3), ("zombie", 3)],
+                    UBiome::Spider => &[("cave_spider", 7), ("spider", 5)],
+                    UBiome::Mushroom => &[("ooze", 3), ("zombie", 2)],
+                    _ if Layer::at(p.y) == Layer::Caverns => &[("skeleton", 5), ("zombie", 4), ("stalker", 3), ("spider", 3), ("wither_skeleton", 1), ("ooze", 2)],
+                    _ => &[("zombie", 5), ("skeleton", 5), ("spider", 3), ("stalker", 2), ("cave_spider", 1)],
+                }
+            };
+            let total: u32 = names.iter().map(|n| n.1).sum();
+            let mut roll = (self.next_rand() % total as u64) as u32;
+            let mut pick = names[0].0;
+            for &(n, w) in names {
+                if roll < w {
+                    pick = n;
+                    break;
+                }
+                roll -= w;
+            }
+            self.spawn(pick, Vec3::new(p.x as f32 + 0.5, p.y as f32, p.z as f32 + 0.5));
             return;
         }
     }
@@ -354,7 +416,7 @@ impl Mobs {
             let keep = m.name.is_some() || m.leashed;
             let reach = if keep { DESPAWN_DIST + 48.0 } else { DESPAWN_DIST };
             let far = (m.body.pos - player).length() > reach && !reg.defs[m.def].town && others.iter().all(|(p, _)| (m.body.pos - *p).length() > reach);
-            let fell = m.body.pos.y < -64.0;
+            let fell = m.body.pos.y < voxel::chunk::MIN_Y as f32 - 64.0;
             !(gone || far || fell)
         });
         out

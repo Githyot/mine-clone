@@ -161,7 +161,7 @@ impl Game {
                 self.particles.splash(b.pos, water, 0.2);
             }
         }
-        if b.pos.distance(self.body.pos) > 32.0 || b.pos.y < 0.0 || b.age > 300.0 {
+        if b.pos.distance(self.body.pos) > 32.0 || b.pos.y < voxel::chunk::MIN_Y as f32 || b.age > 300.0 {
             return;
         }
         self.bobber = Some(b);

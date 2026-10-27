@@ -11,6 +11,7 @@ pub const SEA_LEVEL: i32 = 62;
 
 mod aether;
 mod caves;
+pub mod deep;
 mod distant_lands;
 mod ecologics;
 mod end;
@@ -379,7 +380,6 @@ struct Palette {
     snow_layer: BlockId,
     snow_layer2: BlockId,
     bedrock: BlockId,
-    lava: BlockId,
     oak_leaves: BlockId,
     birch_leaves: BlockId,
     spruce_leaves: BlockId,
@@ -501,7 +501,6 @@ impl Palette {
             snow_layer: g("snow_layer"),
             snow_layer2: g("snow_layer:1"),
             bedrock: g("bedrock"),
-            lava: g("lava"),
             oak_leaves: g("oak_leaves"),
             birch_leaves: g("birch_leaves"),
             spruce_leaves: g("spruce_leaves"),
@@ -601,6 +600,9 @@ pub struct Generator {
     aether: aether::AetherPalette,
     otherside: otherside::OthersidePalette,
     distant: distant_lands::DistantPalette,
+    deep: deep::DeepNoise,
+    deep_pal: deep::DeepPalette,
+    deep_loot: Vec<Vec<crate::structures::LootDef>>,
 }
 
 const BANDS: usize = 48;
@@ -700,6 +702,9 @@ impl Generator {
             aether: aether::AetherPalette::new(reg),
             otherside: otherside::OthersidePalette::new(reg),
             distant: distant_lands::DistantPalette::new(reg),
+            deep: deep::DeepNoise::new(seed),
+            deep_pal: deep::DeepPalette::new(reg, seed),
+            deep_loot: deep::deep_loot(),
         }
     }
 
@@ -993,7 +998,7 @@ impl Generator {
 
     #[inline]
     fn is_cave(&self, wx: i32, y: i32, wz: i32, surface: i32) -> bool {
-        if y < 6 || y > surface - 3 {
+        if y < 1 || y > surface - 3 {
             return false;
         }
         let (x, yf, z) = (wx as f32, y as f32, wz as f32);
@@ -1014,7 +1019,27 @@ impl Generator {
         false
     }
 
+    /// A new chunk, its depths generated down to y -128.
     pub fn generate(&self, pos: ChunkPos) -> Chunk {
+        self.generate_band(pos, crate::chunk::BASE_SECTION - 8)
+    }
+
+    /// Local sections `lo..hi` of a chunk's depths, made on their own (see `Chunk::deep_lo`).
+    pub fn deep_sections(&self, pos: ChunkPos, lo: usize, hi: usize) -> Vec<crate::chunk::PalettedSection> {
+        let mut c = Chunk::new(pos);
+        if self.dim == Dim::Overworld {
+            self.generate_deep(&mut c, pos, lo, hi);
+        }
+        c.sections[lo.min(hi)..hi].to_vec()
+    }
+
+    /// The whole column, every depth.
+    pub fn generate_full(&self, pos: ChunkPos) -> Chunk {
+        self.generate_band(pos, 0)
+    }
+
+    /// A new chunk with its depths generated down to local section `deep_lo`.
+    pub fn generate_band(&self, pos: ChunkPos, deep_lo: usize) -> Chunk {
         if self.dim == Dim::Nether {
             return self.generate_nether(pos);
         }
@@ -1051,20 +1076,19 @@ impl Generator {
                 // Badlands layers wobble a little so they don't look ruled.
                 let wob = if banded { (self.mountain.noise2(wx as f32 / 60.0, wz as f32 / 60.0) * 3.0) as i32 } else { 0 };
                 for y in 0..=h.max(SEA_LEVEL) {
-                    let id = if y == 0 || (y <= 4 && rng.below(5) < (5 - y) as u32) {
-                        p.bedrock
-                    } else if y > h {
+                    // The world goes on below y 0 now (deep.rs): no bedrock floor here, but the
+                    // dice for it are still thrown so trees and plants stay where they were.
+                    if (1..=4).contains(&y) {
+                        let _ = rng.below(5);
+                    }
+                    let id = if y > h {
                         if y == SEA_LEVEL && (matches!(col.biome, Biome::Snowy | Biome::Taiga | Biome::FrozenOcean) || (col.biome == Biome::River && self.temperature.fbm2(wx as f32 / 1100.0, wz as f32 / 1100.0, 3) < -0.28)) {
                             p.ice
                         } else {
                             p.water
                         }
                     } else if self.is_cave(wx, y, wz, h) {
-                        if y < 11 {
-                            p.lava
-                        } else {
-                            AIR
-                        }
+                        AIR
                     } else if y == h {
                         if h < SEA_LEVEL && top == p.grass {
                             p.dirt
@@ -1090,6 +1114,14 @@ impl Generator {
         }
 
         self.place_ores(&mut chunk, &mut rng, &cols);
+        // The depths: the top of them now, the rest when someone goes down (deep.rs).
+        let lo = deep_lo.min(crate::chunk::BASE_SECTION);
+        let filler = crate::chunk::PalettedSection::filled(p.stone);
+        for s in 0..lo {
+            chunk.sections[s] = filler.clone();
+        }
+        chunk.deep_lo = crate::chunk::BASE_SECTION;
+        self.generate_deep_with(&mut chunk, &cols, pos, lo, crate::chunk::BASE_SECTION);
         self.geodes_and_veins(&mut chunk, pos);
         self.decorate_caves(&mut chunk, &mut rng, &cols, pos);
         self.decorate(&mut chunk, &mut rng, &cols, pos);
@@ -1152,7 +1184,7 @@ impl Generator {
             for z in 0..16 {
                 for x in 0..16 {
                     let top = 5 + rng.below(4) as usize;
-                    for y in 1..top {
+                    for y in 0..top {
                         let b = chunk.get(x, y, z);
                         if b == p.stone {
                             chunk.set(x, y, z, p.deepslate);
@@ -1800,8 +1832,8 @@ mod tests {
         let reg = registry();
         let g = Generator::new(99, &reg);
         let (sx, _, sz) = g.find_spawn();
-        let c = g.generate(ChunkPos::new(sx >> 4, sz >> 4));
-        assert_eq!(c.get(0, 0, 0), reg.id("bedrock").unwrap());
+        let c = g.generate_full(ChunkPos::new(sx >> 4, sz >> 4));
+        assert_eq!(c.get_w(0, crate::chunk::MIN_Y, 0), reg.id("bedrock").unwrap());
         assert!(c.top_y((sx & 15) as usize, (sz & 15) as usize) >= SEA_LEVEL);
     }
 
