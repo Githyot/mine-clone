@@ -59,7 +59,7 @@ impl VoiceMode {
         }
     }
 
-    fn next(self) -> VoiceMode {
+    pub(crate) fn next(self) -> VoiceMode {
         match self {
             VoiceMode::Near => VoiceMode::Group,
             VoiceMode::Group => VoiceMode::Off,
@@ -720,7 +720,7 @@ impl Game {
                 None => (String::new(), None),
             };
             let personal = vs.players.get(&name).copied().unwrap_or(1.0);
-            let vol = vs.volume * personal * 1.4;
+            let vol = vs.volume * personal * 1.4 * self.settings.sound_volume;
             let (gl, gr, cut) = if sp.lane.load(Relaxed) == 0 {
                 (vol, vol, 1.0)
             } else if let Some(at) = at {

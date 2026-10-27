@@ -5,6 +5,7 @@
 
 mod ambient;
 mod companions;
+mod options;
 mod sentries;
 mod vanity;
 mod wings;
@@ -170,7 +171,6 @@ fn extra_textures() -> Vec<String> {
     v
 }
 const CLOUD_HEIGHT: f32 = 160.0;
-const RENDER_DISTANCES: [i32; 9] = [4, 6, 8, 10, 12, 16, 20, 24, 32];
 
 #[derive(Default, Clone)]
 struct Args {
@@ -754,8 +754,10 @@ struct Game {
     worlds: Vec<menus::WorldEntry>,
     world_sel: Option<usize>,
     new_world: menus::NewWorldForm,
-    /// Where the controller menu returns to.
+    /// Where the controller and shader menus return to.
     options_back: Screen,
+    /// The options screen: open tab, scroll and the slider being dragged (options.rs).
+    opts: options::OptState,
     mining_tick: f32,
     sprinting: bool,
     /// Time W was last pressed (double tap = sprint).
@@ -1138,6 +1140,7 @@ impl Game {
             world_sel: None,
             new_world: menus::NewWorldForm::default(),
             options_back: Screen::Paused,
+            opts: Default::default(),
             mining_tick: 0.0,
             sprinting: false,
             last_w: -10.0,
@@ -1262,6 +1265,7 @@ impl Game {
         // Test hook: open a menu for screenshots (MC_SCREEN=options or keys).
         match std::env::var("MC_SCREEN").as_deref() {
             Ok("options") => game.set_screen(Screen::Options),
+            Ok("paused") => game.set_screen(Screen::Paused),
             Ok("keys") => game.set_screen(Screen::Keys),
             Ok("voice") => game.set_screen(Screen::Voice),
             _ => {}
@@ -1500,18 +1504,6 @@ impl Game {
         self.toast(format!("Texturas: {}", self.textures_name), 3.0);
     }
 
-    fn cycle_pack(&mut self) {
-        self.packs = textures::list_resource_packs(&self.base.join("resourcepacks"));
-        let cur = self.settings.resource_packs.first().cloned();
-        let idx = cur.as_ref().and_then(|c| self.packs.iter().position(|p| p == c));
-        let next = match idx {
-            None => self.packs.first().cloned(),
-            Some(i) => self.packs.get(i + 1).cloned(),
-        };
-        self.settings.resource_packs = next.into_iter().collect();
-        self.reload_textures();
-    }
-
     fn key(&mut self, code: KeyCode, pressed: bool, repeat: bool) {
         if pressed {
             self.keys.insert(code);
@@ -1556,7 +1548,7 @@ impl Game {
                 Screen::Playing => self.set_screen(Screen::Paused),
                 Screen::Paused | Screen::Inventory => self.set_screen(Screen::Playing),
                 Screen::Controls => self.set_screen(self.options_back),
-                Screen::Shaders => self.set_screen(Screen::Paused),
+                Screen::Shaders => self.set_screen(self.options_back),
                 Screen::Paintings | Screen::Sign | Screen::Grimoire | Screen::Plugin => {
                     self.plugins.screen = None;
                     self.extras.book = None;
@@ -1679,6 +1671,7 @@ impl Game {
                     self.painting_scroll += 1;
                 }
             }
+            Screen::Options => self.options_scroll(lines),
             Screen::Shaders => {
                 if lines > 0.0 {
                     self.shader_scroll = self.shader_scroll.saturating_sub(1);
@@ -2048,7 +2041,7 @@ impl Game {
         if self.world_open && sim && self.screen != Screen::Loading && !menus_stop {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let daylight = self.tr_daylight((a.sin() * 2.2 + 0.45).clamp(0.0, 1.0));
-            let creative = !self.survival || self.screen == Screen::Dead || self.has_effect(effects::INVISIBILITY);
+            let creative = !self.hunted();
             if self.screen == Screen::Playing && self.dim == voxel::worldgen::Dim::Overworld {
                 self.update_wanderers(if self.args.screenshot.is_some() { 0.0 } else { dt }, daylight);
             }
@@ -2722,7 +2715,7 @@ impl Game {
         }
         let Some(&(_, row, _)) = self.shader_rows().get(i) else { return };
         match row {
-            ShaderRow::Back => self.set_screen(Screen::Paused),
+            ShaderRow::Back => self.set_screen(self.options_back),
             ShaderRow::Quality => {
                 self.settings.shader_quality = match self.settings.shader_quality {
                     ShaderQuality::Fast => ShaderQuality::Fancy,
@@ -2821,6 +2814,12 @@ impl Game {
         if let Some(a) = self.audio.as_mut() {
             a.play(s, vol);
         }
+    }
+
+    /// Monsters go after the player: survival, alive, visible, and not a dedicated server's
+    /// own nobody. In creative they leave the player alone, like vanilla.
+    pub(crate) fn hunted(&self) -> bool {
+        self.survival && !self.net.server && self.screen != Screen::Dead && !self.has_effect(effects::INVISIBILITY)
     }
 
     /// Hurt the player (survival only). `from` pushes the player away.
@@ -3880,22 +3879,12 @@ impl Game {
                 let x = (w - bw) / 2.0;
                 let mut y = (h / 2.0 - 100.0 * s).max(26.0 * s);
                 self.ui.text_centered(w / 2.0, y - 18.0 * s, "Menu do jogo", WHITE);
-                let pack = self.textures_name.clone();
-                let custom = self.audio.as_ref().map(|a| a.custom_track_count()).unwrap_or(0);
+                // Like the classic pause menu: everything adjustable lives in Opções (options.rs).
                 let labels = [
                     "Voltar ao jogo".to_string(),
-                    format!("Distância de visão: {} chunks", self.settings.render_distance),
-                    format!("Música: {} ({} suas)", self.settings.music_mode.label(), custom),
-                    "Tocar próxima música (M)".to_string(),
-                    format!("Texturas: {}", pack.trim_end_matches(".zip")),
-                    format!("Nuvens: {}", if self.settings.show_clouds { "Sim" } else { "Não" }),
-                    format!("VSync: {}", if self.settings.vsync { "Sim" } else { "Não" }),
-                    format!("Controle: {}", if self.pads.pad.connected { self.pads.pad.name.as_str() } else { "nenhum conectado" }),
+                    "Opções...".to_string(),
                     format!("Modo: {}", if self.survival { "Sobrevivência" } else { "Criativo" }),
-                    format!("Mobs: {}", if self.settings.mobs { "Sim" } else { "Não" }),
                     format!("Shaders: {}", self.shader_name()),
-                    format!("Volume da música: {}%", (self.settings.music_volume * 100.0).round() as i32),
-                    format!("Dificuldade: {}", settings::DIFFICULTIES[self.settings.difficulty.min(3) as usize]),
                     self.net_pause_label(),
                     "Salvar e sair".to_string(),
                 ];
@@ -4264,7 +4253,7 @@ impl Game {
                             self.rebinding = None;
                             self.set_screen(self.options_back);
                         }
-                        Screen::Shaders => self.set_screen(Screen::Paused),
+                        Screen::Shaders => self.set_screen(self.options_back),
                         Screen::Dead | Screen::Title => {}
                         Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice => self.menu_back(),
                         _ => self.set_screen(Screen::Playing),
@@ -4274,67 +4263,32 @@ impl Game {
         }
     }
 
+    fn toggle_game_mode(&mut self) {
+        self.survival = !self.survival;
+        if self.survival {
+            self.body.flying = false;
+            self.health = self.max_health;
+            self.fall_peak = self.body.pos.y;
+            self.toast("Modo sobrevivência: cuidado com quedas e monstros", 4.0);
+        } else {
+            self.toast("Modo criativo", 3.0);
+        }
+    }
+
     fn pause_button(&mut self, i: usize) {
         if let Some(a) = self.audio.as_mut() {
             a.play(Sfx::Click, self.settings.sound_volume);
         }
         match i {
             0 => self.set_screen(Screen::Playing),
-            1 => {
-                let cur = RENDER_DISTANCES.iter().position(|&d| d >= self.settings.render_distance).unwrap_or(0);
-                self.settings.render_distance = RENDER_DISTANCES[(cur + 1) % RENDER_DISTANCES.len()];
-            }
-            2 => {
-                self.settings.music_mode = self.settings.music_mode.next();
-                if let Some(a) = self.audio.as_mut() {
-                    a.reload_tracks();
-                }
-            }
+            1 => self.open_options(),
+            2 => self.toggle_game_mode(),
             3 => {
-                let sit = self.situation();
-                if let Some(a) = self.audio.as_mut() {
-                    a.skip(sit, &self.settings);
-                }
-            }
-            4 => self.cycle_pack(),
-            5 => self.settings.show_clouds = !self.settings.show_clouds,
-            6 => {
-                self.settings.vsync = !self.settings.vsync;
-                self.renderer.set_vsync(self.settings.vsync);
-            }
-            7 => {
                 self.options_back = Screen::Paused;
-                self.set_screen(Screen::Controls);
-            }
-            8 => {
-                self.survival = !self.survival;
-                if self.survival {
-                    self.body.flying = false;
-                    self.health = self.max_health;
-                    self.fall_peak = self.body.pos.y;
-                    self.toast("Modo sobrevivência: cuidado com quedas e monstros", 4.0);
-                } else {
-                    self.toast("Modo criativo", 3.0);
-                }
-            }
-            9 => {
-                self.settings.mobs = !self.settings.mobs;
-                self.mobs.enabled = self.settings.mobs;
-            }
-            10 => {
                 self.shader_scroll = 0;
                 self.set_screen(Screen::Shaders);
             }
-            11 => {
-                // 0% .. 100% in steps of 10.
-                let v = ((self.settings.music_volume * 10.0).round() as i32 + 1) % 11;
-                self.settings.music_volume = v as f32 / 10.0;
-            }
-            12 => {
-                self.settings.difficulty = (self.settings.difficulty + 1) % 4;
-                self.mobs.peaceful = self.settings.difficulty == 0;
-            }
-            13 => self.net_pause_button(),
+            4 => self.net_pause_button(),
             _ => {
                 self.quit_to_title();
                 return;
@@ -4442,7 +4396,7 @@ impl Game {
             cam_pos: [eye.x - block.x as f32, eye.y - block.y as f32, eye.z - block.z as f32, (self.now % 3600.0) + self.start.elapsed().as_secs_f32() * 0.0],
             cam_world: [eye.x, eye.y, eye.z, CLOUD_HEIGHT],
             fog_color: [fog_color[0], fog_color[1], fog_color[2], if nether || end || other { 0.0 } else { daylight }],
-            fog: [fog_start, fog_end, if underwater { 1.0 } else { 0.0 }, if nether || end || other { 1.0 } else { 0.3 }],
+            fog: [fog_start, fog_end, if underwater { 1.0 } else { 0.0 }, if nether || end || other { 1.0 } else { settings::brightness_lift(self.settings.brightness) }],
             sun_dir: [sun.x, sun.y, sun.z, if self.settings.relief { 1.0 } else { 0.0 }],
             sky_top: [top[0], top[1], top[2], 1.0],
             sky_horizon: [horizon[0], horizon[1], horizon[2], 1.0],
@@ -4864,6 +4818,9 @@ impl ApplicationHandler for App {
                 let pressed = state == ElementState::Pressed;
                 if idx == 1 {
                     game.rdown = pressed;
+                }
+                if idx == 0 {
+                    game.opts.held = pressed;
                 }
                 if game.screen == Screen::Playing {
                     if !game.grabbed {

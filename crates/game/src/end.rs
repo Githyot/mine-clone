@@ -249,6 +249,7 @@ impl Game {
         }
         self.walker_t = 0.5;
         let me = self.body.pos;
+        let hunted = self.hunted();
         let glow = self.glow_layer();
         for i in 0..self.mobs.list.len() {
             let m = &self.mobs.list[i];
@@ -258,7 +259,7 @@ impl Game {
             let (pos, aggro, hit) = (m.body.pos, m.aggro, m.hurt_age < 0.5);
             let far = pos.distance(me) > 7.0;
             let roll = self.surv.rng.f32();
-            let to = if aggro && far && roll < 0.25 {
+            let to = if aggro && hunted && far && roll < 0.25 {
                 me
             } else if hit && roll < 0.35 {
                 pos
