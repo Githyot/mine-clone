@@ -53,6 +53,7 @@ mod gear;
 mod weather;
 mod entity;
 mod instruments;
+mod torch;
 mod item_render;
 mod juice;
 mod menus;
@@ -619,6 +620,12 @@ struct Game {
     melody_cd: f32,
     /// A town NPC playing an instrument (instruments.rs).
     musicians: instruments::Musicians,
+    /// Flames owed to the held torch (fractions carry over between frames), and a count of
+    /// them for the sparks and smoke in between (torch.rs).
+    torch_fx: f32,
+    torch_sparks: u32,
+    /// Screenshots: the held torch's fire has been lit up once already.
+    torch_lit: bool,
     /// Sounds and effects of the immersion stage (soundscape.rs, effects.rs).
     fx: soundscape::Immersion,
     wander: wanderers::Wanderers,
@@ -960,6 +967,9 @@ impl Game {
             walker_t: 0.0,
             melody_cd: 0.0,
             musicians: Default::default(),
+            torch_fx: 0.0,
+            torch_sparks: 0,
+            torch_lit: false,
             fx: soundscape::Immersion::new(),
             wander: Default::default(),
             mods: Default::default(),
@@ -2457,6 +2467,7 @@ impl Game {
             hurt: self.survival && self.hurt_age < 0.3,
             sitting: self.riding.is_some() || self.seat.is_some() || self.mods.aircraft.pilot.is_some(),
             holding: self.held_stack().is_some(),
+            torch: self.held_torch().is_some(),
         }
     }
 
@@ -4130,6 +4141,8 @@ impl Game {
         let (net_models, net_held) = self.net_instances(block);
         items.extend(net_models);
         let mut held_third = None;
+        // The held torch's flame top, for its fire (torch.rs).
+        let mut torch_top = None;
         if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
             let def = &self.mobs.reg.defs[pd];
             let pose = self.pose(false);
@@ -4138,6 +4151,11 @@ impl Game {
                 let mut bones = self.anim.bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
                 let pv = def.parts[2].pivot;
                 held_third = self.held_item_third_person(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32));
+                if let Some((t, mesh)) = self.held_torch().and_then(|t| Some((t, self.entities.torch_mesh(t)?))) {
+                    let (tb, top) = torch::hold(t, bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 1.0, 0.62, self.now, [bones.light[0], 1.0, 0.0, 0.0]);
+                    items.push((mesh, tb));
+                    torch_top = Some((t, top + block.as_vec3(), 1.0));
+                }
                 // An instrument is held in both hands, in 3D.
                 if let Some((i, play)) = self.held_instrument() {
                     if let (Some(ib), Some(mesh)) = (instruments::pose(def, &mut bones, i, play), self.entities.instrument_mesh(i)) {
@@ -4158,7 +4176,27 @@ impl Game {
                     items.push((pd, arms));
                     items.push(inst);
                 } else {
-                    items.push((pd, self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, light[0], light[1])));
+                    let arm = self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, light[0], light[1]);
+                    // Same size against the fist as the other held items in first person.
+                    if let Some((t, mesh)) = self.held_torch().and_then(|t| Some((t, self.entities.torch_mesh(t)?))).filter(|_| self.camera_mode == 0) {
+                        let pv = def.parts[2].pivot;
+                        let (tb, top) = torch::hold(t, arm.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 0.55, 0.2, self.now, [light[0], 1.0, 0.0, 0.0]);
+                        items.push((mesh, tb));
+                        torch_top = Some((t, top + block.as_vec3(), 0.5));
+                    }
+                    items.push((pd, arm));
+                }
+            }
+        }
+        if let Some((t, top, k)) = torch_top {
+            if self.args.screenshot.is_none() {
+                self.torch_flames(t, top, k, dt);
+            } else if !self.torch_lit {
+                // Screenshots freeze the particles: light the fire with a moment of flames.
+                self.torch_lit = true;
+                for _ in 0..40 {
+                    self.torch_flames(t, top, k, 0.015);
+                    self.particles.update(&self.world, 0.015);
                 }
             }
         }

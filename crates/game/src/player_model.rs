@@ -40,6 +40,8 @@ pub struct Pose {
     pub sitting: bool,
     /// Something in the right hand: the arm is held a little forward, as in the classic game.
     pub holding: bool,
+    /// A torch in the right hand: held up high ahead, lighting the way (torch.rs).
+    pub torch: bool,
 }
 
 /// Smoothed animation state that lives between frames.
@@ -182,7 +184,13 @@ impl Animator {
         let arm = -leg * 0.85;
         let sway = 0.04 + breathe * 0.03 * idle;
         // Holding something, the right arm swings half as far and stays raised 18° forward.
-        let r_arm = if p.holding { arm * 0.5 - PI / 10.0 } else { arm };
+        let r_arm = if p.torch {
+            arm * 0.25 - PI / 4.0
+        } else if p.holding {
+            arm * 0.5 - PI / 10.0
+        } else {
+            arm
+        };
         rot[R_ARM] = Quat::from_rotation_x(r_arm + breathe * 0.03 * idle) * Quat::from_rotation_z(-sway);
         rot[L_ARM] = Quat::from_rotation_x(-arm - breathe * 0.03 * idle) * Quat::from_rotation_z(sway);
         if p.sprinting && a > 0.8 {

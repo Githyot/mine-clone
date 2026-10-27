@@ -2604,6 +2604,10 @@ impl Game {
             // Instruments are 3D models held in both hands (instruments.rs).
             return None;
         }
+        if crate::torch::index(&it.name).is_some() {
+            // Torches are 3D models with a live flame (torch.rs).
+            return None;
+        }
         let tool = it.tool.is_some() || it.name.ends_with("_sword") || matches!(it.name.as_str(), "stick" | "blaze_rod" | "breeze_rod" | "bone" | "mace" | "trident") || it.name.ends_with("_rod");
         Some(match it.look {
             Look::Block(b) => {

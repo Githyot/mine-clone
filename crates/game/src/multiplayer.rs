@@ -1680,6 +1680,7 @@ impl Game {
                     hurt: s.has(flags::HURT),
                     sitting: s.has(flags::SITTING),
                     holding: !s.held.is_empty(),
+                    torch: crate::torch::index(&s.held).is_some(),
                 };
                 (pose, s.swing, s.armor.clone(), s.held.clone())
             };
@@ -1704,6 +1705,12 @@ impl Game {
                 }
             }
             models.push((pd, bones));
+            // A torch is a 3D model with its flame (torch.rs).
+            if let Some((t, mesh)) = crate::torch::index(&item).and_then(|t| Some((t, self.entities.torch_mesh(t)?))) {
+                let pv = def.parts[2].pivot;
+                let (tb, _) = crate::torch::hold(t, bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 1.0, 0.62, self.now, [sky, 1.0, 0.0, 0.0]);
+                models.push((mesh, tb));
+            }
             // What they hold, put in our hand for a moment to reuse the same drawing.
             if let Some(it) = self.items.id(&item) {
                 let pv = def.parts[2].pivot;
