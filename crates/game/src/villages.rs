@@ -1,6 +1,6 @@
 //! Villages (vanilla idea, our own folk): the settlers living round a village square and its
 //! sentinel. Each settler has a trade: right click to open their shop, or hold out the goods
-//! they want (a stack of wheat, coal, paper or wool) to be paid in emeralds. The sentinel, a
+//! they want (a stack of wheat, coal, paper or wool) to be paid in coins. The sentinel, a
 //! big stone-and-iron keeper, fights the monsters that come near. Settlers who die come back
 //! after a while, as new folk move in.
 
@@ -12,18 +12,21 @@ use voxel::item::{Inventory, ItemId, ItemStack};
 use voxel::worldgen::Dim;
 
 use crate::audio::Sfx;
+use crate::money::s;
 use crate::survival::Open;
 use crate::Game;
 
-/// Who lives in a village: (mob, shop goods as (item, count, price in emeralds), what they
-/// buy as (item, how many for one emerald)).
-type Trade = (&'static str, &'static [(&'static str, u8, u8)], (&'static str, u32));
-const SETTLERS: [Trade; 4] = [
-    ("settler_farmer", &[("bread", 6, 1), ("apple", 4, 1), ("carrot", 6, 1), ("pumpkin", 2, 1), ("melon_slice", 8, 1), ("wheat_seeds", 8, 1)], ("wheat", 20)),
-    ("settler_smith", &[("iron_pickaxe", 1, 4), ("iron_sword", 1, 4), ("iron_axe", 1, 3), ("iron_chestplate", 1, 8), ("iron_helmet", 1, 5), ("bucket", 1, 2), ("iron_leggings", 1, 6)], ("coal", 15)),
-    ("settler_librarian", &[("bookshelf", 1, 3), ("compass", 1, 4), ("map", 1, 3), ("clock", 1, 4), ("lantern", 2, 1), ("glass", 8, 1), ("name_tag", 1, 5)], ("paper", 24)),
-    ("settler_shepherd", &[("white_wool", 4, 1), ("string", 6, 1), ("red_wool", 2, 1), ("blue_wool", 2, 1), ("yellow_wool", 2, 1), ("white_carpet", 6, 1)], ("white_wool", 18)),
+/// Who lives in a village: (mob, shop goods as (item, count, price in copper), what they
+/// buy as (item, how many for one `PAY`)).
+pub(crate) type Trade = (&'static str, &'static [(&'static str, u8, u32)], (&'static str, u32));
+pub(crate) const SETTLERS: [Trade; 4] = [
+    ("settler_farmer", &[("bread", 6, s(4)), ("apple", 4, s(3)), ("carrot", 6, s(3)), ("pumpkin", 2, s(3)), ("melon_slice", 8, s(2)), ("wheat_seeds", 8, s(1))], ("wheat", 20)),
+    ("settler_smith", &[("iron_pickaxe", 1, s(20)), ("iron_sword", 1, s(20)), ("iron_axe", 1, s(15)), ("iron_chestplate", 1, s(40)), ("iron_helmet", 1, s(25)), ("bucket", 1, s(10)), ("iron_leggings", 1, s(30))], ("coal", 15)),
+    ("settler_librarian", &[("bookshelf", 1, s(15)), ("compass", 1, s(20)), ("map", 1, s(15)), ("clock", 1, s(20)), ("lantern", 2, s(5)), ("glass", 8, s(4)), ("name_tag", 1, s(25))], ("paper", 24)),
+    ("settler_shepherd", &[("white_wool", 4, s(3)), ("string", 6, s(3)), ("red_wool", 2, s(2)), ("blue_wool", 2, s(2)), ("yellow_wool", 2, s(2)), ("white_carpet", 6, s(3))], ("white_wool", 18)),
 ];
+/// What a settler pays for one lot of the goods they want.
+const PAY: u64 = 5 * crate::money::SILVER;
 const SENTINEL: &str = "sentinel";
 /// Seconds before a village fills a gap left by a settler or sentinel who died.
 const REFILL: f32 = 180.0;
@@ -124,20 +127,19 @@ impl Game {
         let Some(&(_, offers, (want, per))) = SETTLERS.iter().find(|s| s.0 == name) else { return false };
         let to = self.body.pos - self.mobs.list[i].body.pos;
         self.mobs.list[i].yaw = to.x.atan2(to.z);
-        // Holding what they buy: a stack's worth for an emerald.
+        let pay = crate::money::text(PAY);
+        // Holding what they buy: paid for every lot of it you carry.
         if self.held_name().as_deref() == Some(want) {
-            let (Some(wid), Some(em)) = (self.items.id(want), self.items.id("emerald")) else { return true };
+            let Some(wid) = self.items.id(want) else { return true };
             let have = self.count_item_id(wid);
             if have < per {
-                self.toast(format!("{dn}: Pago 1 esmeralda por {per}. Você só tem {have}."), 3.5);
+                self.toast(format!("{dn}: Pago {pay} por {per}. Você só tem {have}."), 3.5);
                 return true;
             }
             let n = (have / per).min(16);
             self.take_item_id(wid, n * per);
-            if let Some(left) = self.surv.inv.add(&self.items, ItemStack::new(em, n as u8)) {
-                self.pop_drop(self.body.pos + Vec3::Y, left);
-            }
-            self.toast(format!("{dn}: Negócio fechado! (+{n} esmeralda(s))"), 3.0);
+            self.earn(PAY * n as u64);
+            self.toast(format!("{dn}: Negócio fechado! (+{})", crate::money::text(PAY * n as u64)), 3.0);
             self.sfx(Sfx::Xp);
             return true;
         }
@@ -154,10 +156,12 @@ impl Game {
         self.surv.shop = inv;
         self.surv.shop_prices = prices;
         self.surv.shop_name = dn.clone();
+        self.surv.shop_want = self.items.id(want).map(|id| (id, (PAY / per as u64).max(1)));
+        self.surv.shop_scroll = 0;
         self.surv.open = Open::Shop;
         self.set_screen(crate::Screen::Inventory);
         let wname = self.items.id(want).map(|id| self.items.get(id).display_name.clone()).unwrap_or_default();
-        self.toast(format!("{dn}: Também compro {wname} ({per} por 1 esmeralda)."), 4.0);
+        self.toast(format!("{dn}: Também compro {wname} ({per} por {pay})."), 4.0);
         true
     }
 }

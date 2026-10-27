@@ -57,6 +57,10 @@
     (name: "bronze_ingot", display_name: Some("Barra de Bronze")),
     (name: "diamond", display_name: Some("Diamante")),
     (name: "emerald", display_name: Some("Esmeralda")),
+    (name: "copper_coin", display_name: Some("Moeda de Cobre"), max_stack: Some(100)),
+    (name: "silver_coin", display_name: Some("Moeda de Prata"), max_stack: Some(100)),
+    (name: "gold_coin", display_name: Some("Moeda de Ouro"), max_stack: Some(100)),
+    (name: "platinum_coin", display_name: Some("Moeda de Platina"), max_stack: Some(100)),
     // Etapa 5: the ore ladder (copper/tin, iron/lead, silver/tungsten, gold/platinum), gems and life crystals.
     (name: "copper_pickaxe", display_name: Some("Picareta de Cobre"), tool: Some((kind: Pickaxe, tier: 2, speed: 4.5, damage: 3.0, durability: 180))),
     (name: "copper_axe", display_name: Some("Machado de Cobre"), tool: Some((kind: Axe, tier: 2, speed: 4.5, damage: 8.0, durability: 180))),

@@ -1,7 +1,7 @@
 //! Town NPCs (Terraria's idea): build a house and people move in. A house is a closed room
 //! (walls, floor and roof all around) of 20 to 400 air blocks with a door, a light and a table
 //! (crafting table or chest). Each NPC comes once its wish is met: the guide right away, the
-//! merchant when you carry emeralds, the nurse after a life crystal, the wizard after your
+//! merchant once you have 50 silver, the nurse after a life crystal, the wizard after your
 //! first magic, the smith after the Forest Guardian falls. Right click to talk or trade.
 
 use std::collections::{HashSet, VecDeque};
@@ -13,6 +13,7 @@ use voxel::item::{Inventory, ItemStack};
 use voxel::AIR;
 
 use crate::audio::{Material, Sfx};
+use crate::money::{g, s};
 use crate::survival::Open;
 use crate::Game;
 
@@ -39,18 +40,18 @@ impl Town {
     }
 }
 
-/// (mob name, what they sell: item, count, price in emeralds)
-pub(crate) const SHOPS: &[(&str, &[(&str, u8, u8)])] = &[
-    ("npc_merchant", &[("torch", 8, 1), ("apple", 3, 1), ("cooked_beef", 2, 1), ("oak_sapling", 4, 1), ("bucket", 1, 2), ("fishing_rod", 1, 2), ("iron_ingot", 2, 2), ("red_bed", 1, 3), ("ancient_seed", 1, 4), ("lesser_healing_potion", 2, 1), ("lesser_mana_potion", 2, 1), ("pocket_watch", 1, 6)]),
-    ("npc_wizard", &[("lapis_lazuli", 6, 2), ("topaz_wand", 1, 5), ("ruby_wand", 1, 6), ("sapphire_wand", 1, 6), ("amethyst_wand", 1, 7), ("mana_crystal", 1, 8), ("flame_tome", 1, 12), ("thunder_tome", 1, 14), ("mana_potion", 2, 3), ("wisp_staff", 1, 8), ("sage_pendant", 1, 10)]),
-    ("goblin_trader", &[("diamond", 1, 5), ("redstone", 12, 1), ("gold_ingot", 3, 2), ("copper_ingot", 10, 1), ("honeycomb", 4, 1), ("ruby", 1, 3), ("topaz", 1, 3), ("life_crystal", 1, 9), ("minecart", 1, 3), ("leather_backpack", 1, 6), ("tnt", 2, 2), ("magnet_ring", 1, 7), ("lucky_coin", 1, 9)]),
-    ("npc_farmer", &[("wheat_seeds", 8, 1), ("carrot", 4, 1), ("potato", 4, 1), ("beetroot_seeds", 6, 1), ("bread", 4, 1), ("hay_block", 2, 2), ("iron_hoe", 1, 2)]),
-    ("npc_smith", &[("bronze_ingot", 4, 2), ("silver_ingot", 2, 3), ("tungsten_ingot", 2, 4), ("platinum_ingot", 2, 5), ("iron_pickaxe", 1, 4), ("platinum_sword", 1, 8), ("diamond", 1, 6)]),
+/// (mob name, what they sell: item, count, price in copper; s() is silver, g() gold)
+pub(crate) const SHOPS: &[(&str, &[(&str, u8, u32)])] = &[
+    ("npc_merchant", &[("torch", 8, s(4)), ("apple", 3, s(3)), ("cooked_beef", 2, s(4)), ("oak_sapling", 4, s(2)), ("bucket", 1, s(15)), ("fishing_rod", 1, s(12)), ("iron_ingot", 2, s(10)), ("red_bed", 1, s(25)), ("ancient_seed", 1, s(40)), ("lesser_healing_potion", 2, s(6)), ("lesser_mana_potion", 2, s(5)), ("pocket_watch", 1, s(80))]),
+    ("npc_wizard", &[("lapis_lazuli", 6, s(10)), ("topaz_wand", 1, s(30)), ("ruby_wand", 1, s(40)), ("sapphire_wand", 1, s(40)), ("amethyst_wand", 1, s(50)), ("mana_crystal", 1, s(60)), ("flame_tome", 1, g(1)), ("thunder_tome", 1, g(1) + s(20)), ("mana_potion", 2, s(15)), ("wisp_staff", 1, s(80)), ("sage_pendant", 1, g(1))]),
+    ("goblin_trader", &[("diamond", 1, s(30)), ("redstone", 12, s(5)), ("gold_ingot", 3, s(12)), ("copper_ingot", 10, s(5)), ("honeycomb", 4, s(4)), ("ruby", 1, s(15)), ("topaz", 1, s(15)), ("life_crystal", 1, s(70)), ("minecart", 1, s(20)), ("leather_backpack", 1, s(40)), ("tnt", 2, s(10)), ("magnet_ring", 1, s(60)), ("lucky_coin", 1, s(90))]),
+    ("npc_farmer", &[("wheat_seeds", 8, s(1)), ("carrot", 4, s(2)), ("potato", 4, s(2)), ("beetroot_seeds", 6, s(1)), ("bread", 4, s(3)), ("hay_block", 2, s(5)), ("iron_hoe", 1, s(8))]),
+    ("npc_smith", &[("bronze_ingot", 4, s(10)), ("silver_ingot", 2, s(12)), ("tungsten_ingot", 2, s(16)), ("platinum_ingot", 2, s(20)), ("iron_pickaxe", 1, s(20)), ("platinum_sword", 1, s(60)), ("diamond", 1, s(35))]),
 ];
 
 pub(crate) const GUIDE_TIPS: &[&str] = &[
     "Uma casa precisa de porta, luz e uma mesa (bancada ou baú).",
-    "Carregue esmeraldas e um mercador vai aparecer.",
+    "Junte 50 de prata e um mercador vai aparecer.",
     "Cristais de vida crescem no chão de cavernas fundas.",
     "Rubis, safiras, topázios e ametistas viram varinhas mágicas.",
     "A Semente Ancestral, usada à noite, acorda o Guardião da Floresta.",
@@ -71,7 +72,7 @@ impl Game {
     fn npc_wish_met(&self, name: &str) -> bool {
         match name {
             "npc_guide" => true,
-            "npc_merchant" => self.carrying("emerald") >= 5,
+            "npc_merchant" => self.surv.money >= 50 * crate::money::SILVER,
             "npc_nurse" => self.max_health > 20.0,
             "npc_wizard" => self.magic.max_mana > 20.0 || self.surv.inv.slots.iter().flatten().any(|s| crate::magic::is_caster(&self.items.get(s.item).name)),
             "npc_farmer" => ["wheat_seeds", "wheat", "carrot", "potato", "beetroot_seeds"].iter().any(|i| self.carrying(i) > 0),
@@ -254,16 +255,15 @@ impl Game {
                 if missing < 1.0 {
                     self.toast(format!("{dn}: Você está ótimo! Volte quando se machucar."), 4.0);
                 } else {
-                    let price = ((missing / 8.0).ceil() as u32).max(1);
-                    if !self.survival || self.carrying("emerald") >= price {
-                        if self.survival {
-                            self.pay_emeralds(price);
-                        }
+                    // 25 copper a point of health, a silver at least.
+                    let price = (missing.ceil() as u64 * 25).max(crate::money::SILVER);
+                    let cost = crate::money::text(price);
+                    if self.pay(price) {
                         self.health = self.max_health;
-                        self.toast(format!("{dn}: Pronto, novinho em folha! ({price} esmeralda(s))"), 4.0);
+                        self.toast(format!("{dn}: Pronto, novinho em folha! ({cost})"), 4.0);
                         self.sfx(Sfx::Xp);
                     } else {
-                        self.toast(format!("{dn}: Curar você custa {price} esmeralda(s)."), 4.0);
+                        self.toast(format!("{dn}: Curar você custa {cost}."), 4.0);
                     }
                 }
             }
@@ -278,6 +278,8 @@ impl Game {
                 self.surv.shop = inv;
                 self.surv.shop_prices = offers.iter().map(|o| o.2).collect();
                 self.surv.shop_name = dn;
+                self.surv.shop_want = None;
+                self.surv.shop_scroll = 0;
                 self.surv.open = Open::Shop;
                 self.set_screen(crate::Screen::Inventory);
             }
@@ -312,54 +314,22 @@ impl Game {
             self.world.set_block(IVec3::new(o.x + 3, y0 + 1, o.z + 1), torch);
             let _ = k;
         }
-        if let Some(e) = self.items.id("emerald") {
-            self.surv.inv.add(&self.items, ItemStack::new(e, 20));
-        }
+        self.surv.money += std::env::var("MC_MONEY").ok().and_then(|v| v.parse().ok()).unwrap_or(3 * crate::money::GOLD);
         self.magic.max_mana = 24.0;
         for _ in 0..3 {
             self.town.check_t = 0.0;
             self.update_npcs(0.1);
         }
         if let Ok(shop) = std::env::var("MC_SHOP") {
+            // Whoever hasn't moved in yet is called over anyway.
+            if !self.mobs.list.iter().any(|m| self.mobs.reg.defs[m.def].name == shop) {
+                self.mobs.spawn(&shop, self.body.pos + flat * 2.0);
+            }
             if let Some(m) = self.mobs.list.iter_mut().find(|m| self.mobs.reg.defs[m.def].name == shop) {
                 // Stand it in front of the eyes so the click finds it.
                 m.body.pos = self.body.eye() + flat * 2.0 - Vec3::Y * 1.0;
             }
             self.talk_to_npc();
         }
-    }
-
-    fn pay_emeralds(&mut self, mut n: u32) {
-        let Some(id) = self.items.id("emerald") else { return };
-        for k in 0..self.surv.inv.slots.len() {
-            if n == 0 {
-                break;
-            }
-            if let Some(st) = self.surv.inv.slots[k].filter(|s| s.item == id) {
-                let take = (st.count as u32).min(n);
-                self.surv.inv.take(k, take as u8);
-                n -= take;
-            }
-        }
-    }
-
-    /// Clicking a good in a shop buys it (onto the cursor, or into the inventory).
-    pub(crate) fn buy(&mut self, i: usize) {
-        let (Some(good), Some(&price)) = (self.surv.shop.slots.get(i).copied().flatten(), self.surv.shop_prices.get(i)) else { return };
-        if self.surv.cursor.is_some_and(|c| !c.stacks_with(&good) || c.count as u32 + good.count as u32 > self.items.get(good.item).max_stack as u32) {
-            return;
-        }
-        if self.survival && self.carrying("emerald") < price as u32 {
-            self.toast(format!("Faltam esmeraldas: custa {price}"), 2.0);
-            return;
-        }
-        if self.survival {
-            self.pay_emeralds(price as u32);
-        }
-        self.surv.cursor = Some(match self.surv.cursor {
-            Some(c) => ItemStack { count: c.count + good.count, ..c },
-            None => good,
-        });
-        self.sfx(Sfx::Pickup);
     }
 }
