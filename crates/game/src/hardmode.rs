@@ -364,7 +364,7 @@ impl Game {
 
 /// Shops of the Terraria side's town folk: (mob name, goods: item, count, price in emeralds).
 pub const SHOPS: &[(&str, &[(&str, u8, u8)])] = &[
-    ("npc_tinkerer", &[("running_boots", 1, 8), ("cloud_bottle", 1, 9), ("shiny_balloon", 1, 8), ("climbing_claws", 1, 6), ("lucky_horseshoe", 1, 10), ("reforge_table", 1, 6), ("grappling_hook", 1, 5), ("goblin_battle_standard", 1, 6)]),
+    ("npc_tinkerer", &[("running_boots", 1, 8), ("cloud_bottle", 1, 9), ("shiny_balloon", 1, 8), ("climbing_claws", 1, 6), ("lucky_horseshoe", 1, 10), ("reforge_table", 1, 6), ("grappling_hook", 1, 5), ("goblin_battle_standard", 1, 6), ("claw_glove", 1, 9), ("frog_charm", 1, 8), ("creature_radar", 1, 7), ("battle_tally", 1, 6), ("ore_finder", 1, 8), ("weather_vane", 1, 5)]),
     ("npc_mechanic", &[("redstone", 16, 1), ("repeater", 2, 1), ("piston", 2, 2), ("grappling_hook", 1, 4), ("rail", 16, 2), ("cursed_skull", 1, 8)]),
-    ("npc_sorceress", &[("parchment", 8, 1), ("glyph_book", 1, 6), ("mana_crystal", 1, 6), ("void_tome", 1, 18), ("ice_spike_staff", 1, 14), ("star_tome", 1, 22), ("bloody_tear", 1, 4)]),
+    ("npc_sorceress", &[("parchment", 8, 1), ("glyph_book", 1, 6), ("mana_crystal", 1, 6), ("void_tome", 1, 18), ("ice_spike_staff", 1, 14), ("star_tome", 1, 22), ("bloody_tear", 1, 4), ("greater_mana_potion", 2, 4), ("arcane_cuffs", 1, 14), ("imp_staff", 1, 16)]),
 ];

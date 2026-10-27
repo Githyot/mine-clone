@@ -39,6 +39,18 @@ JOGAR COM AMIGOS
   (inventário, vida, onde parou) ficam salvas no mundo de quem hospeda
   (saves/<mundo>/players/).
 
+CHAT DE VOZ (Opções > Chat de voz...)
+  Proximidade (padrão): segure Caps Lock para falar. Sua voz sai do seu personagem:
+    quem está do seu lado esquerdo ouve pela esquerda, mais baixo de longe (some depois
+    de 48 blocos) e abafado atrás de paredes.
+  Grupo (como uma chamada): todos no mesmo grupo (1 a 9) se ouvem no volume cheio,
+    estejam onde estiverem. O microfone fica aberto e só envia quando você fala (ajuste
+    a Sensibilidade olhando o medidor) ou, se preferir, use Caps Lock para falar.
+  K liga e desliga o seu microfone. Quem está falando aparece no canto de cima.
+  A boca do personagem mexe enquanto ele fala, nos dois modos.
+  Nas opções: escolha o microfone, o volume das vozes e o volume de cada jogador
+    (ou deixe alguém mudo). Funciona também pela ponte e em servidor dedicado.
+
 COMANDOS (chat: T, depois /; funcionam também jogando sozinho)
   /tempo dia | meio-dia | noite | meia-noite | <0-24000>
   /clima limpo | chuva | tempestade
@@ -222,6 +234,10 @@ ESTRUTURAS
   descendo de uma abertura com musgo, baús com ouro, diamante e cristal de vida), acampamento
   com barraca de lã e santuário de pedra nas montanhas e na neve.
   Torre do mago (estantes e baú com varinhas e cristais de mana) e moinho de vento.
+  As hélices dos moinhos giram com o vento: mais rápido na chuva e na tempestade e no alto,
+  devagar em lugar abrigado e paradas num lugar fechado. Para fazer a sua: Hélice de Moinho
+  na mesa (lã nos cantos, gravetos em cruz e um tronco no meio). Coloque numa parede: as pás
+  giram na frente, viradas para você.
   Na chuva, as gotas respingam no chão em volta de você.
 
 NETHER
@@ -317,6 +333,13 @@ SHADERS
                 água ondulante
     Suave       só um pouco de brilho e cores mais quentes (leve)
   Qualidade: Rápido ou Bonito (Bonito tem brilho mais largo e raios de sol mais finos).
+  Profundidade (Esc > Shaders): Não, Rasa, Média ou Funda. Dá relevo de verdade às texturas,
+  como o POM dos shaders do Minecraft: a argamassa afunda entre os tijolos, as frestas da
+  pedra e do pedregulho ficam fundas e as partes salientes escondem o que está atrás conforme
+  o ângulo. A altura vem da própria textura (funciona com qualquer pacote de texturas). Só
+  perto da câmera, só na qualidade Bonito, com ou sem shader. Com Sombras ligadas, o fundo das
+  frestas também fica na sombra do sol. Um pacote de shader pode ter a opção "profundidade"
+  (veja shaderpacks/LEIA-ME.txt).
   Distância LOD (Esc > Shaders): desenha o relevo além da distância de visão (256, 512, 1024 ou 2048
   blocos a mais), em blocos grandes e simples, como o mod Distant Horizons. Montanhas,
   florestas e o mar aparecem no horizonte sem carregar chunks. Funciona com ou sem shader.
@@ -449,8 +472,21 @@ NOVIDADES (26/10)
     com o pacote ligado, ele aparece em Esc > Shaders.
   Teste de desempenho: mine-clone --bench 60 voa reto e grava o resultado em bench/.
 
+STATUS, ACESSÓRIOS E POÇÕES (lado Terraria)
+  C               ficha de status: defesa, dano e crítico por classe, velocidade, regeneração,
+                  lacaios, esquiva e imunidades (no jogo ou com o inventário aberto)
+  H / N           bebe a melhor poção de vida / de mana do inventário (depois vem o enjoo)
+  B               bebe todas as poções de buff que você ainda não tem ativas
+  Acessórios: coluna à esquerda do inventário. Começa com 5 espaços; o Coração Ancestral
+    abre o 6º e o Encaixe Celestial o 7º. Os botões 1 2 3 em cima trocam todo o equipamento
+    (armadura + acessórios) de uma vez.
+  Armadura completa de um metal dá bônus de conjunto (veja na dica do item).
+  Debuffs: mobs podem causar sangramento, gelo, chamas amaldiçoadas, peçonha, silêncio etc.;
+    alguns acessórios dão imunidade. Suas armas e acessórios também passam debuffs aos mobs.
+  Invocador: cajados de lacaio chamam ajudantes que lutam por você; chicotes marcam o alvo.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)
-  --shader NOME (ou off)   --shaders-menu   --lod BLOCOS   --server   --bench SEGUNDOS
+  --shader NOME (ou off)   --shaders-menu   --lod BLOCOS   --parallax 0-3   --server   --bench SEGUNDOS
   --relay [PORTA]

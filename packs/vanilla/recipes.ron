@@ -197,6 +197,8 @@
         (pattern: ["###", "| |", "| |"], key: {'#': "mangrove_planks", '|': "stick"}, result: "mangrove_table", count: 1),
         // Lights and windows.
         (pattern: ["I", "T", "I"], key: {'I': "iron_ingot", 'T': "torch"}, result: "lantern", count: 2),
+        // Windmill sails: cloth on four arms round a log hub.
+        (pattern: ["W/W", "/L/", "W/W"], key: {'W': "#wool", '/': "stick", 'L': "#logs"}, result: "windmill_sails"),
         (pattern: ["I", "T", "I"], key: {'I': "copper_ingot", 'T': "torch"}, result: "copper_lantern", count: 2),
         (pattern: ["|W|", "WTW", "|W|"], key: {'|': "stick", 'W': "white_wool", 'T': "torch"}, result: "paper_lamp", count: 2),
         (pattern: ["|W|", "WTW", "|W|"], key: {'|': "stick", 'W': "red_wool", 'T': "torch"}, result: "red_paper_lamp", count: 2),

@@ -197,6 +197,10 @@ impl Game {
         if self.has_effect(FIRE_RESISTANCE) {
             t = t.min(2.0);
         }
+        // The warmth potion (rpg.rs) keeps the cold off.
+        if self.has_effect(crate::effects::WARMTH) {
+            t = t.max(0.0);
+        }
         t.clamp(-10.0, 10.0)
     }
 

@@ -529,7 +529,9 @@ impl Game {
 
     /// Armor takes a share of a hit (4% per point, up to 80%) and wears a little.
     pub(crate) fn armor_absorb(&mut self, amount: f32) -> f32 {
-        let points = self.armor_points().min(20);
+        // Defense after debuffs and with accessories and buffs (rpg.rs); this classic part
+        // counts up to 20 points.
+        let points = self.defense_points().min(20);
         if points == 0 {
             return amount;
         }
@@ -552,7 +554,7 @@ impl Game {
     /// Seconds a weapon needs between full-strength swings (the hand is quick, an axe slow).
     pub(crate) fn attack_cooldown(&self) -> f32 {
         // A modifier makes the weapon quicker or slower (Etapa 5).
-        let k = self.held_stack().and_then(|s| crate::affixes::of(&s)).map(|a| 1.0 / a.speed).unwrap_or(1.0);
+        let k = self.held_stack().and_then(|s| crate::affixes::of(&s)).map(|a| 1.0 / a.speed).unwrap_or(1.0) / self.t5.rpg.stats.melee_speed.max(0.3);
         if let Some(c) = self.weapon_cooldown() {
             return k * c / self.gem_attack_speed();
         }
@@ -870,7 +872,9 @@ impl Game {
             None => 1.0,
         };
         // Etapa 5: the weapon's modifier and the warrior emblem.
-        let bonus = self.held_stack().and_then(|s| crate::affixes::of(&s)).map(|a| a.damage).unwrap_or(1.0) * self.melee_bonus();
+        // Whips count as summoner weapons (rpg.rs).
+        let class = if crate::rpg::is_whip(&self.held_key()) { self.t5.rpg.stats.dmg[crate::rpg::SUMMON] } else { self.melee_bonus() };
+        let bonus = self.held_stack().and_then(|s| crate::affixes::of(&s)).map(|a| a.damage).unwrap_or(1.0) * class;
         self.gem_attack(base * bonus * (0.2 + 0.8 * k * k))
     }
 
@@ -1365,7 +1369,7 @@ impl Game {
             }
         }
         // Healing needs a full-ish stomach; an empty one hurts.
-        if self.surv.hunger >= 18.0 && self.health < self.max_health {
+        if self.surv.hunger >= 18.0 && self.health < self.max_health && !self.has_effect(crate::effects::BLEEDING) {
             self.surv.heal_t += dt;
             let every = if self.surv.hunger >= 20.0 && self.surv.saturation > 0.0 { 0.5 } else { 4.0 };
             if self.surv.heal_t >= every {
@@ -1418,6 +1422,7 @@ impl Game {
                 let eaten = self.held_stack().map(|s| self.items.get(s.item).name.clone()).unwrap_or_default();
                 self.surv.inv.take(sel, 1);
                 self.fase6_ate(&eaten);
+                self.rpg_ate(f.hunger as u32, f.saturation);
                 self.nature_consumed(&eaten);
                 self.sfx(Sfx::Pickup);
                 if chorus {
@@ -1433,6 +1438,8 @@ impl Game {
         let still = Input::default();
         let player = self.body.pos + Vec3::Y * 0.9;
         let alive = self.screen != Screen::Dead;
+        // The magnet ring reaches further (rpg.rs).
+        let pull = 2.6 + self.t5.rpg.stats.pickup;
         let mut picked: Vec<usize> = Vec::new();
         for (i, d) in self.surv.drops.iter_mut().enumerate() {
             d.age += dt;
@@ -1444,7 +1451,7 @@ impl Game {
             let to = player - d.body.pos;
             let dist = to.length();
             // Like the classic game: anything within about a block of the player is taken at once.
-            if alive && d.age > PICKUP_DELAY && dist < 2.6 {
+            if alive && d.age > PICKUP_DELAY && dist < pull {
                 if dist < 1.7 {
                     picked.push(i);
                 } else {
@@ -1746,8 +1753,8 @@ impl Game {
                 draw_drumstick(&mut self.ui, x, y + dy, s, if v >= 2.0 { 1.0 } else { 0.5 }, false);
             }
         }
-        // Armor above the hearts.
-        let pts = self.armor_points();
+        // Armor above the hearts (defense with accessories and buffs; above 20 shows a number).
+        let pts = self.defense_points();
         if pts > 0 {
             // Above the top row of hearts (life crystals add rows).
             let rows = ((self.max_health / 2.0).ceil() as i32 + 9) / 10;
@@ -1767,6 +1774,9 @@ impl Game {
                 if v > 0 {
                     draw_shield(&mut self.ui, x, y, s, if v >= 2 { 1.0 } else { 0.5 }, false);
                 }
+            }
+            if pts > 20 {
+                self.ui.text(hx + 81.0 * s, y, &format!("+{}", pts - 20), [200, 220, 255, 255]);
             }
         }
         // Experience bar and level.
@@ -1867,7 +1877,7 @@ impl Game {
                     }
                     // A little figure of the player in the corner, like the classic screen.
                     self.ui.frame(x0 + 26.0 * s, y0 + 8.0 * s, 52.0 * s, 62.0 * s, s, [0, 0, 0, 255]);
-                    slots.extend(self.accessory_slots(x0, y0));
+                    slots.extend(self.accessory_slots(x0, y0, mouse));
 
                 }
             }
@@ -2064,6 +2074,7 @@ impl Game {
             out.push((format!("Fome: +{}  Saturação: +{:.1}", f.hunger, f.saturation), GRAY));
         }
         self.t5_details(st, &mut out);
+        self.rpg_details(&it.name, &mut out);
         out.extend(self.gem_tooltip(st));
         out
     }

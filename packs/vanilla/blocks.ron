@@ -730,4 +730,7 @@
     (name: "fire_coral_block", display_name: Some("Bloco de Coral de Fogo"), hardness: 1.5, tool: Some(Pickaxe)),
     (name: "horn_coral", display_name: Some("Coral de Chifre"), shape: Cross, transparency: Cutout, solid: false, waterlogged: true, hardness: 0.0),
     (name: "horn_coral_block", display_name: Some("Bloco de Coral de Chifre"), hardness: 1.5, tool: Some(Pickaxe)),
+    // Windmill sails: the block is the hub; the sails are a model turning in front of it,
+    // driven by the wind (windmill.rs). Faces one of four ways, like a dropper.
+    (name: "windmill_sails", display_name: Some("Hélice de Moinho"), shape: Oriented, hardness: 2.0, tool: Some(Axe), textures: (top: Some("oak_log_top"), bottom: Some("oak_planks"), side: Some("oak_log"))),
 ])

@@ -7,6 +7,8 @@ pub mod protocol;
 pub mod relay;
 pub mod transport;
 pub mod upnp;
+pub mod voice;
 
 pub use protocol::*;
-pub use transport::{ConnId, Guest, GuestEvent, Host, HostEvent};
+pub use transport::{ConnId, Guest, GuestEvent, Host, HostEvent, HOST_CONN};
+pub use voice::{Lane, Listener, VoiceOut};
