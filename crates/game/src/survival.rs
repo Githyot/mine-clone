@@ -2670,6 +2670,10 @@ impl Game {
     fn held_look(&self) -> Option<HeldLook> {
         let st = self.held_stack()?;
         let it = self.items.get(st.item);
+        if crate::instruments::index(&it.name).is_some() {
+            // Instruments are 3D models held in both hands (instruments.rs).
+            return None;
+        }
         let tool = it.tool.is_some() || it.name.ends_with("_sword") || matches!(it.name.as_str(), "stick" | "blaze_rod" | "breeze_rod" | "bone" | "mace" | "trident") || it.name.ends_with("_rod");
         Some(match it.look {
             Look::Block(b) => {

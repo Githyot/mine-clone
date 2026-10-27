@@ -65,6 +65,7 @@ mod furniture;
 mod gear;
 mod weather;
 mod entity;
+mod instruments;
 mod item_render;
 mod juice;
 mod menus;
@@ -669,6 +670,8 @@ struct Game {
     room_t: f32,
     walker_t: f32,
     melody_cd: f32,
+    /// A town NPC playing an instrument (instruments.rs).
+    musicians: instruments::Musicians,
     /// Sounds and effects of the immersion stage (soundscape.rs, effects.rs).
     fx: soundscape::Immersion,
     wander: wanderers::Wanderers,
@@ -1047,6 +1050,7 @@ impl Game {
             room_t: 0.0,
             walker_t: 0.0,
             melody_cd: 0.0,
+            musicians: Default::default(),
             fx: soundscape::Immersion::new(),
             wander: Default::default(),
             mods: Default::default(),
@@ -1643,6 +1647,7 @@ impl Game {
             if matches!(self.screen, Screen::Playing | Screen::Inventory) {
                 self.portal_step(dt);
                 self.update_ambient(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.update_musicians(dt);
                 self.update_immersion(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
             self.update_fishing(dt);
@@ -1728,6 +1733,10 @@ impl Game {
                 if let Some(it) = std::env::var("MC_HOLD").ok().and_then(|n| self.items.id(&n)) {
                     // Test hook: hold this item (any item name) in the selected slot.
                     self.surv.inv.slots[self.selected] = Some(voxel::item::ItemStack::new(it, 1));
+                }
+                if std::env::var("MC_NOHUD").is_ok() {
+                    // Test hook: no HUD, for clean third-person shots.
+                    self.hide_hud = true;
                 }
                 if std::env::var("MC_AMBIENT").is_ok() {
                     // Test hook: a few seconds of ambient bits already in the air.
@@ -4155,7 +4164,9 @@ impl Game {
             let world = &self.world;
             // Lying down, the camera orbits a bit above the body so it clears the ground.
             let pivot = head + Vec3::Y * 0.6 * self.prone_t;
-            let dist = raycast(pivot, dir, 4.0, |p| voxel::physics::Terrain::solid(world, p)).map(|h| (h.distance - 0.3).max(0.2)).unwrap_or(4.0);
+            // Test hook: MC_CAMDIST=blocks for close-ups.
+            let far = std::env::var("MC_CAMDIST").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(4.0);
+            let dist = raycast(pivot, dir, far, |p| voxel::physics::Terrain::solid(world, p)).map(|h| (h.distance - 0.3).max(0.2)).unwrap_or(far);
             view_fwd = -dir;
             pivot + dir * dist
         } else if playing_view && self.settings.view_bobbing && !self.settings.reduce_motion {
@@ -4313,7 +4324,9 @@ impl Game {
         }
         let selection = if self.screen == Screen::Playing || self.args.screenshot.is_some() { self.target.map(|t| t.block) } else { None };
         let mut items = self.mobs.instances(&self.world, block, rd + 16.0);
+        let musician = self.musician_instances(&mut items, block);
         let mob_items = self.arrow_and_bow_instances(&items, block);
+        items.extend(musician);
         let (net_models, mut net_held) = self.net_instances(block);
         items.extend(net_models);
         let (stand_models, stand_held) = self.stand_instances(block, rd + 16.0);
@@ -4325,15 +4338,31 @@ impl Game {
             let pose = self.pose(false);
             if third {
                 let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
-                let bones = self.anim.bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
+                let mut bones = self.anim.bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
                 let pv = def.parts[2].pivot;
                 held_third = self.held_item_third_person(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32));
+                // An instrument is held in both hands, in 3D.
+                if let Some((i, play)) = self.held_instrument() {
+                    if let (Some(ib), Some(mesh)) = (instruments::pose(def, &mut bones, i, play), self.entities.instrument_mesh(i)) {
+                        items.push((mesh, ib));
+                    }
+                }
                 items.extend(self.armor_instances(&bones));
                 items.push((pd, bones));
             } else if self.screen == Screen::Playing && !self.hide_hud {
                 // The arm always shows; a held item sits in its fist (held_item_instance).
                 let l = self.world.light(head.floor().as_ivec3());
-                items.push((pd, self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, (l >> 4) as f32 / 15.0, ((l & 15) as f32 / 15.0).max(self.hand_light_level()))));
+                let light = [(l >> 4) as f32 / 15.0, ((l & 15) as f32 / 15.0).max(self.hand_light_level()), 0.0, 0.0];
+                let two_hands = self.held_instrument().and_then(|(i, play)| {
+                    let (arms, ib) = instruments::first_person(def, i, play, eye - block.as_vec3(), self.yaw, self.pitch, light)?;
+                    Some((arms, (self.entities.instrument_mesh(i)?, ib)))
+                });
+                if let Some((arms, inst)) = two_hands {
+                    items.push((pd, arms));
+                    items.push(inst);
+                } else {
+                    items.push((pd, self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, light[0], light[1])));
+                }
             }
         }
         for p in &self.paintings {
