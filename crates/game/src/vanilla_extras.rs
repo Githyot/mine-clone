@@ -663,7 +663,7 @@ impl Game {
         }
         let d = (p.as_vec3() + Vec3::splat(0.5)).distance(self.body.eye());
         let k = (1.0 - d / JUKEBOX_RANGE).clamp(0.0, 1.0);
-        a.set_disc_volume(self.settings.music_volume.max(0.2) * k * k);
+        a.set_disc_volume(self.settings.sound_volume * self.settings.volumes.records * k * k);
         // A few drifting notes over the box.
         if self.surv.rng.f32() < 0.02 {
             let glow = self.glow_layer();

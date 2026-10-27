@@ -1,5 +1,6 @@
 //! Player settings, stored in `settings.ron` next to the game.
 
+use crate::audio::SoundCat;
 use crate::controller::ControllerSettings;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -61,7 +62,12 @@ pub struct Settings {
     pub vsync: bool,
     pub music_mode: MusicMode,
     pub music_volume: f32,
+    /// The master volume: music, voices and every sound group below follow it.
     pub sound_volume: f32,
+    /// Volume of each group of sounds (Áudio options).
+    pub volumes: Volumes,
+    /// 0 dark (moody) .. 0.5 normal .. 1 bright: how much the shadows and caves are lifted.
+    pub brightness: f32,
     /// Your own music. Put files directly here, or in sub-folders named
     /// overworld, underwater, creative, nether, end or title.
     pub music_folder: String,
@@ -145,6 +151,8 @@ impl Default for Settings {
             relief: true,
             texture_resolution: crate::textures::BASE_RESOLUTION,
             sound_volume: 0.8,
+            volumes: Volumes::default(),
+            brightness: 0.5,
             music_folder: "music".into(),
             music_delay_min: 600.0,
             music_delay_max: 1200.0,
@@ -176,6 +184,54 @@ impl Default for Settings {
             key_binds: BTreeMap::new(),
             voice: Default::default(),
         }
+    }
+}
+
+/// Volume of each group of sounds, 0..1.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct Volumes {
+    pub records: f32,
+    pub weather: f32,
+    pub blocks: f32,
+    pub creatures: f32,
+    pub players: f32,
+    pub ambient: f32,
+    pub interface: f32,
+}
+
+impl Default for Volumes {
+    fn default() -> Self {
+        Volumes { records: 1.0, weather: 1.0, blocks: 1.0, creatures: 1.0, players: 1.0, ambient: 1.0, interface: 1.0 }
+    }
+}
+
+impl Volumes {
+    pub fn of(&self, c: SoundCat) -> f32 {
+        *self.clone().of_mut(c)
+    }
+
+    pub fn of_mut(&mut self, c: SoundCat) -> &mut f32 {
+        let v = self;
+        match c {
+            SoundCat::Records => &mut v.records,
+            SoundCat::Weather => &mut v.weather,
+            SoundCat::Blocks => &mut v.blocks,
+            SoundCat::Creatures => &mut v.creatures,
+            SoundCat::Players => &mut v.players,
+            SoundCat::Ambient => &mut v.ambient,
+            SoundCat::Interface => &mut v.interface,
+        }
+    }
+}
+
+/// The light lift the shaders get from the brightness setting (0.3 is the classic look).
+pub fn brightness_lift(b: f32) -> f32 {
+    let b = b.clamp(0.0, 1.0);
+    if b < 0.5 {
+        b * 0.6
+    } else {
+        0.3 + (b - 0.5) * 1.4
     }
 }
 
