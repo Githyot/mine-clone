@@ -120,6 +120,7 @@ pub const ACCESSORIES: &[AccDef] = &[
     acc("running_boots", "", &[M::Move(0.3)]),
     acc("frost_spark_boots", "", &[M::Move(0.5), M::Immune(&[CHILLED, FROZEN])]),
     acc("terraspark_boots", "Corre muito, anda sobre a água e a lava não queima", &[M::Move(0.5), M::Immune(&[CHILLED, FROZEN]), M::Lava, M::Fire]),
+    acc("moon_charm", "À noite: +10% de dano e +10% de velocidade", &[]),
     acc("bastion_shield", "Da masmorra: não é empurrado e +2 de defesa", &[M::NoKnock, M::Def(2.0)]),
     // Only in treasure bags (Especialista and Mestre, tr_modes.rs).
     acc("jelly_heart", "Das sacolas: pulos mais altos e vida que volta", &[M::Jump(0.2), M::Regen(0.2)]),

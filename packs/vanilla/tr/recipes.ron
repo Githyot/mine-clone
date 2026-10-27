@@ -231,6 +231,8 @@
         (ingredients: ["beeswax", "string", "pink_dye"], result: "peace_candle"),
         (ingredients: ["glass_bottle", "rotten_flesh", "spider_eye"], result: "battle_potion"),
         (ingredients: ["glass_bottle", "pink_dye", "sugar"], result: "calming_potion"),
+        (ingredients: ["soul_of_night", "soul_of_night", "soul_of_night", "soul_of_night", "soul_of_night", "soul_of_night", "soul_of_night", "soul_of_night", "soul_of_night"], result: "key_of_night"),
+        (ingredients: ["soul_of_light", "soul_of_light", "soul_of_light", "soul_of_light", "soul_of_light", "soul_of_light", "soul_of_light", "soul_of_light", "soul_of_light"], result: "key_of_light"),
     ],
     smelting: [
         (input: "meteorite_ore", result: "meteorite_ingot", xp: 1.0),

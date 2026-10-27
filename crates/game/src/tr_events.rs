@@ -130,6 +130,7 @@ impl Game {
         self.invasion_deaths(deaths);
         self.modes_deaths(deaths);
         self.comfort_deaths(deaths);
+        self.minis_deaths(deaths);
         self.dungeon_deaths(deaths);
         let Some(rain) = self.t5.tr.ev.rain.as_mut() else { return };
         for &(def, _) in deaths {

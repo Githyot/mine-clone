@@ -142,7 +142,7 @@ impl Game {
     // Paint.
 
     /// The block looked at (within 8 blocks) and the face's normal.
-    fn looked_block(&self) -> Option<(IVec3, IVec3)> {
+    pub(crate) fn looked_block(&self) -> Option<(IVec3, IVec3)> {
         let eye = self.body.eye();
         let f = self.forward();
         let mut prev = eye.floor().as_ivec3();

@@ -80,6 +80,7 @@ pub struct Tr {
     pub(crate) style: crate::tr_style::Style,
     pub(crate) dungeon: crate::tr_dungeon::Dungeon,
     pub(crate) comfort: crate::tr_comfort::Comfort,
+    pub(crate) minis: crate::tr_minis::Minis,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -163,6 +164,7 @@ impl Game {
         self.update_tr_style();
         self.update_tr_dungeon(dt);
         self.update_tr_comfort(dt);
+        self.update_tr_minis(dt);
     }
 
     /// Right click with an item of this file; true when it did something.
@@ -197,6 +199,9 @@ impl Game {
         if let Some(r) = self.tr_comfort_use(name) {
             return Some(r);
         }
+        if let Some(r) = self.tr_minis_use(name) {
+            return Some(r);
+        }
         match name {
             "solar_tablet" => return Some(self.use_solar_tablet()),
             "purification_powder" => return Some(self.use_powder(true)),
@@ -228,6 +233,7 @@ impl Game {
         self.tr_event_boss_down();
         self.endgame_boss_defeated(name);
         self.modes_boss_defeated(name);
+        self.minis_boss_defeated(name);
         if name == "great_eye" {
             // The eye leaves some of the world's evil ore behind (and its seeds, in Terraria).
             let ore = if crate::tr_world::world_evil(self.seed) == crate::tr_world::Land::Ruin { "umbral_ore" } else { "sanguinite_ore" };
@@ -443,6 +449,7 @@ impl Game {
             "vanity" | "paint" => self.test_tr_style(scene),
             "dungeon" => self.test_tr_dungeon(),
             "comfort" => self.test_tr_comfort(),
+            "minis" => self.test_tr_minis(),
             "harvest" | "winter" | "pirates" | "martians" | "crystal" => {
                 self.test_invasion(scene);
             }

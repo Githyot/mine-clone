@@ -341,4 +341,9 @@
     (name: "bone_flail", display_name: Some("Mangual de Ossos"), max_stack: Some(1)),
     (name: "battle_potion", display_name: Some("Poção de Batalha"), max_stack: Some(16)),
     (name: "calming_potion", display_name: Some("Poção Calmante"), max_stack: Some(16)),
+    (name: "key_of_night", display_name: Some("Chave da Noite"), max_stack: Some(8)),
+    (name: "key_of_light", display_name: Some("Chave da Luz"), max_stack: Some(8)),
+    (name: "moon_charm", display_name: Some("Amuleto da Lua"), max_stack: Some(1)),
+    (name: "goodie_bag", display_name: Some("Saco de Gostosuras"), max_stack: Some(16)),
+    (name: "present", display_name: Some("Presente"), max_stack: Some(16)),
 ])

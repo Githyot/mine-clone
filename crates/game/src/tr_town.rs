@@ -32,6 +32,8 @@ pub(crate) const NPCS: &[(&str, &str)] = &[
     ("npc_steampunker", "a Engenheira a Vapor vem depois de um chefe mecânico."),
     ("npc_cyborg", "o Ciborgue vem depois da Rainha das Vinhas."),
     ("npc_princess", "a Princesa vem quando a vila tem 14 moradores."),
+    ("npc_mycologist", "o Micólogo vem no modo difícil, quando você carrega um cogumelo."),
+    ("npc_winter_elder", "o Velho do Inverno vem em dezembro, ou depois da Rainha do Gelo."),
 ];
 
 /// Shops of this file's town folk: (mob, goods: item, count, price in emeralds).
@@ -51,6 +53,8 @@ pub(crate) const SHOPS: &[(&str, &[(&str, u8, u8)])] = &[
     ("npc_steampunker", &[("piston", 4, 2), ("observer", 2, 2), ("rail", 16, 2), ("powered_rail", 6, 3), ("minecart", 1, 3), ("clock", 1, 2), ("copper_ingot", 10, 1)]),
     ("npc_cyborg", &[("firework_rocket", 16, 1), ("tnt", 4, 2), ("meteor_shot", 50, 2), ("redstone", 16, 1), ("rapid_gun", 1, 18)]),
     ("npc_princess", &[("cake", 1, 2), ("golden_apple", 1, 6), ("diamond", 1, 6), ("gold_block", 1, 12), ("music_disc_first_light", 1, 8)]),
+    ("npc_mycologist", &[("glow_mushroom", 4, 1), ("brown_mushroom", 6, 1), ("red_mushroom", 6, 1), ("mushroom_stew", 1, 1), ("sporite_ingot", 2, 6), ("jungle_spore", 4, 1)]),
+    ("npc_winter_elder", &[("present", 1, 3), ("cookie", 8, 1), ("snow", 16, 1), ("spruce_sapling", 4, 1), ("firework_rocket", 8, 1), ("candle", 4, 1)]),
 ];
 
 /// Odd goods the peddler may bring (six a visit).
@@ -110,6 +114,8 @@ const MOODS: &[(&str, &str, &[&str], &[&str])] = &[
     ("npc_steampunker", "desert", &["npc_cyborg", "npc_painter"], &["npc_dryad"]),
     ("npc_cyborg", "snow", &["npc_steampunker", "npc_pirate"], &["npc_zoologist"]),
     ("npc_princess", "forest", &["npc_tailor", "npc_party_girl"], &[]),
+    ("npc_mycologist", "cave", &["npc_guide", "npc_witch_doctor"], &["npc_dryad"]),
+    ("npc_winter_elder", "snow", &["npc_party_girl", "npc_princess"], &["npc_pirate"]),
 ];
 
 const PYLONS: &[&str] = &["forest", "desert", "snow", "jungle", "ocean", "cave"];
@@ -162,6 +168,8 @@ impl Game {
             "npc_steampunker" => ["mech_eye", "mech_worm", "mech_skull"].iter().any(|b| beaten(b)),
             "npc_cyborg" => beaten("vine_queen"),
             "npc_princess" => people >= 14,
+            "npc_mycologist" => self.t5.hard.on && self.carries(|n| n.ends_with("mushroom")),
+            "npc_winter_elder" => crate::tr_minis::holiday() == crate::tr_minis::Holiday::Christmas || beaten("ice_queen"),
             _ => false,
         }
     }

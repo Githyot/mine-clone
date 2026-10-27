@@ -139,6 +139,11 @@ impl Game {
         if self.has_effect(BEWITCHED) {
             s.minions += 1;
         }
+        // The werewolf's charm (tr_minis.rs).
+        if self.wears("moon_charm") && self.is_night() {
+            s.dmg.iter_mut().for_each(|d| *d += 0.1);
+            s.move_speed += 0.1;
+        }
     }
 
     /// A block went down: remember the ones that work by being near.

@@ -700,6 +700,21 @@ CONFORTO EM CASA (lado Terraria)
   No inventário: O organiza a mochila e X guarda nos baús perto (até 8 blocos) tudo o que
     eles já têm.
 
+MINI-CHEFES, TROFÉUS E DATAS FESTIVAS (lado Terraria)
+  No modo difícil, à noite, aparecem Lobisomens que saltam em você (muitos na lua cheia,
+    uma noite em oito). Às vezes deixam o Amuleto da Lua (à noite: mais dano e velocidade).
+  Nas cavernas pode haver uma Garota Perdida... chegue perto e ela vira uma Ninfa.
+  Na lua de sangue do modo difícil vem o Palhaço, que joga bombas. Na neve, à noite ou na
+    chuva, o Golem de Gelo atira gelo. Na invasão goblin do modo difícil, o Invocador
+    Goblin chama espíritos.
+  Chave da Noite (9 almas da noite) ou da Luz (9 almas da luz): use olhando para um baú
+    vazio no modo difícil e ele vira um Mímico, com tesouros raros.
+  Chefes às vezes deixam um Troféu (uma flâmula para pendurar).
+  Moradores novos: o Micólogo (modo difícil, com um cogumelo na mochila) e o Velho do
+    Inverno (em dezembro, ou depois da Rainha do Gelo).
+  De 10 de outubro a 1 de novembro os monstros às vezes deixam Sacos de Gostosuras; de 15
+    a 31 de dezembro, Presentes.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)
