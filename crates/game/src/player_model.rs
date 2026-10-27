@@ -40,6 +40,10 @@ pub struct Pose {
     pub sitting: bool,
     /// Something in the right hand: the arm is held a little forward, as in the classic game.
     pub holding: bool,
+    /// Pulling up onto a ledge: 0 = not climbing, else 0..1 through the climb, and the
+    /// ledge's top above the feet.
+    pub mantle: f32,
+    pub ledge: f32,
 }
 
 /// Smoothed animation state that lives between frames.
@@ -63,6 +67,9 @@ pub struct Animator {
     /// 0..1 head under water, and the breaststroke phase for the first-person arms.
     pub underwater: f32,
     stroke: f32,
+    /// Climbing a ledge (copied from the pose for the first-person arms).
+    mantle: f32,
+    ledge: f32,
 }
 
 fn wrap(a: f32) -> f32 {
@@ -142,6 +149,13 @@ impl Animator {
         self.stroke += dt * (0.55 + (speed / 3.0).min(1.0) * 0.6);
         let swimming = p.head_in_water && speed > 1.0;
         self.swim += ((swimming as u8 as f32) - self.swim) * (dt * 5.0).min(1.0);
+        self.mantle = p.mantle;
+        self.ledge = p.ledge;
+        if p.mantle > 0.0 {
+            // Hanging on a ledge is neither a jump nor a fall.
+            self.air_time = 0.0;
+            self.fall_speed = 0.0;
+        }
         let lean_target = if p.flying { (speed / 11.0).min(1.0) } else { 0.0 };
         self.lean += (lean_target - self.lean) * (dt * 4.0).min(1.0);
     }
@@ -258,6 +272,20 @@ impl Animator {
                 rot[L_ARM] = rot[L_ARM].slerp(Quat::from_rotation_x(-PI + 0.9) * Quat::from_rotation_y(-0.6), prone);
             }
         }
+        if p.mantle > 0.0 {
+            // Climbing a ledge: both hands on the edge, the body hauls itself up, then leans
+            // over the top while one knee comes up onto it and the arms push down behind.
+            let (f, over) = mantle_reach(p.mantle);
+            let grab = (p.mantle / voxel::physics::MANTLE_GRAB).min(1.0);
+            let angle = 0.3 * (1.0 - grab) + mantle_arm(f, p.ledge - 1.4) * grab;
+            let kick = (self.time * 11.0).sin() * 0.25 * (1.0 - over);
+            rot[R_ARM] = Quat::from_rotation_x(-angle) * Quat::from_rotation_z(-0.12);
+            rot[L_ARM] = Quat::from_rotation_x(-angle) * Quat::from_rotation_z(0.12);
+            rot[BODY] = Quat::from_rotation_x(0.12 + 0.35 * over);
+            // Feet scrabble against the wall, then the right knee steps up.
+            rot[R_LEG] = Quat::from_rotation_x(-0.25 + kick - 1.2 * (over * PI).sin());
+            rot[L_LEG] = Quat::from_rotation_x(0.1 - kick + 0.35 * over);
+        }
         if p.sitting {
             // Seated: thighs forward, a little apart; hands resting on the knees.
             rot[R_LEG] = Quat::from_rotation_x(-1.45) * Quat::from_rotation_z(0.1);
@@ -361,6 +389,31 @@ impl Animator {
             // Model space has +Z forward; turn it so the arm points into the screen (-Z).
             (cam * place * Mat4::from_rotation_y(PI) * Mat4::from_scale(Vec3::splat(1.0 / 16.0)) * Mat4::from_translation(-pivot)).to_cols_array_2d()
         };
+        if self.mantle > 0.0 {
+            // Climbing a ledge: both hands grip the edge in front and stay on it while the view
+            // rises past, pressing down until they drop out of sight below. Placed level, not
+            // tipped with the look, since the hands hold onto the world.
+            let flat = Mat4::from_translation(eye) * Mat4::from_rotation_y(yaw);
+            let (f, over) = mantle_reach(self.mantle);
+            let grab = (self.mantle / voxel::physics::MANTLE_GRAB).min(1.0);
+            // On the edge while it is in sight; once the view has risen past it the hands keep
+            // pressing at the bottom of the view, then slide down out of it while swinging over.
+            let ledge = self.ledge - voxel::physics::EYE_HEIGHT;
+            let up = ledge.clamp(-0.32, 0.1) - over * 0.6;
+            // While the edge is still above the view the hands show on the wall's face below
+            // it, stretched up; from there on they rest on top.
+            let below = ((ledge - up) / 0.15).clamp(0.0, 1.0);
+            let ahead = (f.max(0.0) + 0.22) * (1.0 - below) + 0.27 * below;
+            for (part, side) in [(R_ARM, 1.0f32), (L_ARM, -1.0f32)] {
+                // Reaching out from below at first, then on the edge.
+                let hand = Vec3::new(side * 0.27, up - (1.0 - grab) * 0.35, -ahead);
+                let shoulder = Vec3::new(side * 0.42, -0.62, -0.1);
+                let d = (hand - shoulder).normalize();
+                let place = Mat4::from_translation(hand - d * 0.62) * Mat4::from_quat(Quat::from_rotation_arc(Vec3::NEG_Y, d));
+                b.m[part] = arm_model(part, cam.inverse() * flat * place);
+            }
+            return b;
+        }
         let w = self.underwater;
         if w > 0.05 && self.swing <= 0.0 {
             // Under water: both arms do the breaststroke. Reach ahead together, sweep out and
@@ -382,6 +435,21 @@ impl Animator {
         b.m[R_ARM] = arm_model(R_ARM, place);
         b
     }
+}
+
+/// How far ahead of the body the ledge's edge is (blocks, negative once the body has swung
+/// past it), and 0..1 through the swing over the top.
+fn mantle_reach(u: f32) -> (f32, f32) {
+    use voxel::physics::MANTLE_PULL;
+    let x = ((u - MANTLE_PULL) / (1.0 - MANTLE_PULL)).clamp(0.0, 1.0);
+    let over = x * x * (3.0 - 2.0 * x);
+    (0.4 - 0.8 * over, over)
+}
+
+/// The arm's forward swing (radians from hanging down) to reach a hand `ahead` blocks in front
+/// and `up` blocks above the shoulder.
+fn mantle_arm(ahead: f32, up: f32) -> f32 {
+    ahead.atan2(-up)
 }
 
 impl Animator {
