@@ -138,6 +138,7 @@
         (pattern: ["  F", " S ", "S  "], key: {'F': "flint", 'S': "stick"}, result: "javelin", count: 8),
         (pattern: ["  F", " S ", "S  "], key: {'F': "bone", 'S': "stick"}, result: "bone_javelin", count: 8),
         (pattern: ["  F", " S ", "S  "], key: {'F': "solar_fragment", 'S': "stick"}, result: "sun_javelin", count: 16),
+        (pattern: ["SDS", "DOD", "SDS"], key: {'S': "stone", 'D': "diamond", 'O': "obsidian"}, result: "daring_stone"),
     ],
     shapeless: [
         (ingredients: ["lens", "lens", "lens", "lens", "lens", "lens", "spider_eye"], result: "eye_lure"),
@@ -179,6 +180,7 @@
         (ingredients: ["explorer_kit", "creature_radar", "battle_tally", "ore_finder", "magic_mirror"], result: "pda"),
         (ingredients: ["frost_spark_boots", "obsidian_charm", "water_walking_boots"], result: "terraspark_boots"),
         (ingredients: ["cloud_bottle", "blizzard_bottle", "sandstorm_bottle", "shiny_balloon"], result: "bundle_of_balloons"),
+        (ingredients: ["book", "spider_eye", "bone"], result: "bestiary"),
     ],
     smelting: [
         (input: "meteorite_ore", result: "meteorite_ingot", xp: 1.0),

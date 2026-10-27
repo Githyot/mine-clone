@@ -651,6 +651,18 @@ ESTAÇÕES, VIAGEM E O LAGO CINTILANTE (lado Terraria, lote 9)
     melhorias para sempre: Cristal Vital, Lasca Arcana e Fruta da Égide.
   Mundo: oásis no deserto (concha, azagaias) e cemitérios com lápides (e zumbis).
 
+DIFICULDADE DO MUNDO, SACOLAS E BESTIÁRIO (lado Terraria, lote 10)
+  Ao criar o mundo: Dificuldade Normal, Especialista ou Mestre (botão na tela de criar).
+    Especialista: monstros com o dobro de vida e 1,5x mais fortes.
+    Mestre: o triplo de vida e o dobro de força.
+    Num mundo que já existe: a Pedra da Ousadia (pedra + diamantes + obsidiana) troca a dificuldade.
+  Sacolas do Tesouro: no Especialista e no Mestre, cada chefe deixa a sua. Clique com o
+    direito: o saque do chefe de novo, esmeraldas e, em 16 chefes, um acessório que só existe
+    ali (Coração de Geleia, Olho Vigia, Véu da Mente, Cachecol do Verme, Núcleo Mecânico...).
+  Relíquias: no Mestre, cada chefe deixa também a sua relíquia dourada para enfeitar a casa.
+  Bestiário (livro + olho de aranha + osso): conta cada criatura que você derrota. Ao achar
+    25%, 50%, 75% e 100% delas você ganha um presente.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

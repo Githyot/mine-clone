@@ -3538,6 +3538,167 @@ def structures_l9():
     return (lake, H + UP - 2), oasis, grave
 
 
+
+import re  # noqa: E402
+
+# ==============================================================================================
+# Lote 10: world difficulty (Normal, Especialista, Mestre), treasure bags with an item only
+# they hold, relics in Mestre, the bestiary
+# ==============================================================================================
+
+BAG = [
+    "................",
+    "......1111......",
+    ".....1a22a1.....",
+    "......1bb1......",
+    ".....122221.....",
+    "....12333321....",
+    "...1233443321...",
+    "..123344443321..",
+    "..123444c44321..",
+    "..12344ccc4321..",
+    "..123444c44321..",
+    "..123344443321..",
+    "...1233333321...",
+    "....11222211....",
+    "......1111......",
+    "................",
+]
+BOOK_ICON = [
+    "................",
+    "..11111111111...",
+    "..1aa22222221...",
+    "..1aa23333321...",
+    "..1aa23b3b321...",
+    "..1aa233b3321...",
+    "..1aa23b3b321...",
+    "..1aa23333321...",
+    "..1aa22222221...",
+    "..1aa2cccc221...",
+    "..1aa2cccc221...",
+    "..1aa22222221...",
+    "..1aa22222221...",
+    "..11111111111...",
+    "...1cccccccc1...",
+    "................",
+]
+STONE_ICON = [
+    "................",
+    "................",
+    "......1111......",
+    ".....122221.....",
+    "....12333321....",
+    "...1233443321...",
+    "...123aa44321...",
+    "..1234aaa44321..",
+    "..123444a44321..",
+    "..123344443321..",
+    "...1233333321...",
+    "....12222221....",
+    ".....111111.....",
+    "................",
+    "................",
+    "................",
+]
+
+# Boss -> (bag colours, expert item (name, display, icon rows) or None).
+BOSSES_L10 = [
+    ("king_jelly", pal("#0e2a6a", "#1e4aa0", "#3a7ad4", "#7ab4f0", "#d0ecff"), ("jelly_heart", "Coração de Geleia", GEL)),
+    ("great_eye", pal("#5a0a0a", "#8a1a1a", "#c43a3a", "#f08a8a", "#ffe0e0"), ("eye_of_the_watcher", "Olho Vigia", LENS)),
+    ("blight_mind", pal("#4a0a14", "#7a1a2a", "#b4344a", "#e47a8a", "#ffd0d8"), ("mind_veil", "Véu da Mente", TISSUE)),
+    ("hive_queen", pal("#5a3a04", "#8a5a08", "#c48a18", "#f0c040", "#fff0a0"), ("hive_heart", "Coração da Colmeia", COMB)),
+    ("frost_colossus", pal("#1a3a5a", "#2a5a8a", "#4a8ac4", "#9ad0f0", "#eaf8ff"), ("frost_core", "Núcleo Gélido", SHARD)),
+    ("deep_worm", pal("#2a1a10", "#4a3018", "#7a5028", "#a87a48", "#e0c0a0"), ("worm_scarf", "Cachecol do Verme", RING)),
+    ("bone_king", pal("#3a3428", "#6a6050", "#9a9078", "#c8c0a8", "#f0ead8"), ("bone_glove", "Luva de Osso", HORN)),
+    ("world_breaker", pal("#2a0a2a", "#4a1446", "#7a2a70", "#b45aa8", "#f0b0e8"), ("breaker_heart", "Coração do Quebra-Mundos", CORE)),
+    ("mech_eye", pal("#2a2e36", "#4a505c", "#7a828e", "#b0b8c4", "#eef2f8"), ("mech_core", "Núcleo Mecânico", CORE)),
+    ("mech_worm", pal("#2a2e36", "#4a505c", "#7a828e", "#b0b8c4", "#eef2f8"), None),
+    ("mech_skull", pal("#2a2e36", "#4a505c", "#7a828e", "#b0b8c4", "#eef2f8"), None),
+    ("vine_queen", pal("#0e3a14", "#1e6a26", "#3aa040", "#7ad46a", "#d0ffc0"), ("vine_seed", "Semente da Trepadeira", SHARD)),
+    ("jelly_queen", pal("#5a1a4a", "#8a2a7a", "#c45ab4", "#f0a0e0", "#ffe0f8"), ("gel_crown", "Coroa de Gel", CROWN)),
+    ("scale_idol", TEMPLE, ("sun_core", "Núcleo Solar", CORE)),
+    ("tide_duke", TIDE, ("tide_scale", "Escama das Marés", SHARD)),
+    ("prism_empress", CRYSTAL, ("prism_heart", "Coração Prismático", SHARD)),
+    ("lunar_prophet", PROPHET, ("prophet_eye", "Olho do Profeta", LENS)),
+    ("celestial_herald", STARDUST, ("herald_sigil", "Sigilo do Arauto", MEDAL)),
+    ("pumpkin_king", pal("#5a2a04", "#a04a08", "#e07a18", "#f8b84a", "#fff0a0"), None),
+    ("ice_queen", pal("#2a4a6a", "#4a7aa0", "#7aaed4", "#b4daf4", "#eef8ff"), None),
+    ("pirate_captain", pal("#3a2410", "#5a3a1a", "#7a5a2a", "#a07c3a", "#c4a060"), None),
+    ("dark_mage", pal("#1a0a2a", "#2e1446", "#4a2a70", "#7a5aa8", "#c0a0f0"), None),
+    ("saucer", pal("#1a3a2a", "#2a6a4a", "#4aa07a", "#7ad4a8", "#e8fff4"), None),
+    ("wither", pal("#0e0e14", "#2a2a36", "#4a4a5a", "#7a7a8e", "#b0b0c4"), None),
+    ("ender_dragon", pal("#0e0a14", "#2a1a36", "#4a2a6a", "#8a5ab4", "#e0c0ff"), None),
+    ("lich", pal("#0a2a2a", "#145a5a", "#2a8a8a", "#5ac4c4", "#c0ffff"), None),
+    ("forest_guardian", pal("#1a2a0e", "#2e4a14", "#4a7a20", "#7ab43a", "#c8f08a"), None),
+    ("obsidilith", pal("#0e0a14", "#1e1428", "#3a2a4a", "#5a4a70", "#8a7aa0"), None),
+    ("void_blossom", pal("#1a0a2a", "#3a1a5a", "#6a3a9a", "#a87ad4", "#f0d0ff"), None),
+    ("void_guardian", pal("#0a0a1a", "#1a1a3a", "#2a2a5a", "#4a4a8a", "#8a8ac4"), None),
+]
+
+
+def boss_names():
+    names = {}
+    for f in (ROOT / "packs/vanilla").rglob("*mobs*.ron"):
+        for m in re.finditer(r'name: "([a-z_0-9]+)",\s*display_name: "([^"]+)"', f.read_text()):
+            names.setdefault(m.group(1), m.group(2))
+    return names
+
+
+def items_l10():
+    names = boss_names()
+    gold = pal("#c49a10", "#f4ca28", "#fff0a0")
+    out = []
+    for boss, p, expert in BOSSES_L10:
+        assert boss in names, boss
+        out.append((f"bag_{boss}", f"Sacola do Tesouro: {names[boss]}", icon2(BAG, p, gold), "max_stack: Some(16)"))
+        if expert:
+            n, d, rows = expert
+            out.append((n, d, icon2(rows, p, gold) if any(c in "abc" for r in rows for c in r) else icon(rows, p), "max_stack: Some(1)"))
+    out += [
+        ("bestiary", "Bestiário", icon2(BOOK_ICON, pal("#3a2410", "#c8b890", "#ece0c0"), pal("#5a3a1a", "#7a4a2a", "#c49a10")), "max_stack: Some(1)"),
+        ("daring_stone", "Pedra da Ousadia", icon2(STONE_ICON, pal("#1a1418", "#3a2a2e", "#5a3a3e", "#7a4a4e"), pal("#f04a2a")), "max_stack: Some(1)"),
+    ]
+    return out
+
+
+def block_defs_l10():
+    names = boss_names()
+    return [
+        f'(name: "relic_{b}", display_name: Some("Relíquia: {names[b]}"), light: 7, hardness: 3.0, tool: Some(Pickaxe), textures: (top: Some("relic_{b}"), side: Some("relic_side"), bottom: Some("relic_side")))'
+        for b, _, _ in BOSSES_L10
+    ]
+
+
+def blocks_l10():
+    def side(x, y):
+        band = y in (2, 3, 12, 13)
+        return 0.95 if band and x % 4 == 1 else (0.75 if band else 0.35 + 0.1 * ((x + y) % 5 == 0))
+
+    out = {"relic_side": block_noise(110, side, pal("#3a2a08", "#6a4a10", "#a07c16", "#d4aa18", "#fff0a0"))}
+    for k, (b, p, _) in enumerate(BOSSES_L10):
+        def top(x, y):
+            dx, dy = abs(x - 7.5), abs(y - 7.5)
+            if min(x, y, 15 - x, 15 - y) < 2:
+                return -1
+            return 0.95 - 0.07 * (dx + dy) if dx + dy < 6 else 0.25
+        img = block_noise(111 + k, lambda x, y: max(top(x, y), 0.0), p)
+        frame = block_noise(200 + k, side, pal("#3a2a08", "#6a4a10", "#a07c16", "#d4aa18", "#fff0a0"))
+        for y in range(N):
+            for x in range(N):
+                if top(x, y) < 0:
+                    img[y, x] = frame[y, x]
+        out[f"relic_{b}"] = img
+    return out
+
+
+SHAPED_L10 = [
+    (["SDS", "DOD", "SDS"], {"S": "stone", "D": "diamond", "O": "obsidian"}, "daring_stone", 1),
+]
+SHAPELESS_L10 = [
+    (["book", "spider_eye", "bone"], "bestiary", 1),
+]
+
+
 def write_skins(skins):
     parsed, layers = g.parse_mobs(str(OUT / "mobs.ron"))
     assert set(parsed) == set(skins), sorted(set(parsed) ^ set(skins))
@@ -3554,10 +3715,10 @@ def write_skins(skins):
 
 
 def main():
-    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8() + items_l9()
-    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7 + BLOCKS_L9
+    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8() + items_l9() + items_l10()
+    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7 + BLOCKS_L9 + block_defs_l10()
     mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6() + mobs_l7() + mobs_l8()
-    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9, SMELTING_L2 + SMELTING_L3)
+    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9 + SHAPED_L10, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9 + SHAPELESS_L10, SMELTING_L2 + SMELTING_L3)
     structures_l3()
     skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6(), **skins_l7(), **skins_l8()})
     pics = []
@@ -3565,7 +3726,7 @@ def main():
         im = gt.to_image(img)
         im.save(os.path.join(gi.ITEM_DIR, name + ".png"))
         pics.append(im)
-    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7(), **blocks_l9()}
+    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7(), **blocks_l9(), **blocks_l10()}
     for name, img in all_blocks.items():
         im = gt.to_image(img)
         im.save(os.path.join(gi.BLOCK_DIR, name + ".png"))

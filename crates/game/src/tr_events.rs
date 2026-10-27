@@ -128,6 +128,7 @@ impl Game {
         self.tr_soul_drops(deaths);
         self.endgame_deaths(deaths);
         self.invasion_deaths(deaths);
+        self.modes_deaths(deaths);
         let Some(rain) = self.t5.tr.ev.rain.as_mut() else { return };
         for &(def, _) in deaths {
             if self.mobs.reg.defs[def].name.starts_with("jelly_") {

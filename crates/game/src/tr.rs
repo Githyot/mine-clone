@@ -45,6 +45,13 @@ struct Saved {
     /// Permanent upgrades from the Shimmer (tr_utility.rs).
     #[serde(default)]
     perma: u32,
+    /// World difficulty and the bestiary (tr_modes.rs).
+    #[serde(default)]
+    mode: u8,
+    #[serde(default)]
+    kills: Vec<(String, u32)>,
+    #[serde(default)]
+    bestiary_rewards: u8,
 }
 
 #[derive(Default)]
@@ -59,6 +66,7 @@ pub struct Tr {
     pub(crate) fish: crate::tr_fishing::Fishing,
     pub(crate) inv: crate::tr_invasions::Invasions,
     pub(crate) util: crate::tr_utility::Utility,
+    pub(crate) modes: crate::tr_modes::Modes,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -79,6 +87,9 @@ impl Tr {
         tr.end.pillars = s.pillars;
         tr.fish.quests_done = s.quests_done;
         tr.util.perma = s.perma;
+        tr.modes.mode = s.mode.min(2);
+        tr.modes.kills = s.kills.into_iter().collect();
+        tr.modes.rewards = s.bestiary_rewards;
         tr.town.animals = s.animals.into_iter().map(|(k, (x, y, z))| (k, Vec3::new(x, y, z))).collect();
         tr
     }
@@ -95,6 +106,9 @@ impl Tr {
             pillars: self.end.pillars.clone(),
             quests_done: self.fish.quests_done,
             perma: self.util.perma,
+            mode: self.modes.mode,
+            kills: self.modes.kills.iter().map(|(k, v)| (k.clone(), *v)).collect(),
+            bestiary_rewards: self.modes.rewards,
             animals: self.town.animals.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
@@ -120,6 +134,7 @@ impl Game {
         self.update_tr_fishing(dt);
         self.update_invasions(dt);
         self.update_tr_utility(dt);
+        self.update_tr_modes();
     }
 
     /// Right click with an item of this file; true when it did something.
@@ -143,6 +158,9 @@ impl Game {
             return Some(r);
         }
         if let Some(r) = self.tr_utility_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.tr_modes_use(name) {
             return Some(r);
         }
         match name {
@@ -175,6 +193,7 @@ impl Game {
     pub(crate) fn tr_boss_defeated(&mut self, name: &str) {
         self.tr_event_boss_down();
         self.endgame_boss_defeated(name);
+        self.modes_boss_defeated(name);
         if name == "great_eye" {
             // The eye leaves some of the world's evil ore behind (and its seeds, in Terraria).
             let ore = if crate::tr_world::world_evil(self.seed) == crate::tr_world::Land::Ruin { "umbral_ore" } else { "sanguinite_ore" };
@@ -386,6 +405,7 @@ impl Game {
             "pets" | "mounts" | "harpies" | "wings" => self.test_tr_pets(scene),
             "town" | "townshop" => self.test_tr_town(scene),
             "stations" | "shimmer" => self.test_tr_utility(scene),
+            "relics" | "bestiary" => self.test_tr_modes(scene),
             "harvest" | "winter" | "pirates" | "martians" | "crystal" => {
                 self.test_invasion(scene);
             }

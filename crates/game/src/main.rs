@@ -66,6 +66,7 @@ mod tr_endgame;
 mod tr_fishing;
 mod tr_invasions;
 mod tr_utility;
+mod tr_modes;
 mod tr_weapons;
 mod tr_world;
 mod glyphs;
@@ -2694,6 +2695,7 @@ impl Game {
         }
         // Monsters and blasts hit harder on harder difficulties.
         let amount = if from.is_some() && !pvp { amount * [0.0, 0.5, 1.0, 1.5][self.settings.difficulty.min(3) as usize] } else { amount };
+        let amount = if from.is_some() && !pvp { amount * self.mode_damage() } else { amount };
         // Dodged (mirror charm, the radiant set): nothing at all.
         if self.rpg_dodge(from) || self.tr_ignores_hit(from) {
             self.prog.next_kind = Default::default();
