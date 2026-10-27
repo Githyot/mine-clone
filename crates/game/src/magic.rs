@@ -217,9 +217,18 @@ impl Game {
         if self.magic.cooldown > 0.0 {
             return;
         }
+        if self.has_effect(crate::effects::SILENCED) {
+            self.magic.cooldown = 0.5;
+            self.toast("Silenciado: não dá para lançar magias", 1.0);
+            return;
+        }
         let (power, mana_k, speed_k) = self.caster_mods();
-        let cost = sp.cost * mana_k;
+        let cost = sp.cost * mana_k * self.t5.rpg.stats.mana_cost;
         let free = !self.survival;
+        // The mana blossom drinks a potion when mana runs out (rpg.rs).
+        if !free && self.magic.mana < cost && self.wears("mana_blossom") {
+            self.quick_mana();
+        }
         if !free && self.magic.mana < cost {
             return;
         }
@@ -395,7 +404,12 @@ impl Game {
     }
 
     pub(crate) fn hurt_mob(&mut self, i: usize, dmg: f32, from: Vec3, school: u8) {
-        let dmg = dmg * self.magic.power;
+        let mut dmg = dmg * self.magic.power;
+        // Magic critical hits (rpg.rs).
+        if self.surv.rng.f32() < self.t5.rpg.stats.crit[crate::rpg::MAGIC] {
+            dmg *= 1.5;
+        }
+        self.orichalcum_petals(i, dmg);
         let m = &mut self.mobs.list[i];
         m.hurt(dmg, from);
         match school {

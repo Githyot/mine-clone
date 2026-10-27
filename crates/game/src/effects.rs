@@ -49,6 +49,38 @@ pub const WEAVING: u8 = 37;
 pub const OOZING: u8 = 38;
 pub const INFESTED: u8 = 39;
 pub const BREATH_OF_THE_NAUTILUS: u8 = 40;
+// Terraria-style buffs and debuffs (rpg.rs gives most of them their meaning).
+pub const BLEEDING: u8 = 41;
+pub const FROSTBURN: u8 = 42;
+pub const CURSED_FLAMES: u8 = 43;
+pub const ICHOR: u8 = 44;
+pub const BROKEN_ARMOR: u8 = 45;
+pub const CONFUSED: u8 = 46;
+pub const SILENCED: u8 = 47;
+pub const CHILLED: u8 = 48;
+pub const FROZEN: u8 = 49;
+pub const VENOM: u8 = 50;
+pub const POTION_SICKNESS: u8 = 51;
+pub const MANA_SICKNESS: u8 = 52;
+pub const IRONSKIN: u8 = 53;
+pub const MANA_REGEN: u8 = 54;
+pub const MAGIC_POWER: u8 = 55;
+pub const ARCHERY: u8 = 56;
+pub const WRATH: u8 = 57;
+pub const RAGE: u8 = 58;
+pub const ENDURANCE: u8 = 59;
+pub const LIFEFORCE: u8 = 60;
+pub const THORNS: u8 = 61;
+pub const TITAN: u8 = 62;
+pub const SUMMONING: u8 = 63;
+pub const SPELUNKER: u8 = 64;
+pub const HUNTER: u8 = 65;
+pub const SHINE: u8 = 66;
+pub const WELL_FED: u8 = 67;
+pub const COZY_FIRE: u8 = 68;
+pub const BUILDER: u8 = 69;
+pub const WARMTH: u8 = 70;
+pub const INFERNO: u8 = 71;
 
 /// Name, colour (for the icon, particles and the potion), harmful.
 pub fn info(id: u8) -> (&'static str, [u8; 3], bool) {
@@ -93,11 +125,42 @@ pub fn info(id: u8) -> (&'static str, [u8; 3], bool) {
         OOZING => ("Gosma", [153, 255, 163], true),
         INFESTED => ("Infestação", [140, 155, 140], true),
         BREATH_OF_THE_NAUTILUS => ("Fôlego do Náutilo", [0, 140, 160], false),
+        BLEEDING => ("Sangramento", [170, 20, 30], true),
+        FROSTBURN => ("Queimadura de Gelo", [120, 200, 255], true),
+        CURSED_FLAMES => ("Chamas Malditas", [140, 230, 40], true),
+        ICHOR => ("Icor", [235, 200, 40], true),
+        BROKEN_ARMOR => ("Armadura Quebrada", [150, 150, 160], true),
+        CONFUSED => ("Confusão", [200, 120, 220], true),
+        SILENCED => ("Silêncio", [90, 90, 120], true),
+        CHILLED => ("Frio", [170, 220, 255], true),
+        FROZEN => ("Congelado", [210, 240, 255], true),
+        VENOM => ("Peçonha", [120, 40, 160], true),
+        POTION_SICKNESS => ("Enjoo de Poção", [170, 140, 90], true),
+        MANA_SICKNESS => ("Enjoo de Mana", [90, 90, 200], true),
+        IRONSKIN => ("Pele de Ferro", [200, 200, 210], false),
+        MANA_REGEN => ("Regeneração de Mana", [80, 120, 255], false),
+        MAGIC_POWER => ("Poder Mágico", [190, 80, 255], false),
+        ARCHERY => ("Arquearia", [200, 150, 90], false),
+        WRATH => ("Ira", [230, 60, 40], false),
+        RAGE => ("Fúria", [250, 120, 40], false),
+        ENDURANCE => ("Resiliência", [100, 140, 170], false),
+        LIFEFORCE => ("Força Vital", [255, 110, 140], false),
+        THORNS => ("Espinhos", [90, 150, 60], false),
+        TITAN => ("Titã", [150, 110, 80], false),
+        SUMMONING => ("Invocação", [120, 230, 200], false),
+        SPELUNKER => ("Espeleólogo", [240, 200, 80], false),
+        HUNTER => ("Caçador", [230, 120, 90], false),
+        SHINE => ("Brilho Interior", [255, 240, 170], false),
+        WELL_FED => ("Bem Alimentado", [230, 170, 90], false),
+        COZY_FIRE => ("Fogueira Aconchegante", [255, 150, 60], false),
+        BUILDER => ("Construtor", [180, 140, 100], false),
+        WARMTH => ("Aquecido", [255, 170, 110], false),
+        INFERNO => ("Inferno", [255, 90, 30], false),
         _ => ("?", [200, 200, 200], false),
     }
 }
 
-pub const ALL: u8 = 40;
+pub const ALL: u8 = 71;
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Active {
@@ -173,6 +236,24 @@ pub static POTIONS: &[PotionDef] = &[
     p!("weaving", "Poção de Tecelagem", [(WEAVING, 0, 180.0)]),
     p!("oozing", "Poção de Gosma", [(OOZING, 0, 180.0)]),
     p!("infested", "Poção de Infestação", [(INFESTED, 0, 180.0)]),
+    // The Terraria side's buff potions (rpg.rs); brewed from an awkward potion (stations.rs).
+    p!("ironskin", "Poção de Pele de Ferro", [(IRONSKIN, 0, 480.0)]),
+    p!("mana_regeneration", "Poção de Regeneração de Mana", [(MANA_REGEN, 0, 420.0)]),
+    p!("magic_power", "Poção de Poder Mágico", [(MAGIC_POWER, 0, 240.0)]),
+    p!("archery", "Poção de Arquearia", [(ARCHERY, 0, 240.0)]),
+    p!("wrath", "Poção da Ira", [(WRATH, 0, 240.0)]),
+    p!("rage", "Poção da Fúria", [(RAGE, 0, 240.0)]),
+    p!("endurance", "Poção de Resiliência", [(ENDURANCE, 0, 240.0)]),
+    p!("lifeforce", "Poção de Força Vital", [(LIFEFORCE, 0, 480.0)]),
+    p!("thorns", "Poção de Espinhos", [(THORNS, 0, 120.0)]),
+    p!("titan", "Poção do Titã", [(TITAN, 0, 240.0)]),
+    p!("summoning", "Poção de Invocação", [(SUMMONING, 0, 360.0)]),
+    p!("spelunker", "Poção do Espeleólogo", [(SPELUNKER, 0, 300.0)]),
+    p!("hunter", "Poção do Caçador", [(HUNTER, 0, 300.0)]),
+    p!("shine", "Poção do Brilho", [(SHINE, 0, 300.0)]),
+    p!("builder", "Poção do Construtor", [(BUILDER, 0, 900.0)]),
+    p!("warmth", "Poção do Calor", [(WARMTH, 0, 420.0)]),
+    p!("inferno", "Poção do Inferno", [(INFERNO, 0, 240.0)]),
 ];
 
 pub fn potion(key: &str) -> Option<&'static PotionDef> {
@@ -266,6 +347,10 @@ impl Game {
         if !self.survival && matches!(id, INSTANT_DAMAGE | POISON | WITHER | HUNGER) {
             return;
         }
+        // Accessories and buffs that keep a debuff away (rpg.rs).
+        if self.immune_to(id) {
+            return;
+        }
         match id {
             INSTANT_HEALTH => {
                 self.health = (self.health + (4u32 << amp.min(5)) as f32).min(self.max_health);
@@ -288,7 +373,7 @@ impl Game {
                 e.amp = amp;
                 e.time = secs;
                 e.ambient = ambient;
-                if id == HEALTH_BOOST && amp != old {
+                if (id == HEALTH_BOOST || id == LIFEFORCE) && amp != old {
                     self.max_health += 4.0 * (amp as f32 - old as f32);
                 }
                 if id == ABSORPTION {
@@ -299,7 +384,7 @@ impl Game {
         }
         self.prog.effects.push(Active { id, amp, time: secs, ambient });
         match id {
-            HEALTH_BOOST => self.max_health += 4.0 * (amp as f32 + 1.0),
+            HEALTH_BOOST | LIFEFORCE => self.max_health += 4.0 * (amp as f32 + 1.0),
             ABSORPTION => self.prog.absorb = self.prog.absorb.max(4.0 * (amp as f32 + 1.0)),
             _ => {}
         }
@@ -307,7 +392,7 @@ impl Game {
 
     fn effect_ended(&mut self, e: &Active) {
         match e.id {
-            HEALTH_BOOST => {
+            HEALTH_BOOST | LIFEFORCE => {
                 self.max_health = (self.max_health - 4.0 * (e.amp as f32 + 1.0)).max(2.0);
                 self.health = self.health.min(self.max_health);
             }
@@ -371,6 +456,19 @@ impl Game {
                             self.damage(1.0, None);
                         }
                     }
+                    // Terraria-style damage over time: one point every so many ticks.
+                    FROSTBURN | CURSED_FLAMES | VENOM | BLEEDING => {
+                        let every = match e.id {
+                            FROSTBURN => 15,
+                            CURSED_FLAMES => 10,
+                            VENOM => 8,
+                            _ => 40,
+                        };
+                        if t % every == 0 && (e.id != BLEEDING || self.health > 1.0) {
+                            self.prog.next_kind = crate::progression::DamageKind::Magic;
+                            self.damage(1.0, None);
+                        }
+                    }
                     HUNGER => self.surv.exhaustion += 0.005 * (a + 1) as f32,
                     SATURATION => {
                         self.surv.hunger = (self.surv.hunger + (a + 1) as f32).min(20.0);
@@ -402,6 +500,12 @@ impl Game {
     pub(crate) fn move_multiplier(&self) -> f32 {
         let mut m = 1.0 + 0.2 * self.effect_level(SPEED) as f32;
         m *= (1.0 - 0.15 * self.effect_level(SLOWNESS) as f32).max(0.0);
+        if self.has_effect(CHILLED) {
+            m *= 0.75;
+        }
+        if self.has_effect(FROZEN) {
+            m = 0.0;
+        }
         m
     }
 
@@ -495,6 +599,7 @@ impl Game {
         };
         self.prog.stats.add("potions_drunk", 1);
         self.prog.event(crate::progression::Event::Drank(name.clone()));
+        self.nature_consumed(&name);
         if !self.survival {
             return;
         }
@@ -720,18 +825,18 @@ pub fn draw_effect_icon(ui: &mut crate::ui::UiBatch, id: u8, c: [u8; 3], x: f32,
             px(ui, 2.0, 8.0, 3.0, 3.0, dark);
             px(ui, 11.0, 4.0, 3.0, 3.0, dark);
         }
-        HASTE | MINING_FATIGUE | CONDUIT_POWER => {
+        HASTE | MINING_FATIGUE | CONDUIT_POWER | BUILDER => {
             // A pickaxe.
             px(ui, 2.0, 2.0, 12.0, 3.0, col);
             px(ui, 7.0, 4.0, 2.0, 10.0, dark);
         }
-        STRENGTH | WEAKNESS => {
+        STRENGTH | WEAKNESS | WRATH | RAGE | TITAN => {
             // A sword.
             px(ui, 7.0, 0.0, 2.0, 10.0, col);
             px(ui, 4.0, 10.0, 8.0, 2.0, dark);
             px(ui, 7.0, 12.0, 2.0, 3.0, dark);
         }
-        INSTANT_HEALTH | REGENERATION | HEALTH_BOOST | ABSORPTION | INSTANT_DAMAGE => {
+        INSTANT_HEALTH | REGENERATION | HEALTH_BOOST | ABSORPTION | INSTANT_DAMAGE | LIFEFORCE | POTION_SICKNESS | WELL_FED => {
             // A heart.
             px(ui, 2.0, 3.0, 5.0, 5.0, col);
             px(ui, 9.0, 3.0, 5.0, 5.0, col);
@@ -745,7 +850,7 @@ pub fn draw_effect_icon(ui: &mut crate::ui::UiBatch, id: u8, c: [u8; 3], x: f32,
             px(ui, 4.0, 5.0, 8.0, 2.0, col);
             px(ui, 5.0, 3.0, 6.0, 2.0, col);
         }
-        RESISTANCE | FIRE_RESISTANCE => {
+        RESISTANCE | FIRE_RESISTANCE | IRONSKIN | ENDURANCE | BROKEN_ARMOR | ICHOR => {
             // A shield.
             px(ui, 3.0, 2.0, 10.0, 8.0, col);
             px(ui, 5.0, 10.0, 6.0, 2.0, col);
@@ -757,18 +862,49 @@ pub fn draw_effect_icon(ui: &mut crate::ui::UiBatch, id: u8, c: [u8; 3], x: f32,
                 px(ui, a, b, 4.0, 4.0, col);
             }
         }
-        NIGHT_VISION | BLINDNESS | DARKNESS | INVISIBILITY | GLOWING => {
+        NIGHT_VISION | BLINDNESS | DARKNESS | INVISIBILITY | GLOWING | HUNTER | SPELUNKER | SHINE | CONFUSED => {
             // An eye.
             px(ui, 1.0, 6.0, 14.0, 4.0, col);
             px(ui, 3.0, 4.0, 10.0, 8.0, col);
             px(ui, 6.0, 6.0, 4.0, 4.0, dark);
         }
-        POISON | WITHER | HUNGER | NAUSEA | OOZING | INFESTED | WEAVING => {
+        POISON | WITHER | HUNGER | NAUSEA | OOZING | INFESTED | WEAVING | BLEEDING | VENOM => {
             // A drop.
             px(ui, 7.0, 2.0, 2.0, 2.0, col);
             px(ui, 5.0, 4.0, 6.0, 4.0, col);
             px(ui, 4.0, 8.0, 8.0, 5.0, col);
             px(ui, 6.0, 13.0, 4.0, 1.0, dark);
+        }
+        FROSTBURN | CURSED_FLAMES | INFERNO | WARMTH | COZY_FIRE => {
+            // A flame.
+            px(ui, 6.0, 1.0, 3.0, 3.0, col);
+            px(ui, 4.0, 4.0, 7.0, 5.0, col);
+            px(ui, 3.0, 8.0, 10.0, 5.0, col);
+            px(ui, 6.0, 9.0, 4.0, 4.0, dark);
+        }
+        MANA_REGEN | MAGIC_POWER | MANA_SICKNESS | SILENCED | SUMMONING => {
+            // A star.
+            px(ui, 7.0, 1.0, 2.0, 14.0, col);
+            px(ui, 1.0, 6.0, 14.0, 3.0, col);
+            px(ui, 4.0, 4.0, 8.0, 8.0, col);
+            px(ui, 6.0, 6.0, 4.0, 4.0, dark);
+        }
+        CHILLED | FROZEN => {
+            // A snowflake.
+            px(ui, 7.0, 1.0, 2.0, 14.0, col);
+            px(ui, 1.0, 7.0, 14.0, 2.0, col);
+            px(ui, 3.0, 3.0, 2.0, 2.0, col);
+            px(ui, 11.0, 3.0, 2.0, 2.0, col);
+            px(ui, 3.0, 11.0, 2.0, 2.0, col);
+            px(ui, 11.0, 11.0, 2.0, 2.0, col);
+        }
+        ARCHERY | THORNS => {
+            // An arrow.
+            for k in 0..10 {
+                px(ui, 2.0 + k as f32, 12.0 - k as f32, 2.0, 2.0, col);
+            }
+            px(ui, 10.0, 2.0, 4.0, 2.0, dark);
+            px(ui, 12.0, 2.0, 2.0, 4.0, dark);
         }
         _ => {
             // A banner (omens, luck, hero).

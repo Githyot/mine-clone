@@ -36,7 +36,7 @@ impl Game {
         let biome = self
             .world
             .gen
-            .biome_at(eye.x.floor() as i32, eye.z.floor() as i32);
+            .base_biome_at(eye.x.floor() as i32, eye.z.floor() as i32);
         let cold = self.dim == Dim::Overworld
             && (matches!(biome, Biome::Snowy | Biome::Taiga) || eye.y > 150.0);
         if cold && !self.body.head_in_water {
@@ -335,7 +335,7 @@ impl Game {
 
     /// Where the camera is pushed by shaking (add to the eye position).
     pub(crate) fn shake_offset(&self) -> Vec3 {
-        if !self.settings.view_bobbing || self.fx.shake <= 0.0 {
+        if !self.settings.view_bobbing || self.settings.reduce_motion || self.fx.shake <= 0.0 {
             return Vec3::ZERO;
         }
         let t = self.now;
@@ -354,7 +354,7 @@ impl Game {
         if self.dim == Dim::Overworld && !self.body.head_in_water {
             let head = eye.floor().as_ivec3();
             let sky = self.world.light(head) >> 4;
-            let biome = self.world.gen.biome_at(head.x, head.z);
+            let biome = self.world.gen.base_biome_at(head.x, head.z);
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let dawn = a.cos() > 0.0 && a.sin() > -0.2 && a.sin() < 0.3;
             if sky > 0 {

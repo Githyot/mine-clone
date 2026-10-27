@@ -60,6 +60,9 @@ pub struct ItemDef {
     /// Seconds of furnace fuel.
     #[serde(default)]
     pub fuel: f32,
+    /// Uses before it breaks, for items that wear but are neither tools nor armor (bow, shears...).
+    #[serde(default)]
+    pub durability: Option<u16>,
 }
 
 #[derive(Deserialize)]
@@ -86,6 +89,14 @@ pub struct Item {
     pub armor: Option<ArmorDef>,
     pub places: Option<BlockId>,
     pub fuel: f32,
+    pub durability: Option<u16>,
+}
+
+impl Item {
+    /// How much wear the item takes before it breaks, if it wears at all.
+    pub fn max_wear(&self) -> Option<u16> {
+        self.tool.as_ref().map(|t| t.durability).or(self.armor.map(|a| a.durability)).or(self.durability)
+    }
 }
 
 pub struct ItemRegistry {
@@ -115,7 +126,7 @@ impl ItemRegistry {
     pub fn from_defs(defs: Vec<ItemDef>, blocks: &BlockRegistry) -> Result<Self, String> {
         let mut reg = ItemRegistry { items: Vec::new(), by_name: HashMap::new(), block_item: vec![None; blocks.len()], textures: Vec::new() };
         // Item 0 is unused so a zero id never looks like a real item.
-        reg.items.push(Item { name: "air".into(), display_name: String::new(), look: Look::Block(AIR), max_stack: 0, tool: None, food: None, armor: None, places: None, fuel: 0.0 });
+        reg.items.push(Item { name: "air".into(), display_name: String::new(), look: Look::Block(AIR), max_stack: 0, tool: None, food: None, armor: None, places: None, fuel: 0.0, durability: None });
         for (i, b) in blocks.blocks.iter().enumerate() {
             if i as BlockId == AIR || matches!(b.shape, Shape::Liquid | Shape::Invisible) {
                 continue;
@@ -136,6 +147,7 @@ impl ItemRegistry {
                 armor: None,
                 places: Some(i as BlockId),
                 fuel: 0.0,
+                durability: None,
             });
             reg.by_name.insert(b.name.clone(), id);
             reg.block_item[i] = Some(id);
@@ -158,6 +170,7 @@ impl ItemRegistry {
                 }
                 it.fuel = d.fuel.max(it.fuel);
                 it.food = d.food.or(it.food);
+                it.durability = d.durability.or(it.durability);
                 if let Some(t) = d.texture {
                     let layer = *tex_index.entry(t.clone()).or_insert_with(|| {
                         reg.textures.push(format!("item/{t}"));
@@ -172,7 +185,7 @@ impl ItemRegistry {
                 reg.textures.push(format!("item/{tex}"));
                 (reg.textures.len() - 1) as u16
             });
-            let max_stack = d.max_stack.unwrap_or(if d.tool.is_some() || d.armor.is_some() { 1 } else { 64 });
+            let max_stack = d.max_stack.unwrap_or(if d.tool.is_some() || d.armor.is_some() || d.durability.is_some() { 1 } else { 64 });
             let id = reg.items.len() as ItemId;
             reg.by_name.insert(d.name.clone(), id);
             reg.items.push(Item {
@@ -185,9 +198,34 @@ impl ItemRegistry {
                 armor: d.armor,
                 places,
                 fuel: d.fuel,
+                durability: d.durability,
             });
         }
         Ok(reg)
+    }
+
+    /// A plain item added after loading (by a plugin): a flat sprite named `texture`, at the
+    /// end of the list. None when the name is taken.
+    pub fn add_plain(&mut self, name: &str, display_name: &str, texture: &str, max_stack: u8, food: Option<FoodDef>) -> Option<ItemId> {
+        if self.by_name.contains_key(name) || self.items.len() >= ItemId::MAX as usize {
+            return None;
+        }
+        self.textures.push(format!("item/{texture}"));
+        let id = self.items.len() as ItemId;
+        self.by_name.insert(name.to_string(), id);
+        self.items.push(Item {
+            name: name.to_string(),
+            display_name: display_name.to_string(),
+            look: Look::Sprite((self.textures.len() - 1) as u16),
+            max_stack: max_stack.clamp(1, 64),
+            tool: None,
+            food,
+            armor: None,
+            places: None,
+            fuel: 0.0,
+            durability: None,
+        });
+        Some(id)
     }
 
     #[inline]

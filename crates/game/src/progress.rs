@@ -179,6 +179,8 @@ fn matches(pattern: &str, name: &str) -> bool {
 
 /// Break text into lines no wider than `max`.
 fn wrap(ui: &crate::ui::UiBatch, text: &str, max: f32, s: f32) -> Vec<String> {
+    // Translated whole, before it is cut into lines.
+    let text = &*crate::lang::tr(text);
     let mut lines = Vec::new();
     let mut line = String::new();
     for word in text.split_whitespace() {

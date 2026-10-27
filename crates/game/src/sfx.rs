@@ -121,6 +121,7 @@ pub fn synth(sfx: Sfx, seed: u32) -> Vec<f32> {
         Sfx::Fx(fx) => crate::sfx_extra::synth(fx, seed),
         Sfx::Engine(k, t) => engine(&mut rng, k, t),
         Sfx::Tune(i, t) => crate::mods::melodies::synth_tune(i, t, seed),
+        Sfx::Note(p, i) => note_block(&mut rng, p, i),
     };
     out.into_iter().map(|s| s.clamp(-1.0, 1.0)).collect()
 }
@@ -421,6 +422,45 @@ const TUNES: [&[(i32, f32)]; 4] = [
     &[(5, 2.0), (4, 1.0), (2, 1.0), (3, 2.0), (2, 1.0), (0, 1.0), (1, 2.0), (-1, 1.0), (0, 3.0)],
 ];
 
+/// One note of a note block. Two octaves from F#2 up: an octave lower than the classic game,
+/// so the top notes stay warm. A plucked string (Karplus-Strong, so it rings like a real one),
+/// a soft low drum, a hollow wooden knock or a deep plucked bass.
+fn note_block(rng: &mut Rng, pitch: u8, inst: u8) -> Vec<f32> {
+    let f = 92.5 * 2f32.powf(pitch.min(24) as f32 / 12.0);
+    let len = (RATE * if inst == 1 || inst == 2 { 0.6 } else { 1.6 }) as usize;
+    let mut out = vec![0.0f32; len];
+    match inst {
+        1 | 2 => {
+            // A struck skin or block: a pitched body that drops a little, under a short thud.
+            let mut lp = LowPass::new(if inst == 1 { 500.0 } else { 900.0 });
+            let mut ph = 0.0f32;
+            let decay = if inst == 1 { 9.0 } else { 16.0 };
+            for (k, o) in out.iter_mut().enumerate() {
+                let t = k as f32 / RATE;
+                let bend = 1.0 + 0.25 * (-t * 30.0).exp();
+                ph += TAU * f * if inst == 1 { 0.5 } else { 1.0 } * bend / RATE;
+                let body = ph.sin() * (-t * decay).exp();
+                let thud = rng.noise() * (-t * 60.0).exp() * 0.5;
+                *o = lp.run(body + thud) * 0.8;
+            }
+        }
+        _ => {
+            let f = if inst == 3 { f * 0.5 } else { f };
+            let n = (RATE / f) as usize;
+            let mut buf: Vec<f32> = (0..n.max(2)).map(|_| rng.noise() * 0.6).collect();
+            let mut lp = LowPass::new(if inst == 3 { 600.0 } else { 1000.0 });
+            for (k, o) in out.iter_mut().enumerate() {
+                let i = k % buf.len();
+                let j = (k + 1) % buf.len();
+                let v = (buf[i] + buf[j]) * 0.4985;
+                buf[i] = v;
+                *o = lp.run(v) * 0.9;
+            }
+        }
+    }
+    out
+}
+
 fn note_freq(step: i32) -> f32 {
     const PENTA: [f32; 5] = [0.0, 3.0, 5.0, 7.0, 10.0];
     let oct = step.div_euclid(5);
@@ -702,6 +742,7 @@ mod tests {
         all.extend((0..3).flat_map(|i| (0..4).map(move |t| Sfx::Melody(i, t))));
         all.extend((0..6).flat_map(|k| [Sfx::Cast(k), Sfx::SpellHit(k)]));
         all.extend((0..3).flat_map(|k| [Sfx::Engine(k, 0), Sfx::Engine(k, 4)]));
+        all.extend((0..4).flat_map(|i| [Sfx::Note(0, i), Sfx::Note(12, i), Sfx::Note(24, i)]));
         for sfx in all {
             let v = synth(sfx, 7);
             assert!(!v.is_empty() && v.iter().all(|x| x.is_finite()), "{sfx:?}");

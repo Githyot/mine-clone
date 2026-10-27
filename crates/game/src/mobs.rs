@@ -147,7 +147,8 @@ impl Mobs {
             let sky = (light >> 4) as f32 * daylight;
             let blk = (light & 15) as f32;
             let dark = away || sky.max(blk) < 7.0;
-            let biome = world.gen.biome_at(x, z).name();
+            let here = world.gen.biome_at(x, z);
+            let (biome, base) = (here.name(), here.base().name());
             if self.ground.len() != self.reg.defs.len() {
                 let grass = self.grass;
                 self.ground = self
@@ -164,7 +165,7 @@ impl Mobs {
                 .iter()
                 .enumerate()
                 .filter(|(i, d)| {
-                    (d.in_biome(biome) || (!away && d.biomes.iter().any(|b| b == "Overworld")))
+                    (d.in_biome(biome) || d.in_biome(base) || (!away && d.biomes.iter().any(|b| b == "Overworld")))
                         && (!away || !d.biomes.is_empty())
                         && match d.spawn {
                             SpawnRule::Grass => animals && !water && self.ground[*i].contains(&below),

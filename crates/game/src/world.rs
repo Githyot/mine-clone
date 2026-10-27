@@ -24,7 +24,8 @@ type Neighbours = [Option<Arc<Chunk>>; 9];
 enum Job {
     Generate(ChunkPos),
     Light(ChunkPos, u32, Neighbours),
-    Mesh(ChunkPos, u32, Neighbours),
+    /// The blocks left out (a door that is swinging is drawn on its own meanwhile).
+    Mesh(ChunkPos, u32, Neighbours, Vec<IVec3>),
 }
 
 enum Done {
@@ -77,11 +78,29 @@ pub struct World {
     solid: Vec<bool>,
     /// Collision height of each block (1.0 except slabs, beds).
     top: Vec<f32>,
+    /// Ladders and vines.
+    climb: Vec<bool>,
+    /// Blocks that stand in water (kelp): bodies swim through them.
+    wet: Vec<bool>,
     pub meshed_count: usize,
+    /// What the mesh workers draw with (shared with them; resource pack models swap inside).
+    pub tables: Arc<MeshTables>,
+    /// The dedicated server draws nothing: lit chunks count as meshed without building meshes.
+    pub headless: bool,
     /// Multiplayer: every block change, for the network to pass on (None = not recording).
     pub net_log: Option<Vec<(IVec3, BlockId)>>,
     /// Multiplayer host: other players' chunks, kept loaded and lit (not meshed) around them.
     pub extra_centers: Vec<(ChunkPos, i32)>,
+    /// Doors, trapdoors and gates that just opened or closed: (where, before, after), for
+    /// their swing (`swing.rs`).
+    pub swings: Vec<(IVec3, BlockId, BlockId)>,
+    /// Blocks the chunk meshes leave out while they are drawn moving.
+    hidden: HashSet<IVec3>,
+    /// Blocks with a turning model drawn over them (windmill sails), by block id.
+    spins: Vec<bool>,
+    /// Where those blocks are in the loaded chunks, kept up to date as chunks come and go and
+    /// blocks change, so drawing them never has to search the world.
+    pub spinners: HashMap<ChunkPos, Vec<IVec3>>,
 }
 
 impl World {
@@ -113,9 +132,12 @@ impl World {
                             let refs: [Option<&Chunk>; 9] = std::array::from_fn(|i| n[i].as_deref());
                             Done::Lit(pos, ver, compute_light(&reg, refs))
                         }
-                        Job::Mesh(pos, ver, n) => {
+                        Job::Mesh(pos, ver, n, hidden) => {
                             let refs: [Option<&Chunk>; 9] = std::array::from_fn(|i| n[i].as_deref());
-                            let input = MeshInput::new(refs);
+                            let mut input = MeshInput::new(refs);
+                            for h in hidden {
+                                input.hide(h.x - pos.x * 16, h.y, h.z - pos.y * 16);
+                            }
                             let mut v = Vec::new();
                             for s in 0..16 {
                                 if input.section_has_blocks(s) {
@@ -140,7 +162,11 @@ impl World {
         let fluid = reg.blocks.iter().map(|b| if b.base == water && water != AIR { 1 } else if b.base == lava && lava != AIR { 2 } else { 0 }).collect();
         let solid = reg.blocks.iter().map(|b| b.solid && b.shape != Shape::Liquid && b.shape != Shape::Invisible).collect();
         let top = reg.blocks.iter().map(|b| b.height as f32 / 16.0).collect();
+        let climb = reg.blocks.iter().map(|b| b.shape == Shape::Ladder || matches!(b.name.as_str(), "vine" | "weeping_vines" | "twisting_vines" | "scaffolding" | "cave_vines")).collect();
+        let wet = reg.blocks.iter().map(|b| b.waterlogged).collect();
+        let spins = reg.blocks.iter().map(|b| reg.blocks[b.base as usize].name == "windmill_sails").collect();
         World {
+            tables,
             reg,
             gen,
             save,
@@ -159,9 +185,43 @@ impl World {
             changed: Vec::new(),
             solid,
             top,
+            climb,
+            wet,
             meshed_count: 0,
+            headless: false,
             net_log: None,
             extra_centers: Vec::new(),
+            swings: Vec::new(),
+            hidden: HashSet::new(),
+            spins,
+            spinners: HashMap::new(),
+        }
+    }
+
+    /// Note down the turning blocks of a chunk that just arrived.
+    fn find_spinners(&mut self, c: &Chunk) {
+        self.spinners.remove(&c.pos);
+        let spins = &self.spins;
+        if !spins.iter().any(|&b| b) {
+            return;
+        }
+        let mut found = Vec::new();
+        for (si, sec) in c.sections.iter().enumerate() {
+            if sec.is_empty() || !sec.may_contain(|b| spins[b as usize]) {
+                continue;
+            }
+            for y in si * 16..si * 16 + 16 {
+                for z in 0..16 {
+                    for x in 0..16 {
+                        if spins[c.get(x, y, z) as usize] {
+                            found.push(IVec3::new(c.pos.x * 16 + x as i32, y as i32, c.pos.y * 16 + z as i32));
+                        }
+                    }
+                }
+            }
+        }
+        if !found.is_empty() {
+            self.spinners.insert(c.pos, found);
         }
     }
 
@@ -213,9 +273,13 @@ impl World {
                     if let Some(s) = self.slots.get_mut(&pos) {
                         // A chunk that came over the network meanwhile wins.
                         if s.chunk.is_none() {
-                            s.chunk = Some(Arc::new(c));
+                            let c = Arc::new(c);
+                            s.chunk = Some(c.clone());
+                            s.gen_pending = false;
+                            self.find_spinners(&c);
+                        } else {
+                            s.gen_pending = false;
                         }
-                        s.gen_pending = false;
                     }
                 }
                 Done::Lit(pos, ver, light) => {
@@ -359,11 +423,20 @@ impl World {
             if !self.all_lit(p) {
                 continue;
             }
+            if self.headless {
+                let s = self.slots.get_mut(&p).unwrap();
+                if s.mesh_done == 0 {
+                    self.meshed_count += 1;
+                }
+                s.mesh_done = s.mesh_ver;
+                continue;
+            }
             let n = self.neighbours(p).unwrap();
             let s = self.slots.get_mut(&p).unwrap();
             s.mesh_pending = true;
             self.in_flight += 1;
-            let job = Job::Mesh(p, s.mesh_ver, n);
+            let hidden: Vec<IVec3> = self.hidden.iter().copied().filter(|h| (h.x.div_euclid(16) - p.x).abs() <= 1 && (h.z.div_euclid(16) - p.y).abs() <= 1).collect();
+            let job = Job::Mesh(p, s.mesh_ver, n, hidden);
             let _ = if urgent { self.urgent_jobs.send(job) } else { self.jobs.send(job) };
         }
 
@@ -392,12 +465,14 @@ impl World {
                 self.events.push(MeshEvent::Remove(p));
             }
             self.slots.remove(&p);
+            self.spinners.remove(&p);
         }
     }
 
     /// Put in a whole chunk (sent by a multiplayer host), relighting and remeshing around it.
     pub fn replace_chunk(&mut self, chunk: Chunk) {
         let cp = chunk.pos;
+        self.find_spinners(&chunk);
         let slot = self.slots.entry(cp).or_insert_with(|| Slot { light_ver: 1, mesh_ver: 1, ..Default::default() });
         slot.chunk = Some(Arc::new(chunk));
         self.unsaved.insert(cp);
@@ -445,7 +520,21 @@ impl World {
         let Some(slot) = self.slots.get_mut(&cp) else { return false };
         let Some(c) = slot.chunk.as_mut() else { return false };
         let c = Arc::make_mut(c);
+        let was = c.get(x, p.y as usize, z);
         c.set(x, p.y as usize, z, id);
+        if self.spins[was as usize] != self.spins[id as usize] {
+            let list = self.spinners.entry(cp).or_default();
+            list.retain(|&q| q != p);
+            if self.spins[id as usize] {
+                list.push(p);
+            }
+        }
+        if was != id && self.swings.len() < 64 {
+            let (a, b) = (self.reg.get(was), self.reg.get(id));
+            if a.base == b.base && a.variant ^ b.variant == 4 && matches!(a.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate) {
+                self.swings.push((p, was, id));
+            }
+        }
         c.modified = true;
         if let Some(log) = self.net_log.as_mut() {
             log.push((p, id));
@@ -464,6 +553,38 @@ impl World {
             }
         }
         true
+    }
+
+    /// Leave a block out of the chunk meshes (or put it back), remeshing the chunks it touches.
+    pub fn set_hidden(&mut self, p: IVec3, hide: bool) {
+        let changed = if hide { self.hidden.insert(p) } else { self.hidden.remove(&p) };
+        if !changed {
+            return;
+        }
+        let mut cps = Vec::new();
+        for d in [IVec3::ZERO, IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z] {
+            let cp = split_xz(p.x + d.x, p.z + d.z).0;
+            if !cps.contains(&cp) {
+                cps.push(cp);
+            }
+        }
+        for cp in cps {
+            if let Some(s) = self.slots.get_mut(&cp) {
+                if s.mesh_done > 0 {
+                    // A mesh still in flight is thrown away when it comes back.
+                    s.mesh_ver += 1;
+                }
+            }
+        }
+    }
+
+    /// Mesh every loaded chunk again (the block models changed).
+    pub fn remesh_all(&mut self) {
+        for s in self.slots.values_mut() {
+            if s.mesh_done > 0 {
+                s.mesh_ver += 1;
+            }
+        }
     }
 
     /// Remove a block; sand and gravel above it fall down.
@@ -528,6 +649,11 @@ impl World {
         self.fluid[id as usize] != 0
     }
 
+    /// Stands in water (kelp): leaves water behind when broken.
+    pub fn is_wet(&self, id: BlockId) -> bool {
+        self.wet[id as usize]
+    }
+
     /// 1 water, 2 lava, 0 anything else (any level of flow counts).
     pub fn fluid(&self, id: BlockId) -> u8 {
         self.fluid[id as usize]
@@ -566,7 +692,10 @@ impl Terrain for World {
         }
     }
     fn liquid(&self, p: IVec3) -> bool {
-        self.block(p).is_some_and(|id| self.fluid[id as usize] == 1)
+        self.block(p).is_some_and(|id| self.fluid[id as usize] == 1 || self.wet[id as usize])
+    }
+    fn climbable(&self, p: IVec3) -> bool {
+        self.block(p).is_some_and(|id| self.climb[id as usize])
     }
     fn top(&self, p: IVec3) -> f32 {
         self.block(p).map(|id| self.top[id as usize]).unwrap_or(1.0)

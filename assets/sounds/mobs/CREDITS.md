@@ -28,6 +28,14 @@ Every file not listed below is CC0.
 - `bear_random_*`, `bear_growl_*`: tbsounddesigns, <https://freesound.org/people/tbsounddesigns/> (CC BY 3.0)
 - `bear_attack_*`, `bear_death_*`, `bear_hurt_1`: YleArkisto, <https://freesound.org/people/YleArkisto/sounds/249441/> (CC BY 3.0, modified)
 
+## Wagons (crates/game/src/wagons.rs)
+Taken from VoxeLibre too (`mcl_sounds`, `mcl_doors`), slowed down and low-passed so they sit
+deep and woody (none of them is shrill):
+- `hoof_1..3` (hooves): `default_hard_footstep.1..3` by Erdie, <https://freesound.org/people/Erdie/sounds/41579/> (CC BY 3.0, modified)
+- `wagon_creak_1` (the wagon's wood working): `doors_door_open` by CGEffex, modified by BlockMen (CC BY 3.0, modified)
+- `wagon_creak_2`: `doors_door_close` by bennstir (CC BY 3.0, modified)
+- `wagon_gravel_1..2` (wheels on gravel): `default_gravel_dig.1..2` by lolamadeus, <https://freesound.org/people/lolamadeus/sounds/179341/> (CC0)
+
 ## CC0 sources (for reference)
 evsecrets (chicken), Zozzy (cow), rubberduck (endermite, zombiepig), Soundscapes55 (enderman
 random), pointparkcinema (guardian random 1), TheBuilder15 (guardian death), Randomation (slime

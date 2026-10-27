@@ -39,6 +39,18 @@ JOGAR COM AMIGOS
   (inventário, vida, onde parou) ficam salvas no mundo de quem hospeda
   (saves/<mundo>/players/).
 
+CHAT DE VOZ (Opções > Chat de voz...)
+  Proximidade (padrão): segure Caps Lock para falar. Sua voz sai do seu personagem:
+    quem está do seu lado esquerdo ouve pela esquerda, mais baixo de longe (some depois
+    de 48 blocos) e abafado atrás de paredes.
+  Grupo (como uma chamada): todos no mesmo grupo (1 a 9) se ouvem no volume cheio,
+    estejam onde estiverem. O microfone fica aberto e só envia quando você fala (ajuste
+    a Sensibilidade olhando o medidor) ou, se preferir, use Caps Lock para falar.
+  K liga e desliga o seu microfone. Quem está falando aparece no canto de cima.
+  A boca do personagem mexe enquanto ele fala, nos dois modos.
+  Nas opções: escolha o microfone, o volume das vozes e o volume de cada jogador
+    (ou deixe alguém mudo). Funciona também pela ponte e em servidor dedicado.
+
 COMANDOS (chat: T, depois /; funcionam também jogando sozinho)
   /tempo dia | meio-dia | noite | meia-noite | <0-24000>
   /clima limpo | chuva | tempestade
@@ -47,10 +59,13 @@ COMANDOS (chat: T, depois /; funcionam também jogando sozinho)
   /tp <nome>  ou  /tp <x> <y> <z>       /pos  mostra onde você está
   /matar   /spawnpoint (renascer aqui)   /semente   /lista   /ajuda
   /regra ciclo_dia sim|nao   /regra ciclo_clima sim|nao   (/regras mostra)
+  /regra pvp|temperatura|sede|nutricao sim|nao   /placar   /equipe   /plugins
 
 CONTROLES
   W A S D         andar
   Espaço          pular (aperte 2 vezes rápido para voar / parar de voar)
+  W + Espaço      contra uma borda de até 2 blocos (parede, prateleira): agarra a beirada e
+                  sobe puxando o corpo com as mãos. Cercas e muros não dá para escalar.
   Shift           agachar (a câmera abaixa e você não cai da beirada) / descer voando
   Ctrl ou W 2x    correr (a visão abre um pouco)
   Z               deitar / levantar (deitado você rasteja e passa por buracos de 1 bloco)
@@ -219,6 +234,10 @@ ESTRUTURAS
   descendo de uma abertura com musgo, baús com ouro, diamante e cristal de vida), acampamento
   com barraca de lã e santuário de pedra nas montanhas e na neve.
   Torre do mago (estantes e baú com varinhas e cristais de mana) e moinho de vento.
+  As hélices dos moinhos giram com o vento: mais rápido na chuva e na tempestade e no alto,
+  devagar em lugar abrigado e paradas num lugar fechado. Para fazer a sua: Hélice de Moinho
+  na mesa (lã nos cantos, gravetos em cruz e um tronco no meio). Coloque numa parede: as pás
+  giram na frente, viradas para você.
   Na chuva, as gotas respingam no chão em volta de você.
 
 NETHER
@@ -314,7 +333,14 @@ SHADERS
                 água ondulante
     Suave       só um pouco de brilho e cores mais quentes (leve)
   Qualidade: Rápido ou Bonito (Bonito tem brilho mais largo e raios de sol mais finos).
-  Distância LOD (Esc > Shaders): desenha o relevo além da distância de visão (256, 512 ou 1024
+  Profundidade (Esc > Shaders): Não, Rasa, Média ou Funda. Dá relevo de verdade às texturas,
+  como o POM dos shaders do Minecraft: a argamassa afunda entre os tijolos, as frestas da
+  pedra e do pedregulho ficam fundas e as partes salientes escondem o que está atrás conforme
+  o ângulo. A altura vem da própria textura (funciona com qualquer pacote de texturas). Só
+  perto da câmera, só na qualidade Bonito, com ou sem shader. Com Sombras ligadas, o fundo das
+  frestas também fica na sombra do sol. Um pacote de shader pode ter a opção "profundidade"
+  (veja shaderpacks/LEIA-ME.txt).
+  Distância LOD (Esc > Shaders): desenha o relevo além da distância de visão (256, 512, 1024 ou 2048
   blocos a mais), em blocos grandes e simples, como o mod Distant Horizons. Montanhas,
   florestas e o mar aparecem no horizonte sem carregar chunks. Funciona com ou sem shader.
   Para criar o seu, copie shaderpacks/sepia com outro nome, edite post.wgsl e clique em
@@ -384,7 +410,83 @@ LOTE DE MODS (17/10)
       tartaruga, abelha, lula, golfinho, axolote; monstros: gosma, múmia, afogado, arqueiro
       gélido, Asa-Noturna (voa à noite) e Vigia das Profundezas (atira no mar).
 
+NOVIDADES (18/10)
+  Opções: Idioma (Português ou English), Legendas dos sons, Reduzir movimento e Teclas...
+    (troque qualquer tecla; "Restaurar padrão" volta tudo).
+  Mundo: 22 variações de bioma (oceano quente com corais, jardim pálido, picos irregulares,
+    espinhos de gelo, planície de girassóis, floresta de flores e outras), monumento oceânico,
+    mansão da floresta, ruínas no mar e tesouro enterrado na praia.
+  Multijogador:
+    /regra pvp sim       jogadores podem se atacar (desligado por padrão)
+    /placar novo <nome> [manual|mortes|abates] [título]   /placar mostrar <nome>|nada
+    /placar somar|definir <jogador> <nome> <n>   /placar zerar <jogador>   /placar lista
+    /equipe nova <nome> [cor]   /equipe entrar <nome> [jogador]   /equipe sair [jogador]
+    /equipe cor <nome> <cor>   /equipe fogo_amigo <nome> sim|nao   /equipe lista
+      Nomes aparecem na cor da equipe; colegas de equipe não se machucam.
+    Bloco de comando (/dar command_block, no criativo): botão direito, digite um comando;
+      ele roda cada vez que recebe energia de redstone.
+    Servidor dedicado: mine-clone --server --world NOME (sem janela; digite comandos no
+      terminal; "parar" salva e desliga). Porta e senha vêm de multiplayer.ron.
+  Sobrevivência rigorosa (cada uma liga com /regra ... sim, desligadas por padrão):
+    /regra temperatura sim   termômetro ao lado da barra. Frio deixa lento e machuca;
+                             calor dá sede e machuca. Fogo, lava e tochas aquecem, gelo
+                             esfria, roupa de couro esquenta.
+    /regra sede sim          gotas azuis acima da fome. Beba garrafa de água, leite, sopas,
+                             frutas; com a mão vazia, botão direito na água dá um gole.
+    /regra nutricao sim      5 grupos de comida (/nutricao mostra). Comer de tudo cura um
+                             pouco; comer de um grupo só enfraquece.
+  Plugins (mods em WebAssembly): ponha arquivos .wasm ou .wat em plugins/ ao lado do jogo.
+    Veja plugins-exemplos/exemplo.wat (copie para plugins/ para testar: /sorte e /torre).
+    /plugins mostra os carregados. Cada plugin roda isolado e é parado se travar.
+  Pacotes de recursos agora trocam também os sons (.ogg em assets/minecraft/sounds/).
+  Distância LOD vai até +2048 blocos (128 chunks).
+
+NOVIDADES (26/10)
+  Portas, alçapões e portões abrem girando; a tampa do baú sobe devagar.
+  Suporte de armadura: botão direito com uma peça de armadura veste; com outro item, ele
+    segura na mão; de mão vazia você pega de volta. Derrubar o suporte solta tudo.
+  Jardim pálido: porta, alçapão e placa de carvalho pálido; olho-flor (abre à noite e brilha);
+    coração do rangedor no tronco das árvores pálidas (de noite chama um rangedor; quebrar o
+    coração acaba com eles e solta resina). Resina: bloco, tijolos, laje, escada, muro e
+    tijolos entalhados (aglomerado de resina vira tijolo de resina na fornalha).
+  Comandos para outro jogador: o nome dele ou @p (o mais perto), @a (todos), @r (um
+    qualquer), @s (você) e @e (todos e, no /matar, os bichos em volta). Ex.: /dar @a diamond 3,
+    /tp @p 0 80 0. No bloco de comando, @p é o jogador mais perto do bloco.
+  Novos comandos: /setblock x y z bloco, /fill x1 y1 z1 x2 y2 z2 bloco (até 32.768 blocos),
+    /summon criatura [x y z]. ~ conta a partir de você ou do bloco de comando (~ ~1 ~).
+  Inglês: as mensagens montadas na hora (placar, equipes, plugins, comandos) também traduzem.
+  Servidor dedicado sem placa de vídeo e sem tela: roda em qualquer máquina (VPS inclusive).
+  Ponte (relay) para jogar pela internet quando o roteador não abre a porta:
+    numa máquina com porta UDP aberta, rode  mine-clone --relay  (porta 24455; outra: --relay N).
+    Quem hospeda digita  /ponte <endereço da máquina>  (fica salvo; /ponte nada desliga).
+    O convite passa a ser um código de 13 letras (XXXXX-XXXXX-XXX) que leva pela ponte.
+    A ponte vê as mensagens do jogo: use uma de confiança.
+  Plugins: agora abrem telas com botões e criam itens novos com desenho próprio (16x16).
+    Quem entra no seu mundo recebe os seus plugins. Exemplo: plugins-exemplos/painel.wat
+    (/painel abre a tela; a "pedra da sorte" abre com botão direito).
+  Pacotes de recursos:
+    Modelos de bloco em JSON (formato do Minecraft: blockstates e models/block) mudam o
+    formato dos blocos com o mesmo nome. Ainda não: elementos girados (o modelo é ignorado)
+    e modelos diferentes por direção.
+    Shader no pacote: ponha post.wgsl e pack.ron (o nosso formato) na pasta shaders/ do pacote;
+    com o pacote ligado, ele aparece em Esc > Shaders.
+  Teste de desempenho: mine-clone --bench 60 voa reto e grava o resultado em bench/.
+
+STATUS, ACESSÓRIOS E POÇÕES (lado Terraria)
+  C               ficha de status: defesa, dano e crítico por classe, velocidade, regeneração,
+                  lacaios, esquiva e imunidades (no jogo ou com o inventário aberto)
+  H / N           bebe a melhor poção de vida / de mana do inventário (depois vem o enjoo)
+  B               bebe todas as poções de buff que você ainda não tem ativas
+  Acessórios: coluna à esquerda do inventário. Começa com 5 espaços; o Coração Ancestral
+    abre o 6º e o Encaixe Celestial o 7º. Os botões 1 2 3 em cima trocam todo o equipamento
+    (armadura + acessórios) de uma vez.
+  Armadura completa de um metal dá bônus de conjunto (veja na dica do item).
+  Debuffs: mobs podem causar sangramento, gelo, chamas amaldiçoadas, peçonha, silêncio etc.;
+    alguns acessórios dão imunidade. Suas armas e acessórios também passam debuffs aos mobs.
+  Invocador: cajados de lacaio chamam ajudantes que lutam por você; chicotes marcam o alvo.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)
-  --shader NOME (ou off)   --shaders-menu   --lod BLOCOS
+  --shader NOME (ou off)   --shaders-menu   --lod BLOCOS   --parallax 0-3   --server   --bench SEGUNDOS
+  --relay [PORTA]

@@ -46,13 +46,16 @@ impl Game {
         self.seat = None;
         self.tnt.clear();
         self.bobber = None;
-        self.renderer.clear_chunks();
+        if let Some(r) = self.renderer.get_mut() {
+            r.clear_chunks();
+        }
         self.mobs.list.clear();
         self.mobs.arrows.clear();
         self.nether_end_loaded();
         self.target = None;
         self.mining = None;
         self.paintings = paintings::load(&save.dir, &self.painting_defs);
+        self.extras.load(&save.dir, &crate::level_path_hint(&self.base, &self.world_name));
         let there = crate::survival::Survival::load(&save.dir, &self.items);
         if carry {
             self.surv.containers = there.containers;

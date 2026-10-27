@@ -24,7 +24,8 @@ impl Game {
             for k in 0..(r / 12).max(1) {
                 let a = k as f32 / (r / 12).max(1) as f32 * std::f32::consts::TAU;
                 let (x, z) = (me.x + (a.cos() * r as f32) as i32, me.z + (a.sin() * r as f32) as i32);
-                if self.world.gen.biome_at(x, z).name() != name {
+                // Well inside it, so the picture shows the biome and not its edge.
+                if [(0, 0), (24, 0), (-24, 0), (0, 24), (0, -24)].iter().any(|(dx, dz)| self.world.gen.biome_at(x + dx, z + dz).name() != name) {
                     continue;
                 }
                 let h = self.world.gen.height_at(x, z).max(voxel::worldgen::SEA_LEVEL);
@@ -126,7 +127,7 @@ impl Game {
         let glow = self.glow_layer();
         // Breath in the cold: a little puff every second or two in snowy places and high up.
         if self.dim == Dim::Overworld && !self.body.head_in_water && self.surv.rng.f32() < dt * 0.7 {
-            let biome = self.world.gen.biome_at(me.x, me.z);
+            let biome = self.world.gen.base_biome_at(me.x, me.z);
             if matches!(biome, Biome::Snowy | Biome::Taiga) || self.body.pos.y > 150.0 {
                 let f = self.forward();
                 let mouth = self.body.eye() + Vec3::new(f.x, 0.0, f.z).normalize_or_zero() * 0.45 - Vec3::Y * 0.15;
@@ -150,7 +151,7 @@ impl Game {
                 match self.dim {
                     Dim::Nether if roll < 0.06 => {
                         // Ash, or pale blue specks over the soul sand valleys.
-                        let soul = self.world.gen.biome_at(p.x, p.z) == Biome::SoulSandValley;
+                        let soul = self.world.gen.base_biome_at(p.x, p.z) == Biome::SoulSandValley;
                         if soul {
                             self.particles.glow(at, Vec3::new(0.0, -0.15, 0.0), glow, [0.45, 0.85, 0.95], 0.035, 3.0);
                         } else {
@@ -211,7 +212,7 @@ impl Game {
                 let v = Vec3::new(jit.x - 0.5, 1.6 + jit.y, jit.z - 0.5);
                 self.particles.glow(p.as_vec3() + Vec3::new(jit.x, 1.0, jit.z), v, glow, [1.0, 0.55, 0.15], 0.04, 1.4);
             } else if night && self.dim == Dim::Overworld && (b.shape == Shape::Cross || b.name == "grass_block") && above == AIR && roll < 0.035 {
-                let biome = self.world.gen.biome_at(p.x, p.z);
+                let biome = self.world.gen.base_biome_at(p.x, p.z);
                 let warm = matches!(biome, Biome::Plains | Biome::Forest | Biome::Swamp | Biome::DarkForest | Biome::Jungle | Biome::BirchForest | Biome::CherryGrove | Biome::MangroveSwamp);
                 if warm && !self.weather.state.raining {
                     // A firefly, blinking on for a moment and wandering off.

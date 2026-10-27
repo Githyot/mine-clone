@@ -59,12 +59,15 @@ pub struct NetConfig {
     pub upnp: bool,
     /// Empty = anyone with the code may come in.
     pub password: String,
+    /// A relay (`mine-clone --relay`) to also take guests through, when the router won't open
+    /// the port. Empty = none.
+    pub relay: String,
 }
 
 impl Default for NetConfig {
     fn default() -> Self {
         let name = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).unwrap_or_else(|_| "Jogador".into());
-        NetConfig { name: clean_name(&name), last_addr: String::new(), recent: Vec::new(), port: net::DEFAULT_PORT, upnp: true, password: String::new() }
+        NetConfig { name: clean_name(&name), last_addr: String::new(), recent: Vec::new(), port: net::DEFAULT_PORT, upnp: true, password: String::new(), relay: String::new() }
     }
 }
 
@@ -81,7 +84,7 @@ fn clean_name(n: &str) -> String {
 pub struct Remote {
     pub name: String,
     pub state: PlayerState,
-    shown: Vec3,
+    pub(crate) shown: Vec3,
     shown_yaw: f32,
     anim: player_model::Animator,
 }
@@ -90,6 +93,11 @@ impl Remote {
     fn new(name: String, state: PlayerState) -> Remote {
         let p = Vec3::from(state.pos);
         Remote { name, shown: p, shown_yaw: state.yaw, state, anim: player_model::Animator::default() }
+    }
+
+    /// How open their mouth is while they talk (voice.rs).
+    pub(crate) fn set_talk(&mut self, open: f32) {
+        self.anim.talk = open;
     }
 }
 
@@ -124,7 +132,7 @@ pub struct Net {
     /// Multiplayer screen: choosing which of our worlds to host.
     picking_world: bool,
     /// Start hosting once the chosen world is loaded.
-    host_when_ready: bool,
+    pub(crate) host_when_ready: bool,
     loaded: bool,
     /// The key that opened the chat also arrives as text; drop it.
     skip_text: bool,
@@ -135,6 +143,23 @@ pub struct Net {
     /// The open world's rules (commands.rs), and which world they belong to.
     pub rules: crate::commands::Rules,
     rules_for: String,
+    /// Scoreboard and teams (pvp.rs): the host's, or the copy it sent us.
+    pub(crate) board: net::Board,
+    pub(crate) board_dirty: bool,
+    /// The next `damage` comes from another player: not scaled by difficulty.
+    pub(crate) pvp_incoming: bool,
+    /// Who last hurt each player (lower-case name → attacker, when), for kill messages.
+    pub(crate) pvp_last: HashMap<String, (String, f32)>,
+    /// Guests already told PvP is off.
+    pub(crate) pvp_warned: HashSet<u32>,
+    pub(crate) was_dead: bool,
+    /// Test hook MC_PVP_HIT: hits made, when the last one was.
+    pub(crate) pvp_test: (u32, f32),
+    /// The guest whose command is running on the host (empty = our own).
+    pub(crate) cmd_by: String,
+    /// Dedicated server (`--server`): no player of our own, commands from the console.
+    pub(crate) server: bool,
+    pub(crate) console: Option<std::sync::mpsc::Receiver<String>>,
 }
 
 #[derive(Default)]
@@ -154,6 +179,8 @@ struct GuestInfo {
     view: i32,
     /// Containers as last sent to (or heard from) this guest.
     containers: HashMap<IVec3, u64>,
+    /// Voice chat: the group it listens to (0 = none) and whether its voice is on.
+    voice: (u8, bool),
 }
 
 /// A dimension the host is not in, kept on disk for guests who are.
@@ -170,6 +197,9 @@ struct HostState {
     upnp: Option<crossbeam_channel::Receiver<Result<net::upnp::Mapping, String>>>,
     external: Option<SocketAddrV4>,
     upnp_note: String,
+    /// The code through the relay, once it gave us a room.
+    relay_code: Option<String>,
+    relay_waiting: bool,
     lan_ip: Option<std::net::Ipv4Addr>,
     guests: HashMap<ConnId, GuestInfo>,
     send_t: f32,
@@ -307,7 +337,8 @@ impl Game {
 
     fn content_hash(&self) -> u64 {
         let blocks = self.reg.blocks.iter().map(|b| b.name.as_str());
-        let items = self.items.items.iter().map(|i| i.name.as_str());
+        // Plugins' items are left out: a guest gets the host's plugins only after joining.
+        let items = self.items.items.iter().take(self.plugins.base_items.max(1)).map(|i| i.name.as_str());
         let mobs = self.mobs.reg.defs.iter().map(|d| d.name.as_str());
         net::content_hash(blocks.chain(std::iter::once("|")).chain(items).chain(std::iter::once("|")).chain(mobs))
     }
@@ -329,6 +360,7 @@ impl Game {
         set(pose.hurt, flags::HURT);
         set(!self.survival, flags::CREATIVE);
         set(self.screen == Screen::Dead, flags::DEAD);
+        set(self.net.server, flags::HIDDEN);
         let name = |s: &Option<ItemStack>| s.map(|s| self.items.get(s.item).name.clone()).unwrap_or_default();
         PlayerState {
             dim: self.dim.as_u8(),
@@ -342,6 +374,10 @@ impl Game {
             swing: self.anim.swing,
             held: name(&self.held_stack()),
             armor: std::array::from_fn(|i| name(&self.surv.armor[i])),
+            chest: match self.surv.open {
+                Open::Chest(p) if self.screen == Screen::Inventory => Some(p.to_array()),
+                _ => None,
+            },
         }
     }
 
@@ -501,6 +537,10 @@ impl Game {
         if self.world_open && self.net.rules_for != self.world_name && !self.net.is_guest() {
             self.net.rules_for = self.world_name.clone();
             self.net.rules = std::fs::read_to_string(self.rules_path()).ok().and_then(|t| ron::from_str(&t).ok()).unwrap_or_default();
+            self.net.board = crate::pvp::load_board(&self.base, &self.world_name);
+        }
+        if self.world_open {
+            self.board_tick();
         }
         if !self.net.rules.weather_cycle && !self.net.is_guest() {
             self.weather.state.timer = self.weather.state.timer.max(600.0);
@@ -554,6 +594,118 @@ impl Game {
         }
     }
 
+    /// Send to the host, as a guest that is in.
+    pub(crate) fn net_to_host(&self, m: &ToHost) {
+        if let Mode::Guest(g) = &self.net.mode {
+            if g.joined {
+                g.guest.send(m);
+            }
+        }
+    }
+
+    /// Send to one guest, as the host.
+    pub(crate) fn net_to_guest(&self, id: u32, m: &ToGuest) {
+        if let Mode::Host(h) = &self.net.mode {
+            h.host.send(id, m);
+        }
+    }
+
+    /// Send to every guest, as the host.
+    pub(crate) fn net_broadcast(&self, m: &ToGuest) {
+        if self.net.is_host() {
+            self.host_broadcast(m, None);
+        }
+    }
+
+    /// A line for everyone (the host says it to its guests too).
+    pub(crate) fn net_announce(&mut self, text: String) {
+        self.net_broadcast(&ToGuest::Chat { from: String::new(), text: text.clone() });
+        self.net_say(text, YELLOW);
+    }
+
+    /// A line typed in a dedicated server's console: a command, or chat from "Servidor".
+    pub(crate) fn server_line(&mut self, line: &str) {
+        self.send_chat(line);
+    }
+
+    /// Voice chat: tell the network who hears whom. The host keeps the table (its own place
+    /// and each guest's, from where they stand and what they chose); a guest tells the host
+    /// what it chose whenever that changes.
+    pub(crate) fn voice_routes(&mut self) {
+        let vs = &self.settings.voice;
+        let on = vs.mode != crate::voice::VoiceMode::Off && self.world_open && !self.net.server;
+        let group = if vs.mode == crate::voice::VoiceMode::Group { vs.group } else { 0 };
+        match &self.net.mode {
+            Mode::Host(h) => {
+                let me = net::Listener { dim: self.dim.as_u8(), pos: self.body.eye().to_array(), group, on };
+                h.host.set_voice_listener(net::HOST_CONN, (on && self.audio.is_some()).then_some(me));
+                for (id, g) in &h.guests {
+                    let l = g.state.as_ref().filter(|_| g.welcomed && g.voice.1).map(|s| net::Listener { dim: s.dim, pos: [s.pos[0], s.pos[1] + 1.6, s.pos[2]], group: g.voice.0, on: true });
+                    h.host.set_voice_listener(*id, l);
+                }
+            }
+            Mode::Guest(g) if g.joined => {
+                if self.voice.told != Some((group, on)) {
+                    g.guest.send(&ToHost::VoiceSet { group, on });
+                    self.voice.told = Some((group, on));
+                }
+            }
+            _ => self.voice.told = None,
+        }
+    }
+
+    pub(crate) fn net_guest_joined(&self) -> bool {
+        matches!(&self.net.mode, Mode::Guest(g) if g.joined)
+    }
+
+    /// Where our voice goes and others' comes from, in the game we are in.
+    pub(crate) fn net_voice_link(&self) -> Option<(net::VoiceOut, crossbeam_channel::Receiver<Vec<u8>>)> {
+        match &self.net.mode {
+            Mode::Host(h) => Some((h.host.voice_out(), h.host.voice_in())),
+            Mode::Guest(g) if g.joined => Some((g.guest.voice_out(), g.guest.voice_in())),
+            _ => None,
+        }
+    }
+
+    /// Our own player id in the game we are in.
+    pub(crate) fn net_my_id(&self) -> u32 {
+        match &self.net.mode {
+            Mode::Guest(g) => g.my_id,
+            _ => HOST_ID,
+        }
+    }
+
+    /// May we use the commands that change things? Alone or hosting yes; a guest when op.
+    pub(crate) fn net_cheats(&self) -> bool {
+        match &self.net.mode {
+            Mode::Guest(g) => g.op,
+            _ => true,
+        }
+    }
+
+    /// Send the time and weather to the guests right away (a command changed them).
+    pub(crate) fn net_sky_now(&mut self) {
+        if self.net.is_host() {
+            self.host().sky_t = 1.0;
+        }
+    }
+
+    /// The name of a player by id (our own included).
+    pub(crate) fn net_name_of(&self, id: u32) -> String {
+        if id == self.net_my_id() {
+            return self.net.cfg.name.clone();
+        }
+        self.net.remotes.get(&id).map(|r| r.name.clone()).unwrap_or_default()
+    }
+
+    /// Where a player stands (our own feet for our id).
+    pub(crate) fn net_pos_of(&self, id: u32) -> Option<Vec3> {
+        if id == self.net_my_id() {
+            return Some(self.body.pos);
+        }
+        self.net.remotes.get(&id).map(|r| Vec3::from(r.state.pos))
+    }
+
     // ---- hosting --------------------------------------------------------------------------
 
     pub(crate) fn start_hosting(&mut self) {
@@ -574,6 +726,10 @@ impl Game {
         let port = host.port;
         let beacon = Beacon::start(&self.world_name, &self.net.cfg.name, port);
         let upnp = self.net.cfg.upnp.then(|| net::upnp::open(port));
+        let relay = std::env::var("MC_RELAY").unwrap_or_else(|_| self.net.cfg.relay.clone());
+        if !relay.trim().is_empty() {
+            host.use_relay(&relay);
+        }
         let list = |f: &str| -> Vec<String> {
             std::fs::read_to_string(level_path_hint(&self.base, &self.world_name).join(f))
                 .map(|t| t.lines().map(|l| l.trim().to_lowercase()).filter(|l| !l.is_empty()).collect())
@@ -587,6 +743,8 @@ impl Game {
             upnp,
             external: None,
             upnp_note: if self.net.cfg.upnp { "abrindo a porta no roteador...".into() } else { "UPnP desligado".into() },
+            relay_code: None,
+            relay_waiting: !relay.trim().is_empty(),
             lan_ip: net::upnp::lan_ip(),
             guests: HashMap::new(),
             send_t: 0.0,
@@ -612,9 +770,13 @@ impl Game {
         }
     }
 
-    /// The code friends type to join: the router's address when UPnP worked, else the LAN one.
+    /// The code friends type to join: the router's address when UPnP worked, else the relay's,
+    /// else the LAN one.
     pub(crate) fn net_invite_code(&self) -> Option<String> {
         let Mode::Host(h) = &self.net.mode else { return None };
+        if h.external.is_none() && h.relay_code.is_some() {
+            return h.relay_code.clone();
+        }
         let a = h.external.or_else(|| h.lan_ip.map(|ip| SocketAddrV4::new(ip, h.host.port)))?;
         Some(net::codes::encode(a))
     }
@@ -661,8 +823,28 @@ impl Game {
                 }
                 Err(e) => h.upnp_note = format!("{e}; abra a porta UDP {} no roteador para jogar pela internet", h.host.port),
             }
-            let line = self.host_ref().upnp_note.clone();
+            let h = self.host_ref();
+            let line = if h.external.is_none() && h.relay_code.is_some() { "pela ponte".to_string() } else { h.upnp_note.clone() };
             self.net_say(format!("Convite: {} ({line})", self.net_invite_code().unwrap_or_default()), YELLOW);
+        }
+
+        // Relay answer.
+        if self.host_ref().relay_waiting {
+            if let Some(r) = self.host_ref().host.relay_room() {
+                let h = self.host();
+                h.relay_waiting = false;
+                match r {
+                    Ok((addr, room)) => {
+                        let code = match addr {
+                            std::net::SocketAddr::V4(a) => net::codes::encode_relay(a, room),
+                            a => format!("{a}#{room}"),
+                        };
+                        h.relay_code = Some(code.clone());
+                        self.net_say(format!("Convite pela ponte: {code}"), YELLOW);
+                    }
+                    Err(e) => self.net_say(format!("A ponte não respondeu: {e}"), YELLOW),
+                }
+            }
         }
 
         let events = self.host_ref().host.poll();
@@ -672,7 +854,7 @@ impl Game {
                     log::info!("guest {id} connected from {addr}");
                     self.host()
                         .guests
-                        .insert(id, GuestInfo { name: String::new(), welcomed: false, state: None, sent: HashSet::new(), view: 8, containers: HashMap::new() });
+                        .insert(id, GuestInfo { name: String::new(), welcomed: false, state: None, sent: HashSet::new(), view: 8, containers: HashMap::new(), voice: (0, false) });
                 }
                 HostEvent::Left(id, why) => {
                     if let Some(g) = self.host().guests.remove(&id) {
@@ -792,12 +974,21 @@ impl Game {
                     player,
                     op: self.host_ref().ops.contains(&name.to_lowercase()),
                 };
+                let files = self.plugins.files();
                 let h = self.host();
+                if !files.is_empty() {
+                    // First, so their items exist before the player's things arrive.
+                    h.host.send(id, &ToGuest::Plugins(files));
+                }
                 h.host.send(id, &ToGuest::Welcome(w));
                 if let Some(g) = h.guests.get_mut(&id) {
                     g.name = name.clone();
                     g.welcomed = true;
                     g.view = (view as i32).clamp(2, 16);
+                }
+                self.net_to_guest(id, &ToGuest::Board(self.net.board.clone()));
+                if let Ok(t) = ron::to_string(&self.net.rules) {
+                    self.net_to_guest(id, &ToGuest::Rules(t));
                 }
                 let t = format!("{name} entrou no jogo");
                 self.host_broadcast(&ToGuest::Chat { from: String::new(), text: t.clone() }, Some(id));
@@ -808,6 +999,10 @@ impl Game {
             ToHost::State(s) => {
                 let name = self.host_ref().guests.get(&id).map(|g| g.name.clone()).unwrap_or_default();
                 let old_dim = self.host_ref().guests.get(&id).and_then(|g| g.state.as_ref().map(|s| s.dim));
+                let was_dead = self.host_ref().guests.get(&id).and_then(|g| g.state.as_ref()).is_some_and(|s| s.has(flags::DEAD));
+                if s.has(flags::DEAD) && !was_dead {
+                    self.board_death(&name);
+                }
                 if let Some(g) = self.host().guests.get_mut(&id) {
                     if old_dim.is_some_and(|d| d != s.dim) {
                         // A new dimension: start its chunks afresh.
@@ -876,6 +1071,7 @@ impl Game {
                 self.host_broadcast(&ToGuest::Chat { from: name.clone(), text: text.clone() }, None);
                 self.net_say(format!("<{name}> {text}"), WHITE);
             }
+            ToHost::HurtPlayer { target, amount, from } => self.pvp_resolve(id, target, amount, Vec3::from(from)),
             ToHost::SavePlayer(data) => {
                 let name = self.host_ref().guests.get(&id).map(|g| g.name.to_lowercase()).unwrap_or_default();
                 if name.is_empty() || data.len() > 1 << 20 {
@@ -885,6 +1081,11 @@ impl Game {
                 let _ = std::fs::create_dir_all(&dir);
                 if let Err(e) = std::fs::write(dir.join(format!("{name}.ron")), data) {
                     log::error!("could not keep {name}'s things: {e}");
+                }
+            }
+            ToHost::VoiceSet { group, on } => {
+                if let Some(g) = self.host().guests.get_mut(&id) {
+                    g.voice = (group.min(9), on);
                 }
             }
         }
@@ -897,8 +1098,12 @@ impl Game {
         let cmd = text.split_whitespace().next().unwrap_or("").to_lowercase();
         let reply = match cmd.as_str() {
             "/lista" | "/list" => self.player_list_line(),
+            // A guest set the command of a command block (they are edited where the world runs).
+            crate::cmdblock::SET_CMD if op => self.cmdblock_set_line(text),
             _ if crate::commands::scope(&cmd) == crate::commands::Scope::World => {
+                self.net.cmd_by = self.host_ref().guests.get(&id).map(|g| g.name.clone()).unwrap_or_default();
                 let r = self.run_command(text, op);
+                self.net.cmd_by.clear();
                 if op {
                     // Everyone sees the new sky right away, and who changed it.
                     self.host().sky_t = 1.0;
@@ -914,12 +1119,9 @@ impl Game {
     }
 
     fn player_list_line(&self) -> String {
-        let mut names = vec![match &self.net.mode {
-            Mode::Guest(g) => g.host_name.clone(),
-            _ => self.net.cfg.name.clone(),
-        }];
-        names.extend(self.net.remotes.values().map(|r| r.name.clone()));
-        if self.net.is_guest() {
+        // A dedicated server's own player is nobody.
+        let mut names: Vec<String> = self.net.remotes.values().filter(|r| !r.state.has(flags::HIDDEN)).map(|r| r.name.clone()).collect();
+        if !self.net.server {
             names.push(self.net.cfg.name.clone());
         }
         names.sort();
@@ -1400,6 +1602,9 @@ impl Game {
     fn guest_message(&mut self, m: ToGuest) {
         match m {
             ToGuest::Welcome(w) => self.guest_open(w),
+            ToGuest::Plugins(files) => {
+                self.plugins_from_host(&files);
+            }
             ToGuest::Bye(_) => {}
             ToGuest::Chunk { dim, pos, data } => {
                 if dim != self.dim.as_u8() || !self.world_open {
@@ -1537,6 +1742,19 @@ impl Game {
                 let h = data.as_deref().map(hash_text).unwrap_or(0);
                 self.guest().containers.insert(p, h);
             }
+            ToGuest::PlayerHit { amount, from, by } => self.pvp_hurt_me(amount, Vec3::from(from), &by),
+            ToGuest::Board(b) => self.net.board = b,
+            ToGuest::Rules(t) => {
+                if let Ok(r) = ron::from_str(&t) {
+                    self.net.rules = r;
+                }
+            }
+            ToGuest::RunAs(line) => {
+                let r = self.run_command(&line, true);
+                if !r.is_empty() {
+                    self.net_say(r, YELLOW);
+                }
+            }
             ToGuest::Op(op) => {
                 self.guest().op = op;
                 let t = if op { "Agora pode usar comandos (/ajuda)" } else { "Comandos desligados pelo anfitrião" };
@@ -1599,6 +1817,7 @@ impl Game {
         self.net.mode = Mode::Off;
         self.net.remotes.clear();
         self.settings.spread_override = None;
+        self.plugins_leave_host();
         self.world.net_log = None;
         let why = if why.is_empty() { "a conexão caiu".to_string() } else { why.to_string() };
         if joined && self.world_open {
@@ -1606,6 +1825,14 @@ impl Game {
         }
         self.net.status = if joined { format!("Desconectado de {addr}: {why}") } else { format!("Não deu para entrar em {addr}: {why}") };
         self.set_screen(Screen::Multiplayer);
+    }
+
+    /// Some(may use commands) on a guest, None otherwise.
+    pub(crate) fn net_guest_op(&self) -> Option<bool> {
+        match &self.net.mode {
+            Mode::Guest(g) => Some(g.op),
+            _ => None,
+        }
     }
 
     /// Leave or close multiplayer (quitting to the title, closing the game).
@@ -1638,6 +1865,7 @@ impl Game {
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
                 self.settings.spread_override = None;
+                self.plugins_leave_host();
             }
         }
         self.world.net_log = None;
@@ -1661,7 +1889,7 @@ impl Game {
             let (pose, swing, armor, item) = {
                 let r = &self.net.remotes[&id];
                 let s = &r.state;
-                if s.dim != my_dim || (r.shown - self.body.pos).length() > 160.0 {
+                if s.dim != my_dim || s.has(flags::HIDDEN) || (r.shown - self.body.pos).length() > 160.0 {
                     continue;
                 }
                 let pose = player_model::Pose {
@@ -1681,6 +1909,7 @@ impl Game {
                     sitting: s.has(flags::SITTING),
                     holding: !s.held.is_empty(),
                     torch: crate::torch::index(&s.held).is_some(),
+                    ..Default::default()
                 };
                 (pose, s.swing, s.armor.clone(), s.held.clone())
             };
@@ -1731,14 +1960,14 @@ impl Game {
             if let Some((vp, cam_block)) = self.ui_view_proj {
                 let eye = self.body.eye();
                 let my_dim = self.dim.as_u8();
-                let tags: Vec<(Vec3, String, bool)> = self
+                let tags: Vec<(Vec3, String, bool, [u8; 4])> = self
                     .net
                     .remotes
                     .values()
-                    .filter(|r| r.state.dim == my_dim)
-                    .map(|r| (r.shown + Vec3::Y * (2.1 - r.state.sneaking * 0.3), r.name.clone(), r.state.sneaking > 0.5))
+                    .filter(|r| r.state.dim == my_dim && !r.state.has(flags::HIDDEN))
+                    .map(|r| (r.shown + Vec3::Y * (2.1 - r.state.sneaking * 0.3), r.name.clone(), r.state.sneaking > 0.5, self.team_color(&r.name)))
                     .collect();
-                for (top, name, sneaking) in tags {
+                for (top, name, sneaking, color) in tags {
                     let dist = (top - eye).length();
                     if dist > 64.0 || (sneaking && dist > 8.0) {
                         continue;
@@ -1754,7 +1983,7 @@ impl Game {
                     let (x, y) = ((nx * 0.5 + 0.5) * w, (0.5 - ny * 0.5) * h);
                     let tw = self.ui.text_width(&name, s);
                     self.ui.rect(x - tw / 2.0 - 2.0 * s, y - s, tw + 4.0 * s, 10.0 * s, [0, 0, 0, 100]);
-                    self.ui.text(x - tw / 2.0, y, &name, if sneaking { GRAY } else { WHITE });
+                    self.ui.text(x - tw / 2.0, y, &name, if sneaking { GRAY } else { color });
                 }
             }
         }
@@ -1920,7 +2149,8 @@ impl Game {
                 }
                 return;
             }
-            let r = self.run_command(text, cheats);
+            // Alone or hosting, a command may name another player or use @p, @a...
+            let r = if cheats && !guest { self.run_command_at(text, self.body.pos) } else { self.run_command(text, cheats) };
             if !r.is_empty() {
                 self.net_say(r, YELLOW);
             }
@@ -1949,7 +2179,8 @@ impl Game {
         let cmd = parts.next().unwrap_or("");
         let arg = parts.next().unwrap_or("").to_string();
         match cmd {
-            "/tp" if !arg.is_empty() && arg.parse::<f32>().is_err() => {
+            // "/tp Ana": go to Ana. "/tp Ana 0 80 0" and "/tp @p ..." are for run_command_at.
+            "/tp" if !arg.is_empty() && arg.parse::<f32>().is_err() && !arg.starts_with('@') && parts.next().is_none() => {
                 let target = self.net.remotes.values().find(|r| r.name.eq_ignore_ascii_case(&arg)).map(|r| (r.state.dim, Vec3::from(r.state.pos)));
                 match target {
                     Some((d, p)) if d == self.dim.as_u8() => {
@@ -1960,6 +2191,27 @@ impl Game {
                     }
                     Some(_) => self.net_say(format!("{arg} está em outra dimensão"), YELLOW),
                     None => self.net_say(format!("Ninguém chamado \"{arg}\""), YELLOW),
+                }
+                true
+            }
+            // "/ponte 203.0.113.5" takes guests through that relay from the next time the
+            // world opens; "/ponte nada" stops.
+            "/ponte" | "/relay" => {
+                if arg.is_empty() {
+                    let now = if self.net.cfg.relay.is_empty() { "nenhuma".to_string() } else { self.net.cfg.relay.clone() };
+                    self.net_say(format!("Ponte: {now} (use /ponte <endereço> ou /ponte nada)"), YELLOW);
+                    return true;
+                }
+                self.net.cfg.relay = if matches!(arg.as_str(), "nada" | "off" | "none") { String::new() } else { arg.clone() };
+                self.net.save_config(&self.base);
+                if self.net.cfg.relay.is_empty() {
+                    self.net_say("Ponte desligada".to_string(), YELLOW);
+                } else {
+                    if let Mode::Host(h) = &mut self.net.mode {
+                        h.host.use_relay(&arg);
+                        h.relay_waiting = true;
+                    }
+                    self.net_say(format!("Ponte: {arg}"), YELLOW);
                 }
                 true
             }
