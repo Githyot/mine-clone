@@ -666,7 +666,7 @@ impl Game {
         let (cut, echo, delay, walls) = self.jukebox_tone(p);
         let Some(a) = self.audio.as_mut() else { return };
         a.disc_tone.set(cut, echo, delay);
-        a.set_disc_volume(self.settings.music_volume.max(0.2) * k * k * walls);
+        a.set_disc_volume(self.settings.sound_volume * self.settings.volumes.records * k * k * walls);
         // A few drifting notes over the box.
         if self.surv.rng.f32() < 0.02 {
             let glow = self.glow_layer();

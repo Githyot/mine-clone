@@ -128,6 +128,77 @@ pub enum Sfx {
     Note(u8, u8),
 }
 
+/// Which volume slider of the Áudio options a sound follows (`Settings::volumes`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SoundCat {
+    Records,
+    Weather,
+    Blocks,
+    Creatures,
+    Players,
+    Ambient,
+    Interface,
+}
+
+impl SoundCat {
+    pub const ALL: [SoundCat; 7] =
+        [SoundCat::Blocks, SoundCat::Creatures, SoundCat::Players, SoundCat::Ambient, SoundCat::Weather, SoundCat::Records, SoundCat::Interface];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SoundCat::Records => "Discos e instrumentos",
+            SoundCat::Weather => "Clima",
+            SoundCat::Blocks => "Blocos",
+            SoundCat::Creatures => "Criaturas",
+            SoundCat::Players => "Jogador",
+            SoundCat::Ambient => "Ambiente",
+            SoundCat::Interface => "Interface",
+        }
+    }
+
+    pub fn hint(self) -> &'static str {
+        match self {
+            SoundCat::Records => "Toca-discos, blocos musicais e instrumentos.",
+            SoundCat::Weather => "Chuva e trovões.",
+            SoundCat::Blocks => "Quebrar, colocar e minerar blocos, pistões, explosões.",
+            SoundCat::Creatures => "Animais, monstros e pessoas.",
+            SoundCat::Players => "Passos, pulos, golpes, dano, comer, nadar, magias.",
+            SoundCat::Ambient => "Vento, cavernas, ondas, lava, fogo, portais.",
+            SoundCat::Interface => "Cliques nos menus e o inventário.",
+        }
+    }
+}
+
+impl Sfx {
+    pub fn category(self) -> SoundCat {
+        use crate::sfx_extra::Fx;
+        match self {
+            Sfx::Break(_) | Sfx::Place(_) | Sfx::Hit(_) | Sfx::Piston(_) | Sfx::Explode | Sfx::Fizz => SoundCat::Blocks,
+            Sfx::Click | Sfx::Fx(Fx::InvOpen | Fx::InvClose) => SoundCat::Interface,
+            Sfx::MobHit | Sfx::Fx(Fx::Clip(..)) => SoundCat::Creatures,
+            Sfx::Thunder(_) | Sfx::Rain => SoundCat::Weather,
+            Sfx::Melody(..) | Sfx::Tune(..) | Sfx::Note(..) => SoundCat::Records,
+            Sfx::Portal
+            | Sfx::Bubbles
+            | Sfx::Fx(
+                Fx::CaveDrone
+                | Fx::CaveRumble
+                | Fx::Drip
+                | Fx::Wind(_)
+                | Fx::Canopy
+                | Fx::Waves
+                | Fx::Lapping
+                | Fx::LavaPop
+                | Fx::FireCrackle
+                | Fx::NetherDrone
+                | Fx::SoulWind
+                | Fx::EndHum,
+            ) => SoundCat::Ambient,
+            _ => SoundCat::Players,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Material {
     Stone,
@@ -212,6 +283,8 @@ pub struct Audio {
     pub room: Room,
     /// Recorded sounds from resource packs, by key (see `pack_key`); they replace ours.
     pack: std::collections::HashMap<&'static str, Vec<std::sync::Arc<[u8]>>>,
+    /// Volume of each sound group, in `SoundCat::ALL` order (from the settings, every frame).
+    gains: [f32; 7],
 }
 
 /// Every sound key a resource pack may fill, in Minecraft's sound folder layout.
@@ -302,6 +375,7 @@ impl Audio {
             music_folder: base.join(&settings.music_folder),
             room: Room::default(),
             pack: Default::default(),
+            gains: [1.0; 7],
         };
         a.reload_tracks();
         // The first song comes fairly soon after joining, the rest after long silences.
@@ -348,7 +422,11 @@ impl Audio {
 
     /// Call every frame.
     pub fn update(&mut self, dt: f32, situation: Situation, settings: &Settings) {
-        self.music.set_volume(settings.music_volume);
+        // The master volume (sound_volume) scales the music and every sound group.
+        self.music.set_volume(settings.music_volume * settings.sound_volume);
+        for (g, c) in self.gains.iter_mut().zip(SoundCat::ALL) {
+            *g = settings.volumes.of(c);
+        }
         if !self.disc.empty() {
             // A record is playing: the background music stays quiet until it ends.
             if !self.music.empty() {
@@ -451,6 +529,8 @@ impl Audio {
     }
 
     pub fn play(&mut self, sfx: Sfx, volume: f32) {
+        let cat = SoundCat::ALL.iter().position(|&c| c == sfx.category()).unwrap_or(0);
+        let volume = volume * self.gains[cat];
         if volume <= 0.0 {
             return;
         }

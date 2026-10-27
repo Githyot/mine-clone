@@ -260,6 +260,7 @@ impl Game {
     }
 
     fn sfx_raw(&mut self, s: Sfx, vol: f32, pan: f32, muffle: f32) {
+        let vol = vol * self.settings.volumes.of(s.category());
         if vol <= 0.002 {
             return;
         }
