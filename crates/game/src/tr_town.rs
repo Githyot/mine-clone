@@ -35,6 +35,7 @@ pub(crate) const NPCS: &[(&str, &str)] = &[
     ("npc_princess", "a Princesa vem quando a vila tem 14 moradores."),
     ("npc_mycologist", "o Micólogo vem no modo difícil, quando você carrega um cogumelo."),
     ("npc_winter_elder", "o Velho do Inverno vem em dezembro, ou depois da Rainha do Gelo."),
+    ("npc_tax_collector", "o Coletor de Impostos vem no modo difícil, depois que você liberta uma alma atormentada do Submundo com pó de purificação."),
 ];
 
 /// Shops of this file's town folk: (mob, goods: item, count, price in copper).
@@ -117,6 +118,7 @@ const MOODS: &[(&str, &str, &[&str], &[&str])] = &[
     ("npc_princess", "forest", &["npc_tailor", "npc_party_girl"], &[]),
     ("npc_mycologist", "cave", &["npc_guide", "npc_witch_doctor"], &["npc_dryad"]),
     ("npc_winter_elder", "snow", &["npc_party_girl", "npc_princess"], &["npc_pirate"]),
+    ("npc_tax_collector", "forest", &["npc_merchant", "npc_party_girl"], &["npc_angler", "npc_princess"]),
 ];
 
 const PYLONS: &[&str] = &["forest", "desert", "snow", "jungle", "ocean", "cave"];
@@ -170,6 +172,7 @@ impl Game {
             "npc_cyborg" => beaten("vine_queen"),
             "npc_princess" => people >= 14,
             "npc_mycologist" => self.t5.hard.on && self.carries(|n| n.ends_with("mushroom")),
+            "npc_tax_collector" => self.t5.hard.on && self.t5.tr.minis.tax_freed,
             "npc_winter_elder" => crate::tr_minis::holiday() == crate::tr_minis::Holiday::Christmas || beaten("ice_queen"),
             _ => false,
         }

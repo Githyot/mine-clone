@@ -743,6 +743,10 @@ MINI-CHEFES, TROFÉUS E DATAS FESTIVAS (lado Terraria)
   Chefes às vezes deixam um Troféu (uma flâmula para pendurar).
   Moradores novos: o Micólogo (modo difícil, com um cogumelo na mochila) e o Velho do
     Inverno (em dezembro, ou depois da Rainha do Gelo).
+  Coletor de Impostos: no modo difícil, uma Alma Atormentada vaga pelo Submundo. Jogue
+    pó de purificação perto dela (até 6 blocos) para libertá-la; depois ela pode se mudar
+    para a vila. A cada minuto ele junta 10 cobres por morador (até 10 de ouro); fale com
+    ele para receber o dinheiro.
   De 10 de outubro a 1 de novembro os monstros às vezes deixam Sacos de Gostosuras; de 15
     a 31 de dezembro, Presentes.
 

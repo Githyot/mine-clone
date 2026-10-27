@@ -4351,10 +4351,12 @@ PERSON_L13 = {
     "nymph": ("Ninfa", "Hostile", 220, 14, 0.95, 3.0, dict(PSKIN=pal("#5a8a6a", "#6a9a7a", "#7aaa8a", "#8aba9a", "#9acaaa"), PHAIR=pal("#1a4a2a", "#225a34", "#2a6a3e", "#327a48", "#3a8a52"), PTUNIC=pal("#2a5a3a", "#346a46", "#3e7a52", "#488a5e", "#529a6a"), PTROUSER=pal("#1a3a2a", "#224434", "#2a4e3e", "#325848"), PLEATHER=pal("#c4a020", "#d4b02a", "#e4c034", "#f0d03e"), PIRIS=(255, 60, 40))),
     "clown": ("Palhaço", "Hostile", 300, 12, 1.0, 2.6, dict(PSKIN=pal("#dcdce4", "#e6e6ee", "#f0f0f6", "#f8f8fc", "#ffffff"), PHAIR=pal("#c41420", "#e02028", "#f03a3a", "#ff5a4a", "#ff7a6a"), PTUNIC=pal("#2a80c4", "#3a90d4", "#f4ca28", "#4aa0e4", "#f8da40"), PTROUSER=pal("#e04a9a", "#ec5aaa", "#f46aba", "#fa7aca"), PLEATHER=pal("#c41420", "#e02028", "#f03a3a", "#ff5a4a"), PIRIS=(20, 20, 20))),
     "ice_golem": ("Golem de Gelo", "Hostile", 900, 18, 1.9, 1.6, dict(PSKIN=pal("#5a8aaa", "#7aaac4", "#9ac4dc", "#bad8ec", "#daecf8"), PHAIR=pal("#4a7a9a", "#6a9ab4", "#8ab4cc", "#aacce0", "#cae0f0"), PTUNIC=pal("#4a7a9a", "#6a9ab4", "#8ab4cc", "#aacce0", "#cae0f0"), PTROUSER=pal("#3a6a8a", "#5a8aa4", "#7aa4bc", "#9abcd0"), PLEATHER=pal("#2a5a7a", "#3a6a8a", "#4a7a9a", "#5a8aaa"), PIRIS=(120, 230, 255))),
+    "tortured_soul": ("Alma Atormentada", "Passive", 60, 0, 1.0, 0.8, dict(PSKIN=pal("#5a6a7a", "#6e7e8e", "#8494a4", "#9aaaba", "#b0c0d0"), PHAIR=pal("#2a3440", "#36424e", "#42505c", "#4e5e6a", "#5a6c78"), PTUNIC=pal("#2a3440", "#36424e", "#42505c", "#4e5e6a", "#5a6c78"), PTROUSER=pal("#1e262e", "#262e38", "#2e3842", "#36424c"), PLEATHER=pal("#1e262e", "#262e38", "#2e3842", "#36424c"), PIRIS=(160, 220, 255))),
     "goblin_summoner": ("Invocador Goblin", "Hostile", 420, 12, 1.0, 1.8, dict(PSKIN=pal("#4a5a3a", "#566844", "#62764e", "#6e8458", "#7a9262"), PHAIR=pal("#141414", "#1c1c1c", "#242424", "#2c2c2c", "#343434"), PTUNIC=pal("#3a1a5a", "#46206e", "#522682", "#5e2c96", "#6a32aa"), PTROUSER=pal("#1e1a26", "#262030", "#2e263a", "#362c44"), PLEATHER=pal("#c45ad4", "#d46ae0", "#e47aec", "#f08af8"), PIRIS=(255, 120, 255))),
 }
 TOWN_L13 = [
     ("npc_mycologist", "Micólogo", pal("#3a6aa0", "#4a7ab4", "#5a8ac8", "#6a9adc", "#7aaaf0"), pal("#2a4a8a", "#3a5aa0", "#4a6ab4", "#5a7ac8", "#6a8adc"), pal("#c8c0b0", "#d4ccbc", "#e0d8c8", "#ece4d4", "#f8f0e0"), pal("#3a4a6a", "#44547a", "#4e5e8a", "#58689a"), pal("#5a3a1a", "#6a4420", "#7a4e26", "#8a582c"), (60, 140, 230)),
+    ("npc_tax_collector", "Coletor de Impostos", SKIN_LIGHT, pal("#8a8a8a", "#9a9a9a", "#aaaaaa", "#bababa", "#cacaca"), pal("#1a1a24", "#22222e", "#2a2a38", "#323242", "#3a3a4c"), pal("#141418", "#1c1c22", "#24242c", "#2c2c36"), pal("#c49a10", "#d4aa18", "#e4ba20", "#f4ca28"), (70, 70, 90)),
     ("npc_winter_elder", "Velho do Inverno", SKIN_LIGHT, pal("#dcdce4", "#e6e6ee", "#f0f0f6", "#f8f8fc", "#ffffff"), pal("#8a1a1a", "#a02020", "#b82828", "#cc3030", "#e03838"), pal("#8a1a1a", "#a02020", "#b82828", "#cc3030"), pal("#141414", "#1c1c1c", "#242424", "#2c2c2c"), (60, 100, 160)),
 ]
 MIMIC_PARTS = """[
@@ -4380,6 +4382,7 @@ MINI_DROPS = {
     "ice_golem": [("frost_shard", 4, 8, 1.0), ("blizzard_staff", 1, 1, 0.12), ("frost_core", 1, 1, 0.05)],
     "goblin_summoner": [("soul_of_night", 2, 4, 0.8), ("dark_shard", 1, 2, 0.5)],
     "lost_girl": [],
+    "tortured_soul": [],
 }
 
 

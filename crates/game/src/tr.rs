@@ -71,6 +71,11 @@ struct Saved {
     journey_god: bool,
     #[serde(default)]
     journey_spawn: usize,
+    /// The tax collector (tr_minis.rs).
+    #[serde(default)]
+    tax_freed: bool,
+    #[serde(default)]
+    tax_owed: u64,
 }
 
 #[derive(Default)]
@@ -125,6 +130,8 @@ impl Tr {
         tr.journey.research = s.research.into_iter().collect();
         tr.journey.god = s.journey_god;
         tr.journey.spawn = s.journey_spawn;
+        tr.minis.tax_freed = s.tax_freed;
+        tr.minis.tax_owed = s.tax_owed;
         tr.comfort.placed = s.comfort.into_iter().map(|((x, y, z), k)| (glam::IVec3::new(x, y, z), k)).collect();
         tr.town.animals = s.animals.into_iter().map(|(k, (x, y, z))| (k, Vec3::new(x, y, z))).collect();
         tr
@@ -154,6 +161,8 @@ impl Tr {
             research: self.journey.research.iter().map(|(k, v)| (k.clone(), *v)).collect(),
             journey_god: self.journey.god,
             journey_spawn: self.journey.spawn,
+            tax_freed: self.minis.tax_freed,
+            tax_owed: self.minis.tax_owed,
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);

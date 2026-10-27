@@ -74,7 +74,16 @@ pub struct Minis {
     nights: u32,
     was_night: bool,
     told_holiday: bool,
+    /// A tortured soul was freed with purification powder: the tax collector may move in.
+    pub tax_freed: bool,
+    /// Copper the tax collector has gathered and not handed over yet.
+    pub tax_owed: u64,
+    tax_t: f32,
 }
+
+/// Taxes: a few copper per townsperson every minute, kept until the collector is talked to.
+const TAX_EVERY: f32 = 60.0;
+const TAX_PER_HEAD: u64 = 10;
 
 impl Game {
     fn full_moon(&self) -> bool {
@@ -102,6 +111,7 @@ impl Game {
             }
         }
         self.steer_minis(dt);
+        self.collect_taxes(dt);
         self.t5.tr.minis.spawn_t -= dt;
         if self.t5.tr.minis.spawn_t > 0.0 || !self.survival || self.mobs.peaceful || self.dim != Dim::Overworld {
             return;
@@ -121,6 +131,8 @@ impl Game {
             ("ice_golem", false, 0.15)
         } else if !surface && self.ubiome() == voxel::worldgen::deep::UBiome::Marble && self.count_alive(&["hoplite"]) < 3 {
             ("hoplite", true, 0.6)
+        } else if hard && !self.t5.tr.minis.tax_freed && self.ubiome() == voxel::worldgen::deep::UBiome::Underworld && self.count_alive(&["tortured_soul"]) == 0 {
+            ("tortured_soul", true, 0.3)
         } else if !surface && me.y < 20.0 && self.count_alive(&["lost_girl", "nymph"]) == 0 {
             ("lost_girl", true, 0.06)
         } else {
@@ -130,12 +142,62 @@ impl Game {
             return;
         }
         if let Some(at) = self.spot_near(me, 14.0, 26.0, cave) {
-            if self.mobs.spawn(who, at + Vec3::Y * 0.1) && who != "lost_girl" {
+            if self.mobs.spawn(who, at + Vec3::Y * 0.1) && !matches!(who, "lost_girl" | "tortured_soul") {
                 if let Some(m) = self.mobs.list.last_mut() {
                     m.aggro = true;
                 }
             }
         }
+    }
+
+    fn collect_taxes(&mut self, dt: f32) {
+        let m = &mut self.t5.tr.minis;
+        m.tax_t += dt;
+        if m.tax_t < TAX_EVERY {
+            return;
+        }
+        m.tax_t = 0.0;
+        if !self.town.npcs.iter().any(|n| n.name == "npc_tax_collector") {
+            return;
+        }
+        let heads = self.town.npcs.len() as u64;
+        let m = &mut self.t5.tr.minis;
+        m.tax_owed = (m.tax_owed + heads * TAX_PER_HEAD).min(crate::money::g(10) as u64);
+    }
+
+    /// Talking to the tax collector: he hands over what the town paid.
+    pub(crate) fn tax_talk(&mut self, dn: &str) {
+        let owed = std::mem::take(&mut self.t5.tr.minis.tax_owed);
+        if owed == 0 {
+            self.toast(format!("{dn}: Ainda não juntei nada. Mais moradores, mais impostos!"), 4.0);
+            return;
+        }
+        self.earn(owed);
+        let text = crate::money::text(owed);
+        self.toast(format!("{dn}: Aqui estão os impostos da vila: {text}. Bah!"), 4.0);
+        self.sfx(Sfx::Pickup);
+    }
+
+    /// Purification powder near a tortured soul sets it free.
+    fn free_soul(&mut self) -> Option<bool> {
+        let me = self.body.pos;
+        let k = self.mobs.list.iter().position(|m| m.alive() && self.mobs.reg.defs[m.def].name == "tortured_soul" && m.body.pos.distance(me) < 6.0)?;
+        let pos = self.mobs.list[k].body.pos;
+        self.mobs.list[k].health = 0.0;
+        self.mobs.list[k].dead_age = 10.0;
+        if self.survival {
+            let sel = self.selected;
+            self.surv.inv.take(sel, 1);
+        }
+        let glow = self.glow_layer();
+        for i in 0..30 {
+            let a = i as f32 / 30.0 * std::f32::consts::TAU;
+            self.particles.glow(pos + Vec3::Y, Vec3::new(a.cos() * 1.5, 3.0, a.sin() * 1.5), glow, [0.8, 1.6, 1.8], 0.08, 1.2);
+        }
+        self.t5.tr.minis.tax_freed = true;
+        self.toast("A alma atormentada está livre! Talvez ela se mude para a sua vila...", 5.0);
+        self.sfx(Sfx::Xp);
+        Some(true)
     }
 
     fn is_snowy(&self, p: Vec3) -> bool {
@@ -272,6 +334,7 @@ impl Game {
 
     pub(crate) fn tr_minis_use(&mut self, name: &str) -> Option<bool> {
         match name {
+            "purification_powder" => self.free_soul(),
             "key_of_night" => Some(self.use_mimic_key(false)),
             "key_of_light" => Some(self.use_mimic_key(true)),
             "goodie_bag" => {
@@ -336,7 +399,7 @@ impl Game {
         let flat = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
         let side = Vec3::new(-flat.z, 0.0, flat.x);
         let ground = |g: &Game, p: Vec3| g.world.surface_y(p.x.floor() as i32, p.z.floor() as i32).map(|y| y as f32 + 1.0).unwrap_or(p.y);
-        let names = ["werewolf", "lost_girl", "nymph", "clown", "ice_golem", "goblin_summoner", "mimic_ruin", "mimic_prism", "npc_mycologist", "npc_winter_elder"];
+        let names = ["werewolf", "lost_girl", "nymph", "clown", "ice_golem", "goblin_summoner", "mimic_ruin", "mimic_prism", "npc_mycologist", "npc_winter_elder", "tortured_soul", "npc_tax_collector"];
         for (k, n) in names.iter().enumerate() {
             let p = self.body.pos + flat * (7.0 + (k % 2) as f32 * 2.0) + side * ((k as f32 - 4.5) * 1.6);
             let p = Vec3::new(p.x, ground(self, p), p.z);
