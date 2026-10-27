@@ -27,4 +27,7 @@
     (name: "pylon_jungle", display_name: Some("Pilone da Selva"), light: 12, hardness: 1.5, tool: Some(Pickaxe)),
     (name: "pylon_ocean", display_name: Some("Pilone do Oceano"), light: 12, hardness: 1.5, tool: Some(Pickaxe)),
     (name: "pylon_cave", display_name: Some("Pilone da Caverna"), light: 12, hardness: 1.5, tool: Some(Pickaxe)),
+    (name: "scale_brick", display_name: Some("Tijolo Escamado"), hardness: 30.0, tool: Some(Pickaxe), tier: 4),
+    (name: "scale_altar", display_name: Some("Altar Escamado"), light: 6, hardness: 60.0, tool: Some(Pickaxe), tier: 5, textures: (top: Some("scale_altar_top"), side: Some("scale_altar_side"), bottom: Some("scale_brick")), drops: Some([])),
+    (name: "scale_lamp", display_name: Some("Lâmpada Escamada"), light: 14, hardness: 1.0),
 ])

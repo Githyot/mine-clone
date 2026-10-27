@@ -62,6 +62,7 @@ mod tr_bosses;
 mod tr_events;
 mod tr_pets;
 mod tr_town;
+mod tr_endgame;
 mod tr_weapons;
 mod tr_world;
 mod glyphs;

@@ -1003,6 +1003,7 @@ impl Game {
                         return true;
                     }
                     "reforge_table" => return self.t5_use_block("reforge_table"),
+                    "scale_altar" => return self.use_scale_altar(hit.block),
                     n if n.starts_with("pylon_") => {
                         let kind = n.trim_start_matches("pylon_").to_string();
                         return self.use_pylon(hit.block, &kind);

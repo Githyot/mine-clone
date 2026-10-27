@@ -1586,6 +1586,12 @@ def structures_l3():
          pyr, [f"sink: {sink}", "rough: 6"],
          [("sandstorm_bottle", 1, 1, 0.35), ("sturdy_fossil", 2, 6, 0.6), ("gold_ingot", 3, 9, 0.7), ("emerald", 1, 4, 0.5), ("lesser_healing_potion", 1, 3, 0.5), ("fallen_star", 1, 3, 0.4)],
          [("mummy", 3)])
+    temple, tsink = structures_l7()
+    emit("templo_escamado", ["Jungle", "Bamboo Jungle", "Sparse Jungle"], 40, 0.6,
+         [("B", "scale_brick"), ("A", "scale_altar"), ("l", "scale_lamp"), ("K", "chest"), ("L", "ladder")],
+         temple, [f"sink: {tsink}"],
+         [("idol_core", 1, 1, 0.5), ("turtle_shell", 1, 2, 0.4), ("beetle_husk", 1, 3, 0.3), ("emerald", 3, 8, 0.7), ("super_healing_potion", 1, 3, 0.5), ("sun_stone_staff", 1, 1, 0.15)],
+         None)
     lines += ["])", ""]
     (OUT / "structures.ron").write_text("\n".join(lines))
 
@@ -2457,6 +2463,403 @@ def items_l6():
     ]
 
 
+# ==============================================================================================
+# Lote 7: the last bosses (Jelly Queen, Scale Idol in its temple, Tide Duke, Prism Empress,
+# Lunar Prophet and the four pillars), ectoplasm, sporite, fragments and the end-game sets
+# ==============================================================================================
+
+def shade(p, glow=None):
+    """A plain painter for a palette: lighter on top, darker below, a little noise."""
+    def f(c):
+        t = 0.3 + 0.5 * c.jit
+        if c.face == "top":
+            t += 0.2
+        elif c.face == "bottom":
+            t -= 0.25
+        return g.pick(p, t)
+    return f
+
+
+def zoned(parts):
+    def paint(c):
+        return parts.get(c.role, parts.get("*"))(c)
+    return paint
+
+
+def eyes_on(base, colour, rows=(2, 3)):
+    def f(c):
+        if c.face == "front" and c.j in rows and (c.i in (1, 2, c.fw - 3, c.fw - 2)):
+            return colour
+        return base(c)
+    return f
+
+
+def bands(p, every=4):
+    def f(c):
+        t = 0.35 + 0.4 * c.jit + (0.25 if c.j % every == 0 else 0.0)
+        if c.face in ("front", "back", "left", "right") and c.i % 4 == 1 and c.j % every != 0:
+            t += 0.3
+        return g.pick(p, t)
+    return f
+
+
+QUEEN_PARTS_L7 = """[
+            (size: (12, 10, 12), origin: (-6, 0, -6), uv: (0, 0)),
+            (size: (8, 3, 8), origin: (-4, 10, -4), uv: (0, 24)),
+            (size: (14, 1, 8), origin: (-20, 8, -4), uv: (0, 40), anim: Wing(0), pivot: (-6, 8, 0)),
+            (size: (14, 1, 8), origin: (6, 8, -4), uv: (0, 40), anim: Wing(1), pivot: (6, 8, 0)),
+        ]"""
+IDOL_PARTS = """[
+            (size: (16, 16, 12), origin: (-8, 4, -6), uv: (0, 0)),
+            (size: (12, 10, 10), origin: (-6, 20, -5), uv: (0, 28), anim: Head, pivot: (0, 20, 0)),
+            (size: (7, 7, 7), origin: (-16, 8, -4), uv: (0, 49), anim: Arm(0), pivot: (-9, 16, 0)),
+            (size: (7, 7, 7), origin: (9, 8, -4), uv: (0, 49), anim: Arm(1), pivot: (9, 16, 0)),
+            (size: (5, 4, 6), origin: (-7, 0, -3), uv: (28, 49), anim: Leg(0), pivot: (-4, 4, 0)),
+            (size: (5, 4, 6), origin: (2, 0, -3), uv: (28, 49), anim: Leg(1), pivot: (4, 4, 0)),
+        ]"""
+DUKE_PARTS = """[
+            (size: (10, 10, 20), origin: (-5, 2, -10), uv: (0, 0)),
+            (size: (10, 8, 8), origin: (-5, 3, 10), uv: (0, 30), anim: Head, pivot: (0, 7, 10)),
+            (size: (12, 1, 6), origin: (-17, 7, -2), uv: (0, 46), anim: Wing(0), pivot: (-5, 7, 1)),
+            (size: (12, 1, 6), origin: (5, 7, -2), uv: (0, 46), anim: Wing(1), pivot: (5, 7, 1)),
+            (size: (2, 10, 6), origin: (-1, 2, -16), uv: (36, 30)),
+        ]"""
+EMPRESS_PARTS = """[
+            (size: (6, 12, 4), origin: (-3, 8, -2), uv: (0, 0)),
+            (size: (6, 6, 6), origin: (-3, 20, -3), uv: (0, 16), anim: Head, pivot: (0, 20, 0)),
+            (size: (18, 1, 14), origin: (-21, 14, -3), uv: (0, 28), anim: Wing(0), pivot: (-3, 16, 1)),
+            (size: (18, 1, 14), origin: (3, 14, -3), uv: (0, 28), anim: Wing(1), pivot: (3, 16, 1)),
+            (size: (8, 8, 6), origin: (-4, 0, -3), uv: (24, 0)),
+        ]"""
+PILLAR_PARTS = """[
+            (size: (10, 36, 10), origin: (-5, 0, -5), uv: (0, 0)),
+            (size: (14, 4, 14), origin: (-7, 36, -7), uv: (0, 46)),
+        ]"""
+
+PROPHET = pal("#0e2a4a", "#163a64", "#204c80", "#2c609c", "#3a74b4")
+SOLAR = pal("#5a1404", "#a03008", "#e05a10", "#f89a30", "#ffe090")
+VORTEX = pal("#06302a", "#0e5a4a", "#18887a", "#3ac4a8", "#a8ffe8")
+NEBULA = pal("#2a0a3a", "#4a1466", "#7a2aa0", "#c45ad4", "#ffc0ff")
+STARDUST = pal("#0a2a4a", "#14508a", "#2a80c4", "#6ac4f0", "#e0f8ff")
+CRYSTAL = pal("#5a2a6a", "#a05aa8", "#d08ad0", "#f0c0f0", "#ffffff")
+TEMPLE = pal("#3a2008", "#5a3410", "#7a4a1a", "#9a6224", "#b87a30")
+TIDE = pal("#0a3a3a", "#145a5a", "#207a7a", "#3aa0a0", "#8ad8d0")
+RAINBOW = [pal("#8a1a1a", "#e04a4a"), pal("#8a5a0a", "#f0b030"), pal("#2a6a1a", "#7ad44a"), pal("#14508a", "#5ab4f0"), pal("#4a1466", "#c45ad4")]
+
+
+def empress_wing(c):
+    band = RAINBOW[(c.i * 5 // max(c.fw, 1)) % 5]
+    return g.pick(band, 0.3 + 0.6 * c.jit)
+
+
+def mobs_l7():
+    def boss(name, display, hp, atk, parts, scale, w, h, drops, xp, layers="[]", extra=", flies: true"):
+        return f"""    (
+        name: "{name}", display_name: "{display}", kind: Hostile, health: {hp}, speed: 0.1, attack: {atk},
+        drops: [{drops}], xp: {xp},
+        width: {w}, height: {h}, spawn: Never, scale: {scale}, boss: true{extra},
+        parts: {parts},
+        layers: {layers},
+    ),"""
+
+    def minion(name, display, hp, atk, parts, scale, w, h, drops, extra=", flies: true", layers="[]", spawn="spawn: Never"):
+        return f"""    (
+        name: "{name}", display_name: "{display}", kind: Hostile, health: {hp}, speed: 0.1, attack: {atk},
+        drops: [{drops}], xp: 8,
+        width: {w}, height: {h}, {spawn}, scale: {scale}{extra},
+        parts: {parts},
+        layers: {layers},
+    ),"""
+
+    out = ["    // Lote 7: the last bosses, the four pillars and their folk, the dungeon spirits."]
+    out.append(boss("jelly_queen", "Rainha Geleia", 2400, 10, QUEEN_PARTS_L7, 4.0, 3.0, 2.6,
+                    '(item: "gel", min: 30, max: 60), (item: "crystal_wings", chance: 0.4), (item: "crystal_yoyo", chance: 0.6), (item: "soul_of_light", min: 4, max: 8), (item: "jelly_saddle", chance: 0.2)', 250,
+                    "[(part: 0, inflate: 0.6), (part: 1, inflate: 0.4)]", ", hops: true"))
+    out.append(boss("scale_idol", "Ídolo Escamado", 5200, 14, IDOL_PARTS, 3.0, 3.2, 4.4,
+                    '(item: "beetle_husk", min: 6, max: 12), (item: "turtle_shell", min: 1, max: 3), (item: "stone_fist", chance: 0.5), (item: "sun_stone_staff", chance: 0.5), (item: "emerald", min: 8, max: 14)', 250,
+                    "[(part: 1, inflate: 0.5)]", ""))
+    out.append(boss("tide_duke", "Duque das Marés", 6000, 16, DUKE_PARTS, 3.2, 3.0, 2.6,
+                    '(item: "tide_wings", chance: 0.4), (item: "bubble_rifle", chance: 0.5), (item: "tide_boomerang", chance: 0.5), (item: "prismarine_shard", min: 8, max: 16)', 250,
+                    "[(part: 1, inflate: 0.4)]"))
+    out.append(boss("prism_empress", "Imperatriz Prismática", 7000, 18, EMPRESS_PARTS, 2.6, 1.6, 3.2,
+                    '(item: "empress_wings", chance: 0.4), (item: "prism_saber", chance: 0.6), (item: "soul_of_light", min: 10, max: 20), (item: "pixie_dust", min: 10, max: 20)', 250,
+                    "[(part: 1, inflate: 0.5)]"))
+    out.append(boss("lunar_prophet", "Profeta Lunar", 4000, 12, PERSON_PARTS, 1.3, 0.8, 2.5,
+                    '(item: "solar_fragment", min: 2, max: 4), (item: "vortex_fragment", min: 2, max: 4), (item: "nebula_fragment", min: 2, max: 4), (item: "stardust_fragment", min: 2, max: 4)', 250,
+                    PERSON_LAYERS))
+    for kind, disp, frag in [("solar", "Pilar Solar", "solar_fragment"), ("vortex", "Pilar do Vórtice", "vortex_fragment"), ("nebula", "Pilar da Nebulosa", "nebula_fragment"), ("stardust", "Pilar de Pó Estelar", "stardust_fragment")]:
+        out.append(minion(f"pillar_{kind}", disp, 2000, 0, PILLAR_PARTS, 3.0, 3.6, 13.0, f'(item: "{frag}", min: 20, max: 32)', ", boss: true, flies: true", "[(part: 1, inflate: 0.5)]"))
+    out.append(minion("solar_warrior", "Guerreiro Solar", 90, 12, PERSON_PARTS, 1.0, 0.6, 1.95, '(item: "solar_fragment", chance: 0.25)', "", PERSON_LAYERS))
+    out.append(minion("vortex_hornet", "Vespão do Vórtice", 70, 10, HARPY_PARTS, 1.2, 0.7, 1.6, '(item: "vortex_fragment", chance: 0.25)'))
+    out.append(minion("nebula_eye", "Olho da Nebulosa", 70, 10, EYE_PARTS, 0.9, 0.9, 0.9, '(item: "nebula_fragment", chance: 0.25)', layers="[(part: 0, inflate: 0.5)]"))
+    out.append(minion("star_cell", "Célula Estelar", 60, 9, JELLY_PARTS, 1.2, 0.9, 0.8, '(item: "stardust_fragment", chance: 0.25)', ", hops: true", "[(part: 0, inflate: 0.5)]"))
+    out.append(minion("dungeon_spirit", "Espírito da Masmorra", 60, 9, WISP_PARTS, 3.0, 0.7, 0.7, '(item: "ectoplasm", min: 1, max: 2)'))
+    return out
+
+
+def skins_l7():
+    stone = shade(TEMPLE)
+    prophet = dict(PSKIN=pal("#c49070", "#d4a080", "#e0b090", "#eac0a0", "#f2d0b4"), PHAIR=PROPHET, PTUNIC=PROPHET, PTROUSER=PROPHET, PLEATHER=pal("#c49a10", "#d4aa18", "#e4ba20", "#f4ca28"), PIRIS=(120, 200, 255))
+    solar = dict(PSKIN=pal("#7a2a08", "#a03a0a", "#c44a10", "#e05a14", "#f07a20"), PHAIR=SOLAR, PTUNIC=SOLAR, PTROUSER=pal("#3a1004", "#5a1a06", "#7a2408", "#9a2e0a"), PLEATHER=pal("#f0b030", "#f8c040", "#ffd050", "#ffe070"), PIRIS=(255, 220, 60))
+    person = lambda name, col: (g.ROLES["player"], g.townsfolk(name, g.PAINTERS["player"], col), g.townsfolk(name, g.OVERLAYS["player"], col))
+    out = {
+        "jelly_queen": (["jelly", "crown", "wing", "wing"], zoned({"jelly": jelly_painter(CRYSTAL, pal("#6a5008", "#c4941c", "#f0d060")), "crown": jelly_painter(CRYSTAL, pal("#6a5008", "#c4941c", "#f0d060")), "wing": shade(pal("#7ac4e0", "#a8dcf0", "#d0eef8", "#f0faff"))}), jelly_overlay(CRYSTAL)),
+        "scale_idol": (["body", "head", "fist", "fist", "foot", "foot"], zoned({"head": eyes_on(stone, (255, 170, 40), (5, 6)), "*": bands(TEMPLE)}), None),
+        "tide_duke": (["body", "head", "fin", "fin", "tail"], zoned({"head": eyes_on(shade(TIDE), (230, 230, 120)), "fin": shade(pal("#2a6a6a", "#3a8a8a", "#5ab0a8", "#8ad8d0")), "*": shade(TIDE)}), None),
+        "prism_empress": (["body", "head", "wing", "wing", "skirt"], zoned({"wing": empress_wing, "head": eyes_on(shade(pal("#c49070", "#e0b090", "#f2d0b4")), (120, 60, 200), (3,)), "*": shade(CRYSTAL)}), None),
+        "lunar_prophet": person("lunar_prophet", prophet),
+        "pillar_solar": (["column", "cap"], bands(SOLAR), None),
+        "pillar_vortex": (["column", "cap"], bands(VORTEX), None),
+        "pillar_nebula": (["column", "cap"], bands(NEBULA), None),
+        "pillar_stardust": (["column", "cap"], bands(STARDUST), None),
+        "solar_warrior": person("solar_warrior", solar),
+        "vortex_hornet": (["body", "head", "wing", "wing", "leg", "leg"], zoned({"head": eyes_on(shade(VORTEX), (200, 255, 230), (2,)), "*": shade(VORTEX)}), None),
+        "nebula_eye": (["eye", "stalk", "stalk", "stalk"], e5s.eye_painter(pal("#c8a8e0", "#dcc4f0", "#f0e0ff"), pal("#4a1466", "#7a2aa0", "#a84ad4"), pal("#ffc0ff", "#ff80ff", "#ffffff")), e5s.eye_overlay(pal("#4a1466", "#7a2aa0", "#a84ad4"))),
+        "star_cell": (["jelly"], jelly_painter(STARDUST), jelly_overlay(STARDUST)),
+        "dungeon_spirit": (["orb"], wisp_painter(pal("#0a2a4a", "#2a6aa0", "#5ab4f0", "#b0e8ff", "#ffffff")), None),
+    }
+    return out
+
+
+ARMOR_L7 = {
+    # material: (display, palette, points helmet/chest/legs/boots, ingredient, extra)
+    "spectral": ("Espectral", pal("#14304a", "#2a5a8a", "#4a8ac4", "#8ac4f0", "#e0f4ff"), (4, 8, 6, 3), "spectral_ingot", None),
+    "sporite": ("de Esporita", pal("#0a1a4a", "#14307a", "#2a50b0", "#5a8ae0", "#b0d0ff"), (4, 8, 7, 3), "sporite_ingot", None),
+    "beetle": ("Escamada", pal("#1a0a2a", "#3a1a4a", "#5a2a6a", "#8a4a9a", "#c48ad4"), (5, 10, 8, 4), "beetle_husk", "verdite_ingot"),
+    "turtle": ("de Tartaruga", pal("#2a3a0a", "#4a5a14", "#6a8020", "#9ab03a", "#d0e07a"), (5, 9, 8, 4), "turtle_shell", "verdite_ingot"),
+    "solar": ("Solar", SOLAR, (6, 11, 9, 4), "solar_fragment", "lumite_ingot"),
+    "vortex": ("do Vórtice", VORTEX, (5, 10, 8, 4), "vortex_fragment", "lumite_ingot"),
+    "nebula": ("da Nebulosa", NEBULA, (5, 9, 8, 4), "nebula_fragment", "lumite_ingot"),
+    "stardust": ("de Pó Estelar", STARDUST, (4, 9, 7, 3), "stardust_fragment", "lumite_ingot"),
+}
+
+FRAGMENT = [
+    "................",
+    "........1.......",
+    ".......121......",
+    "......12321.....",
+    ".....1234321....",
+    "....123454321...",
+    "...12345554321..",
+    "....123454321...",
+    ".....1234321....",
+    "......12321.....",
+    ".......121......",
+    "........1.......",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+ECTO = [
+    "................",
+    "................",
+    "......1111......",
+    ".....123321.....",
+    "....12345321....",
+    "....12355321....",
+    "....12344321....",
+    ".....123321.....",
+    ".....12.121.....",
+    "....12...121....",
+    "....1.....1.....",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+HUSK = [
+    "................",
+    "................",
+    ".....111111.....",
+    "....12333321....",
+    "...1234554321...",
+    "...1234554321...",
+    "...1233443321...",
+    "...1223333221...",
+    "...1222112221...",
+    "....12211221....",
+    ".....111111.....",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+CORE = [
+    "................",
+    "................",
+    "....11111111....",
+    "....1aaaaaa1....",
+    "....1a2332a1....",
+    "....1a3553a1....",
+    "....1a3553a1....",
+    "....1a2332a1....",
+    "....1aaaaaa1....",
+    "....11111111....",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+BAIT = [
+    "................",
+    "................",
+    "..........11....",
+    ".........1221...",
+    "........12331...",
+    ".......12341....",
+    "......12341.....",
+    ".....12341......",
+    "....12341.......",
+    "...12331........",
+    "..1221..........",
+    "..11............",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+
+
+def items_l7():
+    stack1 = "max_stack: Some(1)"
+    for m, (_, p, *_r) in ARMOR_L7.items():
+        gi.ARMOR_MATERIALS[m] = p
+        gi.MATERIALS[m] = p
+    gi.INGOT_COL["spectral"] = ARMOR_L7["spectral"][1]
+    gi.INGOT_COL["sporite"] = ARMOR_L7["sporite"][1]
+    gi.MATERIALS["crystal"] = CRYSTAL
+    gi.MATERIALS["tide"] = TIDE
+    gi.WAND_GEMS["sun"] = SOLAR
+    out = [
+        ("gelatin_crystal", "Cristal Gelatinoso", icon(SHARD, CRYSTAL), ""),
+        ("idol_core", "Núcleo do Ídolo", icon2(CORE, pal("#5a1404", "#a03008", "#e05a10", "#f89a30", "#ffe090"), TEMPLE), ""),
+        ("tide_bait", "Isca das Marés", icon(BAIT, pal("#3a0a1a", "#8a2a4a", "#c45a7a", "#f09ab0", "#ffe0e8")), ""),
+        ("prism_lamp", "Lâmpada Prismática", icon2(LAMP, CRYSTAL, pal("#6a5008", "#c4941c", "#f0d060")), ""),
+        ("lunar_tablet", "Tábua Lunar", icon(TABLET, PROPHET), ""),
+        ("ectoplasm", "Ectoplasma", icon(ECTO, pal("#0a2a4a", "#2a6aa0", "#5ab4f0", "#b0e8ff", "#ffffff")), ""),
+        ("spectral_ingot", "Barra Espectral", gi.ingot("spectral"), ""),
+        ("sporite_ingot", "Barra de Esporita", gi.ingot("sporite"), ""),
+        ("beetle_husk", "Carapaça de Besouro", icon(HUSK, ARMOR_L7["beetle"][1]), ""),
+        ("turtle_shell", "Casco de Tartaruga", icon(HUSK, ARMOR_L7["turtle"][1]), ""),
+        ("solar_fragment", "Fragmento Solar", icon(FRAGMENT, SOLAR), ""),
+        ("vortex_fragment", "Fragmento do Vórtice", icon(FRAGMENT, VORTEX), ""),
+        ("nebula_fragment", "Fragmento da Nebulosa", icon(FRAGMENT, NEBULA), ""),
+        ("stardust_fragment", "Fragmento de Pó Estelar", icon(FRAGMENT, STARDUST), ""),
+        ("crystal_wings", "Asas de Cristal", icon(WING, CRYSTAL), stack1),
+        ("tide_wings", "Asas das Marés", icon(WING, TIDE), stack1),
+        ("empress_wings", "Asas da Imperatriz", icon(WING, pal("#8a1a5a", "#e04a9a", "#f0b030", "#7ad44a", "#5ab4f0")), stack1),
+        ("crystal_yoyo", "Ioiô de Cristal", icon2(YOYO, CRYSTAL, STRING), stack1),
+        ("stone_fist", "Punho de Pedra", icon2(FLAIL, TEMPLE, STEEL), stack1),
+        ("sun_stone_staff", "Cajado da Pedra do Sol", gi.staff("sun", "golden"), stack1),
+        ("tide_boomerang", "Bumerangue das Marés", icon2(BOOMERANG, TIDE, STEEL), stack1),
+        ("bubble_rifle", "Rifle de Bolhas", icon2(RAPID, TIDE, STEEL), stack1),
+        ("prism_saber", "Sabre Prismático", gi.tool("crystal", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 5, speed: 9.0, damage: 12.0, durability: 3000))"),
+        ("solar_eruption", "Erupção Solar", icon2(FLAIL, SOLAR, SOLAR), stack1),
+        ("vortex_beater", "Batedor do Vórtice", icon2(RAPID, VORTEX, STEEL), stack1),
+        ("nebula_blade", "Lâmina da Nebulosa", gi.tool("nebula", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 5, speed: 9.0, damage: 13.0, durability: 3000))"),
+        ("stardust_yoyo", "Ioiô de Pó Estelar", icon2(YOYO, STARDUST, STRING), stack1),
+    ]
+    names = {"helmet": "Capacete", "chestplate": "Peitoral", "leggings": "Calças", "boots": "Botas"}
+    for m, (disp, _, pts, _i, _e) in ARMOR_L7.items():
+        for slot, k in enumerate(gi.ARMOR_KINDS):
+            out.append((f"{m}_{k}", f"{names[k]} {disp}", gi.armor(m, k), f"armor: Some((slot: {slot}, points: {pts[slot]}, durability: {400 + 40 * pts[slot]}))"))
+    return out
+
+
+BLOCKS_L7 = [
+    '(name: "scale_brick", display_name: Some("Tijolo Escamado"), hardness: 30.0, tool: Some(Pickaxe), tier: 4)',
+    '(name: "scale_altar", display_name: Some("Altar Escamado"), light: 6, hardness: 60.0, tool: Some(Pickaxe), tier: 5, textures: (top: Some("scale_altar_top"), side: Some("scale_altar_side"), bottom: Some("scale_brick")), drops: Some([]))',
+    '(name: "scale_lamp", display_name: Some("Lâmpada Escamada"), light: 14, hardness: 1.0)',
+]
+
+
+def blocks_l7():
+    def brick(x, y):
+        row = y // 4
+        off = 4 if row % 2 else 0
+        mortar = y % 4 == 3 or (x + off) % 8 == 7
+        return 0.15 if mortar else 0.5 + 0.3 * (((x + off) // 8 + row) % 2)
+
+    def altar_top(x, y):
+        dx, dy = abs(x - 7.5), abs(y - 7.5)
+        return 0.95 if dx + dy < 4 else (0.2 if min(x, y, 15 - x, 15 - y) == 0 else 0.5)
+
+    def lamp(x, y):
+        dx, dy = abs(x - 7.5), abs(y - 7.5)
+        return 0.15 if min(x, y, 15 - x, 15 - y) < 2 else 0.95 - 0.06 * (dx + dy)
+
+    return {
+        "scale_brick": block_noise(70, brick, TEMPLE),
+        "scale_altar_top": block_noise(71, altar_top, pal("#3a2008", "#7a4a1a", "#b87a30", "#f89a30", "#ffe090")),
+        "scale_altar_side": block_noise(72, lambda x, y: 0.85 if y < 3 else brick(x, y), TEMPLE),
+        "scale_lamp": block_noise(73, lamp, pal("#3a2008", "#7a4a1a", "#e05a10", "#f8c040", "#fff0b0")),
+    }
+
+
+SHAPED_L7 = []
+for _m, (_d, _p, _pts, _ing, _extra) in ARMOR_L7.items():
+    SHAPED_L7 += armor_recipes(_m, _ing, _extra)
+SHAPED_L7 += [
+    (["CCC", "CEC", "CCC"], {"C": "pixie_dust", "E": "gel"}, "gelatin_crystal", 1),
+    (["BBB", "BSB", "BBB"], {"B": "scale_brick", "S": "sun_flail"}, "idol_core", 1),
+    ([" W ", "WSW", " W "], {"W": "glow_mushroom", "S": "spider_eye"}, "tide_bait", 1),
+    (["LLL", "LGL", "LLL"], {"L": "soul_of_light", "G": "glowstone"}, "prism_lamp", 1),
+    (["BBB", "BTB", "BBB"], {"B": "beetle_husk", "T": "ender_eye"}, "lunar_tablet", 1),
+    (["FF", "FF"], {"F": "solar_fragment"}, "solar_eruption", 1),
+    (["FF", "FF"], {"F": "vortex_fragment"}, "vortex_beater", 1),
+    (["FF", "FF"], {"F": "nebula_fragment"}, "nebula_blade", 1),
+    (["FF", "FF"], {"F": "stardust_fragment"}, "stardust_yoyo", 1),
+]
+SHAPELESS_L7 = [
+    (["verdite_ingot", "ectoplasm"], "spectral_ingot", 1),
+    (["verdite_ingot", "glow_mushroom", "glow_mushroom"], "sporite_ingot", 1),
+    (["solar_fragment", "vortex_fragment", "nebula_fragment", "stardust_fragment"], "celestial_sigil", 1),
+    (["scale_brick", "torch"], "scale_lamp", 1),
+]
+
+
+def structures_l7():
+    """The Scale Temple, buried under the jungle: a big brick hall with pillars and lamps, the
+    altar in the middle, chests in the corners and a ladder shaft up to the surface."""
+    W, H, UP = 27, 11, 14
+    layers = []
+    for y in range(H + UP):
+        rows = []
+        for z in range(W):
+            row = ""
+            for x in range(W):
+                if y >= H:
+                    # Above the hall only the shaft: a ladder on a brick spine.
+                    ch = "L" if (x, z) == (4, 4) else ("B" if (x, z) == (5, 4) else " ")
+                    row += ch
+                    continue
+                edge = x in (0, W - 1) or z in (0, W - 1)
+                pillar = x % 6 == 3 and z % 6 == 3 and not (12 <= x <= 14 and 12 <= z <= 14)
+                if y == 0 or y == H - 1 or edge or pillar:
+                    ch = "B"
+                    if y == 5 and pillar:
+                        ch = "l"
+                else:
+                    ch = "."
+                    if y == 1 and (x, z) == (13, 13):
+                        ch = "A"
+                    if y == 1 and (x, z) in ((2, 2), (24, 2), (2, 24), (24, 24)):
+                        ch = "K"
+                if (x, z) == (4, 4) and y > 0:
+                    ch = "L"
+                if (x, z) == (5, 4) and y > 0:
+                    ch = "B"
+                row += ch
+            rows.append(row)
+        layers.append(rows)
+    return layers, H + UP - 3
+
+
 def write_skins(skins):
     parsed, layers = g.parse_mobs(str(OUT / "mobs.ron"))
     assert set(parsed) == set(skins), sorted(set(parsed) ^ set(skins))
@@ -2473,18 +2876,18 @@ def write_skins(skins):
 
 
 def main():
-    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6()
-    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6
-    mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6()
-    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5, SMELTING_L2 + SMELTING_L3)
+    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7()
+    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7
+    mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6() + mobs_l7()
+    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7, SMELTING_L2 + SMELTING_L3)
     structures_l3()
-    skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6()})
+    skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6(), **skins_l7()})
     pics = []
     for name, _, img, _ in items:
         im = gt.to_image(img)
         im.save(os.path.join(gi.ITEM_DIR, name + ".png"))
         pics.append(im)
-    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6()}
+    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7()}
     for name, img in all_blocks.items():
         im = gt.to_image(img)
         im.save(os.path.join(gi.BLOCK_DIR, name + ".png"))

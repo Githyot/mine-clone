@@ -125,6 +125,9 @@ pub const ACCESSORIES: &[AccDef] = &[
     acc("shiny_balloon", "", &[M::Jump(0.3)]),
     acc("feather_wings", "Segure Espaço no ar para voar um pouco e planar", &[]),
     acc("angel_wings", "Voa mais tempo e plana", &[M::NoFall]),
+    acc("crystal_wings", "Asas: voam 3 s e planam", &[M::NoFall, M::Move(0.1)]),
+    acc("tide_wings", "Asas: voam 3,2 s e planam", &[M::NoFall, M::Move(0.1), M::Dmg(MELEE, 0.05)]),
+    acc("empress_wings", "Asas: voam 3,6 s e planam", &[M::NoFall, M::Move(0.12), M::Dmg(ALL_CLASSES, 0.05)]),
     acc("fairy_wings", "Asas: voam 2,4 s e planam", &[M::NoFall, M::Move(0.05)]),
     acc("demon_wings", "Asas: voam 2,4 s e planam", &[M::NoFall, M::Dmg(ALL_CLASSES, 0.03)]),
     acc("leaf_wings", "Asas: voam 2,6 s e planam", &[M::NoFall, M::Move(0.05)]),
@@ -261,6 +264,14 @@ pub const SETS: &[SetDef] = &[
     set("necro", "", &[M::Dmg(RANGED, 0.1), M::Crit(RANGED, 0.05)]),
     set("ninja", "", &[M::Move(0.2), M::Crit(ALL_CLASSES, 0.04)]),
     set("meteor", "O Disparador de Meteoro não gasta mana", &[M::Dmg(MAGIC, 0.09), M::Def(1.0)]),
+    set("spectral", "Golpes mágicos curam um pouco", &[M::Dmg(MAGIC, 0.2), M::Mana(6.0), M::Regen(0.4)]),
+    set("sporite", "", &[M::Dmg(RANGED, 0.2), M::Crit(RANGED, 0.1)]),
+    set("beetle", "", &[M::Dmg(MELEE, 0.15), M::MeleeSpeed(0.15), M::Def(4.0)]),
+    set("turtle", "", &[M::Endure(0.15), M::Def(5.0)]),
+    set("solar", "", &[M::Dmg(MELEE, 0.25), M::Crit(MELEE, 0.15), M::Move(0.1), M::Def(3.0)]),
+    set("vortex", "", &[M::Dmg(RANGED, 0.25), M::Crit(RANGED, 0.15), M::Move(0.1)]),
+    set("nebula", "", &[M::Dmg(MAGIC, 0.25), M::Mana(10.0), M::ManaCost(0.15), M::Move(0.1)]),
+    set("stardust", "", &[M::Dmg(SUMMON, 0.25), M::Minions(2), M::Move(0.1)]),
     set("lumite", "", &[M::Dmg(ALL_CLASSES, 0.1), M::Crit(ALL_CLASSES, 0.1), M::Minions(1), M::Move(0.1)]),
 ];
 
@@ -1831,6 +1842,14 @@ const SET_NAMES: &[(&str, &str)] = &[
     ("fossil", "Fóssil"),
     ("necro", "Necro"),
     ("ninja", "Ninja"),
+    ("spectral", "Espectral"),
+    ("sporite", "Esporita"),
+    ("beetle", "Escamada"),
+    ("turtle", "Tartaruga"),
+    ("solar", "Solar"),
+    ("vortex", "Vórtice"),
+    ("nebula", "Nebulosa"),
+    ("stardust", "Pó Estelar"),
 ];
 
 /// Ores from least to most valuable, for the ore finder (by part of the block name).

@@ -430,7 +430,7 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
 }
 
 /// Armour materials, by the item-name prefix, with their colour.
-pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 42] = [
+pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 50] = [
     ("leather", [134, 82, 46]),
     ("chainmail", [150, 150, 156]),
     ("iron", [206, 206, 206]),
@@ -463,6 +463,15 @@ pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 42] = [
     ("fossil", [200, 186, 150]),
     ("necro", [176, 172, 156]),
     ("ninja", [36, 36, 46]),
+    // Lote 7: the end-game sets.
+    ("spectral", [74, 138, 196]),
+    ("sporite", [42, 80, 176]),
+    ("beetle", [90, 42, 106]),
+    ("turtle", [106, 128, 32]),
+    ("solar", [224, 90, 16]),
+    ("vortex", [24, 136, 122]),
+    ("nebula", [122, 42, 160]),
+    ("stardust", [42, 128, 196]),
     // The mod pack's dimensions (tools/moddata/aether.py, otherside.py).
     ("zanite", [128, 72, 200]),
     ("gravitite", [200, 74, 180]),

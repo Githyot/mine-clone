@@ -76,6 +76,16 @@ const WEAPONS: &[WDef] = &[
     w("ballista_rod", Wk::Sentry, 5.0, 1.0, 40.0, None),
     w("enchanted_sword", Wk::Beam(false), 4.0, 0.5, 30.0, None),
     w("star_saber", Wk::Beam(true), 6.0, 0.6, 40.0, None),
+    // Lote 7: the last bosses' and the pillars' weapons.
+    w("crystal_yoyo", Wk::Yoyo(11.0), 12.0, 0.0, 30.0, None),
+    w("stone_fist", Wk::Flail(0.45), 18.0, 0.4, 28.0, None),
+    w("tide_boomerang", Wk::Boomerang(0.6), 16.0, 0.25, 30.0, Some((CHILLED, 4.0))),
+    w("bubble_rifle", Wk::Gun(3, 0.08), 8.0, 0.35, 60.0, None),
+    w("prism_saber", Wk::Beam(true), 14.0, 0.45, 44.0, None),
+    w("solar_eruption", Wk::Flail(0.5), 30.0, 0.35, 32.0, Some((MOB_BURN, 6.0))),
+    w("vortex_beater", Wk::Gun(1, 0.03), 9.0, 0.09, 90.0, None),
+    w("nebula_blade", Wk::Beam(false), 18.0, 0.35, 40.0, None),
+    w("stardust_yoyo", Wk::Yoyo(14.0), 22.0, 0.0, 34.0, None),
 ];
 
 /// How much harder an ore bow hits than the plain bow (None: not one of them).

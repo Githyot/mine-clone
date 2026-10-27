@@ -588,6 +588,27 @@ VILA: MORADORES, FELICIDADE, PILONES, MASCATE E FESTA (lado Terraria, lote 6)
   Bichos da vila: a Zoóloga vende Licença de Gato, de Cachorro e de Coelho. O bicho mora na
     casa mais perto.
 
+CHEFES DO FIM (lado Terraria, lote 7)
+  Rainha Geleia: use um Cristal Gelatinoso no Prisma, no modo difícil. Primeiro ela pula e
+    joga cristais, depois abre as asas, voa e mergulha em você.
+  Ídolo Escamado: o Templo Escamado fica enterrado na selva (desça pela escada). Use o
+    Núcleo do Ídolo no altar do meio, depois da Rainha das Vinhas. Ele soca de perto e
+    atira raios dos olhos. No fim, a cabeça se solta e voa.
+  Duque das Marés: use a Isca das Marés no mar ou na praia. Ele cospe bolhas e avança.
+  Imperatriz Prismática: use a Lâmpada Prismática no Prisma, à noite. Ela solta espirais de
+    arco-íris, faz chover lanças e avança. De dia ela fica muito mais forte.
+  Profeta Lunar: use a Tábua Lunar na superfície, depois do Ídolo. Quando ele cai, nascem 4
+    pilares ao seu redor. Derrote 40 criaturas perto de um pilar para tirar o escudo dele,
+    depois derrube o pilar. Quando o último cai, o Arauto Celeste desce.
+  Ectoplasma: espíritos aparecem nas profundezas (abaixo de -40) depois da Rainha das Vinhas.
+  Barras novas: Espectral (verdita + ectoplasma) e Esporita (verdita + 2 cogumelos brilhantes).
+  Armaduras do fim: Espectral, Esporita, Escamada, Tartaruga, Solar, Vórtice, Nebulosa e
+    Pó Estelar (as 4 últimas com fragmentos + barras de lumita).
+  Armas: Ioiô de Cristal, Punho de Pedra, Cajado da Pedra do Sol, Bumerangue das Marés,
+    Rifle de Bolhas, Sabre Prismático, Erupção Solar, Batedor do Vórtice, Lâmina da
+    Nebulosa, Ioiô de Pó Estelar. Asas: de Cristal, das Marés, da Imperatriz.
+  Os 4 fragmentos juntos também fazem o Selo Celeste.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

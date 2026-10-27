@@ -126,6 +126,7 @@ impl Game {
     /// Mobs killed this frame: jellies count for the jelly rain.
     pub(crate) fn tr_deaths(&mut self, deaths: &[(usize, Vec3)]) {
         self.tr_soul_drops(deaths);
+        self.endgame_deaths(deaths);
         let Some(rain) = self.t5.tr.ev.rain.as_mut() else { return };
         for &(def, _) in deaths {
             if self.mobs.reg.defs[def].name.starts_with("jelly_") {
@@ -514,6 +515,12 @@ impl Game {
         let k = self.t5.tr.ev.storm_k;
         if k > 0.02 {
             self.ui.rect(0.0, 0.0, w, h, [200, 160, 100, (k * 80.0) as u8]);
+        }
+        if let Some(line) = self.pillar_status() {
+            let s = self.ui.scale;
+            let t = format!("Pilares: {line}");
+            let tw = self.ui.text_width(&t, s);
+            self.ui.text((w - tw) / 2.0, h - 70.0 * s, &t, [200, 210, 255, 255]);
         }
         let Some((killed, need)) = self.t5.tr.ev.rain.as_ref().map(|r| (r.killed, r.need)) else { return };
         let s = self.ui.scale;

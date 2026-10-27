@@ -36,6 +36,9 @@ struct Saved {
     pylons: Vec<(String, (i32, i32, i32))>,
     #[serde(default)]
     animals: Vec<(String, (f32, f32, f32))>,
+    /// The celestial pillars (tr_endgame.rs).
+    #[serde(default)]
+    pillars: Vec<crate::tr_endgame::Pillar>,
 }
 
 #[derive(Default)]
@@ -46,6 +49,7 @@ pub struct Tr {
     pub(crate) wep: crate::tr_weapons::Weapons,
     pub(crate) pets: crate::tr_pets::Pets,
     pub(crate) town: crate::tr_town::TownLife,
+    pub(crate) end: crate::tr_endgame::Endgame,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -63,6 +67,7 @@ impl Tr {
         tr.lands.orbs = s.orbs;
         tr.pets.out = s.pets;
         tr.town.pylons = s.pylons.into_iter().map(|(k, (x, y, z))| (k, glam::IVec3::new(x, y, z))).collect();
+        tr.end.pillars = s.pillars;
         tr.town.animals = s.animals.into_iter().map(|(k, (x, y, z))| (k, Vec3::new(x, y, z))).collect();
         tr
     }
@@ -76,6 +81,7 @@ impl Tr {
             orbs: self.lands.orbs,
             pets: self.pets.out.clone(),
             pylons: self.town.pylons.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
+            pillars: self.end.pillars.clone(),
             animals: self.town.animals.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
@@ -97,6 +103,7 @@ impl Game {
         self.update_tr_weapons(dt, use_held);
         self.update_tr_pets(dt);
         self.update_tr_town(dt);
+        self.update_endgame(dt);
     }
 
     /// Right click with an item of this file; true when it did something.
@@ -108,6 +115,9 @@ impl Game {
             return Some(r);
         }
         if let Some(r) = self.tr_town_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.endgame_use(name) {
             return Some(r);
         }
         match name {
@@ -139,6 +149,7 @@ impl Game {
     /// What a fallen boss of this file opens.
     pub(crate) fn tr_boss_defeated(&mut self, name: &str) {
         self.tr_event_boss_down();
+        self.endgame_boss_defeated(name);
         if name == "great_eye" {
             // The eye leaves some of the world's evil ore behind (and its seeds, in Terraria).
             let ore = if crate::tr_world::world_evil(self.seed) == crate::tr_world::Land::Ruin { "umbral_ore" } else { "sanguinite_ore" };
@@ -349,6 +360,9 @@ impl Game {
             "weapons" => self.test_tr_weapons(),
             "pets" | "mounts" | "harpies" | "wings" => self.test_tr_pets(scene),
             "town" | "townshop" => self.test_tr_town(scene),
+            "queen2" | "idol" | "duke" | "empress" | "prophet" | "pillars" => {
+                self.test_tr_endgame(scene);
+            }
             s if self.test_tr_event(s) => {}
             _ => log::warn!("unknown MC_TR scene {scene}"),
         }
