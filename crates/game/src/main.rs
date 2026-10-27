@@ -74,12 +74,14 @@ mod tr_world;
 mod glyphs;
 mod hardmode;
 mod hook;
+mod mantle;
 mod fluids;
 mod redstone;
 mod wanderers;
 mod furniture;
 mod gear;
 mod weather;
+mod windmill;
 mod entity;
 mod item_render;
 mod juice;
@@ -716,6 +718,8 @@ struct Game {
     wander: wanderers::Wanderers,
     /// The mod content pack's state (mods/).
     mods: mods::Mods,
+    /// The wind turning windmill sails (windmill.rs).
+    sails: windmill::Sails,
     copper: copper::Copper,
     farm: farm::Farm,
     pots: pots::Pots,
@@ -1099,6 +1103,7 @@ impl Game {
             fx: soundscape::Immersion::new(),
             wander: Default::default(),
             mods: Default::default(),
+            sails: Default::default(),
             copper: copper::Copper::new(&reg_for_fluids),
             farm: farm::Farm::new(&reg_for_fluids),
             pots: pots::Pots::new(&reg_for_fluids),
@@ -1139,7 +1144,8 @@ impl Game {
             show_perf,
             perf: monitor::FpsStats::new(),
             sysmon: monitor::SysMonitor::new(),
-            hide_hud: no_hud,
+            // Test hook for clean pictures: MC_NOHUD=1 also starts with the interface hidden (F1).
+            hide_hud: no_hud || std::env::var("MC_NOHUD").is_ok(),
             toast: None,
             packs,
             textures_name,
@@ -1703,6 +1709,7 @@ impl Game {
         if self.world_open && self.screen != Screen::Loading {
             let shot = self.args.screenshot.is_some();
             self.weather.update(&self.world, eye, dt, shot);
+            self.windmills_update(dt);
             if self.dim != voxel::worldgen::Dim::Overworld {
                 // No weather under the Nether's roof (it carries on at home).
                 self.weather.rain = 0.0;
@@ -1871,6 +1878,10 @@ impl Game {
                 if let Ok(n) = std::env::var("MC_PROGRESS") {
                     // Test hook: chapters before N done, the Guide in front (MC_TALK, MC_JOURNAL, MC_REWARD).
                     self.test_progress(n.parse().unwrap_or(0));
+                }
+                if let Ok(u) = std::env::var("MC_MANTLE") {
+                    // Test hook: caught partway up a two-block ledge (MC_MANTLE_SHELF: a shelf).
+                    self.test_mantle(u.parse().unwrap_or(0.4));
                 }
                 if std::env::var("MC_HOUSE").is_ok() {
                     // Test hook: two small houses in front; people move in; MC_SHOP opens a shop.
@@ -2157,7 +2168,18 @@ impl Game {
                 && !self.elytra_step(input.jump, dt)
             {
                 self.pre_step(input.sneak);
+                let was_mantling = self.body.mantle.is_some();
+                if self.body.try_mantle(&self.world, &input) {
+                    self.mantle_started();
+                }
                 self.body.step(&self.world, &input, dt);
+                if was_mantling && self.body.mantle.is_none() {
+                    // Up on the ledge: the feet come down on it.
+                    let below = self.world.block_or_air((self.body.pos - Vec3::Y * 0.2).floor().as_ivec3());
+                    if below != AIR {
+                        self.sfx(Sfx::Step(Material::of(&self.reg.get(below).name)));
+                    }
+                }
                 self.post_step(dt);
             }
         } else {
@@ -2726,6 +2748,23 @@ impl Game {
             hurt: self.survival && self.hurt_age < 0.3,
             sitting: self.riding.is_some() || self.seat.is_some() || self.mods.aircraft.pilot.is_some(),
             holding: self.held_stack().is_some(),
+            mantle: self.body.mantle.map_or(0.0, |m| m.progress().max(1e-3)),
+            ledge: self.body.mantle.map_or(0.0, |m| m.ledge - self.body.pos.y),
+        }
+    }
+
+    /// The hands caught a ledge: a scrape on the edge's block, and a little hunger.
+    fn mantle_started(&mut self) {
+        let Some(m) = self.body.mantle else { return };
+        let dir = (m.to - m.from) * Vec3::new(1.0, 0.0, 1.0);
+        let edge = Vec3::new(m.from.x, m.ledge - 0.05, m.from.z) + dir.normalize_or_zero() * 0.5;
+        let id = self.world.block_or_air(edge.floor().as_ivec3());
+        if id != AIR {
+            let mat = Material::of(&self.reg.get(id).name);
+            self.sfx(Sfx::Step(mat));
+        }
+        if self.survival {
+            self.surv.exhaustion += 0.2;
         }
     }
 
@@ -3119,7 +3158,7 @@ impl Game {
             Shape::Oriented => {
                 let toward = self.reg.get(id).name == "observer";
                 let k = if toward { 1.0 } else { -1.0 };
-                if self.reg.get(id).name.ends_with("_drawer") {
+                if self.reg.get(id).name.ends_with("_drawer") || self.reg.get(id).name == "windmill_sails" {
                     facing(-f.x, -f.z)
                 } else if f.y * k > 0.75 {
                     4
@@ -4484,6 +4523,7 @@ impl Game {
         items.extend(self.boat_instances(block));
         items.extend(self.wagon_instances(block, rd + 16.0));
         items.extend(self.aircraft_instances(block));
+        items.extend(self.windmill_instances(block, eye, rd + 16.0));
         // The player figure in the inventory, in 3D, turning its head toward the mouse.
         let mut figure_backdrop = None;
         if let (Some((bx, by, bw, bh)), Some(pd)) = (self.surv.figure_box.take(), self.mobs.reg.id("player")) {

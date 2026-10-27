@@ -116,6 +116,12 @@ impl PalettedSection {
         self.non_air
     }
 
+    /// Whether some block for which `f` holds may be here (false means surely not), from the
+    /// palette alone, so a whole section can be skipped without reading its blocks.
+    pub fn may_contain(&self, f: impl Fn(BlockId) -> bool) -> bool {
+        self.bits == 16 || self.palette.iter().any(|&b| f(b))
+    }
+
     #[inline(always)]
     fn raw(&self, i: usize) -> u32 {
         match self.bits {
