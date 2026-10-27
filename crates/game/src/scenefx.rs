@@ -7,8 +7,12 @@
 //!   shimmer as you walk. Casters are the chunk sections within its radius, drawn depth-only with
 //!   the same vertex buffers as the main pass. Fast: 1024² over 48 blocks, one filtered tap.
 //!   Fancy: 2048² over 96 blocks, five taps.
+//!   Mobs and the player cast into the same map (entity.rs draws them depth-only).
 //! - Reflections: the scene (sky, terrain, mobs, clouds) is copied before water is drawn, and the
-//!   water shader walks its reflected ray over that copy and the depth buffer.
+//!   water shader walks its reflected ray over that copy and the depth buffer. With a shader pack
+//!   the copy comes from its HDR texture, without one straight from the screen.
+//! - Hand light shadows: a 32³ grid of solid blocks around the player; the terrain shader walks
+//!   from each lit point toward the torch in the hand and stops at the first solid block.
 
 use glam::{DMat4, DVec3, IVec3, Mat4, Vec3};
 
@@ -18,6 +22,8 @@ pub const SHADOW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float
 const SHADOW_LEVELS: [(u32, f32); 2] = [(1024, 48.0), (2048, 96.0)];
 /// How far behind the camera (toward the light) casters can be.
 const SHADOW_DEPTH: f32 = 192.0;
+/// Side of the solid-block grid around the player for hand light shadows.
+pub const OCCL_SIZE: u32 = 32;
 
 /// Halton (2, 3) points for the TAA jitter, in pixels from the centre.
 const JITTER: [(f32, f32); 8] = [
@@ -40,8 +46,13 @@ pub struct SceneFx {
     /// Shadows on the solid pass (no scene copy) and on the translucent pass (with it).
     pub bg_solid: wgpu::BindGroup,
     pub bg_trans: wgpu::BindGroup,
-    /// Copy of the HDR scene before water is drawn: (texture, view, width, height).
-    copy: Option<(wgpu::Texture, wgpu::TextureView, u32, u32)>,
+    /// Copy of the scene before water is drawn: (texture, view, width, height, format).
+    copy: Option<(wgpu::Texture, wgpu::TextureView, u32, u32, wgpu::TextureFormat)>,
+    /// Solid blocks around the player (1 = blocks light), for hand light shadows.
+    occl: wgpu::Texture,
+    occl_view: wgpu::TextureView,
+    /// Corner of the uploaded grid and when it was built (blocks change, so it is refreshed).
+    occl_built: Option<(IVec3, std::time::Instant)>,
     /// Settings: shadow level 0..2, water reflections.
     pub level: u8,
     pub reflections: bool,
@@ -81,6 +92,7 @@ impl SceneFx {
                 entry(1, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison)),
                 entry(2, tex(wgpu::TextureSampleType::Float { filterable: false })),
                 entry(3, tex(wgpu::TextureSampleType::Depth)),
+                entry(4, wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Uint, view_dimension: wgpu::TextureViewDimension::D3, multisampled: false }),
             ],
         });
         let cmp = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -103,8 +115,19 @@ impl SceneFx {
                 view_formats: &[],
             })
             .create_view(&Default::default());
-        let bg = Self::make_bg(device, &layout, &dummy_depth, &cmp, &dummy_color, &dummy_depth);
-        let bg2 = Self::make_bg(device, &layout, &dummy_depth, &cmp, &dummy_color, &dummy_depth);
+        let occl = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("hand light occluders"),
+            size: wgpu::Extent3d { width: OCCL_SIZE, height: OCCL_SIZE, depth_or_array_layers: OCCL_SIZE },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D3,
+            format: wgpu::TextureFormat::R8Uint,
+            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let occl_view = occl.create_view(&Default::default());
+        let bg = Self::make_bg(device, &layout, &dummy_depth, &cmp, &dummy_color, &dummy_depth, &occl_view);
+        let bg2 = Self::make_bg(device, &layout, &dummy_depth, &cmp, &dummy_color, &dummy_depth, &occl_view);
         SceneFx {
             layout,
             cmp,
@@ -114,6 +137,9 @@ impl SceneFx {
             bg_solid: bg,
             bg_trans: bg2,
             copy: None,
+            occl,
+            occl_view,
+            occl_built: None,
             level: 0,
             reflections: false,
             frame: 0,
@@ -122,7 +148,7 @@ impl SceneFx {
         }
     }
 
-    fn make_bg(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, shadow: &wgpu::TextureView, cmp: &wgpu::Sampler, color: &wgpu::TextureView, depth: &wgpu::TextureView) -> wgpu::BindGroup {
+    fn make_bg(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, shadow: &wgpu::TextureView, cmp: &wgpu::Sampler, color: &wgpu::TextureView, depth: &wgpu::TextureView, occl: &wgpu::TextureView) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("scene fx"),
             layout,
@@ -131,13 +157,14 @@ impl SceneFx {
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(cmp) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(color) },
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(depth) },
+                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(occl) },
             ],
         })
     }
 
-    /// Bring textures and bind groups in line with the settings and the screen. `hdr`: a shader
-    /// pack is drawing the scene into its HDR texture (reflections need it).
-    pub fn prepare(&mut self, device: &wgpu::Device, hdr: bool, w: u32, h: u32, depth: &wgpu::TextureView, depth_changed: bool) {
+    /// Bring textures and bind groups in line with the settings and the screen. `scene`: the
+    /// format of the texture the scene is drawn into, when it can be copied (reflections need it).
+    pub fn prepare(&mut self, device: &wgpu::Device, scene: Option<wgpu::TextureFormat>, w: u32, h: u32, depth: &wgpu::TextureView, depth_changed: bool) {
         let want_shadow = (self.level > 0).then(|| SHADOW_LEVELS[(self.level as usize - 1).min(1)]);
         let have_shadow = self.shadow.as_ref().map(|s| (s.1, s.2));
         let mut dirty = depth_changed;
@@ -145,31 +172,31 @@ impl SceneFx {
             self.shadow = want_shadow.map(|(size, r)| (depth_view(device, "shadow map", size), size, r));
             dirty = true;
         }
-        let want_copy = (self.reflections && hdr).then_some((w, h));
-        let have_copy = self.copy.as_ref().map(|c| (c.2, c.3));
+        let want_copy = scene.filter(|_| self.reflections).map(|f| (w, h, f));
+        let have_copy = self.copy.as_ref().map(|c| (c.2, c.3, c.4));
         if want_copy != have_copy {
-            self.copy = want_copy.map(|(w, h)| {
+            self.copy = want_copy.map(|(w, h, format)| {
                 let t = device.create_texture(&wgpu::TextureDescriptor {
                     label: Some("scene copy"),
                     size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
-                    format: crate::post::HDR,
+                    format,
                     usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
                     view_formats: &[],
                 });
                 let v = t.create_view(&Default::default());
-                (t, v, w, h)
+                (t, v, w, h, format)
             });
             dirty = true;
         }
         if dirty {
             let sh = self.shadow.as_ref().map(|s| &s.0).unwrap_or(&self.dummy_depth);
-            self.bg_solid = Self::make_bg(device, &self.layout, sh, &self.cmp, &self.dummy_color, &self.dummy_depth);
+            self.bg_solid = Self::make_bg(device, &self.layout, sh, &self.cmp, &self.dummy_color, &self.dummy_depth, &self.occl_view);
             self.bg_trans = match &self.copy {
-                Some((_, v, ..)) => Self::make_bg(device, &self.layout, sh, &self.cmp, v, depth),
-                None => Self::make_bg(device, &self.layout, sh, &self.cmp, &self.dummy_color, &self.dummy_depth),
+                Some((_, v, ..)) => Self::make_bg(device, &self.layout, sh, &self.cmp, v, depth, &self.occl_view),
+                None => Self::make_bg(device, &self.layout, sh, &self.cmp, &self.dummy_color, &self.dummy_depth, &self.occl_view),
             };
         }
     }
@@ -181,6 +208,23 @@ impl SceneFx {
 
     pub fn copy_texture(&self) -> Option<&wgpu::Texture> {
         self.copy.as_ref().map(|c| &c.0)
+    }
+
+    /// Whether the solid-block grid with this corner should be (re)built: it moved, or a quarter
+    /// of a second passed (blocks may have been placed or broken).
+    pub fn occluders_stale(&self, corner: IVec3) -> bool {
+        !matches!(self.occl_built, Some((c, t)) if c == corner && t.elapsed().as_secs_f32() < 0.25)
+    }
+
+    /// Upload the solid-block grid for hand light shadows (OCCL_SIZE³ bytes, x fastest, then y).
+    pub fn upload_occluders(&mut self, queue: &wgpu::Queue, corner: IVec3, data: &[u8]) {
+        self.occl_built = Some((corner, std::time::Instant::now()));
+        queue.write_texture(
+            self.occl.as_image_copy(),
+            data,
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(OCCL_SIZE), rows_per_image: Some(OCCL_SIZE) },
+            wgpu::Extent3d { width: OCCL_SIZE, height: OCCL_SIZE, depth_or_array_layers: OCCL_SIZE },
+        );
     }
 
     pub fn shadow_view(&self) -> Option<&wgpu::TextureView> {
@@ -245,3 +289,4 @@ impl SceneFx {
         out
     }
 }
+

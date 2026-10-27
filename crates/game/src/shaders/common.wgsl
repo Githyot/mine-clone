@@ -32,6 +32,9 @@ struct Globals {
     extra: vec4<f32>,
     // x, y: screen size; z: near plane; w: far plane.
     screen: vec4<f32>,
+    // Hand light shadows: xyz corner of the solid-block grid relative to the camera's block,
+    // w: 1 when on.
+    occl: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;

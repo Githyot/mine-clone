@@ -106,9 +106,10 @@ pub struct Settings {
     /// Off by default: on slow (software) renderers it costs a fifth or more of the frame rate
     /// when looking at the sky.
     pub layered_clouds: bool,
-    /// Sun and moon shadows (Sildur's idea): 0 off, 1 fast (small map, near), 2 fancy.
+    /// Sun and moon shadows (Sildur's idea): 0 off, 1 fast (small map, near), 2 fancy. Mobs and
+    /// the player cast them too, and so do blocks in the light of a torch held in the hand.
     pub shadows: u8,
-    /// Water mirrors the world around it (needs a shader pack: it reads the drawn scene).
+    /// Rippling water that mirrors the world around it (it reads the drawn scene).
     pub water_reflections: bool,
     /// Temporal anti-aliasing: smooth edges from jittered frames (needs a shader pack).
     pub taa: bool,
