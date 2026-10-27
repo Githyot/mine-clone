@@ -5,15 +5,21 @@
 //! moving block is left out of the chunk mesh (`World::set_hidden`) and drawn by the item
 //! renderer as a few boxes turning around a hinge. It comes back into the mesh as the swing
 //! ends, and the boxes stay a moment longer so there is no gap while that mesh is built.
+//!
+//! An open chest is hollow: a floor and four thin walls whose inner faces darken towards the
+//! bottom, a lid with a dark underside, and the first few stacks it holds lying on its floor
+//! (from the same container copy the screen shows, so a guest sees what the host sends). A
+//! chest another player has open lifts its lid too (`PlayerState::chest`).
 
 use std::f32::consts::FRAC_PI_2;
 
 use glam::{IVec3, Vec3};
 use voxel::block::Shape;
+use voxel::item::Look;
 use voxel::BlockId;
 
 use crate::item_render::GpuItem;
-use crate::survival::Open;
+use crate::survival::{Container, Open};
 use crate::{Game, Screen};
 
 /// Before moving: the hidden mesh catches up while the boxes cover the still block.
@@ -37,8 +43,8 @@ pub(crate) struct Swing {
 #[derive(Default)]
 pub(crate) struct Swings {
     list: Vec<Swing>,
-    /// The chest whose lid is up.
-    chest: Option<IVec3>,
+    /// The chests whose lid is up: ours and other players'.
+    chests: Vec<IVec3>,
     /// Test hook MC_SWING=k: everything near the player swings once and stops k of the way.
     freeze: Option<f32>,
     tested: bool,
@@ -71,26 +77,50 @@ impl Game {
             self.world.set_hidden(pos, true);
             self.swings.list.push(Swing { pos, id, start: self.now, lid: None, shown: false });
         }
-        // The chest being looked into lifts its lid; the last one closes.
-        let chest = match self.surv.open {
-            Open::Chest(p) if self.screen == Screen::Inventory && self.reg.get(self.world.block_or_air(p)).name == "chest" && !self.settings.reduce_motion => Some(p),
-            _ => None,
-        };
-        if chest != self.swings.chest {
-            if let Some(old) = self.swings.chest {
+        // The chests being looked into lift their lids; the others close.
+        let mut chests = Vec::new();
+        if !self.settings.reduce_motion {
+            if let Open::Chest(p) = self.surv.open {
+                if self.screen == Screen::Inventory {
+                    chests.push(p);
+                }
+            }
+            let dim = self.dim.as_u8();
+            for r in self.net.remotes.values() {
+                if let Some(p) = r.state.chest {
+                    if r.state.dim == dim {
+                        chests.push(IVec3::from(p));
+                    }
+                }
+            }
+            chests.retain(|p| self.reg.get(self.world.block_or_air(*p)).name == "chest");
+            chests.sort_by_key(|p| p.to_array());
+            chests.dedup();
+        }
+        if chests != self.swings.chests {
+            for old in std::mem::take(&mut self.swings.chests) {
+                if chests.contains(&old) {
+                    continue;
+                }
                 // Close from wherever the lid got to.
                 let up = self.swings.list.iter().find(|s| s.pos == old && s.lid == Some(true)).map(|s| smooth((self.now - s.start - HOLD) / LID_MOVE)).unwrap_or(0.0);
                 self.swings.list.retain(|s| s.pos != old);
                 let id = self.world.block_or_air(old);
                 self.swings.list.push(Swing { pos: old, id, start: self.now - HOLD - (1.0 - up) * LID_MOVE, lid: Some(false), shown: false });
             }
-            if let Some(p) = chest {
+            for &p in &chests {
+                if self.swings.list.iter().any(|s| s.pos == p && s.lid == Some(true)) {
+                    continue;
+                }
+                // Lift from wherever a closing lid got to.
+                let down = self.swings.list.iter().find(|s| s.pos == p && s.lid == Some(false)).map(|s| 1.0 - smooth((self.now - s.start - HOLD) / LID_MOVE)).unwrap_or(0.0);
                 self.swings.list.retain(|s| s.pos != p);
                 self.world.set_hidden(p, true);
                 let id = self.world.block_or_air(p);
-                self.swings.list.push(Swing { pos: p, id, start: self.now, lid: Some(true), shown: false });
+                let start = if down > 0.0 { self.now - HOLD - down * LID_MOVE } else { self.now };
+                self.swings.list.push(Swing { pos: p, id, start, lid: Some(true), shown: false });
             }
-            self.swings.chest = chest;
+            self.swings.chests = chests;
         }
         if self.swings.freeze.is_some() {
             return;
@@ -125,9 +155,11 @@ impl Game {
                 Some(up) => {
                     let k = smooth(t / LID_MOVE);
                     let a = if up { k } else { 1.0 - k } * LID_ANGLE;
-                    let body = Part { b: [0.0, 0.0, 0.0, 16.0, 10.0, 16.0], pivot: Vec3::splat(8.0), yaw: 0.0, pitch: 0.0 };
-                    let lid = Part { b: [0.0, 10.0, 0.0, 16.0, 16.0, 16.0], pivot: Vec3::new(8.0, 10.0, 0.0), yaw: 0.0, pitch: -a };
-                    (0, vec![body, lid])
+                    // Hollow: a floor and four walls one pixel thick, then the lid.
+                    let still = |b: [f32; 6]| Part { b, pivot: Vec3::splat(8.0), yaw: 0.0, pitch: 0.0 };
+                    let mut v: Vec<Part> = CHEST_BODY.iter().map(|&b| still(b)).collect();
+                    v.push(Part { b: [0.0, 10.0, 0.0, 16.0, 16.0, 16.0], pivot: Vec3::new(8.0, 10.0, 0.0), yaw: 0.0, pitch: -a });
+                    (0, v)
                 }
                 None => {
                     let k = smooth(t / MOVE);
@@ -152,20 +184,97 @@ impl Game {
                     pos: [at.x, at.y, at.z, 1.0],
                     info: [turn + p.yaw, 0.0, sky, blk],
                     layers: [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32, 0.0],
-                    rot: [p.pitch, 0.0, facing as f32, 0.0],
+                    // rot.w: a chest part, whose inner faces the shader darkens.
+                    rot: [p.pitch, 0.0, facing as f32, if s.lid.is_some() { 1.0 } else { 0.0 }],
                     bmin: [p.b[0] / 16.0, p.b[1] / 16.0, p.b[2] / 16.0, 0.0],
                     bmax: [p.b[3] / 16.0, p.b[4] / 16.0, p.b[5] / 16.0, front],
                     piv: [piv.x, piv.y, piv.z, 1.0],
                 });
             }
+            if s.lid.is_some() {
+                self.chest_contents(s.pos, centre, sky, blk, &mut out);
+            }
         }
         out
     }
+
+    /// The first stacks of an open chest, lying on its floor in the dark: flat items laid
+    /// down, blocks as little cubes, a fuller stack as a small pile.
+    fn chest_contents(&self, pos: IVec3, centre: Vec3, sky: f32, blk: f32, out: &mut Vec<GpuItem>) {
+        let Some(Container::Chest(inv)) = self.surv.containers.get(&pos) else {
+            return;
+        };
+        // Down in the box, away from the open top.
+        let (sky, blk) = (sky * 0.7, blk * 0.75);
+        let floor = centre.y - 0.5 + 1.0 / 16.0;
+        let mut n = 0;
+        for st in inv.slots.iter().flatten() {
+            if n == CHEST_SPOTS.len() {
+                break;
+            }
+            let it = self.items.get(st.item);
+            let (flat, layers, size) = match it.look {
+                Look::Block(b) => {
+                    let bl = self.reg.get(b);
+                    if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail) {
+                        (true, [bl.faces[0] as f32; 3], 0.34)
+                    } else {
+                        (false, [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32], 0.2)
+                    }
+                }
+                Look::Sprite(l) => (true, [(self.item_base + l) as f32; 3], 0.34),
+            };
+            let (sx, sz, yaw) = CHEST_SPOTS[n];
+            // Each chest lays its things out a little differently.
+            let h = (pos.x.wrapping_mul(73_856_093) ^ pos.y.wrapping_mul(19_349_663) ^ pos.z.wrapping_mul(83_492_791)) as u32;
+            let yaw = yaw + ((h >> (n * 3)) & 7) as f32 * 0.21;
+            let copies = if st.count > 16 { 3 } else if st.count > 1 { 2 } else { 1 };
+            for k in 0..copies {
+                let kf = k as f32;
+                // Flat things pile up; blocks sit side by side, the third on top of the two.
+                let (lift, pitch) = if flat { (0.012 + kf * 0.018, -FRAC_PI_2) } else { (size * if k == 2 { 1.5 } else { 0.5 }, 0.0) };
+                let tw = if flat { yaw + kf * 0.5 } else { yaw };
+                let off = if flat {
+                    Vec3::new(tw.cos(), 0.0, tw.sin()) * kf * 0.03
+                } else {
+                    Vec3::new(yaw.cos(), 0.0, yaw.sin()) * size * [0.0, 1.05, 0.5][k]
+                };
+                let p = Vec3::new(centre.x - 0.5 + sx / 16.0 + off.x, floor + lift, centre.z - 0.5 + sz / 16.0 + off.z);
+                out.push(GpuItem {
+                    pos: [p.x, p.y, p.z, size],
+                    info: [tw, if flat { 1.0 } else { 0.0 }, sky, blk],
+                    layers: [layers[0], layers[1], layers[2], 0.0],
+                    rot: [pitch, 0.0, 0.0, 0.0],
+                    ..bytemuck::Zeroable::zeroed()
+                });
+            }
+            n += 1;
+        }
+    }
 }
+
+/// The floor and walls of an open chest (facing north, the front at +z).
+const CHEST_BODY: [[f32; 6]; 5] = [
+    [1.0, 0.0, 1.0, 15.0, 1.0, 15.0],
+    [0.0, 0.0, 0.0, 1.0, 10.0, 16.0],
+    [15.0, 0.0, 0.0, 16.0, 10.0, 16.0],
+    [1.0, 0.0, 0.0, 15.0, 10.0, 1.0],
+    [1.0, 0.0, 15.0, 15.0, 10.0, 16.0],
+];
+
+/// Where the shown stacks lie on the floor (pixels from the north-west corner) and how they
+/// are turned: six spots, back ones first, where a player standing at the front sees the floor.
+const CHEST_SPOTS: [(f32, f32, f32); 6] = [(7.5, 4.5, 0.9), (3.8, 5.0, 2.6), (12.0, 4.8, 0.1), (4.5, 10.5, 0.3), (11.2, 10.8, 1.9), (8.0, 8.0, 2.2)];
+
 
 impl Game {
     fn swing_test_hook(&mut self) {
         if self.swings.tested || !self.world_open || self.screen != Screen::Playing || self.now < 1.0 {
+            return;
+        }
+        if let Ok(v) = std::env::var("MC_CHEST") {
+            self.swings.tested = true;
+            self.chest_test(&v);
             return;
         }
         let Some(k) = std::env::var("MC_SWING").ok().and_then(|v| v.parse::<f32>().ok()) else {
@@ -216,6 +325,33 @@ impl Game {
             self.swings.list.push(Swing { pos, id, start: self.now, lid: None, shown: false });
         }
         self.swings.freeze = Some(k);
+    }
+}
+
+impl Game {
+    /// Test hook MC_CHEST=items: a chest on the ground a little ahead holding those items
+    /// (comma-separated names, "name*count" for a stack), its lid held open.
+    fn chest_test(&mut self, list: &str) {
+        let f = self.forward();
+        let ahead = self.body.pos + Vec3::new(f.x, 0.0, f.z).normalize_or_zero() * 1.5;
+        let mut p = ahead.floor().as_ivec3();
+        while p.y > 0 && !self.reg.get(self.world.block_or_air(p - IVec3::Y)).solid {
+            p.y -= 1;
+        }
+        let chest = self.reg.id_or_air("chest");
+        self.world.set_block(p, chest);
+        let mut inv = voxel::item::Inventory::new(27);
+        for (i, e) in list.split(',').filter(|e| !e.is_empty()).enumerate() {
+            let (name, n) = e.split_once('*').map(|(a, b)| (a, b.parse().unwrap_or(1))).unwrap_or((e, 1));
+            if let (Some(id), Some(slot)) = (self.items.id(name.trim()), inv.slots.get_mut(i)) {
+                *slot = Some(voxel::item::ItemStack::new(id, n));
+            }
+        }
+        self.surv.containers.insert(p, Container::Chest(inv));
+        self.world.set_hidden(p, true);
+        self.swings.list.push(Swing { pos: p, id: chest, start: self.now, lid: Some(true), shown: false });
+        self.swings.freeze = Some(1.0);
+        self.hide_hud = true;
     }
 }
 
