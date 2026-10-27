@@ -67,6 +67,7 @@ mod tr_fishing;
 mod tr_invasions;
 mod tr_utility;
 mod tr_modes;
+mod tr_style;
 mod tr_weapons;
 mod tr_world;
 mod glyphs;

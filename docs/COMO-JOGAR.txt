@@ -663,6 +663,17 @@ DIFICULDADE DO MUNDO, SACOLAS E BESTIÁRIO (lado Terraria, lote 10)
   Bestiário (livro + olho de aranha + osso): conta cada criatura que você derrota. Ao achar
     25%, 50%, 75% e 100% delas você ganha um presente.
 
+ROUPAS, TINTA E CAIXA DE MÚSICA (lado Terraria, lote 11)
+  Roupas de vaidade (lã colorida + linha): Pirata, Mago, Gala, Explorador, Marinheiro,
+    Patrulheiro, Real e Sombras, cada uma com chapéu, casaco, calças e botas. Clique com o
+    direito para vestir por cima da armadura: muda só a aparência, a armadura continua
+    protegendo. O Espelho de Vaidade tira tudo.
+  Tinta: Pincel (um bloco), Rolo de Pintura (3x3) e Raspador (tira a cor). Usa o primeiro
+    corante da barra; um corante pinta 8 blocos. Pegam tinta: lã, tapete, concreto,
+    terracota e vidro.
+  Caixa de Música (tábuas + bloco de notas + ouro): clique nela enquanto uma música toca
+    para gravar. Depois o clique toca a música em repetição ou para.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

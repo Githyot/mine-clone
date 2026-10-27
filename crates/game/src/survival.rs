@@ -1005,6 +1005,7 @@ impl Game {
                     "reforge_table" => return self.t5_use_block("reforge_table"),
                     "scale_altar" => return self.use_scale_altar(hit.block),
                     "piggy_bank" => return self.open_bank(0),
+                    "music_box" => return self.use_music_box(hit.block),
                     "safe" => return self.open_bank(1),
                     n if n.starts_with("pylon_") => {
                         let kind = n.trim_start_matches("pylon_").to_string();
@@ -2644,7 +2645,7 @@ impl Game {
     pub(crate) fn armor_instances(&self, bones: &crate::entity::Bones) -> Vec<(usize, crate::entity::Bones)> {
         let mut out = Vec::new();
         for piece in 0..4 {
-            let Some(st) = self.surv.armor[piece] else { continue };
+            let Some(st) = self.shown_armor(piece) else { continue };
             if let Some(mesh) = self.entities.armor_mesh(&self.items.get(st.item).name, piece) {
                 out.push((mesh, *bones));
                 // Smithing trims show as a coloured pattern over the piece.

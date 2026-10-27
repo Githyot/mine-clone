@@ -390,6 +390,20 @@ impl Audio {
         }
     }
 
+    /// A music box (tr_style.rs): the song with this title, on the record's sink.
+    pub fn play_title_on_disc(&mut self, title: &str) -> bool {
+        self.disc.stop();
+        let Some(t) = self.tracks.iter().find(|t| t.title == title) else { return false };
+        let ok = match &t.source {
+            TrackSource::Builtin(b) => Decoder::new(Cursor::new(*b)).map(|d| self.disc.append(d)).is_ok(),
+            TrackSource::File(p) => File::open(p).ok().and_then(|f| Decoder::new(BufReader::new(f)).ok()).map(|d| self.disc.append(d)).is_some(),
+        };
+        if ok {
+            self.disc.play();
+        }
+        ok
+    }
+
     pub fn stop_disc(&mut self) {
         self.disc.stop();
     }

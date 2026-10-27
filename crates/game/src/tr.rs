@@ -52,6 +52,11 @@ struct Saved {
     kills: Vec<(String, u32)>,
     #[serde(default)]
     bestiary_rewards: u8,
+    /// Vanity clothes worn and the music boxes' songs (tr_style.rs).
+    #[serde(default)]
+    vanity: Vec<String>,
+    #[serde(default)]
+    music_boxes: Vec<((i32, i32, i32), String)>,
 }
 
 #[derive(Default)]
@@ -67,6 +72,7 @@ pub struct Tr {
     pub(crate) inv: crate::tr_invasions::Invasions,
     pub(crate) util: crate::tr_utility::Utility,
     pub(crate) modes: crate::tr_modes::Modes,
+    pub(crate) style: crate::tr_style::Style,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -75,7 +81,7 @@ pub struct Tr {
 }
 
 impl Tr {
-    pub fn load(dir: &Path) -> Tr {
+    pub fn load(dir: &Path, items: &voxel::item::ItemRegistry) -> Tr {
         let s: Saved = std::fs::read_to_string(dir.join("tr.ron")).ok().and_then(|x| ron::from_str(&x).ok()).unwrap_or_default();
         let mut tr = Tr { eye_nights: s.eye_nights, ..Default::default() };
         tr.ev.craters = s.craters.iter().map(|&(x, y, z)| glam::IVec3::new(x, y, z)).collect();
@@ -90,11 +96,15 @@ impl Tr {
         tr.modes.mode = s.mode.min(2);
         tr.modes.kills = s.kills.into_iter().collect();
         tr.modes.rewards = s.bestiary_rewards;
+        for (k, n) in s.vanity.iter().enumerate().take(4) {
+            tr.style.vanity[k] = items.id(n).map(|id| voxel::item::ItemStack::new(id, 1));
+        }
+        tr.style.boxes = s.music_boxes.into_iter().map(|((x, y, z), t)| (glam::IVec3::new(x, y, z), t)).collect();
         tr.town.animals = s.animals.into_iter().map(|(k, (x, y, z))| (k, Vec3::new(x, y, z))).collect();
         tr
     }
 
-    pub fn save(&self, dir: &Path) {
+    pub fn save(&self, dir: &Path, items: &voxel::item::ItemRegistry) {
         let s = Saved {
             eye_nights: self.eye_nights,
             craters: self.ev.craters.iter().map(|c| (c.x, c.y, c.z)).collect(),
@@ -109,6 +119,8 @@ impl Tr {
             mode: self.modes.mode,
             kills: self.modes.kills.iter().map(|(k, v)| (k.clone(), *v)).collect(),
             bestiary_rewards: self.modes.rewards,
+            vanity: self.style.vanity.iter().map(|v| v.map(|s| items.get(s.item).name.clone()).unwrap_or_default()).collect(),
+            music_boxes: self.style.boxes.iter().map(|(p, t)| ((p.x, p.y, p.z), t.clone())).collect(),
             animals: self.town.animals.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
@@ -135,6 +147,7 @@ impl Game {
         self.update_invasions(dt);
         self.update_tr_utility(dt);
         self.update_tr_modes();
+        self.update_tr_style();
     }
 
     /// Right click with an item of this file; true when it did something.
@@ -161,6 +174,9 @@ impl Game {
             return Some(r);
         }
         if let Some(r) = self.tr_modes_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.tr_style_use(name) {
             return Some(r);
         }
         match name {
@@ -406,6 +422,7 @@ impl Game {
             "town" | "townshop" => self.test_tr_town(scene),
             "stations" | "shimmer" => self.test_tr_utility(scene),
             "relics" | "bestiary" => self.test_tr_modes(scene),
+            "vanity" | "paint" => self.test_tr_style(scene),
             "harvest" | "winter" | "pirates" | "martians" | "crystal" => {
                 self.test_invasion(scene);
             }

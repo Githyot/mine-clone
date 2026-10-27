@@ -99,7 +99,7 @@ pub struct Terraria {
 
 impl Terraria {
     pub fn load(dir: &Path, items: &ItemRegistry) -> Terraria {
-        let mut t = Terraria { loaded: true, tr: crate::tr::Tr::load(dir), ..Default::default() };
+        let mut t = Terraria { loaded: true, tr: crate::tr::Tr::load(dir, items), ..Default::default() };
         let Some(s) = std::fs::read_to_string(dir.join("terraria.ron")).ok().and_then(|x| ron::from_str::<Saved>(&x).ok()) else {
             return t;
         };
@@ -132,7 +132,7 @@ impl Terraria {
     }
 
     pub fn save(&self, dir: &Path, items: &ItemRegistry) {
-        self.tr.save(dir);
+        self.tr.save(dir, items);
         let s = Saved {
             acc: self.acc.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect(),
             learned: self.glyphs.learned.iter().cloned().collect(),

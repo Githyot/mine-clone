@@ -3699,6 +3699,141 @@ SHAPELESS_L10 = [
 ]
 
 
+
+# ==============================================================================================
+# Lote 11: vanity clothes (worn over the armour), the paint brush, roller and scraper (they
+# recolour wool, concrete, terracotta, glass and the like with the dyes), and the music box
+# ==============================================================================================
+
+VANITY_L11 = [
+    ("pirate", "de Pirata", "red_wool", pal("#3a0a0a", "#6a1414", "#9a2a22", "#c44a3a", "#e88a6a")),
+    ("wizard", "de Mago", "purple_wool", pal("#1a0a3a", "#2e1460", "#4a2a8a", "#7a5ab4", "#b49ae0")),
+    ("tuxedo", "de Gala", "black_wool", pal("#0a0a0e", "#16161c", "#24242c", "#3a3a46", "#e8e8f0")),
+    ("explorer", "de Explorador", "brown_wool", pal("#3a2a10", "#5a4420", "#806434", "#a8885a", "#d4bc90")),
+    ("sailor", "de Marinheiro", "blue_wool", pal("#0a1a4a", "#14307a", "#2a4ea8", "#e8eef8", "#ffffff")),
+    ("ranger", "de Patrulheiro", "green_wool", pal("#0e2a10", "#1a4a1c", "#2e6a2e", "#4a8a3a", "#8ab46a")),
+    ("royal", "Real", "yellow_wool", pal("#5a3a08", "#8a5e10", "#c49418", "#f0c840", "#fff0a0")),
+    ("shadow", "das Sombras", "gray_wool", pal("#0e0a14", "#1a1424", "#2a2238", "#40364e", "#6a5a7a")),
+]
+VANITY_PIECES = {"helmet": "Chapéu", "chestplate": "Casaco", "leggings": "Calças", "boots": "Botas"}
+
+BRUSH = [
+    "................",
+    "...........aa...",
+    "..........abba..",
+    ".........abbba..",
+    "........1abba...",
+    ".......121aa....",
+    "......121.......",
+    ".....121........",
+    "....121.........",
+    "...121..........",
+    "..121...........",
+    ".121............",
+    ".11.............",
+    "................",
+    "................",
+    "................",
+]
+ROLLER = [
+    "................",
+    "..aaaaaaaaaa....",
+    ".abbbbbbbbbba...",
+    ".abbbbbbbbbba...",
+    "..aaaaaaaaaa1...",
+    "............1...",
+    "......111111....",
+    "......1.........",
+    "......1.........",
+    ".....121........",
+    ".....121........",
+    ".....121........",
+    ".....121........",
+    ".....111........",
+    "................",
+    "................",
+]
+SCRAPER = [
+    "................",
+    "................",
+    "..aaaaaa........",
+    ".abbbbbba.......",
+    "..aaaaaa1.......",
+    ".......121......",
+    "........121.....",
+    ".........121....",
+    "..........121...",
+    "...........121..",
+    "............11..",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+RAINBOW_P = pal("#c43a3a", "#f0b030", "#3aa0f0")
+
+
+def items_l11():
+    out = []
+    for key, suffix, _, p in VANITY_L11:
+        m = f"vanity_{key}"
+        gi.ARMOR_MATERIALS[m] = p
+        for k in gi.ARMOR_KINDS:
+            out.append((f"{m}_{k}", f"{VANITY_PIECES[k]} {suffix}", gi.armor(m, k), "max_stack: Some(1)"))
+    out += [
+        ("vanity_mirror", "Espelho de Vaidade", icon2(MIRROR, pal("#4a3a5a", "#7a5a9a", "#a88ad0", "#d4b8f0", "#f8e8ff"), GLASS_P), "max_stack: Some(1)"),
+        ("paint_brush", "Pincel", icon2(BRUSH, WOOD, RAINBOW_P), "max_stack: Some(1)"),
+        ("paint_roller", "Rolo de Pintura", icon2(ROLLER, WOOD, RAINBOW_P), "max_stack: Some(1)"),
+        ("paint_scraper", "Raspador de Tinta", icon2(SCRAPER, WOOD, STEEL), "max_stack: Some(1)"),
+    ]
+    return out
+
+
+BLOCKS_L11 = [
+    '(name: "music_box", display_name: Some("Caixa de Música"), hardness: 1.5, tool: Some(Axe), textures: (top: Some("music_box_top"), side: Some("music_box_side"), bottom: Some("music_box_side")))',
+]
+
+
+def blocks_l11():
+    def side(x, y):
+        rim = min(x, y, 15 - x, 15 - y) == 0
+        grille = 4 <= x <= 11 and 4 <= y <= 11 and (x + y) % 2 == 0
+        return 0.15 if rim else (0.1 if grille else 0.5 + 0.12 * (y % 4 == 0))
+
+    def top(x, y):
+        drum = 3 <= y <= 6 and 2 <= x <= 13
+        comb = 9 <= y <= 12 and 3 <= x <= 12 and x % 2 == 1
+        return 0.95 if comb else (0.75 + 0.15 * ((x + y) % 3 == 0) if drum else side(x, y))
+
+    wood = pal("#2a1608", "#4a2a12", "#6a4020", "#8a5a30", "#e0c060")
+    return {"music_box_side": block_noise(130, side, wood), "music_box_top": block_noise(131, top, wood)}
+
+
+def _vanity_recipes():
+    out = []
+    for key, _, wool, _ in VANITY_L11:
+        m = f"vanity_{key}"
+        out += [
+            (["WWW", "W W"], {"W": wool}, f"{m}_helmet", 1),
+            (["W W", "WSW", "WWW"], {"W": wool, "S": "string"}, f"{m}_chestplate", 1),
+            (["WWW", "WSW", "W W"], {"W": wool, "S": "string"}, f"{m}_leggings", 1),
+            (["W W", "WSW"], {"W": wool, "S": "string"}, f"{m}_boots", 1),
+        ]
+    return out
+
+
+SHAPED_L11 = _vanity_recipes() + [
+    (["  W", " S ", "S  "], {"W": "white_wool", "S": "stick"}, "paint_brush", 1),
+    (["WWW", " S ", " S "], {"W": "white_wool", "S": "stick"}, "paint_roller", 1),
+    (["  I", " S ", "S  "], {"I": "iron_ingot", "S": "stick"}, "paint_scraper", 1),
+    (["PPP", "PNP", "PGP"], {"P": "oak_planks", "N": "note_block", "G": "gold_ingot"}, "music_box", 1),
+]
+SHAPELESS_L11 = [
+    (["glass", "gold_ingot", "amethyst"], "vanity_mirror", 1),
+]
+
+
 def write_skins(skins):
     parsed, layers = g.parse_mobs(str(OUT / "mobs.ron"))
     assert set(parsed) == set(skins), sorted(set(parsed) ^ set(skins))
@@ -3715,10 +3850,10 @@ def write_skins(skins):
 
 
 def main():
-    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8() + items_l9() + items_l10()
-    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7 + BLOCKS_L9 + block_defs_l10()
+    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8() + items_l9() + items_l10() + items_l11()
+    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7 + BLOCKS_L9 + block_defs_l10() + BLOCKS_L11
     mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6() + mobs_l7() + mobs_l8()
-    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9 + SHAPED_L10, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9 + SHAPELESS_L10, SMELTING_L2 + SMELTING_L3)
+    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9 + SHAPED_L10 + SHAPED_L11, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9 + SHAPELESS_L10 + SHAPELESS_L11, SMELTING_L2 + SMELTING_L3)
     structures_l3()
     skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6(), **skins_l7(), **skins_l8()})
     pics = []
@@ -3726,7 +3861,7 @@ def main():
         im = gt.to_image(img)
         im.save(os.path.join(gi.ITEM_DIR, name + ".png"))
         pics.append(im)
-    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7(), **blocks_l9(), **blocks_l10()}
+    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7(), **blocks_l9(), **blocks_l10(), **blocks_l11()}
     for name, img in all_blocks.items():
         im = gt.to_image(img)
         im.save(os.path.join(gi.BLOCK_DIR, name + ".png"))
