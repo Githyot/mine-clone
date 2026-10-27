@@ -4,6 +4,12 @@
         (pattern: ["GGG", "GCG", "GGG"], key: {'G': "gel", 'C': "gold_ingot"}, result: "jelly_crown"),
         (pattern: ["G", "S"], key: {'G': "gel", 'S': "stick"}, result: "torch", count: 3),
         (pattern: ["GGG", "GSG", "GGG"], key: {'G': "gel", 'S': "slime_ball"}, result: "jelly_staff"),
+        (pattern: ["III", "I I"], key: {'I': "meteorite_ingot"}, result: "meteor_helmet"),
+        (pattern: ["I I", "III", "III"], key: {'I': "meteorite_ingot"}, result: "meteor_chestplate"),
+        (pattern: ["III", "I I", "I I"], key: {'I': "meteorite_ingot"}, result: "meteor_leggings"),
+        (pattern: ["I I", "I I"], key: {'I': "meteorite_ingot"}, result: "meteor_boots"),
+        (pattern: ["III", "I G"], key: {'I': "meteorite_ingot", 'G': "glowstone_dust"}, result: "meteor_blaster"),
+        (pattern: ["GGG", "GSG", "GGG"], key: {'G': "gold_ingot", 'S': "soul_of_sight"}, result: "solar_tablet"),
     ],
     shapeless: [
         (ingredients: ["lens", "lens", "lens", "lens", "lens", "lens", "spider_eye"], result: "eye_lure"),
@@ -13,5 +19,10 @@
         (ingredients: ["honeycomb", "honeycomb", "honeycomb", "honeycomb"], result: "hive_block", count: 2),
         (ingredients: ["beeswax", "beeswax", "string"], result: "candle", count: 2),
         (ingredients: ["gel", "gel", "gel", "lens"], result: "jelly_hook"),
+        (ingredients: ["fallen_star", "fallen_star", "fallen_star", "fallen_star", "fallen_star"], result: "mana_crystal"),
+        (ingredients: ["fallen_star", "glass_bottle"], result: "lesser_mana_potion"),
+    ],
+    smelting: [
+        (input: "meteorite_ore", result: "meteorite_ingot", xp: 1.0),
     ],
 )

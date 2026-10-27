@@ -59,6 +59,7 @@ mod affixes;
 mod boss_ai;
 mod tr;
 mod tr_bosses;
+mod tr_events;
 mod glyphs;
 mod hardmode;
 mod hook;
@@ -1947,7 +1948,7 @@ impl Game {
         let menus_stop = !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Keys | Screen::Shaders);
         if self.world_open && sim && self.screen != Screen::Loading && !menus_stop {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
-            let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
+            let daylight = self.tr_daylight((a.sin() * 2.2 + 0.45).clamp(0.0, 1.0));
             let creative = !self.survival || self.screen == Screen::Dead || self.has_effect(effects::INVISIBILITY);
             if self.screen == Screen::Playing && self.dim == voxel::worldgen::Dim::Overworld {
                 self.update_wanderers(if self.args.screenshot.is_some() { 0.0 } else { dt }, daylight);
@@ -1986,6 +1987,7 @@ impl Game {
                 }
             }
             self.progress_deaths(&out.deaths);
+            self.tr_deaths(&out.deaths);
             // Mobs a friend finished off drop their loot for that friend.
             let deaths = self.net_kill_credit(&out.deaths);
             if self.survival {
@@ -3371,7 +3373,8 @@ impl Game {
                 *v = (*v + (grey - *v) * (gloom * 1.8).min(1.0)) * (1.0 - gloom * 0.85) + flash * 0.5;
             }
         }
-        let daylight = daylight * (1.0 - gloom) + flash * 0.6;
+        let mut daylight = daylight * (1.0 - gloom) + flash * 0.6;
+        self.tr_sky(&mut top, &mut horizon, &mut daylight);
         (top, horizon, daylight.clamp(0.16, 1.0), sun)
     }
 

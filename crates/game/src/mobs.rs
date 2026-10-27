@@ -23,6 +23,8 @@ pub struct Mobs {
     pub arrows: Vec<Arrow>,
     /// Peaceful difficulty: no monsters at all.
     pub peaceful: bool,
+    /// A calm night (tr_events.rs): no monsters spawn on the surface, the ones there stay.
+    pub calm: bool,
     /// Blocks each mob may spawn on (from `MobDef::ground`), resolved on first use.
     ground: Vec<Vec<BlockId>>,
     /// Multiplayer: the other players in this dimension (where, creative), so monsters hunt
@@ -95,7 +97,7 @@ impl Mobs {
     }
 
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, arrows: Vec::new(), ground: Vec::new(), others: Vec::new() }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, calm: false, arrows: Vec::new(), ground: Vec::new(), others: Vec::new() }
     }
 
     fn next_rand(&mut self) -> u64 {
@@ -178,7 +180,7 @@ impl Mobs {
                         && match d.spawn {
                             SpawnRule::Grass => animals && !water && self.ground[*i].contains(&below),
                             SpawnRule::Water => animals && water,
-                            SpawnRule::Dark => dark && !water && hostile < MAX_HOSTILE && !self.peaceful && (self.reg.defs[*i].ground.is_empty() || self.ground[*i].contains(&below)),
+                            SpawnRule::Dark => dark && !water && hostile < MAX_HOSTILE && !self.peaceful && !self.calm && (self.reg.defs[*i].ground.is_empty() || self.ground[*i].contains(&below)),
                             SpawnRule::Never => false,
                         }
                 })

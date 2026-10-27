@@ -18,11 +18,15 @@ struct Saved {
     /// Nights the Great Eye already came by itself.
     #[serde(default)]
     eye_nights: u32,
+    /// Meteor craters (tr_events.rs).
+    #[serde(default)]
+    craters: Vec<(i32, i32, i32)>,
 }
 
 #[derive(Default)]
 pub struct Tr {
     pub(crate) fight: crate::tr_bosses::Fight,
+    pub(crate) ev: crate::tr_events::Events,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -33,11 +37,13 @@ pub struct Tr {
 impl Tr {
     pub fn load(dir: &Path) -> Tr {
         let s: Saved = std::fs::read_to_string(dir.join("tr.ron")).ok().and_then(|x| ron::from_str(&x).ok()).unwrap_or_default();
-        Tr { eye_nights: s.eye_nights, ..Default::default() }
+        let mut tr = Tr { eye_nights: s.eye_nights, ..Default::default() };
+        tr.ev.craters = s.craters.iter().map(|&(x, y, z)| glam::IVec3::new(x, y, z)).collect();
+        tr
     }
 
     pub fn save(&self, dir: &Path) {
-        let s = Saved { eye_nights: self.eye_nights };
+        let s = Saved { eye_nights: self.eye_nights, craters: self.ev.craters.iter().map(|c| (c.x, c.y, c.z)).collect() };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
             if let Err(e) = std::fs::write(dir.join("tr.ron"), text) {
@@ -52,10 +58,14 @@ impl Game {
     pub(crate) fn update_tr(&mut self, dt: f32) {
         self.update_tr_fight(dt);
         self.great_eye_nights(dt);
+        self.update_tr_events(dt);
     }
 
     /// Right click with an item of this file; true when it did something.
     pub(crate) fn tr_use(&mut self, name: &str) -> Option<bool> {
+        if name == "solar_tablet" {
+            return Some(self.use_solar_tablet());
+        }
         self.tr_summon(name)
     }
 
@@ -72,6 +82,7 @@ impl Game {
 
     /// What a fallen boss of this file opens.
     pub(crate) fn tr_boss_defeated(&mut self, name: &str) {
+        self.tr_event_boss_down();
         let text = match name {
             "king_jelly" => "As geleias se acalmam... por enquanto.",
             "great_eye" => "Uma sensação estranha passa por você.",
@@ -194,6 +205,32 @@ impl Game {
                 }
                 self.args.show_inventory = true;
             }
+            "items2" => {
+                self.survival = true;
+                let names = [
+                    "meteorite_ore", "meteorite_ingot", "meteor_helmet", "meteor_chestplate", "meteor_leggings", "meteor_boots", "meteor_blaster", "fallen_star", "solar_tablet", "dark_shard",
+                    "moth_dust", "eclipse_scythe", "sandstorm_bottle", "gel",
+                ];
+                for (k, n) in names.iter().enumerate() {
+                    if let Some(id) = self.items.id(n) {
+                        self.surv.inv.slots[k] = Some(voxel::item::ItemStack::new(id, 1));
+                    }
+                }
+                self.args.show_inventory = true;
+            }
+            "meteor_set" => {
+                // The meteor armour worn, seen in third person from the front.
+                self.survival = true;
+                for (slot, n) in ["meteor_helmet", "meteor_chestplate", "meteor_leggings", "meteor_boots"].iter().enumerate() {
+                    if let Some(id) = self.items.id(n) {
+                        self.surv.armor[slot] = Some(voxel::item::ItemStack::new(id, 1));
+                    }
+                }
+                if let Some(id) = self.items.id("meteor_blaster") {
+                    self.surv.inv.slots[0] = Some(voxel::item::ItemStack::new(id, 1));
+                }
+            }
+            s if self.test_tr_event(s) => {}
             _ => log::warn!("unknown MC_TR scene {scene}"),
         }
     }

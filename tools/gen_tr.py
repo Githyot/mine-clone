@@ -727,10 +727,308 @@ SHAPELESS_L1 = [
     (["gel", "gel", "gel", "lens"], "jelly_hook", 1),
 ]
 
+# ==============================================================================================
+# Lote 2: events (meteor, falling stars, jelly rain, sandstorm, lantern night, eclipse)
+# ==============================================================================================
+
+METEOR = pal("#2a1a14", "#4a2e22", "#6e4030", "#a8562c", "#f08a2a")
+
+STAR = [
+    "................",
+    ".......1........",
+    ".......1........",
+    "......121.......",
+    "......131.......",
+    ".11111343111111.",
+    "..1233454433321.",
+    "...12345543321..",
+    "....123443321...",
+    "....12333321....",
+    "...1233113321...",
+    "...12311.13321..",
+    "..1221....1221..",
+    "..111......111..",
+    "................",
+    "................",
+]
+
+TABLET = [
+    "................",
+    "...1111111111...",
+    "..122222222221..",
+    "..123333333321..",
+    "..123344443321..",
+    "..123455554321..",
+    "..134551155431..",
+    "..134511115431..",
+    "..134511115431..",
+    "..134551155431..",
+    "..123455554321..",
+    "..123344443321..",
+    "..123333333321..",
+    "..122222222221..",
+    "...1111111111...",
+    "................",
+]
+
+DARK_SHARD = [
+    "................",
+    "................",
+    ".........11.....",
+    "........1441....",
+    ".......14531....",
+    "......145321....",
+    ".....1453221....",
+    "....14532221....",
+    "...145322221....",
+    "...14322221.....",
+    "....1322221.....",
+    ".....12221......",
+    "......111.......",
+    "................",
+    "................",
+    "................",
+]
+
+HEAD_PARTS = """[
+            (size: (8, 8, 8), origin: (-4, 0, -4), uv: (0, 0), anim: Head, pivot: (0, 4, 0)),
+        ]"""
+
+WRAITH_PARTS = """[
+            (size: (8, 8, 8), origin: (-4, 12, -4), uv: (0, 0), anim: Head, pivot: (0, 12, 0)),
+            (size: (6, 12, 6), origin: (-3, 0, -3), uv: (0, 16)),
+        ]"""
+
+REAPER_PARTS = """[
+            (size: (8, 8, 8), origin: (-4, 18, -4), uv: (0, 0), anim: Head, pivot: (0, 18, 0)),
+            (size: (8, 18, 6), origin: (-4, 0, -3), uv: (0, 16)),
+            (size: (2, 18, 2), origin: (5, 4, 2), uv: (32, 0), anim: Arm(0), pivot: (6, 16, 3)),
+            (size: (8, 1, 2), origin: (5, 21, 0), uv: (40, 0), anim: Arm(0), pivot: (6, 16, 3)),
+        ]"""
+
+BRUTE_PARTS = """[
+            (size: (12, 12, 8), origin: (-6, 10, -4), uv: (0, 0)),
+            (size: (8, 8, 8), origin: (-4, 22, -3), uv: (0, 20), anim: Head, pivot: (0, 22, 0)),
+            (size: (4, 14, 4), origin: (-10, 8, -2), uv: (32, 20), anim: Arm(0), pivot: (-8, 21, 0)),
+            (size: (4, 14, 4), origin: (6, 8, -2), uv: (32, 20), anim: Arm(1), pivot: (8, 21, 0)),
+            (size: (5, 10, 5), origin: (-6, 0, -2), uv: (0, 40), anim: Leg(0), pivot: (-3, 10, 0)),
+            (size: (5, 10, 5), origin: (1, 0, -2), uv: (0, 40), anim: Leg(1), pivot: (3, 10, 0)),
+        ]"""
+
+MOTH_PARTS = """[
+            (size: (8, 8, 16), origin: (-4, 4, -8), uv: (0, 0)),
+            (size: (16, 1, 12), origin: (-20, 10, -4), uv: (0, 24), anim: Wing(0), pivot: (-4, 10, 2)),
+            (size: (16, 1, 12), origin: (4, 10, -4), uv: (0, 24), anim: Wing(1), pivot: (4, 10, 2)),
+            (size: (6, 6, 6), origin: (-3, 5, 8), uv: (0, 40), anim: Head, pivot: (0, 8, 8)),
+        ]"""
+
+
+def mobs_l2():
+    return [f"""    // Lote 2: events.
+    (
+        name: "meteor_head", display_name: "Cabeça de Meteoro", kind: Hostile, health: 30, speed: 0.1, attack: 5,
+        drops: [(item: "meteorite_ore", chance: 0.3)], xp: 4,
+        width: 1.0, height: 1.0, spawn: Never, scale: 1.7, flies: true,
+        parts: {HEAD_PARTS},
+        layers: [(part: 0, inflate: 0.6)],
+    ),
+    (
+        name: "dune_wraith", display_name: "Espírito da Areia", kind: Hostile, health: 44, speed: 0.1, attack: 6,
+        drops: [(item: "sand", min: 1, max: 3), (item: "sandstorm_bottle", chance: 0.02)], xp: 6,
+        width: 0.8, height: 1.6, spawn: Never, scale: 1.2, flies: true,
+        parts: {WRAITH_PARTS},
+        layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.6)],
+    ),
+    (
+        name: "reaper", display_name: "Ceifador", kind: Hostile, health: 80, speed: 0.1, attack: 10,
+        drops: [(item: "dark_shard", chance: 0.5), (item: "eclipse_scythe", chance: 0.04)], xp: 14,
+        width: 0.8, height: 1.7, spawn: Never, scale: 1.2, flies: true,
+        parts: {REAPER_PARTS},
+        layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.4)],
+    ),
+    (
+        name: "shade_brute", display_name: "Vulto Brutal", kind: Hostile, health: 110, speed: 3.0, attack: 9,
+        drops: [(item: "dark_shard", chance: 0.6), (item: "rotten_flesh", min: 1, max: 3)], xp: 14,
+        width: 1.2, height: 2.4, spawn: Never, scale: 1.3,
+        parts: {BRUTE_PARTS},
+        layers: [(part: 0, inflate: 0.6), (part: 1, inflate: 0.5)],
+    ),
+    (
+        name: "eclipse_moth", display_name: "Mariposa do Eclipse", kind: Hostile, health: 600, speed: 0.1, attack: 10,
+        drops: [(item: "dark_shard", min: 4, max: 8), (item: "moth_dust", min: 3, max: 6), (item: "solar_tablet", chance: 0.3)], xp: 80,
+        width: 2.4, height: 1.4, spawn: Never, scale: 2.4, flies: true,
+        parts: {MOTH_PARTS},
+        layers: [(part: 0, inflate: 0.6)],
+    ),"""]
+
+
+ROCK = pal("#1e1410", "#36261e", "#4e382c", "#664a3a")
+GLOW_ORANGE = pal("#c4500a", "#f08a2a", "#ffc860")
+SAND_P = pal("#8a6a3a", "#b08a50", "#d4b070", "#ead09a", "#f8ecc8")
+ROBE = pal("#0e0c12", "#18141e", "#221c2a", "#2c2436")
+BONE = pal("#8a877d", "#b4b0a4", "#dcd8cc")
+SHADE = pal("#16121e", "#221c2c", "#2e263a", "#3a3048", "#463a56")
+MOTH = pal("#3a2a14", "#5a4220", "#7a5a2e", "#9a7840", "#c4a060")
+MOTH_WING = pal("#4a3a2a", "#6a5238", "#8c6e4a", "#b89a6a", "#e0caa0")
+
+
+def head_painter(c):
+    n = g.fbm(c.seed, c.gx, c.gy, c.gz, 2.5)
+    if n > 0.62:
+        return g.pick(GLOW_ORANGE, (n - 0.62) * 2.6)
+    if c.face == "front" and c.j in (3, 4) and c.i in (1, 2, 5, 6):
+        return (255, 200, 80)
+    return g.pick(ROCK, 0.2 + 0.6 * c.jit)
+
+
+def head_overlay(c):
+    if c.face in ("top", "back") and c.jit > 0.45:
+        return g.pick(GLOW_ORANGE, c.jit)
+    return None
+
+
+def wraith_painter(c):
+    n = g.fbm(c.seed, c.gx * 1.5, c.gy * 0.6, c.gz * 1.5, 3.0)
+    t = 0.2 + 0.7 * n
+    if c.role == "head" and c.face == "front" and c.j in (3, 4) and c.i in (1, 2, 5, 6):
+        return (60, 30, 10)
+    if c.role == "tail":
+        t -= 0.15 * (1 - c.j / max(1, c.fh))
+    return g.pick(SAND_P, t)
+
+
+def wraith_overlay(c):
+    if (c.i + c.j * 2) % 5 == 0 and c.jit > 0.3:
+        return g.pick(SAND_P, 0.85)
+    return None
+
+
+def reaper_painter(c):
+    if c.role == "staff":
+        return g.pick(pal("#2a1a10", "#4a3020", "#6a4a30"), c.jit)
+    if c.role == "blade":
+        return g.pick(pal("#5a5e68", "#9aa0ae", "#dfe4ea"), 0.3 + 0.6 * c.jit)
+    if c.role == "head" and c.face == "front":
+        if 2 <= c.i <= 5 and 2 <= c.j <= 6:
+            # A skull in the dark of the hood.
+            if c.j in (3, 4) and c.i in (2, 5):
+                return (220, 40, 30)
+            return g.pick(BONE, 0.3 + 0.4 * c.jit)
+    return g.pick(ROBE, 0.2 + 0.6 * c.jit)
+
+
+def reaper_overlay(c):
+    if c.role == "robe" and c.face in ("left", "right", "back", "front") and c.j > c.fh - 4 and c.i % 2 == 0:
+        return g.pick(ROBE, 0.6)
+    if c.role == "head" and c.face in ("top", "back", "left", "right") and c.jit > 0.3:
+        return g.pick(ROBE, 0.5 * c.jit)
+    return None
+
+
+def brute_painter(c):
+    n = g.fbm(c.seed, c.gx, c.gy, c.gz, 3.0)
+    if c.role == "head" and c.face == "front" and c.j in (3, 4) and c.i in (1, 2, 5, 6):
+        return (240, 120, 40)
+    if c.role == "head" and c.face == "front" and c.j == 6 and 1 < c.i < 6:
+        return (200, 190, 170)
+    return g.pick(SHADE, 0.2 + 0.6 * n + 0.15 * (c.jit - 0.5))
+
+
+def brute_overlay(c):
+    if c.face in ("front", "back", "left", "right", "top") and c.jit > 0.6:
+        return g.pick(SHADE, 0.8 + 0.2 * c.jit)
+    return None
+
+
+def moth_painter(c):
+    if c.role == "wing":
+        cx, cy = c.i - c.fw / 2, c.j - c.fh / 2
+        if cx * cx + cy * cy < 6 and c.face in ("top", "bottom"):
+            return (230, 120, 30) if cx * cx + cy * cy > 2 else (20, 10, 10)
+        return g.pick(MOTH_WING, 0.2 + 0.6 * c.jit + (0.2 if (c.i // 3) % 2 else 0))
+    if c.role == "head" and c.face == "front" and c.j in (1, 2) and c.i in (0, 1, 4, 5):
+        return (240, 60, 30)
+    band = int(c.gz + 40) // 3 % 2 == 0 and c.face not in ("front", "back")
+    return g.pick(MOTH, (0.25 if band else 0.6) + 0.3 * c.jit)
+
+
+def moth_overlay(c):
+    if c.face == "top" and c.jit > 0.4:
+        return g.pick(MOTH, 0.9)
+    return None
+
+
+def skins_l2():
+    return {
+        "meteor_head": (["head"], head_painter, head_overlay),
+        "dune_wraith": (["head", "tail"], wraith_painter, wraith_overlay),
+        "reaper": (["head", "robe", "staff", "blade"], reaper_painter, reaper_overlay),
+        "shade_brute": (["body", "head", "arm", "arm", "leg", "leg"], brute_painter, brute_overlay),
+        "eclipse_moth": (["body", "wing", "wing", "head"], moth_painter, moth_overlay),
+    }
+
+
+def items_l2():
+    gi.MATERIALS["meteor"] = METEOR
+    gi.ARMOR_MATERIALS["meteor"] = METEOR
+    gi.MATERIALS["eclipse"] = pal("#0e0c12", "#2a2236", "#4a3a5e", "#8a7aa8", "#e0d4f4")
+    gi.WAND_GEMS["meteor"] = pal("#6e4030", "#a8562c", "#f08a2a", "#ffc860", "#fff4c0")
+    out = [
+        ("meteorite_ingot", "Barra de Meteorito", gi_ingot(METEOR), ""),
+        ("fallen_star", "Estrela Caída", icon(STAR, pal("#5a3a04", "#c49418", "#fce47a", "#fff4b0", "#ffffff")), "max_stack: Some(64)"),
+        ("meteor_blaster", "Disparador de Meteoro", gi.staff("meteor", "meteor"), "max_stack: Some(1)"),
+        ("solar_tablet", "Tábua Solar", icon(TABLET, pal("#3a2204", "#7a4a0c", "#c4841c", "#f4c040", "#fff4c0")), "max_stack: Some(16)"),
+        ("dark_shard", "Lasca Sombria", icon(DARK_SHARD, pal("#0e0c12", "#2a2236", "#4a3a5e", "#8a7aa8", "#e0d4f4")), ""),
+        ("moth_dust", "Pó de Mariposa", icon(GEL, pal("#3a2a14", "#7a5a2e", "#b89a6a", "#e0caa0", "#fff4dc")), ""),
+        ("eclipse_scythe", "Foice do Eclipse", gi.tool("eclipse", "hoe"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 6, speed: 9.0, damage: 12.0, durability: 2400))"),
+    ]
+    pts = {"helmet": (0, 2), "chestplate": (1, 5), "leggings": (2, 4), "boots": (3, 2)}
+    names = {"helmet": "Capacete", "chestplate": "Peitoral", "leggings": "Calças", "boots": "Botas"}
+    for k in gi.ARMOR_KINDS:
+        slot, points = pts[k]
+        out.append((f"meteor_{k}", f"{names[k]} de Meteoro", gi.armor("meteor", k), f"armor: Some((slot: {slot}, points: {points}, durability: {220 + 40 * points}))"))
+    return out
+
+
+def gi_ingot(p):
+    gi.INGOT_COL["meteorite"] = p
+    return gi.ingot("meteorite")
+
+
+def blocks_l2():
+    def crust(x, y):
+        return 0.35 + 0.25 * np.sin(x * 1.3 + y * 0.7) * np.cos(y * 1.1 - x * 0.4)
+
+    def ore(x, y):
+        # Hot veins glowing through the dark stone.
+        v = abs(np.sin(x * 0.9 + np.sin(y * 0.8) * 2.0))
+        return 0.92 if v < 0.18 else crust(x, y) * 0.8
+
+    return {"meteorite_ore": block_noise(21, ore, pal("#1e1410", "#36261e", "#4e382c", "#c4500a", "#ffc860"))}
+
+
+BLOCKS_L2 = [
+    '(name: "meteorite_ore", display_name: Some("Meteorito"), light: 6, hardness: 5.0, tool: Some(Pickaxe), tier: 2, xp: (1, 3))',
+]
+
+SHAPED_L2 = [
+    (["III", "I I"], {"I": "meteorite_ingot"}, "meteor_helmet", 1),
+    (["I I", "III", "III"], {"I": "meteorite_ingot"}, "meteor_chestplate", 1),
+    (["III", "I I", "I I"], {"I": "meteorite_ingot"}, "meteor_leggings", 1),
+    (["I I", "I I"], {"I": "meteorite_ingot"}, "meteor_boots", 1),
+    (["III", "I G"], {"I": "meteorite_ingot", "G": "glowstone_dust"}, "meteor_blaster", 1),
+    (["GGG", "GSG", "GGG"], {"G": "gold_ingot", "S": "soul_of_sight"}, "solar_tablet", 1),
+]
+SHAPELESS_L2 = [
+    (["fallen_star", "fallen_star", "fallen_star", "fallen_star", "fallen_star"], "mana_crystal", 1),
+    (["fallen_star", "glass_bottle"], "lesser_mana_potion", 1),
+]
+SMELTING_L2 = [("meteorite_ore", "meteorite_ingot", 1.0)]
+
 
 # ==============================================================================================
 
-def write_data(items, blocks, mobs, shaped, shapeless):
+def write_data(items, blocks, mobs, shaped, shapeless, smelting):
     OUT.mkdir(parents=True, exist_ok=True)
     known = known_items() | {i[0] for i in items} | {b.split('"')[1] for b in blocks}
     head = "// The rest of the Terraria side (plan/terraria-completo.md). Written by tools/gen_tr.py."
@@ -762,6 +1060,12 @@ def write_data(items, blocks, mobs, shaped, shapeless):
         ing = ", ".join(f'"{i}"' for i in ings)
         c = f", count: {count}" if count != 1 else ""
         rl.append(f"        (ingredients: [{ing}], result: \"{result}\"{c}),")
+    rl += ["    ],", "    smelting: ["]
+    for inp, result, xp in smelting:
+        for v in (inp, result):
+            if v not in known:
+                bad.append((result, v))
+        rl.append(f"        (input: \"{inp}\", result: \"{result}\", xp: {xp}),")
     rl += ["    ],", ")", ""]
     if bad:
         raise SystemExit(f"unknown items in recipes: {bad}")
@@ -791,21 +1095,21 @@ def write_skins(skins):
 
 
 def main():
-    items = items_l1()
-    blocks = BLOCKS_L1
-    mobs = mobs_l1()
-    write_data(items, blocks, mobs, SHAPED_L1, SHAPELESS_L1)
-    skins = write_skins(skins_l1())
+    items = items_l1() + items_l2()
+    blocks = BLOCKS_L1 + BLOCKS_L2
+    mobs = mobs_l1() + mobs_l2()
+    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2, SHAPELESS_L1 + SHAPELESS_L2, SMELTING_L2)
+    skins = write_skins({**skins_l1(), **skins_l2()})
     pics = []
     for name, _, img, _ in items:
         im = gt.to_image(img)
         im.save(os.path.join(gi.ITEM_DIR, name + ".png"))
         pics.append(im)
-    for name, img in blocks_l1().items():
+    for name, img in {**blocks_l1(), **blocks_l2()}.items():
         im = gt.to_image(img)
         im.save(os.path.join(gi.BLOCK_DIR, name + ".png"))
         pics.append(im)
-    names = [i[0] for i in items] + list(blocks_l1())
+    names = [i[0] for i in items] + list(blocks_l1()) + list(blocks_l2())
     print(f"{len(items)} items, {len(blocks)} blocks, {len(mobs)} mobs, {len(skins)} skins")
     print("--only " + ",".join(names))
     if len(sys.argv) > 1:

@@ -34,7 +34,7 @@ const SUMMONS: &[(&str, &str, &str)] = &[
     ("frost_horn", "frost_colossus", "snow"),
 ];
 
-const SMALL_FLYERS: [&str; 3] = ["servant_eye", "hive_drone", "blight_creeper"];
+const SMALL_FLYERS: [&str; 7] = ["servant_eye", "hive_drone", "blight_creeper", "meteor_head", "dune_wraith", "reaper", "eclipse_moth"];
 
 #[derive(Default)]
 pub struct Fight {

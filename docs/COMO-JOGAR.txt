@@ -496,6 +496,23 @@ CHEFES DO COMEÇO (lado Terraria, lote 1)
   Geleias: verde, azul, vermelha (cavernas), de gelo, de lava (Submundo), rosa (rara).
     Gel + graveto = 3 tochas.
 
+EVENTOS (lado Terraria, lote 2)
+  Meteoro: depois que algum chefe cai, às vezes à noite um meteoro risca o céu e abre uma
+    cratera de meteorito ("Um meteoro caiu ao leste!"). Cabeças de Meteoro voam por perto.
+    Meteorito vira barra na fornalha: armadura de Meteoro (bônus: o Disparador de Meteoro
+    não gasta mana) e o Disparador de Meteoro (tiros rápidos de fogo).
+  Estrelas cadentes: em noites na superfície estrelas caem e viram Estrelas Caídas.
+    5 estrelas = Cristal de Mana; estrela + frasco = poção de mana pequena.
+  Chuva de geleias: algumas manhãs chovem geleias. Mate o bastante (barra no topo) e o
+    Rei Geleia cai do céu.
+  Tempestade de areia: o vento sobe nos desertos, cheio de areia que empurra você e
+    Espíritos da Areia (podem soltar a Areia na Garrafa).
+  Noite das lanternas: depois de vencer um chefe (ou por sorte) lanternas sobem a noite
+    toda e nenhum monstro nasce na superfície.
+  Eclipse: na era do Quebra-Mundo, às vezes de manhã, ou com a Tábua Solar de dia. O sol
+    escurece; vêm Ceifadores, Vultos Brutais e a Mariposa do Eclipse. Caem Lascas Sombrias
+    e, raro, a Foice do Eclipse.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

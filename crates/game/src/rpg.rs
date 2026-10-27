@@ -246,6 +246,7 @@ pub const SETS: &[SetDef] = &[
     set("radiant", "Esquiva um golpe a cada 30 s", &[M::Dmg(ALL_CLASSES, 0.08)]),
     set("verdite", "Um cristal de folha atira nos monstros por perto", &[M::Dmg(ALL_CLASSES, 0.05)]),
     set("magmarite", "Fogo e lava não queimam", &[M::Fire, M::Lava, M::Dmg(MELEE, 0.12), M::Def(2.0)]),
+    set("meteor", "O Disparador de Meteoro não gasta mana", &[M::Dmg(MAGIC, 0.09), M::Def(1.0)]),
     set("lumite", "", &[M::Dmg(ALL_CLASSES, 0.1), M::Crit(ALL_CLASSES, 0.1), M::Minions(1), M::Move(0.1)]),
 ];
 
@@ -1808,6 +1809,7 @@ const SET_NAMES: &[(&str, &str)] = &[
     ("radiant", "Radiante"),
     ("verdite", "Verdita"),
     ("lumite", "Lumita"),
+    ("meteor", "Meteoro"),
 ];
 
 /// Ores from least to most valuable, for the ore finder (by part of the block name).

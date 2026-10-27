@@ -3,4 +3,5 @@
     (name: "hive_block", display_name: Some("Bloco de Colmeia"), hardness: 0.8, tool: Some(Axe)),
     (name: "hive_larva", display_name: Some("Larva Real"), light: 6, hardness: 0.4, drops: Some([])),
     (name: "hive_honey", display_name: Some("Mel da Colmeia"), light: 9, hardness: 0.5, tool: Some(Shovel), drops: Some([(item: "honeycomb", min: 1, max: 2)])),
+    (name: "meteorite_ore", display_name: Some("Meteorito"), light: 6, hardness: 5.0, tool: Some(Pickaxe), tier: 2, xp: (1, 3)),
 ])

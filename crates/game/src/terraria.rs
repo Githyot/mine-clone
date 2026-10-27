@@ -266,6 +266,7 @@ impl Game {
             self.ui.rect(0.0, 0.0, w, h, [120, 0, 0, 38]);
         }
         self.draw_event_bar(w);
+        self.draw_tr_hud(w, h);
         self.draw_accessory_hud(w, h);
         self.draw_info_hud(h);
         if self.t5.rpg.sheet && self.screen == crate::Screen::Playing {

@@ -430,7 +430,7 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
 }
 
 /// Armour materials, by the item-name prefix, with their colour.
-pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 34] = [
+pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 35] = [
     ("leather", [134, 82, 46]),
     ("chainmail", [150, 150, 156]),
     ("iron", [206, 206, 206]),
@@ -453,6 +453,8 @@ pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 34] = [
     ("radiant", [240, 214, 110]),
     ("verdite", [96, 206, 70]),
     ("lumite", [120, 236, 220]),
+    // The meteor set (gen_tr.py, lote 2).
+    ("meteor", [168, 86, 44]),
     // The mod pack's dimensions (tools/moddata/aether.py, otherside.py).
     ("zanite", [128, 72, 200]),
     ("gravitite", [200, 74, 180]),
