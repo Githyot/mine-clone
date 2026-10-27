@@ -78,6 +78,7 @@ mod item_render;
 mod juice;
 mod menus;
 mod monitor;
+mod money;
 mod multiplayer;
 mod voice;
 mod mods;
@@ -1652,7 +1653,7 @@ impl Game {
             }
             Screen::Inventory if self.creative_screen_open() => self.creative_scroll(lines > 0.0),
             Screen::Inventory => {
-                if self.wheel_move(lines > 0.0) {
+                if self.shop_wheel(lines > 0.0) || self.wheel_move(lines > 0.0) {
                 } else if lines > 0.0 {
                     self.surv.book_scroll = self.surv.book_scroll.saturating_sub(1);
                 } else {
@@ -3716,6 +3717,7 @@ impl Game {
             self.draw_mods_hud(w, h);
             if self.survival {
                 self.draw_survival_hud(hx, hy, cell);
+                self.draw_money_flash(hx, hy, cell);
                 self.draw_mana(w);
             }
             self.draw_fase6_hud(w, h, hx, hy, cell);

@@ -148,6 +148,9 @@ pub struct MobDef {
     /// the bank, and flops about when stranded. See `Mob::aquatic_steer`.
     #[serde(default = "d_false")]
     pub aquatic: bool,
+    /// Copper it drops when it dies (money.rs works it out from its health and attack if unset).
+    #[serde(default)]
+    pub coins: Option<u32>,
 }
 
 fn d_range() -> f32 {

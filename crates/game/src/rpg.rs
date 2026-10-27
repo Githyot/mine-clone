@@ -200,7 +200,7 @@ pub const ACCESSORIES: &[AccDef] = &[
     acc("shadow_gear", "Avança com dois toques em A ou D e escala paredes", &[M::Dodge(0.1)]),
     // Handy.
     acc("magnet_ring", "", &[M::Pickup(3.0)]),
-    acc("lucky_coin", "Monstros às vezes deixam uma esmeralda", &[M::Luck(1.0)]),
+    acc("lucky_coin", "Monstros deixam 25% mais moedas", &[M::Luck(1.0)]),
     acc("sky_stone", "", &[M::Dmg(ALL_CLASSES, 0.08), M::Crit(ALL_CLASSES, 0.04), M::MeleeSpeed(0.08), M::Def(2.0), M::Regen(0.25), M::Move(0.05)]),
     // Info.
     acc("pocket_watch", "", &[M::Info(INFO_TIME)]),
@@ -1003,18 +1003,14 @@ impl Game {
         self.mobs.list[i].hurt((dmg * 0.3).max(2.0), c + Vec3::Y * 2.0);
     }
 
-    /// A monster died: the rare drops above (luck helps), and an emerald from the lucky coin.
+    /// A monster died: the rare drops above (luck helps). The lucky coin adds to its coins (money.rs).
     pub(crate) fn rpg_drops(&mut self, def: usize, at: Vec3) {
         if !self.survival {
             return;
         }
         let name = self.mobs.reg.defs[def].name.clone();
-        let hostile = self.mobs.reg.defs[def].kind == voxel::mob::Kind::Hostile;
         let luck = 1.0 + 0.5 * self.t5.rpg.stats.luck + 0.25 * self.effect_level(LUCK) as f32;
-        let mut out: Vec<&str> = DROPS.iter().filter(|d| d.0 == name && self.surv.rng.f32() < d.2 * luck).map(|d| d.1).collect();
-        if hostile && self.wears("lucky_coin") && self.surv.rng.f32() < 0.05 {
-            out.push("emerald");
-        }
+        let out: Vec<&str> = DROPS.iter().filter(|d| d.0 == name && self.surv.rng.f32() < d.2 * luck).map(|d| d.1).collect();
         for item in out {
             if let Some(id) = self.items.id(item) {
                 let v = Vec3::new(self.surv.rng.f32() - 0.5, 3.0, self.surv.rng.f32() - 0.5);
