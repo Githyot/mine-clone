@@ -540,12 +540,18 @@ MODELS = {
         P((10, 1, 3), (-5, 6, 10), "oak_dark", plank=1, nails=False),
         P((1, 4, 1), (6, 7, 7), "iron"),
     ]),
-    "wagon_cover": dict(display="Lona da carroça", scale=2.0, width=1.6, height=1.9, parts=[
-        P((1, 5, 16), (-6, 8, -10), "canvas", share="wall", relief=hoops_relief, inflate=0.25),
-        P((1, 5, 16), (5, 8, -10), "canvas", share="wall"),
-        P((2, 1, 16), (-5, 13, -10), "canvas", share="shoulder", relief=hoops_relief, inflate=0.25),
-        P((2, 1, 16), (3, 13, -10), "canvas", share="shoulder"),
-        P((6, 1, 16), (-3, 14, -10), "canvas", relief=hoops_relief, inflate=0.25),
+    # The tall canvas (HP: the covered wagon stands 4 blocks high and 2 wide with its wheels):
+    # coarser pixels (scale 3) so the high hoops fit the skin; the game draws the whole wagon
+    # 1.1 times this size (wagons.rs SIZE).
+    "wagon_cover": dict(display="Lona da carroça", scale=3.0, width=2.0, height=4.0, parts=[
+        P((1, 9, 11), (-4, 5, -7), "canvas", share="wall", relief=hoops_relief, inflate=0.25),
+        P((1, 9, 11), (3, 5, -7), "canvas", share="wall"),
+        P((1, 3, 11), (-3, 14, -7), "canvas", share="shoulder", relief=hoops_relief, inflate=0.25),
+        P((1, 3, 11), (2, 14, -7), "canvas", share="shoulder"),
+        P((4, 2, 11), (-2, 17, -7), "canvas", relief=hoops_relief, inflate=0.25),
+    ]),
+    # What you see inside from the back, and the lantern at the front.
+    "wagon_cargo": dict(display="Carga da carroça", scale=2.0, width=1.6, height=1.9, parts=[
         P((5, 4, 5), (-5, 5, -9), "crate"),
         P((4, 5, 4), (1, 5, -9), "barrel"),
         P((4, 2, 6), (0, 5, -3), "burlap"),

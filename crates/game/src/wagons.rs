@@ -27,6 +27,9 @@ const HALF_BASE: f32 = 0.6875;
 const KINGPIN: f32 = 0.625;
 const WHEEL_R: f32 = 0.47;
 const WHEEL_X: f32 = 0.84;
+/// The models are drawn this much bigger than they are made (HP: the covered wagon 4 blocks
+/// high and 2 wide); the distances above are in model blocks, times SIZE in the world.
+const SIZE: f32 = 1.1;
 /// Most the front may turn against the bed.
 const MAX_ARTIC: f32 = 0.6;
 /// Wagons further than this from the player are taken away (blocks).
@@ -147,6 +150,7 @@ pub struct Wagons {
 struct Defs {
     body: usize,
     cover: usize,
+    cargo: usize,
     hay: usize,
     shafts: usize,
     pole: usize,
@@ -177,6 +181,7 @@ impl Game {
         Some(Defs {
             body: id("wagon")?,
             cover: id("wagon_cover")?,
+            cargo: id("wagon_cargo")?,
             hay: id("wagon_hay")?,
             shafts: id("wagon_shafts")?,
             pole: id("wagon_pole")?,
@@ -209,7 +214,7 @@ impl Game {
     fn wagon_way(&self, w: &Wagon, yaw: f32) -> Option<f32> {
         let f = fwd(yaw);
         let side = Vec3::new(f.z, 0.0, -f.x);
-        let k = w.pos + fwd(w.yaw) * KINGPIN;
+        let k = w.pos + fwd(w.yaw) * (KINGPIN * SIZE);
         let mut last = w.pos.y;
         let mut bonus = 0.0;
         for (n, d) in [1.5f32, 2.5, 3.5, 4.5, 5.5].iter().enumerate() {
@@ -223,6 +228,10 @@ impl Game {
                 // Room for the team and the cover above the ground.
                 let c = IVec3::new(p.x.floor() as i32, y.ceil() as i32, p.z.floor() as i32);
                 if self.world.solid(c) || self.world.solid(c + IVec3::Y) {
+                    return None;
+                }
+                // The tall cover needs room up to 4 blocks over the middle.
+                if w.load == Load::Covered && s == 0.0 && (self.world.solid(c + IVec3::Y * 2) || self.world.solid(c + IVec3::Y * 3)) {
                     return None;
                 }
                 if road {
@@ -466,23 +475,23 @@ impl Game {
     fn settle_wagon(&self, w: &mut Wagon) {
         let f = fwd(w.yaw);
         let near = w.pos.y + 1.0;
-        let yf = self.wagon_ground(w.pos.x + f.x * HALF_BASE, w.pos.z + f.z * HALF_BASE, near).map(|g| g.0);
-        let yb = self.wagon_ground(w.pos.x - f.x * HALF_BASE, w.pos.z - f.z * HALF_BASE, near).map(|g| g.0);
+        let yf = self.wagon_ground(w.pos.x + f.x * (HALF_BASE * SIZE), w.pos.z + f.z * (HALF_BASE * SIZE), near).map(|g| g.0);
+        let yb = self.wagon_ground(w.pos.x - f.x * (HALF_BASE * SIZE), w.pos.z - f.z * (HALF_BASE * SIZE), near).map(|g| g.0);
         if let (Some(a), Some(b)) = (yf, yb) {
             w.pos.y = (a + b) * 0.5;
             if !w.broken {
-                w.pitch = ((a - b) / (2.0 * HALF_BASE)).atan().clamp(-0.5, 0.5);
+                w.pitch = ((a - b) / (2.0 * (HALF_BASE * SIZE))).atan().clamp(-0.5, 0.5);
             }
         }
         self.place_team(w);
     }
 
     fn place_team(&self, w: &mut Wagon) {
-        let k = w.pos + fwd(w.yaw) * KINGPIN;
+        let k = w.pos + fwd(w.yaw) * (KINGPIN * SIZE);
         let f = fwd(w.front_yaw);
         let side = Vec3::new(f.z, 0.0, -f.x);
         for (m, (s, a)) in w.animals.iter_mut().zip(w.team.places()) {
-            let p = k + f * *a - side * *s;
+            let p = k + (f * *a - side * *s) * SIZE;
             let y = self.wagon_ground(p.x, p.z, w.pos.y + 1.0).map(|g| g.0).unwrap_or(w.pos.y);
             m.body.pos = Vec3::new(p.x, y, p.z);
             m.yaw = w.front_yaw;
@@ -554,30 +563,30 @@ impl Game {
         let step = v * dt;
         if !w.treadmill {
             // The front axle goes where the team pulls it; the rear axle follows.
-            let k0 = w.pos + fwd(w.yaw) * KINGPIN;
-            let r0 = w.pos - fwd(w.yaw) * HALF_BASE;
+            let k0 = w.pos + fwd(w.yaw) * (KINGPIN * SIZE);
+            let r0 = w.pos - fwd(w.yaw) * (HALF_BASE * SIZE);
             let k1 = k0 + fwd(w.front_yaw) * step;
             let back = Vec3::new(k1.x - r0.x, 0.0, k1.z - r0.z);
             let yaw = back.x.atan2(back.z);
-            let r1 = k1 - fwd(yaw) * (KINGPIN + HALF_BASE);
-            w.wheel_back += Vec3::new(r1.x - r0.x, 0.0, r1.z - r0.z).length() / WHEEL_R;
+            let r1 = k1 - fwd(yaw) * ((KINGPIN * SIZE) + (HALF_BASE * SIZE));
+            w.wheel_back += Vec3::new(r1.x - r0.x, 0.0, r1.z - r0.z).length() / (WHEEL_R * SIZE);
             w.yaw = yaw;
-            w.pos = Vec3::new(k1.x, w.pos.y, k1.z) - fwd(yaw) * KINGPIN;
+            w.pos = Vec3::new(k1.x, w.pos.y, k1.z) - fwd(yaw) * (KINGPIN * SIZE);
             // Height and tilt from the ground under the axles, eased.
             let f = fwd(w.yaw);
             let near = w.pos.y + 1.0;
-            let yf = self.wagon_ground(w.pos.x + f.x * HALF_BASE, w.pos.z + f.z * HALF_BASE, near).map(|g| g.0);
-            let yb = self.wagon_ground(w.pos.x - f.x * HALF_BASE, w.pos.z - f.z * HALF_BASE, near).map(|g| g.0);
+            let yf = self.wagon_ground(w.pos.x + f.x * (HALF_BASE * SIZE), w.pos.z + f.z * (HALF_BASE * SIZE), near).map(|g| g.0);
+            let yb = self.wagon_ground(w.pos.x - f.x * (HALF_BASE * SIZE), w.pos.z - f.z * (HALF_BASE * SIZE), near).map(|g| g.0);
             if let (Some(a), Some(b)) = (yf, yb) {
                 let y = (a + b) * 0.5;
                 w.pos.y += (y - w.pos.y) * (dt * 8.0).min(1.0);
-                let p = ((a - b) / (2.0 * HALF_BASE)).atan().clamp(-0.5, 0.5);
+                let p = ((a - b) / (2.0 * (HALF_BASE * SIZE))).atan().clamp(-0.5, 0.5);
                 w.pitch += (p - w.pitch) * (dt * 6.0).min(1.0);
             }
         } else {
-            w.wheel_back += step / WHEEL_R;
+            w.wheel_back += step / (WHEEL_R * SIZE);
         }
-        w.wheel_front += step / WHEEL_R;
+        w.wheel_front += step / (WHEEL_R * SIZE);
         // A little sway on rough ground.
         w.roll = (w.age * 2.3).sin() * 0.012 * v.min(1.0);
         let pace = v / cruise.max(0.1);
@@ -657,7 +666,7 @@ impl Game {
                 continue;
             }
             let top = match w.load {
-                Load::Covered => 1.9,
+                Load::Covered => 4.0,
                 Load::Hay => 1.4,
                 Load::Empty => 1.1,
             };
@@ -668,7 +677,7 @@ impl Game {
             // Into the wagon's frame: x across, z along.
             let lx = d.x * c - d.z * s;
             let lz = d.x * s + d.z * c;
-            let (hx, hz) = (0.8 + r, 1.3 + r);
+            let (hx, hz) = (0.8 * SIZE + r, 1.3 * SIZE + r);
             if lx.abs() >= hx || lz.abs() >= hz {
                 continue;
             }
@@ -775,10 +784,14 @@ impl Game {
                 * Mat4::from_rotation_x(-w.pitch)
                 * Mat4::from_translation(hinge)
                 * Mat4::from_rotation_z(w.roll)
-                * Mat4::from_translation(-hinge);
+                * Mat4::from_translation(-hinge)
+                * Mat4::from_scale(Vec3::splat(SIZE));
             out.push(rigid(d.body, body * s(d.body)));
             match w.load {
-                Load::Covered => out.push(rigid(d.cover, body * s(d.cover))),
+                Load::Covered => {
+                    out.push(rigid(d.cover, body * s(d.cover)));
+                    out.push(rigid(d.cargo, body * s(d.cargo)));
+                }
                 Load::Hay => out.push(rigid(d.hay, body * s(d.hay))),
                 Load::Empty => {}
             }
@@ -832,7 +845,8 @@ fn driver_bones(m: &Mob, def: &voxel::mob::MobDef, body: Mat4, speed: f32, light
     let leg = def.parts.iter().filter(|p| matches!(p.anim, Anim::Leg(_))).map(|p| p.size.1 as f32).fold(0.0, f32::max);
     let k = def.scale / 16.0;
     let bob = (m.age * 9.0).sin().abs() * 0.015 * speed.min(1.0);
-    let model = body * Mat4::from_translation(Vec3::new(0.0, 1.125 - leg * k + bob, 0.86)) * Mat4::from_scale(Vec3::splat(k));
+    // The wagon is drawn SIZE times bigger; the driver keeps a person's size.
+    let model = body * Mat4::from_translation(Vec3::new(0.0, 1.125 - leg * k / SIZE + bob, 0.86)) * Mat4::from_scale(Vec3::splat(k / SIZE));
     let reins = -0.75 + (m.age * 4.5).sin() * 0.04 * speed.min(1.0);
     for (i, p) in def.parts.iter().enumerate().take(b.m.len() - 1) {
         let pivot = Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32, p.pivot.2 as f32);
