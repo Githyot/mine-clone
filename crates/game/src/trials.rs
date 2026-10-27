@@ -356,7 +356,7 @@ impl crate::Game {
         let Some(bi) = self.mobs.reg.id("breeze") else { return };
         let eye = self.body.eye();
         let me = self.body.pos;
-        let creative = !self.survival || self.has_effect(crate::effects::INVISIBILITY);
+        let creative = !self.hunted();
         let mut shots = Vec::new();
         for m in self.mobs.list.iter_mut() {
             if m.def != bi || !m.alive() {

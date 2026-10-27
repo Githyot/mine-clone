@@ -469,6 +469,11 @@ impl Mob {
         if hostile && dist > 28.0 {
             self.aggro = false;
         }
+        // A monster forgets a player it can't hurt (creative), so nothing that reads `aggro`
+        // keeps it coming.
+        if def.kind == Kind::Hostile && player_creative {
+            self.aggro = false;
+        }
         // A neutral animal calms down once the player is gone (or can't be hurt).
         if def.kind == Kind::Neutral && (dist > 20.0 || player_creative) {
             self.aggro = false;
@@ -757,6 +762,26 @@ mod tests {
         }
         assert!(m.body.pos.x > 5.0, "{}", m.body.pos.x);
         assert!(ev.iter().any(|e| matches!(e, MobEvent::Hit { .. })));
+    }
+
+    #[test]
+    fn monsters_leave_a_creative_player_alone() {
+        let reg = vanilla();
+        let player = Vec3::new(4.0, 10.0, 0.5);
+        for name in ["zombie", "skeleton", "stalker", "spider"] {
+            let z = reg.id(name).unwrap();
+            let def = &reg.defs[z];
+            let mut m = Mob::new(z, def, Vec3::new(0.5, 10.0, 0.5), 1);
+            // Already angry (spawned by a trial spawner, say) when the player is in creative.
+            m.aggro = true;
+            let mut ev = Vec::new();
+            for _ in 0..400 {
+                m.tick(def, &Flat, player, true, 0, false, 0.02, &mut ev);
+            }
+            assert!(!m.aggro, "{name} still angry");
+            assert!(!ev.iter().any(|e| matches!(e, MobEvent::Hit { .. } | MobEvent::Shoot { .. } | MobEvent::Explode { .. })), "{name} attacked");
+            assert_eq!(m.fuse, 0.0, "{name}");
+        }
     }
 
     #[test]

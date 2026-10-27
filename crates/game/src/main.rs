@@ -2007,7 +2007,7 @@ impl Game {
         if self.world_open && sim && self.screen != Screen::Loading && !menus_stop {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
-            let creative = !self.survival || self.screen == Screen::Dead || self.has_effect(effects::INVISIBILITY);
+            let creative = !self.hunted();
             if self.screen == Screen::Playing && self.dim == voxel::worldgen::Dim::Overworld {
                 self.update_wanderers(if self.args.screenshot.is_some() { 0.0 } else { dt }, daylight);
             }
@@ -2773,6 +2773,12 @@ impl Game {
         if let Some(a) = self.audio.as_mut() {
             a.play(s, vol);
         }
+    }
+
+    /// Monsters go after the player: survival, alive, visible, and not a dedicated server's
+    /// own nobody. In creative they leave the player alone, like vanilla.
+    pub(crate) fn hunted(&self) -> bool {
+        self.survival && !self.net.server && self.screen != Screen::Dead && !self.has_effect(effects::INVISIBILITY)
     }
 
     /// Hurt the player (survival only). `from` pushes the player away.
