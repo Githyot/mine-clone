@@ -1,0 +1,32 @@
+// Recipes of the deep world's items.
+(
+    shaped: [
+        (pattern: ["MMM", " S ", " S "], key: {'M': "magmarite_ingot", 'S': "stick"}, result: "magmarite_pickaxe"),
+        (pattern: ["MM", "MS", " S"], key: {'M': "magmarite_ingot", 'S': "stick"}, result: "magmarite_axe"),
+        (pattern: ["M", "M", "S"], key: {'M': "magmarite_ingot", 'S': "stick"}, result: "magmarite_sword"),
+        (pattern: ["MMM", "M M"], key: {'M': "magmarite_ingot"}, result: "magmarite_helmet"),
+        (pattern: ["M M", "MMM", "MMM"], key: {'M': "magmarite_ingot"}, result: "magmarite_chestplate"),
+        (pattern: ["MMM", "M M", "M M"], key: {'M': "magmarite_ingot"}, result: "magmarite_leggings"),
+        (pattern: ["M M", "M M"], key: {'M': "magmarite_ingot"}, result: "magmarite_boots"),
+        (pattern: ["OO", "OO"], key: {'O': "obsidian"}, result: "obsidian_bricks", count: 4),
+        (pattern: ["I I", "G G"], key: {'I': "iron_ingot", 'G': "gunpowder"}, result: "rocket_boots"),
+        (pattern: ["F F", "LSL"], key: {'F': "feather", 'L': "leather", 'S': "slime_ball"}, result: "leap_boots"),
+    ],
+    shapeless: [
+        (ingredients: ["magmarite_ore", "stone_bricks"], result: "infernal_bricks", count: 2),
+        (ingredients: ["grappling_hook", "magmarite_ingot", "magmarite_ingot", "magmarite_ingot"], result: "magmarite_hook"),
+        (ingredients: ["grappling_hook", "diamond", "diamond", "diamond"], result: "diamond_hook"),
+        (ingredients: ["grappling_hook", "cobweb", "cobweb", "string"], result: "web_hook"),
+        (ingredients: ["grappling_hook", "vine", "vine", "moss_block"], result: "ivy_hook"),
+        (ingredients: ["grappling_hook", "grappling_hook", "chain"], result: "dual_hook"),
+        (ingredients: ["cloud_bottle", "snow", "snow", "packed_ice"], result: "blizzard_bottle"),
+        (ingredients: ["cloud_bottle", "sand", "sand", "sandstone"], result: "sandstorm_bottle"),
+        (ingredients: ["cloud_bottle", "shiny_balloon"], result: "cloud_balloon"),
+        (ingredients: ["running_boots", "rocket_boots", "magmarite_ingot"], result: "comet_boots"),
+        (ingredients: ["iron_buckler", "gold_ingot", "gold_ingot", "leather"], result: "charge_shield"),
+        (ingredients: ["climbing_claws", "iron_ingot", "iron_ingot", "leather"], result: "climbing_gear"),
+    ],
+    smelting: [
+        (input: "magmarite_ore", result: "magmarite_ingot", xp: 1.0),
+    ],
+)

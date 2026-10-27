@@ -894,7 +894,7 @@ impl Game {
         if !items.is_empty() {
             // Out of the void or lava, the body rests on the ground above.
             let mut pos = self.body.pos;
-            pos.y = pos.y.max(1.0);
+            pos.y = pos.y.max(voxel::chunk::MIN_Y as f32 + 6.0);
             let p = pos.floor().as_ivec3();
             let mut q = p;
             while q.y < p.y + 40 && (Terrain::solid(&self.world, q) || self.world.fluid(self.world.block_or_air(q)) == 2) {
@@ -1006,6 +1006,16 @@ impl Game {
                         return true;
                     }
                     "reforge_table" => return self.t5_use_block("reforge_table"),
+                    "scale_altar" => return self.use_scale_altar(hit.block),
+                    "piggy_bank" => return self.open_bank(0),
+                    "music_box" => return self.use_music_box(hit.block),
+                    "dye_vat" => return self.use_dye_vat(),
+                    "locked_chest" => return self.use_locked_chest(hit.block),
+                    "safe" => return self.open_bank(1),
+                    n if n.starts_with("pylon_") => {
+                        let kind = n.trim_start_matches("pylon_").to_string();
+                        return self.use_pylon(hit.block, &kind);
+                    }
                     _ => {}
                 }
             }
@@ -1132,6 +1142,7 @@ impl Game {
             self.after_place(pos);
             let placed = self.world.block_or_air(pos);
             self.extras_after_place(pos, placed);
+            self.tr_after_place(pos);
             if trees::is_sapling(&self.reg.get(block).name) {
                 let t = 60.0 + self.surv.rng.f32() * 120.0;
                 self.surv.saplings.push((pos, t));
@@ -1526,7 +1537,7 @@ impl Game {
                 i += 1;
             }
         }
-        self.surv.drops.retain(|d| d.age < DESPAWN && d.body.pos.y > -64.0);
+        self.surv.drops.retain(|d| d.age < DESPAWN && d.body.pos.y > voxel::chunk::MIN_Y as f32 - 64.0);
 
         // Experience orbs drift to the player.
         let mut gained = 0;
@@ -2090,7 +2101,7 @@ impl Game {
     fn craft_result(&self) -> Option<ItemStack> {
         let n = self.surv.grid_size();
         let grid: Vec<Option<ItemStack>> = (0..n * n).map(|i| self.surv.craft[i]).collect();
-        self.recipes.craft(&grid, n)
+        self.recipes.craft(&grid, n).filter(|r| self.station_ok(r.item))
     }
 
     pub(crate) fn slot_get(&self, slot: Slot) -> Option<ItemStack> {
@@ -2608,6 +2619,8 @@ impl Game {
         }
         out.extend(self.bobber_instance(cam_block));
         out.extend(self.shot_instances(cam_block));
+        out.extend(self.tr_weapon_instances(cam_block));
+        out.extend(self.tr_wing_instances(cam_block));
         if let Some(arrow) = sprite("arrow") {
             let c = cam_block.as_vec3();
             for a in &self.mobs.arrows {
@@ -2729,7 +2742,12 @@ impl Game {
         }
         for m in &self.mobs.list {
             // Fire imps glow like a torch.
-            let glows = matches!(self.mobs.reg.defs[m.def].name.as_str(), "fire_imp" | "ember_wraith");
+            let name = self.mobs.reg.defs[m.def].name.as_str();
+            if let Some(l) = crate::tr_pets::light_of(name) {
+                found.push((m.body.pos.distance(eye), m.body.pos + Vec3::Y * 0.2, l));
+                continue;
+            }
+            let glows = matches!(name, "fire_imp" | "ember_wraith");
             if (m.on_fire > 0.0 || glows) && m.alive() {
                 found.push((m.body.pos.distance(eye), m.body.pos + Vec3::Y * 0.8, if glows { 0.7 } else { 0.85 }));
             }
@@ -3001,8 +3019,8 @@ impl Game {
                 item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, result, rx + 8.0 * s, gy + cell, 16.0 * s);
                 let rows = cells.len().div_ceil(*rw);
                 let need = (*rw).max(rows);
-                let label = if need <= 2 { "Grade 2x2" } else { "Mesa 3x3" };
-                self.ui.text(gx, gy + 3.0 * cell + 3.0 * s, label, [200, 200, 200, 255]);
+                let label = format!("{}{}", if need <= 2 { "Grade 2x2" } else { "Mesa 3x3" }, self.station_label(result.item));
+                self.ui.text(gx, gy + 3.0 * cell + 3.0 * s, &label, [200, 200, 200, 255]);
                 fill = Some((*rw, cells.clone()));
             }
             BookRecipe::Smelt { input, result } => {

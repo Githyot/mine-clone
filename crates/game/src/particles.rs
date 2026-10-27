@@ -158,6 +158,13 @@ impl Particles {
         self.push(p);
     }
 
+    /// A mote blown along `vel` (sandstorm grit).
+    pub fn dust(&mut self, at: Vec3, vel: Vec3, layer: u16, tint: [f32; 3], size: f32, life: f32) {
+        let uv = [(self.rand() * 12.0).floor() / 16.0, (self.rand() * 12.0).floor() / 16.0];
+        let p = Particle { pos: at, vel, life: life * (0.7 + self.rand() * 0.6), size, layer: layer as u32, uv, tint, kind: Kind::Mote };
+        self.push(p);
+    }
+
     /// A drop of water hanging off a ceiling, then falling.
     pub fn drip(&mut self, at: Vec3, layer: u16) {
         let p = Particle { pos: at, vel: Vec3::new(0.0, -0.4, 0.0), life: 2.5, size: 0.035, layer: layer as u32, uv: [0.4, 0.4], tint: [0.6, 0.75, 1.0], kind: Kind::Drop };

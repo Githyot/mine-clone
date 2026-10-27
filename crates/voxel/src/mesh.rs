@@ -7,7 +7,7 @@
 //! - w2: sky 4 bits | block light 4 bits | tint r 8 | g 8 | b 8
 
 use crate::block::{BlockId, BlockRegistry, Shape, Transparency, AIR};
-use crate::chunk::{Chunk, CHUNK_HEIGHT};
+use crate::chunk::{local_y, Chunk, MIN_Y, SECTIONS};
 use crate::shapes::{CONN_NX, CONN_NZ, CONN_PX, CONN_PZ};
 
 pub const FLAG_WAVE: u32 = 1;
@@ -92,13 +92,15 @@ impl SectionMesh {
 }
 
 const P: usize = 18; // padded width
-const PH: usize = CHUNK_HEIGHT + 2;
 
-/// Blocks and light of a chunk plus a one-block border from its neighbours.
+/// Blocks and light of a band of a chunk's sections (`lo..hi`, local) plus a one-block border
+/// from its neighbours and the sections above and below.
 pub struct MeshInput {
     blocks: Vec<BlockId>,
     light: Vec<u8>,
     biomes: [u8; 256],
+    pub lo: usize,
+    pub hi: usize,
 }
 
 #[inline(always)]
@@ -109,8 +111,16 @@ fn pi(x: usize, y: usize, z: usize) -> usize {
 impl MeshInput {
     /// `chunks` uses the same 3×3 layout as lighting (index 4 = centre). Missing neighbours read as stone-dark air.
     pub fn new(chunks: [Option<&Chunk>; 9]) -> Self {
-        let mut blocks = vec![AIR; P * P * PH];
-        let mut light = vec![0xF0u8; P * P * PH];
+        Self::band(chunks, 0, SECTIONS)
+    }
+
+    pub fn band(chunks: [Option<&Chunk>; 9], lo: usize, hi: usize) -> Self {
+        let (lo, hi) = (lo.min(SECTIONS), hi.min(SECTIONS).max(lo));
+        let ph = (hi - lo) * 16 + 2;
+        // Padded y 0 is the block below the band.
+        let first = (lo * 16) as i32 - 1;
+        let mut blocks = vec![AIR; P * P * ph];
+        let mut light = vec![0xF0u8; P * P * ph];
         for pz in 0..P {
             for px in 0..P {
                 let wx = px as i32 - 1;
@@ -119,63 +129,47 @@ impl MeshInput {
                 let cz = wz.div_euclid(16);
                 let (lx, lz) = (wx.rem_euclid(16) as usize, wz.rem_euclid(16) as usize);
                 let Some(c) = chunks[((cx + 1) + (cz + 1) * 3) as usize] else { continue };
-                for s in 0..16 {
-                    let sec = &c.sections[s];
-                    let empty = sec.is_empty();
-                    for yy in 0..16 {
-                        let y = s * 16 + yy;
-                        let i = pi(px, y + 1, pz);
-                        if !empty {
-                            blocks[i] = sec.get(crate::chunk::section_index(lx, yy, lz));
-                        }
-                        light[i] = c.light_at(lx, y, lz);
+                let lit = !c.light.is_empty();
+                for py in 0..ph {
+                    let y = first + py as i32;
+                    if y < 0 || y >= (SECTIONS * 16) as i32 {
+                        continue;
+                    }
+                    let y = y as usize;
+                    let i = pi(px, py, pz);
+                    let sec = &c.sections[y >> 4];
+                    if !sec.is_empty() {
+                        blocks[i] = sec.get(crate::chunk::section_index(lx, y & 15, lz));
+                    }
+                    if lit {
+                        light[i] = c.light_local(lx, y, lz);
                     }
                 }
             }
         }
         let c = chunks[4].expect("centre chunk");
-        MeshInput { blocks, light, biomes: c.biomes }
+        MeshInput { blocks, light, biomes: c.biomes, lo, hi }
     }
 
-    /// Like `new`, but only sections `lo..=hi` (and one section above and below) are filled in:
-    /// enough to mesh just those, for an edit that has to show in the same frame.
+    /// Only sections `lo..=hi` (and a block above and below): enough to mesh just those, for an
+    /// edit that has to show in the same frame.
     pub fn new_sections(chunks: [Option<&Chunk>; 9], lo: usize, hi: usize) -> Self {
-        let mut blocks = vec![AIR; P * P * PH];
-        let mut light = vec![0xF0u8; P * P * PH];
-        let c = chunks[4].expect("centre chunk");
-        let range = lo.saturating_sub(1)..(hi + 2).min(c.sections.len());
-        for pz in 0..P {
-            for px in 0..P {
-                let wx = px as i32 - 1;
-                let wz = pz as i32 - 1;
-                let cx = wx.div_euclid(16);
-                let cz = wz.div_euclid(16);
-                let (lx, lz) = (wx.rem_euclid(16) as usize, wz.rem_euclid(16) as usize);
-                let Some(n) = chunks[((cx + 1) + (cz + 1) * 3) as usize] else { continue };
-                for s in range.clone() {
-                    let sec = &n.sections[s];
-                    let empty = sec.is_empty();
-                    for yy in 0..16 {
-                        let y = s * 16 + yy;
-                        let i = pi(px, y + 1, pz);
-                        if !empty {
-                            blocks[i] = sec.get(crate::chunk::section_index(lx, yy, lz));
-                        }
-                        light[i] = n.light_at(lx, y, lz);
-                    }
-                }
-            }
-        }
-        MeshInput { blocks, light, biomes: c.biomes }
+        Self::band(chunks, lo, hi + 1)
     }
 
     /// Light for a block just opened up (relative to the centre chunk) before the light workers
     /// get to it: what its neighbours would spread into it, so the faces it uncovers aren't black.
+    /// `y` is a world y.
     pub fn guess_light(&mut self, x: i32, y: i32, z: i32) {
-        if !(0..16).contains(&x) || !(0..16).contains(&z) || !(0..CHUNK_HEIGHT as i32).contains(&y) {
+        if y < MIN_Y {
             return;
         }
-        let i = pi((x + 1) as usize, (y + 1) as usize, (z + 1) as usize);
+        let py = local_y(y) as i32 - (self.lo * 16) as i32 + 1;
+        // Needs a padded block on every side, inside the band.
+        if !(0..16).contains(&x) || !(0..16).contains(&z) || py < 1 || py as usize > (self.hi - self.lo) * 16 {
+            return;
+        }
+        let i = pi((x + 1) as usize, py as usize, (z + 1) as usize);
         let (mut sky, mut blk) = (0u8, 0u8);
         for (d, down) in [(1isize, false), (-1, false), (P as isize, false), (-(P as isize), false), ((P * P) as isize, true), (-((P * P) as isize), false)] {
             let l = self.light[(i as isize + d) as usize];
@@ -188,14 +182,17 @@ impl MeshInput {
     }
 
     /// Leave out one block, given relative to the centre chunk (-1..=16 reaches the border).
+    /// `y` is a world y.
     pub fn hide(&mut self, x: i32, y: i32, z: i32) {
-        if (-1..=16).contains(&x) && (-1..=16).contains(&z) && (0..CHUNK_HEIGHT as i32).contains(&y) {
-            self.blocks[pi((x + 1) as usize, (y + 1) as usize, (z + 1) as usize)] = AIR;
+        let py = local_y(y) as i32 - (self.lo * 16) as i32 + 1;
+        if (-1..=16).contains(&x) && (-1..=16).contains(&z) && py >= 0 && (py as usize) < (self.hi - self.lo) * 16 + 2 {
+            self.blocks[pi((x + 1) as usize, py as usize, (z + 1) as usize)] = AIR;
         }
     }
 
+    /// `s` is a local section inside the band.
     pub fn section_has_blocks(&self, s: usize) -> bool {
-        let y0 = s * 16 + 1;
+        let y0 = (s - self.lo) * 16 + 1;
         (y0..y0 + 16).any(|y| {
             let row = &self.blocks[pi(0, y, 0)..pi(0, y + 1, 0)];
             row.iter().any(|&b| b != AIR)
@@ -489,7 +486,7 @@ fn pack(pos: [u32; 3], ao: u32, uv: [u32; 2], layer: u32, face: u32, flags: u32,
 
 /// Flood-fill the open cells of a section and record which of its faces are connected.
 pub fn section_visibility(t: &MeshTables, input: &MeshInput, section: usize) -> u64 {
-    let y0 = section * 16 + 1;
+    let y0 = (section - input.lo) * 16 + 1;
     let mut seen = [false; 4096];
     for (i, s) in seen.iter_mut().enumerate() {
         let (x, y, z) = (i & 15, i >> 8, (i >> 4) & 15);
@@ -579,7 +576,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
     let solid = |id: usize| t.opaque[id] && !open.get(id).copied().unwrap_or(false);
     let blocks = &input.blocks;
     let light = &input.light;
-    let y0 = section * 16;
+    let y0 = (section - input.lo) * 16;
     let white = [200u8, 200, 200];
     // Uniform faces wait here, per direction and slice, to be merged into bigger quads.
     let mut masks: Vec<[Option<FaceKey>; 256]> = vec![[None; 256]; 6 * 16];
@@ -1148,18 +1145,19 @@ mod tests {
     fn single_block_has_six_faces() {
         let reg = BlockRegistry::from_ron(r#"(blocks: [(name: "stone")])"#).unwrap();
         let t = MeshTables::new(&reg, vec![]);
+        const B: usize = crate::chunk::BASE_SECTION;
         let mut c = Chunk::new(ChunkPos::new(0, 0));
         c.set(5, 5, 5, 1);
         let input = MeshInput::new([None, None, None, None, Some(&c), None, None, None, None]);
-        let m = mesh_section(&t, &input, 0);
+        let m = mesh_section(&t, &input, B);
         assert_eq!(m.solid.len(), 24);
-        assert!(input.section_has_blocks(0));
-        assert!(!input.section_has_blocks(3));
-        assert_eq!(section_visibility(&t, &input, 0), VIS_ALL);
+        assert!(input.section_has_blocks(B));
+        assert!(!input.section_has_blocks(B + 3));
+        assert_eq!(section_visibility(&t, &input, B), VIS_ALL);
         // Two touching blocks hide two faces, and the evenly lit faces left merge into a 2x1 box.
         c.set(6, 5, 5, 1);
         let input = MeshInput::new([None, None, None, None, Some(&c), None, None, None, None]);
-        let m = mesh_section(&t, &input, 0);
+        let m = mesh_section(&t, &input, B);
         assert_eq!(m.solid.len(), 24);
         assert!(m.solid.iter().all(|v| (v.w[1] >> 25) & FLAG_TILE != 0));
     }

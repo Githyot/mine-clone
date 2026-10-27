@@ -100,9 +100,16 @@ impl Game {
     pub(crate) fn look_instances(&self, bones: &crate::entity::Bones) -> Vec<(usize, crate::entity::Bones)> {
         let mut out = Vec::new();
         for piece in 0..4 {
-            let shown = self.t5.look.vanity[piece].or(self.surv.armor[piece]);
-            let Some(st) = shown else { continue };
-            let Some(mesh) = self.entities.armor_mesh(&self.items.get(st.item).name, piece) else { continue };
+            // A Visual slot wins; otherwise the clothes put on from the hand and the dye vat's
+            // colour (tr_style.rs) over the real armour.
+            let (st, look) = match self.t5.look.vanity[piece] {
+                Some(st) => (st, self.items.get(st.item).name.clone()),
+                None => {
+                    let Some(st) = self.shown_armor(piece) else { continue };
+                    (st, self.armor_look(piece, &st))
+                }
+            };
+            let Some(mesh) = self.entities.armor_mesh(&look, piece) else { continue };
             let mut b = *bones;
             if let Some(t) = self.dye_tint(piece) {
                 b.tint = t;
