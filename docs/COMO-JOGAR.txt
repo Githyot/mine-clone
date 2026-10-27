@@ -686,6 +686,20 @@ A MASMORRA E A TINA DE TINGIR (lado Terraria)
   Tina de Tingir (tábuas + balde de água): clique com um corante na mão para tingir toda a
     armadura ou roupa que você veste. Com a mão vazia a tinta sai.
 
+CONFORTO EM CASA (lado Terraria)
+  Lanterna de Coração (lanterna + cristal de vida): perto dela a vida volta mais depressa.
+  Estrela no Pote (frasco + estrela caída): perto dela a mana volta mais depressa.
+  Vela d'Água e Poção de Batalha: muito mais monstros. Vela da Paz e Poção Calmante: menos.
+  Clique numa estação para um bônus de 10 minutos: Bola de Cristal (magia e mana), Pedra de
+    Amolar (armas de perto), Caixa de Munição (às vezes não gasta munição), Mesa de Guerra e
+    Mesa Enfeitiçada (um lacaio a mais cada uma).
+  Relógio de Sol Encantado: clique e o tempo corre rápido até a manhã (uma vez por dia).
+  Estandarte de Caça: a cada 50 monstros do mesmo tipo abatidos você ganha um. Com qualquer
+    estandarte pendurado a até 48 blocos, os tipos que você já caçou levam 50% mais dano.
+  Ao morrer fica uma lápide onde você caiu; a mensagem diz onde.
+  No inventário: O organiza a mochila e X guarda nos baús perto (até 8 blocos) tudo o que
+    eles já têm.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

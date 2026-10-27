@@ -527,7 +527,7 @@ impl Default for Stats {
 }
 
 impl Stats {
-    fn apply(&mut self, m: &M) {
+    pub(crate) fn apply(&mut self, m: &M) {
         match *m {
             M::Def(v) => self.defense += v,
             M::Dmg(c, v) if c == ALL_CLASSES => self.dmg.iter_mut().for_each(|d| *d += v),
@@ -765,6 +765,7 @@ impl Game {
         if self.has_effect(COZY_FIRE) {
             s.regen += 0.25;
         }
+        self.comfort_stats(&mut s);
         if self.has_effect(FIRE_RESISTANCE) {
             s.fire_immune = true;
         }
@@ -994,12 +995,15 @@ impl Game {
         }
         let glow = self.glow_layer();
         let mut sparks = Vec::new();
+        // Hunting banners near (tr_comfort.rs): those kinds take more damage.
+        let hunt = &self.t5.tr.comfort.hunt;
         for m in self.mobs.list.iter_mut() {
+            let base = if hunt.get(m.def).copied().unwrap_or(false) { 0.5 } else { 0.0 };
             if m.debuffs.is_empty() {
-                m.vuln = 0.0;
+                m.vuln = base;
                 continue;
             }
-            let mut vuln = 0.0;
+            let mut vuln = base;
             let mut dot = 0.0;
             for d in m.debuffs.iter_mut() {
                 d.1 -= dt;

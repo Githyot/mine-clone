@@ -4132,6 +4132,211 @@ def dungeon_layout(seed):
     return [["".join(r) for r in layer] for layer in grid], sink
 
 
+# ==============================================================================================
+# Lote 12 (second round): comfort at home. The heart lantern and the star in a bottle (life and
+# mana come back faster near them), the water candle and the peace candle (more or fewer
+# monsters), the stations that give a buff for ten minutes (crystal ball, sharpening stone,
+# ammo box, war table, bewitching table), the enchanted sundial, the hunting banner, and the
+# battle and calming potions
+# ==============================================================================================
+
+SRC16 = ROOT / "tools" / "tex64" / "src16" / "block"
+
+
+def recolor(name, p, keep_dark=True):
+    """One of our own 16x16 blocks, its colours mapped by brightness onto palette `p`."""
+    im = np.asarray(Image.open(SRC16 / f"{name}.png").convert("RGBA")).astype(float)
+    out = gt.canvas()
+    lum = (im[..., 0] * 0.3 + im[..., 1] * 0.59 + im[..., 2] * 0.11) / 255.0
+    cols = np.array(p, dtype=float)
+    for y in range(N):
+        for x in range(N):
+            if im[y, x, 3] < 8:
+                out[y, x, 3] = 0
+                continue
+            v = lum[y, x]
+            if keep_dark and v < 0.18:
+                out[y, x, :3] = im[y, x, :3]
+            else:
+                out[y, x, :3] = cols[min(int(v * len(cols)), len(cols) - 1)]
+            out[y, x, 3] = im[y, x, 3]
+    return out
+
+
+CANDLE = [
+    "................",
+    "................",
+    ".......a........",
+    "......aba.......",
+    ".......a........",
+    ".......5........",
+    "......1221......",
+    "......1231......",
+    "......1231......",
+    "......1231......",
+    "......1231......",
+    "......1231......",
+    "......1221......",
+    "....11111111....",
+    "....12222221....",
+    "....11111111....",
+]
+BANNER_EMBLEM = [
+    "................",
+    "................",
+    "................",
+    "................",
+    "......1..1......",
+    ".....1a11a1.....",
+    ".....1aaaa1.....",
+    "....1aaaaaa1....",
+    "....1a1aa1a1....",
+    "....1aaaaaa1....",
+    ".....1aaaa1.....",
+    "......1aa1......",
+    ".......11.......",
+    "................",
+    "................",
+    "................",
+]
+POTIONS_COMFORT = [
+    ("battle_potion", "Poção de Batalha", pal("#c8d2dc", "#7a1a1a", "#c43a2a", "#f8a080")),
+    ("calming_potion", "Poção Calmante", pal("#c8d2dc", "#1a4a7a", "#4a8ac4", "#c0e0ff")),
+]
+
+
+def items_comfort():
+    out = [(n, d, icon2(POTION, p, FLASK), "max_stack: Some(16)") for n, d, p in POTIONS_COMFORT]
+    return out
+
+
+def block_defs_comfort():
+    return [
+        '(name: "heart_lantern", display_name: Some("Lanterna de Coração"), tier: 1, shape: Lantern, transparency: Cutout, light: 14, hardness: 2.0, tool: Some(Pickaxe), textures: (side: Some("heart_lantern"), top: Some("heart_lantern_top"), bottom: Some("heart_lantern_top")))',
+        '(name: "star_bottle", display_name: Some("Estrela no Pote"), tier: 1, shape: Lantern, transparency: Cutout, light: 13, hardness: 1.0, textures: (side: Some("star_bottle"), top: Some("star_bottle_top"), bottom: Some("star_bottle_top")))',
+        '(name: "water_candle", display_name: Some("Vela d\'Água"), shape: Torch, transparency: Cutout, solid: false, light: 6, hardness: 0.3, textures: (all: Some("water_candle")))',
+        '(name: "peace_candle", display_name: Some("Vela da Paz"), shape: Torch, transparency: Cutout, solid: false, light: 6, hardness: 0.3, textures: (all: Some("peace_candle")))',
+        '(name: "crystal_ball", display_name: Some("Bola de Cristal"), transparency: Cutout, light: 9, hardness: 1.5, tool: Some(Pickaxe), textures: (top: Some("crystal_ball_top"), side: Some("crystal_ball_side"), bottom: Some("crystal_ball_bottom")))',
+        '(name: "sharpening_station", display_name: Some("Pedra de Amolar"), hardness: 2.5, tool: Some(Pickaxe), textures: (top: Some("sharpening_station_top"), side: Some("sharpening_station_side"), bottom: Some("sharpening_station_bottom")))',
+        '(name: "ammo_box", display_name: Some("Caixa de Munição"), hardness: 1.5, tool: Some(Axe), textures: (top: Some("ammo_box_top"), side: Some("ammo_box_side"), bottom: Some("ammo_box_bottom")))',
+        '(name: "war_table", display_name: Some("Mesa de Guerra"), shape: Table, transparency: Cutout, hardness: 2.0, tool: Some(Axe), textures: (top: Some("war_table_top"), side: Some("war_table_side"), bottom: Some("war_table_side")))',
+        '(name: "bewitching_table", display_name: Some("Mesa Enfeitiçada"), shape: Table, transparency: Cutout, light: 5, hardness: 2.0, tool: Some(Axe), textures: (top: Some("bewitching_table_top"), side: Some("bewitching_table_side"), bottom: Some("bewitching_table_side")))',
+        '(name: "enchanted_sundial", display_name: Some("Relógio de Sol Encantado"), light: 7, hardness: 4.0, tool: Some(Pickaxe), textures: (top: Some("enchanted_sundial_top"), side: Some("enchanted_sundial_side"), bottom: Some("enchanted_sundial_bottom")))',
+        '(name: "hunt_banner", display_name: Some("Estandarte de Caça"), shape: Banner, solid: false, transparency: Cutout, hardness: 1.0, tool: Some(Axe), textures: (all: Some("hunt_banner")))',
+    ]
+
+
+def blocks_comfort():
+    out = {}
+    heart = pal("#3a0a12", "#7a1424", "#b82a3a", "#e85a6a", "#ffb0b8")
+    star = pal("#3a2a08", "#8a6a10", "#d4aa18", "#f8e070", "#fffbe0")
+    out["heart_lantern"] = recolor("lantern", heart)
+    out["heart_lantern_top"] = recolor("lantern_top", heart)
+    out["star_bottle"] = recolor("lantern", star)
+    out["star_bottle_top"] = recolor("lantern_top", star)
+    out["water_candle"] = from_map(CANDLE, {**pmap(pal("#14284a", "#2a4a8a", "#4a7ac4", "#a8d0f0", "#6ab4ff")), **pmap(pal("#5ab4f0", "#e0f4ff"), "ab")})
+    out["peace_candle"] = from_map(CANDLE, {**pmap(pal("#6a2a4a", "#b45a8a", "#e08ab4", "#f8c8e0", "#ffd0e8")), **pmap(pal("#f8a0c8", "#fff0f8"), "ab")})
+
+    def ball_side(x, y):
+        d = ((x - 7.5) ** 2 + (y - 6.5) ** 2) ** 0.5
+        if y >= 12:
+            return 0.25 + 0.1 * (x % 3 == 0)
+        return 0.95 if d < 2 else (0.75 - d * 0.05 if d < 6.5 else 0.08)
+
+    stand = pal("#2a1a0a", "#5a3a1a", "#8a5a2a", "#c48a4a")
+    glass = pal("#1a1a4a", "#3a3aa0", "#6a6ae0", "#b0b0ff", "#ffffff")
+    cb = block_noise(160, ball_side, glass)
+    for y in range(12, N):
+        for x in range(N):
+            cb[y, x, :3] = np.array(stand[(x + y) % 3 + 1])
+    for y in range(N):
+        for x in range(N):
+            if y < 12 and ((x - 7.5) ** 2 + (y - 6.5) ** 2) ** 0.5 >= 6.5:
+                cb[y, x, 3] = 0
+    out["crystal_ball_side"] = cb
+    out["crystal_ball_top"] = block_noise(161, lambda x, y: 0.9 - (((x - 7.5) ** 2 + (y - 7.5) ** 2) ** 0.5) * 0.08, glass)
+    out["crystal_ball_bottom"] = block_noise(162, lambda x, y: 0.5, stand)
+
+    stone = pal("#3a3a40", "#5a5a64", "#7a7a86", "#a0a0ac", "#d0d0d8")
+    wood = pal("#3a2410", "#5a3a1a", "#7a5428", "#a0743a", "#c49a5a")
+    out["sharpening_station_top"] = block_noise(163, lambda x, y: 0.6 + 0.3 * (6 <= y <= 9) - 0.4 * (min(x, y, 15 - x, 15 - y) == 0), stone)
+    ss = block_noise(164, lambda x, y: (0.85 - abs(((x - 7.5) ** 2 + (y - 5.5) ** 2) ** 0.5 - 4) * 0.15) if y < 11 else 0.45 + 0.1 * (x % 4 == 0), stone, spots=0.05)
+    for y in range(11, N):
+        for x in range(N):
+            ss[y, x, :3] = np.array(wood[(x // 4 + y) % 4 + 1])
+    out["sharpening_station_side"] = ss
+    out["sharpening_station_bottom"] = block_noise(165, lambda x, y: 0.5, wood)
+
+    olive = pal("#1e2412", "#3a4422", "#56663a", "#748a52", "#98ac70")
+    brass = pal("#5a3a08", "#a07c16", "#d4aa18", "#f4ca28")
+    ab = block_noise(166, lambda x, y: 0.15 if min(x, y, 15 - x, 15 - y) == 0 or y == 4 else 0.55 + 0.1 * (x % 5 == 0), olive)
+    for x in range(6, 10):
+        for y in range(5, 8):
+            ab[y, x, :3] = np.array(brass[2 + (y == 5)])
+    out["ammo_box_side"] = ab
+    out["ammo_box_top"] = block_noise(167, lambda x, y: 0.15 if min(x, y, 15 - x, 15 - y) == 0 else 0.6 - 0.2 * (y in (7, 8)), olive)
+    out["ammo_box_bottom"] = block_noise(168, lambda x, y: 0.4, olive)
+
+    def map_top(x, y):
+        rim = min(x, y, 15 - x, 15 - y) == 0
+        river = abs(y - (6 + 3 * np.sin(x / 3))) < 1
+        return 0.2 if rim else (0.35 if river else 0.75 + 0.1 * ((x * 7 + y * 3) % 5 == 0))
+
+    parch = pal("#3a2a12", "#2a5a8a", "#8a7444", "#c4ac74", "#e8d8a8")
+    wt = block_noise(169, map_top, parch)
+    for (x, y) in [(4, 4), (11, 10), (8, 12)]:
+        wt[y, x, :3] = [180, 30, 30]
+    out["war_table_top"] = wt
+    out["war_table_side"] = block_noise(170, lambda x, y: 0.45 + 0.15 * (x % 4 == 0), wood)
+
+    def bewitch_top(x, y):
+        d = ((x - 7.5) ** 2 + (y - 7.5) ** 2) ** 0.5
+        ring = abs(d - 5.5) < 0.8
+        star = (abs(x - 7.5) < 0.8 or abs(y - 7.5) < 0.8) and d < 5
+        return 0.95 if ring or star else 0.35 + 0.1 * ((x + y) % 4 == 0)
+
+    out["bewitching_table_top"] = block_noise(171, bewitch_top, pal("#1a0a2a", "#3a1a5a", "#6a3a9a", "#a06ad4", "#e0c0ff"))
+    out["bewitching_table_side"] = block_noise(172, lambda x, y: 0.4 + 0.15 * (x % 4 == 0), pal("#1a0e14", "#2e1a24", "#46283a", "#5e3a50", "#7a5068"))
+
+    def dial_top(x, y):
+        d = ((x - 7.5) ** 2 + (y - 7.5) ** 2) ** 0.5
+        tick = d > 5 and d < 6.6 and (round(np.degrees(np.arctan2(y - 7.5, x - 7.5))) % 45 < 12)
+        gnomon = abs(x - y) < 0.8 and d < 5
+        return 0.95 if gnomon else (0.15 if tick else (0.7 if d < 7 else 0.3))
+
+    sand = pal("#4a3a1a", "#8a7444", "#c4ac74", "#e8d8a8", "#fff4d0")
+    out["enchanted_sundial_top"] = block_noise(173, dial_top, sand)
+    out["enchanted_sundial_side"] = block_noise(174, lambda x, y: 0.2 if y in (0, 3) else 0.55 + 0.1 * ((x + y) % 5 == 0), sand)
+    out["enchanted_sundial_bottom"] = block_noise(175, lambda x, y: 0.5, sand)
+
+    hb = recolor("red_banner", pal("#2a1608", "#5a2a10", "#8a4418", "#b8662a", "#e0904a"))
+    em = from_map(BANNER_EMBLEM, {**pmap(pal("#2a1a0a")), **pmap(pal("#f0d080"), "a")})
+    for y in range(N):
+        for x in range(N):
+            if em[y, x, 3] > 0 and hb[y, x, 3] > 0:
+                hb[y, x, :3] = em[y, x, :3]
+    out["hunt_banner"] = hb
+    return out
+
+
+SHAPED_COMFORT = [
+    ([" G ", "GSG", "BBB"], {"G": "glass", "S": "fallen_star", "B": "gold_ingot"}, "crystal_ball", 1),
+    (["III", "IGI"], {"I": "iron_ingot", "G": "grindstone"}, "sharpening_station", 1),
+    (["PIP", "PGP", "PPP"], {"P": "oak_planks", "I": "iron_ingot", "G": "gunpowder"}, "ammo_box", 1),
+    (["MMM", "P P"], {"M": "map", "P": "oak_planks"}, "war_table", 1),
+    (["BKB", "P P"], {"B": "bone", "K": "book", "P": "oak_planks"}, "bewitching_table", 1),
+    (["SCS", "GGG"], {"S": "fallen_star", "C": "clock", "G": "gold_ingot"}, "enchanted_sundial", 1),
+]
+SHAPELESS_COMFORT = [
+    (["lantern", "life_crystal"], "heart_lantern", 1),
+    (["glass_bottle", "fallen_star"], "star_bottle", 1),
+    (["beeswax", "string", "ink_sac"], "water_candle", 1),
+    (["beeswax", "string", "pink_dye"], "peace_candle", 1),
+    (["glass_bottle", "rotten_flesh", "spider_eye"], "battle_potion", 1),
+    (["glass_bottle", "pink_dye", "sugar"], "calming_potion", 1),
+]
+
+
 def write_skins(skins):
     parsed, layers = g.parse_mobs(str(OUT / "mobs.ron"))
     assert set(parsed) == set(skins), sorted(set(parsed) ^ set(skins))
@@ -4148,10 +4353,10 @@ def write_skins(skins):
 
 
 def main():
-    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8() + items_l9() + items_l10() + items_l11() + items_l12()
-    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7 + BLOCKS_L9 + block_defs_l10() + BLOCKS_L11 + block_defs_l12()
+    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8() + items_l9() + items_l10() + items_l11() + items_l12() + items_comfort()
+    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7 + BLOCKS_L9 + block_defs_l10() + BLOCKS_L11 + block_defs_l12() + block_defs_comfort()
     mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6() + mobs_l7() + mobs_l8()
-    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9 + SHAPED_L10 + SHAPED_L11 + SHAPED_L12, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9 + SHAPELESS_L10 + SHAPELESS_L11 + SHAPELESS_L12, SMELTING_L2 + SMELTING_L3)
+    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9 + SHAPED_L10 + SHAPED_L11 + SHAPED_L12 + SHAPED_COMFORT, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9 + SHAPELESS_L10 + SHAPELESS_L11 + SHAPELESS_L12 + SHAPELESS_COMFORT, SMELTING_L2 + SMELTING_L3)
     structures_l3()
     skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6(), **skins_l7(), **skins_l8()})
     pics = []
@@ -4159,7 +4364,7 @@ def main():
         im = gt.to_image(img)
         im.save(os.path.join(gi.ITEM_DIR, name + ".png"))
         pics.append(im)
-    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7(), **blocks_l9(), **blocks_l10(), **blocks_l11(), **blocks_l12()}
+    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7(), **blocks_l9(), **blocks_l10(), **blocks_l11(), **blocks_l12(), **blocks_comfort()}
     for name, img in all_blocks.items():
         im = gt.to_image(img)
         im.save(os.path.join(gi.BLOCK_DIR, name + ".png"))

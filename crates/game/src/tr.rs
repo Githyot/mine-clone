@@ -59,6 +59,9 @@ struct Saved {
     music_boxes: Vec<((i32, i32, i32), String)>,
     #[serde(default)]
     dyes: Vec<Option<u8>>,
+    /// Heart lanterns, candles, banners placed (tr_comfort.rs).
+    #[serde(default)]
+    comfort: Vec<((i32, i32, i32), u8)>,
 }
 
 #[derive(Default)]
@@ -76,6 +79,7 @@ pub struct Tr {
     pub(crate) modes: crate::tr_modes::Modes,
     pub(crate) style: crate::tr_style::Style,
     pub(crate) dungeon: crate::tr_dungeon::Dungeon,
+    pub(crate) comfort: crate::tr_comfort::Comfort,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -106,6 +110,7 @@ impl Tr {
             tr.style.dyes[k] = *d;
         }
         tr.style.boxes = s.music_boxes.into_iter().map(|((x, y, z), t)| (glam::IVec3::new(x, y, z), t)).collect();
+        tr.comfort.placed = s.comfort.into_iter().map(|((x, y, z), k)| (glam::IVec3::new(x, y, z), k)).collect();
         tr.town.animals = s.animals.into_iter().map(|(k, (x, y, z))| (k, Vec3::new(x, y, z))).collect();
         tr
     }
@@ -129,6 +134,7 @@ impl Tr {
             dyes: self.style.dyes.to_vec(),
             music_boxes: self.style.boxes.iter().map(|(p, t)| ((p.x, p.y, p.z), t.clone())).collect(),
             animals: self.town.animals.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
+            comfort: self.comfort.placed.iter().map(|(p, k)| ((p.x, p.y, p.z), *k)).collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
@@ -156,6 +162,7 @@ impl Game {
         self.update_tr_modes();
         self.update_tr_style();
         self.update_tr_dungeon(dt);
+        self.update_tr_comfort(dt);
     }
 
     /// Right click with an item of this file; true when it did something.
@@ -185,6 +192,9 @@ impl Game {
             return Some(r);
         }
         if let Some(r) = self.tr_style_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.tr_comfort_use(name) {
             return Some(r);
         }
         match name {
@@ -432,6 +442,7 @@ impl Game {
             "relics" | "bestiary" => self.test_tr_modes(scene),
             "vanity" | "paint" => self.test_tr_style(scene),
             "dungeon" => self.test_tr_dungeon(),
+            "comfort" => self.test_tr_comfort(),
             "harvest" | "winter" | "pirates" | "martians" | "crystal" => {
                 self.test_invasion(scene);
             }

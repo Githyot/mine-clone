@@ -13,7 +13,6 @@ use std::collections::HashMap;
 
 use glam::{IVec3, Vec3};
 use voxel::item::ItemStack;
-use voxel::physics::Terrain;
 
 use crate::audio::{Material, Sfx};
 use crate::Game;
