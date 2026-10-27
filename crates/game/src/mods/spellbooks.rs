@@ -1323,7 +1323,7 @@ impl Game {
         let me = self.body.pos;
         let mut casts: Vec<(usize, usize)> = Vec::new();
         for (k, m) in self.mobs.list.iter().enumerate() {
-            if !m.alive() || !m.aggro || !self.survival {
+            if !m.alive() || !m.aggro || !self.hunted() {
                 continue;
             }
             let name = self.mobs.reg.defs[m.def].name.as_str();
