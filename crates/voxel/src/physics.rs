@@ -103,6 +103,8 @@ pub struct Body {
     /// Pulling itself up onto a ledge (see `try_mantle`): the body follows this path instead
     /// of walking.
     pub mantle: Option<Mantle>,
+    /// Seconds a jump press still counts for catching a ledge after the key is let go.
+    pub mantle_buffer: f32,
 }
 
 /// Grabbing a ledge up to two blocks high and pulling up onto it, Terraria style: the hands
@@ -110,6 +112,8 @@ pub struct Body {
 #[derive(Clone, Copy, Debug)]
 pub struct Mantle {
     pub from: Vec3,
+    /// Where the climb rises from: `from`, or a little back from an edge over the head.
+    pub back: Vec3,
     pub to: Vec3,
     /// Height of the ledge's top surface (world y).
     pub ledge: f32,
@@ -120,8 +124,8 @@ pub struct Mantle {
 
 /// The highest ledge a body can pull itself onto, above its feet.
 pub const MANTLE_REACH: f32 = 2.05;
-/// From the ground, lower ledges are left to the normal jump.
-const MANTLE_MIN_GROUND: f32 = 1.3;
+/// How long a jump press is remembered for catching a ledge.
+const MANTLE_BUFFER: f32 = 0.5;
 /// Phases of a climb, as fractions of its time: hold the edge, pull up, swing over.
 pub const MANTLE_GRAB: f32 = 0.15;
 pub const MANTLE_PULL: f32 = 0.7;
@@ -138,15 +142,16 @@ impl Mantle {
         let ease = |x: f32| x * x * (3.0 - 2.0 * x);
         let lift = self.to.y + 0.04;
         if u < MANTLE_GRAB {
-            // Hands catch the edge: the body sags a little under its own weight.
+            // Hands catch the edge: the body sags a little under its own weight (and swings
+            // back from an edge it was under).
             let k = u / MANTLE_GRAB;
-            self.from - Vec3::Y * 0.05 * (k * std::f32::consts::PI).sin()
+            self.from + (self.back - self.from) * ease(k) - Vec3::Y * 0.05 * (k * std::f32::consts::PI).sin()
         } else if u < MANTLE_PULL {
             let k = ease((u - MANTLE_GRAB) / (MANTLE_PULL - MANTLE_GRAB));
-            Vec3::new(self.from.x, self.from.y + (lift - self.from.y) * k, self.from.z)
+            Vec3::new(self.back.x, self.back.y + (lift - self.back.y) * k, self.back.z)
         } else {
             let k = ease((u - MANTLE_PULL) / (1.0 - MANTLE_PULL));
-            let xz = self.from + (self.to - self.from) * k;
+            let xz = self.back + (self.to - self.back) * k;
             Vec3::new(xz.x, lift + (self.to.y - lift) * k, xz.z)
         }
     }
@@ -172,6 +177,7 @@ impl Body {
             fall_distance: 0.0,
             climb_push: false,
             mantle: None,
+            mantle_buffer: 0.0,
         }
     }
 
@@ -205,75 +211,92 @@ impl Body {
         clear(world, pos - Vec3::new(h, -0.001, h), pos + Vec3::new(h, height - 0.001, h))
     }
 
-    /// Climbing onto a ledge: with jump held while pushing toward a ledge at most two blocks
-    /// above the feet, the hands catch its edge and the body pulls itself up. Starts the climb
-    /// and returns true when there is such a ledge with room to stand on it.
-    pub fn try_mantle(&mut self, world: &impl Terrain, input: &Input) -> bool {
-        if self.mantle.is_some() || !input.jump || input.crawl || input.sneak || self.flying || self.in_water || self.no_jump || self.height < PLAYER_HEIGHT - 0.01 {
+    /// Climbing onto a ledge: with jump held (or just pressed) next to a ledge at most two
+    /// blocks above the feet, the hands catch its edge and the body pulls itself up. The ledge
+    /// is looked for toward `wish`, or toward `face` (where the player looks) when standing
+    /// still, and may hang right over the head (a shelf bumped into from below): the body
+    /// then leans back from it before pulling up. Starts the climb and returns true when
+    /// there is such a ledge with room to stand on it.
+    pub fn try_mantle(&mut self, world: &impl Terrain, input: &Input, face: Vec3) -> bool {
+        if self.mantle.is_some() || !(input.jump || self.mantle_buffer > 0.0) || input.crawl || input.sneak || self.flying || self.in_water || self.no_jump || self.height < PLAYER_HEIGHT - 0.01 {
             return false;
         }
         let feet = self.pos.floor().as_ivec3();
         if world.climbable(feet) || world.climbable(feet + IVec3::Y) {
             return false;
         }
-        let dir = Vec3::new(input.wish.x, 0.0, input.wish.z).normalize_or_zero();
-        // Rising fast from a jump the edge is reached anyway; catch it near the top or falling.
-        if dir == Vec3::ZERO || (!self.on_ground && self.vel.y > 2.5) {
+        let wish = Vec3::new(input.wish.x, 0.0, input.wish.z);
+        let dir = if wish.length_squared() > 0.01 { wish } else { Vec3::new(face.x, 0.0, face.z) }.normalize_or_zero();
+        if dir == Vec3::ZERO {
             return false;
         }
-        let Some(top) = self.ledge_ahead(world, dir) else { return false };
-        let rise = top - self.pos.y;
-        let min = if self.on_ground { MANTLE_MIN_GROUND } else { 0.15 };
-        if rise <= min || rise > MANTLE_REACH {
-            return false;
-        }
-        // Room to rise straight up along the wall, head included.
-        if !self.fits_at(world, self.pos, top - self.pos.y + self.height + 0.04) {
-            return false;
-        }
-        // Somewhere on the ledge to stand, as far onto it as fits (a shelf against a wall is
-        // narrower than the body: it then stands partly over the edge).
-        let up = Vec3::new(self.pos.x, top, self.pos.z);
+        // Ledges the jump clears on its own are left to it: from the ground that is about
+        // 1.27 blocks, in the air whatever height the rise still has left.
+        let up_left = if self.on_ground { JUMP_SPEED } else { self.vel.y.max(0.0) };
+        let min = (up_left * up_left / (2.0 * GRAVITY) + 0.03).max(0.15);
         let hw = self.half_width - 0.001;
-        for i in 0..12 {
-            let d = 0.9 - i as f32 * 0.05;
-            let to = up + dir * d;
-            if !self.fits_at(world, to, self.height) || !self.supported_at(world, to, top) {
+        for top in self.ledges_near(world, dir) {
+            let rise = top - self.pos.y;
+            if rise <= min || rise > MANTLE_REACH {
                 continue;
             }
-            // Nothing in the way while swinging over.
-            let (a, b) = (up.min(to), up.max(to));
-            if !clear(world, a - Vec3::new(hw, -0.041, hw), b + Vec3::new(hw, self.height + 0.039, hw)) {
+            // Lean back from an edge hanging over the head until there is room to rise
+            // straight up, head included.
+            let Some(back) = (0..8).map(|i| i as f32 * 0.1).find(|&b| {
+                let from = self.pos - dir * b;
+                self.fits_at(world, from, rise + self.height + 0.04) && (b == 0.0 || clear(world, from.min(self.pos) - Vec3::new(hw, -0.001, hw), from.max(self.pos) + Vec3::new(hw, self.height - 0.001, hw)))
+            }) else {
                 continue;
+            };
+            let from = self.pos - dir * back;
+            // Somewhere on the ledge to stand, as far onto it as fits (a shelf against a wall
+            // is narrower than the body: it then stands partly over the edge).
+            let up = Vec3::new(from.x, top, from.z);
+            for i in 0..32 {
+                let d = 0.9 + back - i as f32 * 0.05;
+                if d < 0.2 {
+                    break;
+                }
+                let to = up + dir * d;
+                if !self.fits_at(world, to, self.height) || !self.supported_at(world, to, top) {
+                    continue;
+                }
+                // Nothing in the way while swinging over.
+                let (a, b) = (up.min(to), up.max(to));
+                if !clear(world, a - Vec3::new(hw, -0.041, hw), b + Vec3::new(hw, self.height + 0.039, hw)) {
+                    continue;
+                }
+                let dur = 0.32 + 0.16 * rise + back * 0.3;
+                self.mantle = Some(Mantle { from: self.pos, back: from, to, ledge: top, t: 0.0, dur });
+                self.mantle_buffer = 0.0;
+                self.vel = Vec3::ZERO;
+                self.fall_distance = 0.0;
+                return true;
             }
-            let dur = 0.32 + 0.16 * rise;
-            self.mantle = Some(Mantle { from: self.pos, to, ledge: top, t: 0.0, dur });
-            self.vel = Vec3::ZERO;
-            self.fall_distance = 0.0;
-            return true;
         }
         false
     }
 
-    /// The top of the highest box within reach just ahead of the body, if any.
-    fn ledge_ahead(&self, world: &impl Terrain, dir: Vec3) -> Option<f32> {
+    /// Tops of the boxes within reach around the front half of the body and half a block
+    /// ahead of it, highest first.
+    fn ledges_near(&self, world: &impl Terrain, dir: Vec3) -> Vec<f32> {
         let hw = self.half_width;
-        // A strip from the front of the body half a block forward.
-        let near = self.pos + dir * (hw + 0.02);
-        let far = self.pos + dir * (hw + 0.5);
+        let near = self.pos - dir * 0.05;
+        let far = self.pos + dir * (hw + 0.55);
         let side = Vec3::new(-dir.z, 0.0, dir.x) * (hw - 0.05);
         let lo = near.min(far).min(near + side).min(near - side).min(far + side).min(far - side);
         let hi = near.max(far).max(near + side).max(near - side).max(far + side).max(far - side);
         let (y0, y1) = (self.pos.y + 0.1, self.pos.y + MANTLE_REACH);
-        let mut best: Option<f32> = None;
+        let mut tops: Vec<f32> = Vec::new();
         for b in boxes_in(world, Vec3::new(lo.x, y0, lo.z), Vec3::new(hi.x, y1, hi.z)) {
             // Fences and walls stand taller than their block: no grabbing their tops.
             let tall = b[4] - b[1].floor() > 1.001;
-            if !tall && lo.x < b[3] && hi.x > b[0] && lo.z < b[5] && hi.z > b[2] && b[4] > y0 && b[4] <= y1 {
-                best = Some(best.map_or(b[4], |t: f32| t.max(b[4])));
+            if !tall && lo.x < b[3] && hi.x > b[0] && lo.z < b[5] && hi.z > b[2] && b[4] > y0 && b[4] <= y1 && !tops.iter().any(|t| (t - b[4]).abs() < 0.01) {
+                tops.push(b[4]);
             }
         }
-        best
+        tops.sort_by(|a, b| b.total_cmp(a));
+        tops
     }
 
     /// Something to stand on under feet placed at `pos`, with its top at `top`.
@@ -313,6 +336,8 @@ impl Body {
     }
 
     pub fn step(&mut self, world: &impl Terrain, input: &Input, dt: f32) {
+        // A tap of jump counts a little while for catching a ledge at the top of the jump.
+        self.mantle_buffer = if input.jump { MANTLE_BUFFER } else { (self.mantle_buffer - dt).max(0.0) };
         // A climb started with `try_mantle` (players only) runs until the body is on top.
         if self.mantle_step(dt) {
             return;
@@ -561,7 +586,7 @@ mod tests {
             b.step(world, &Input::default(), 0.02);
         }
         for _ in 0..150 {
-            b.try_mantle(world, &input);
+            b.try_mantle(world, &input, input.wish);
             b.step(world, &input, 0.02);
         }
         b
@@ -585,7 +610,7 @@ mod tests {
         let mut b = Body::new(Vec3::new(2.69, 10.0, 0.5));
         b.on_ground = true;
         let input = Input { wish: Vec3::X, jump: true, ..Default::default() };
-        assert!(b.try_mantle(&Ledges, &input));
+        assert!(b.try_mantle(&Ledges, &input, Vec3::X));
         b.step(&Ledges, &input, 0.02);
         // Early on the body is still below the top, against the wall.
         assert!(b.pos.y < 11.0 && b.pos.x < 2.75, "{:?}", b.pos);
@@ -604,10 +629,118 @@ mod tests {
         let mut b = Body::new(Vec3::new(2.69, 10.0, 0.5));
         b.on_ground = true;
         let input = Input { wish: Vec3::X, jump: true, ..Default::default() };
-        assert!(b.try_mantle(&Ledges, &input));
+        assert!(b.try_mantle(&Ledges, &input, Vec3::X));
         b.step(&Ledges, &input, 0.02);
         b.pos = Vec3::new(-5.0, 10.0, 0.5);
         b.step(&Ledges, &Input::default(), 0.02);
         assert!(b.mantle.is_none() && b.pos.x < -4.9);
+    }
+
+    /// Shelves on a tall wall at x = 3: thin boards sticking out 7/16 from it, tops at 11.625
+    /// and 13.625 (the second one two blocks above the first).
+    struct Shelves;
+    impl Terrain for Shelves {
+        fn solid(&self, p: IVec3) -> bool {
+            p.y < 10 || p.x >= 3 || (p.x == 2 && (p.y == 11 || p.y == 13))
+        }
+        fn liquid(&self, _: IVec3) -> bool {
+            false
+        }
+        fn boxes(&self, p: IVec3, out: &mut Vec<[f32; 6]>) {
+            if p.x == 2 && (p.y == 11 || p.y == 13) {
+                out.push([0.5625, 0.5, 0.0, 1.0, 0.625, 1.0]);
+            } else if self.solid(p) {
+                out.push([0.0, 0.0, 0.0, 1.0, 1.0, 1.0]);
+            }
+        }
+    }
+
+    /// Steps until a climb has started and finished.
+    fn run(b: &mut Body, world: &impl Terrain, input: &Input, steps: usize) {
+        let mut climbed = false;
+        for _ in 0..steps {
+            b.try_mantle(world, input, Vec3::X);
+            b.step(world, input, 0.02);
+            climbed |= b.mantle.is_some();
+            if climbed && b.mantle.is_none() {
+                return;
+            }
+        }
+    }
+
+    #[test]
+    fn climbs_shelves_up_a_wall() {
+        let mut b = Body::new(Vec3::new(1.5, 10.0, 0.5));
+        let input = Input { wish: Vec3::X, jump: true, ..Default::default() };
+        run(&mut b, &Shelves, &input, 80);
+        assert!((b.pos.y - 11.625).abs() < 1e-3, "first shelf: {:?}", b.pos);
+        // Standing on it the next shelf hangs over the head: lean back, pull up.
+        run(&mut b, &Shelves, &input, 80);
+        assert!((b.pos.y - 13.625).abs() < 1e-3, "second shelf: {:?}", b.pos);
+    }
+
+    #[test]
+    fn a_tapped_jump_still_catches_the_edge() {
+        let mut b = Body::new(Vec3::new(2.5, 10.0, 0.5));
+        b.on_ground = true;
+        let tap = Input { wish: Vec3::X, jump: true, ..Default::default() };
+        let walk = Input { wish: Vec3::X, ..Default::default() };
+        b.step(&Ledges, &tap, 0.02);
+        for _ in 0..10 {
+            b.try_mantle(&Ledges, &walk, Vec3::X);
+            b.step(&Ledges, &walk, 0.02);
+        }
+        assert!(b.mantle.is_some(), "{:?}", b.pos);
+    }
+
+    #[test]
+    fn standing_still_uses_the_look() {
+        let mut b = Body::new(Vec3::new(2.69, 10.0, 0.5));
+        b.on_ground = true;
+        let input = Input { jump: true, ..Default::default() };
+        assert!(b.try_mantle(&Ledges, &input, Vec3::new(1.0, -0.3, 0.1)));
+    }
+
+    #[test]
+    fn one_block_steps_are_left_to_the_jump() {
+        struct Step;
+        impl Terrain for Step {
+            fn solid(&self, p: IVec3) -> bool {
+                p.y < 10 || (p.x >= 3 && p.y < 11)
+            }
+            fn liquid(&self, _: IVec3) -> bool {
+                false
+            }
+        }
+        let mut b = Body::new(Vec3::new(2.69, 10.0, 0.5));
+        b.on_ground = true;
+        let input = Input { wish: Vec3::X, jump: true, ..Default::default() };
+        assert!(!b.try_mantle(&Step, &input, Vec3::X));
+    }
+
+    #[test]
+    fn jumping_into_a_shelf_overhead_climbs_it() {
+        // One shelf high on the wall (top 12.625, out of reach from the ground), the player
+        // right under it: the jump bumps the head, the hands catch it.
+        struct High;
+        impl Terrain for High {
+            fn solid(&self, p: IVec3) -> bool {
+                p.y < 10 || p.x >= 3 || (p.x == 2 && p.y == 12)
+            }
+            fn liquid(&self, _: IVec3) -> bool {
+                false
+            }
+            fn boxes(&self, p: IVec3, out: &mut Vec<[f32; 6]>) {
+                if p.x == 2 && p.y == 12 {
+                    out.push([0.5625, 0.5, 0.0, 1.0, 0.625, 1.0]);
+                } else if self.solid(p) {
+                    out.push([0.0, 0.0, 0.0, 1.0, 1.0, 1.0]);
+                }
+            }
+        }
+        let mut b = Body::new(Vec3::new(2.7, 10.0, 0.5));
+        let input = Input { wish: Vec3::X, jump: true, ..Default::default() };
+        run(&mut b, &High, &input, 120);
+        assert!((b.pos.y - 12.625).abs() < 1e-3, "{:?}", b.pos);
     }
 }

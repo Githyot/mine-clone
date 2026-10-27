@@ -531,7 +531,8 @@ MODELS = {
         P((12, 1, 20), (-6, 4, -10), "oak", plank=2),
         P((1, 3, 20), (-6, 5, -10), "oak", share="side", relief=straps_relief, inflate=0.2),
         P((1, 3, 20), (5, 5, -10), "oak", share="side"),
-        P((10, 3, 1), (-5, 5, 9), "oak", share="board", relief=board_relief, inflate=0.2),
+        # Inflated a touch less than the sides, so their reliefs never share a face.
+        P((10, 3, 1), (-5, 5, 9), "oak", share="board", relief=board_relief, inflate=0.15),
         P((10, 3, 1), (-5, 5, -10), "oak", share="board"),
         P((14, 1, 1), (-7, 3, -6), "oak_dark", nails=False),
         P((10, 1, 2), (-5, 3, 4), "oak_dark", nails=False),
@@ -546,17 +547,17 @@ MODELS = {
     "wagon_cover": dict(display="Lona da carroça", scale=3.0, width=2.0, height=4.0, parts=[
         P((1, 9, 11), (-4, 5, -7), "canvas", share="wall", relief=hoops_relief, inflate=0.25),
         P((1, 9, 11), (3, 5, -7), "canvas", share="wall"),
-        P((1, 3, 11), (-3, 14, -7), "canvas", share="shoulder", relief=hoops_relief, inflate=0.25),
+        P((1, 3, 11), (-3, 14, -7), "canvas", share="shoulder", relief=hoops_relief, inflate=0.3),
         P((1, 3, 11), (2, 14, -7), "canvas", share="shoulder"),
-        P((4, 2, 11), (-2, 17, -7), "canvas", relief=hoops_relief, inflate=0.25),
+        P((4, 2, 11), (-2, 17, -7), "canvas", relief=hoops_relief, inflate=0.35),
     ]),
     # What you see inside from the back, and the lantern at the front.
     "wagon_cargo": dict(display="Carga da carroça", scale=2.0, width=1.6, height=1.9, parts=[
         P((5, 4, 5), (-5, 5, -9), "crate"),
         P((4, 5, 4), (1, 5, -9), "barrel"),
         P((4, 2, 6), (0, 5, -3), "burlap"),
-        P((2, 3, 2), (-8, 10, 5), "lantern"),
-        P((2, 1, 1), (-7, 13, 5), "iron"),
+        P((2, 3, 2), (-8, 10, 7), "lantern"),
+        P((2, 1, 1), (-7, 13, 7), "iron"),
     ]),
     "wagon_hay": dict(display="Feno da carroça", scale=2.0, width=1.4, height=1.5, parts=[
         P((10, 4, 18), (-5, 5, -9), "hay", relief=tufts_relief, inflate=0.35),

@@ -152,6 +152,9 @@ pub struct MobDef {
     /// worked out from the model, the mob's size and what kind of creature it is.
     #[serde(default)]
     pub motion: MotionDef,
+    /// Copper it drops when it dies (money.rs works it out from its health and attack if unset).
+    #[serde(default)]
+    pub coins: Option<u32>,
 }
 
 /// How a mob moves, for the animation. All optional.

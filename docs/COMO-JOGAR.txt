@@ -22,15 +22,19 @@ Tudo fica na mesma pasta do jogo:
   crash.txt        aparece só se o jogo fechar com erro (me mande esse arquivo)
 
 JOGAR COM AMIGOS
-  Hospedar: abra seu mundo e, no menu Esc, clique em "Abrir para amigos"
-    (ou Multijogador > Hospedar mundo...). O jogo mostra um código de convite
-    (ex.: K3F9Q-2ZB7M) no chat e no menu Esc. Mande o código para seus amigos.
-  Entrar: Multijogador > digite o código (ou IP:porta) > Entrar. Mundos abertos
-    na mesma rede (Wi-Fi/cabo) aparecem sozinhos na lista "Na sua rede".
+  Hospedar: abra seu mundo e, no menu Esc, clique em "Abrir para amigos...".
+    Na tela escolha: máximo de jogadores, senha, modo dos amigos, se eles usam
+    comandos, PvP, porta e alcance (só a mesma rede, internet pelo roteador ou
+    pela ponte). Clique em "Abrir mundo". A mesma tela mostra o código de
+    convite (ex.: K3F9Q-2ZB7M) com o botão "Copiar código", como está a conexão
+    e quem entrou (com Expulsar e Banir). Mande o código para seus amigos.
+  Entrar: Multijogador > cole o código (botão Colar ou Ctrl+V) > Entrar. Mundos
+    abertos na mesma rede (Wi-Fi/cabo) aparecem sozinhos na lista "Na sua rede".
   Pela internet: o jogo tenta abrir a porta UDP 24454 no roteador (UPnP). Se o
     roteador não deixar, abra essa porta (UDP) no roteador à mão, ou use um
     programa de rede virtual (Radmin VPN, ZeroTier, Tailscale) e entre pelo IP dele.
-  Senha (opcional): quem hospeda e quem entra preenchem o campo Senha.
+  Senha (opcional): quem hospeda põe na tela "Abrir para amigos"; quem entra
+    preenche o campo Senha em Multijogador.
   Todos precisam da mesma versão do jogo.
   T ou Enter = chat   / = comando   Tab = quem está jogando e o código
   Quem hospeda: /op <nome> deixa um amigo usar comandos (/deop tira),
@@ -64,8 +68,10 @@ COMANDOS (chat: T, depois /; funcionam também jogando sozinho)
 CONTROLES
   W A S D         andar
   Espaço          pular (aperte 2 vezes rápido para voar / parar de voar)
-  W + Espaço      contra uma borda de até 2 blocos (parede, prateleira): agarra a beirada e
-                  sobe puxando o corpo com as mãos. Cercas e muros não dá para escalar.
+  Espaço          perto de uma borda de até 2 blocos acima dos pés (parede, prateleira, mesmo
+                  logo acima da cabeça ou no meio do pulo): agarra a beirada e sobe puxando o
+                  corpo com as mãos. Vale andando para ela ou só olhando para ela. Cercas e
+                  muros não dá para escalar.
   Shift           agachar (a câmera abaixa e você não cai da beirada) / descer voando
   Ctrl ou W 2x    correr (a visão abre um pouco)
   Z               deitar / levantar (deitado você rasteja e passa por buracos de 1 bloco)

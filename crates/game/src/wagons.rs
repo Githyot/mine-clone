@@ -31,6 +31,12 @@ const WHEEL_X: f32 = 0.84;
 /// high and 2 wide); the distances above are in model blocks, times SIZE in the world.
 const SIZE: f32 = 1.1;
 /// Most the front may turn against the bed.
+/// How far the bare end of a broken wagon's front axle sinks: down from the hub height to
+/// just over the ground.
+const BROKEN_DROP: f32 = WHEEL_R - 0.12;
+/// The canvas sits on top of the side boards, clear of the wheels, never through them.
+const COVER_LIFT: f32 = 0.115;
+
 /// A wheel takes a step up or down over this much ground, front axle first, then the rear.
 const RAMP: f32 = 1.5;
 /// It starts this far before the edge, so the wheel clears the corner.
@@ -176,6 +182,9 @@ pub struct Wagons {
     village_t: HashMap<IVec3, f32>,
     clock: f32,
     road: Option<HashSet<BlockId>>,
+    /// Never ground for a wheel (leaves), and never a way on (trunks, fences, walls, cactus).
+    leaves: HashSet<BlockId>,
+    rough: HashSet<BlockId>,
     test_done: bool,
 }
 
@@ -223,16 +232,19 @@ impl Game {
         })
     }
 
-    /// The top of the ground in a column near height `near`: (height, water on it, road under
-    /// it). None where the chunk is not loaded.
+    /// The top of the ground in a column near height `near`: (height, no way on (water, or a
+    /// tree trunk, fence or wall top), road under it). Leaves are never ground: a wheel never
+    /// rides up onto a bush or a canopy hanging over the way. None where the chunk is not
+    /// loaded.
     fn wagon_ground(&self, x: f32, z: f32, near: f32) -> Option<(f32, bool, bool)> {
         let (bx, bz) = (x.floor() as i32, z.floor() as i32);
         let y0 = near.floor() as i32;
+        let ground = |p: IVec3| self.world.solid(p) && !self.world.block(p).is_some_and(|id| self.wagons.leaves.contains(&id));
         for y in (y0 - 5..=y0 + 2).rev() {
             let p = IVec3::new(bx, y, bz);
             let id = self.world.block(p)?;
-            if self.world.solid(p) && !self.world.solid(p + IVec3::Y) {
-                let wet = self.world.liquid(p + IVec3::Y);
+            if ground(p) && !ground(p + IVec3::Y) {
+                let wet = self.world.liquid(p + IVec3::Y) || self.wagons.rough.contains(&id);
                 let road = self.wagons.road.as_ref().is_some_and(|r| r.contains(&id));
                 return Some((y as f32 + self.world.top(p), wet, road));
             }
@@ -297,6 +309,28 @@ impl Game {
             last = top;
         }
         Some(bonus)
+    }
+
+    /// Is the ground just ahead of the front wheels and under the team fit to go on: no step
+    /// of more than one block, no water, no trunk or fence top?
+    fn wagon_may_step(&self, w: &Wagon) -> bool {
+        let f = fwd(w.front_yaw);
+        let side = Vec3::new(f.z, 0.0, -f.x);
+        let k = w.pos + fwd(w.yaw) * (KINGPIN * SIZE);
+        let near = w.pos.y + 1.0;
+        for s in [-WHEEL_X * SIZE, 0.0, WHEEL_X * SIZE] {
+            let base = k + side * s + f * ((HALF_BASE - KINGPIN) * SIZE);
+            let Some((mut last, _, _)) = self.wagon_ground(base.x, base.z, near) else { return false };
+            for d in [0.5f32, 1.0, 1.5, 2.0] {
+                let p = base + f * (d * SIZE);
+                let Some((y, bad, _)) = self.wagon_ground(p.x, p.z, last + 0.5) else { return false };
+                if bad || (y - last).abs() > 1.05 {
+                    return false;
+                }
+                last = y;
+            }
+        }
+        true
     }
 
     fn new_wagon(&mut self, pos: Vec3, yaw: f32, load: Load, team: Team) -> Wagon {
@@ -380,6 +414,14 @@ impl Game {
                 "stone_bricks", "smooth_stone", "packed_mud", "mud_bricks", "pebble",
             ];
             self.wagons.road = Some(names.iter().filter_map(|n| self.reg.id(n)).collect());
+            for (i, b) in self.reg.blocks.iter().enumerate() {
+                let n = b.name.as_str();
+                if n.ends_with("_leaves") || n.contains("leaves") {
+                    self.wagons.leaves.insert(i as BlockId);
+                } else if ["_log", "_wood", "_stem", "_hyphae", "_fence", "_fence_gate", "_wall", "cactus", "bamboo", "mushroom_block"].iter().any(|k| n.ends_with(k)) {
+                    self.wagons.rough.insert(i as BlockId);
+                }
+            }
         }
         self.wagon_test_scene();
         if dt <= 0.0 {
@@ -435,10 +477,6 @@ impl Game {
             w.key = Some(p.key);
             w.driver = None;
             log::debug!("parked {} at {} facing {:.0}", p.kind, p.pos, p.yaw.to_degrees());
-            if broken {
-                w.roll = -0.3;
-                w.pitch = -0.06;
-            }
             self.settle_wagon(&mut w);
             self.wagons.list.push(w);
         }
@@ -535,6 +573,7 @@ impl Game {
             if !w.broken {
                 w.pitch = ((a.0 - b.0) / (2.0 * (HALF_BASE * SIZE))).atan().clamp(-0.5, 0.5);
                 w.tilt = (a.1 + b.1) * 0.5;
+                w.roll = w.tilt;
             }
         }
         self.place_team(w, 1.0);
@@ -616,8 +655,16 @@ impl Game {
         w.front_yaw = wrap(w.front_yaw + turn);
         let artic = wrap(w.front_yaw - w.yaw).clamp(-MAX_ARTIC, MAX_ARTIC);
         w.front_yaw = wrap(w.yaw + artic);
-        let step = v * dt;
-        if !w.treadmill {
+        let mut step = v * dt;
+        if !w.treadmill && step > 0.0 && !self.wagon_may_step(w) {
+            // Never more than a one block step up or down, never onto a tree or into water:
+            // stop, and let the steering find another way round.
+            step = 0.0;
+            w.speed = 0.0;
+            w.steer_t = w.steer_t.min(0.1);
+            w.stuck = w.stuck.max(0.4);
+        }
+        if !w.treadmill && step > 0.0 {
             // The front axle goes where the team pulls it; the rear axle follows.
             let k0 = w.pos + fwd(w.yaw) * (KINGPIN * SIZE);
             let r0 = w.pos - fwd(w.yaw) * (HALF_BASE * SIZE);
@@ -835,19 +882,24 @@ impl Game {
                 }
                 (def, b)
             };
-            // A broken one leans over onto the side that lost its wheel, on the other wheels.
-            let hinge = Vec3::new(if w.broken { -WHEEL_X } else { 0.0 }, 0.0, 0.0);
+            // A broken one has lost its front right wheel: the front axle tips over onto that
+            // end and the bed sinks forward onto it, both rear wheels still on the ground.
+            let sink = if w.broken {
+                let rear = Vec3::new(0.0, 0.0, -HALF_BASE * SIZE);
+                Mat4::from_translation(rear) * Mat4::from_rotation_x(BROKEN_DROP * 0.5 / HALF_BASE / 2.0) * Mat4::from_translation(-rear)
+            } else {
+                Mat4::IDENTITY
+            };
             let body = Mat4::from_translation(w.pos - cam)
                 * Mat4::from_rotation_y(w.yaw)
+                * sink
                 * Mat4::from_rotation_x(-w.pitch)
-                * Mat4::from_translation(hinge)
                 * Mat4::from_rotation_z(w.roll)
-                * Mat4::from_translation(-hinge)
                 * Mat4::from_scale(Vec3::splat(SIZE));
             out.push(rigid(d.body, body * s(d.body)));
             match w.load {
                 Load::Covered => {
-                    out.push(rigid(d.cover, body * s(d.cover)));
+                    out.push(rigid(d.cover, body * Mat4::from_translation(Vec3::Y * COVER_LIFT) * s(d.cover)));
                     out.push(rigid(d.cargo, body * s(d.cargo)));
                 }
                 Load::Hay => out.push(rigid(d.hay, body * s(d.hay))),
@@ -858,7 +910,13 @@ impl Game {
                 out.push(rigid(d.wheel, wheel(body, x, -HALF_BASE, w.wheel_back)));
             }
             // The front: axle, shafts or pole, front wheels, turned with the team.
-            let front = body * Mat4::from_translation(Vec3::new(0.0, 0.0, KINGPIN)) * Mat4::from_rotation_y(wrap(w.front_yaw - w.yaw));
+            let mut front = body * Mat4::from_translation(Vec3::new(0.0, 0.0, KINGPIN)) * Mat4::from_rotation_y(wrap(w.front_yaw - w.yaw));
+            if w.broken {
+                // The axle rocks about its middle, which sank half the drop with the bed, so the
+                // left wheel stays on the ground and the bare right end rests on it.
+                let hub = Vec3::new(0.0, WHEEL_R, HALF_BASE - KINGPIN);
+                front = front * Mat4::from_translation(hub) * Mat4::from_rotation_z(-(BROKEN_DROP * 0.5 / WHEEL_X).atan()) * Mat4::from_translation(-hub);
+            }
             let pivot = Vec3::new(0.0, 0.4375, HALF_BASE - KINGPIN);
             let lift = Mat4::from_translation(pivot) * Mat4::from_rotation_x(-w.team.lift()) * Mat4::from_translation(-pivot);
             let gear = if w.team.pair() { d.pole } else { d.shafts };

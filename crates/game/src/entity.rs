@@ -355,9 +355,15 @@ impl MeshBuilder {
 
 fn build_mesh(def: &MobDef, skin: &Skin, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
     let mut mb = MeshBuilder::new(layer, Some(def));
+    // Boxes that share a face plane (a board flush with the side it meets, the floor and the
+    // walls of a cart) would flicker where both draw the same spot. Each part stands a hair
+    // further out than the one before, so one of them always wins. The head stays exact: its
+    // eyelids and mouth sit just in front of its face.
+    let head = def.parts.iter().position(|p| p.anim == Anim::Head);
+    let nudge = |pi: usize| if Some(pi) == head { 0.0 } else { pi as f32 * 0.012 };
     for (pi, p) in def.parts.iter().enumerate() {
-        let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32);
-        let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32);
+        let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32) - Vec3::splat(nudge(pi));
+        let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32) + Vec3::splat(2.0 * nudge(pi));
         let tex = (p.size.0 as i32, p.size.1 as i32, p.size.2 as i32);
         for f in faces(origin, size, p.uv, tex).iter() {
             mb.face(f, pi as u32);
@@ -368,11 +374,12 @@ fn build_mesh(def: &MobDef, skin: &Skin, layer: u32) -> (Vec<EntityVertex>, Vec<
     for l in &def.layers {
         let p = &def.parts[l.part];
         let inflate = l.inflate.max(0.1);
-        let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32) - Vec3::splat(inflate);
-        let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32) + Vec3::splat(2.0 * inflate);
+        let out = inflate + nudge(l.part);
+        let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32) - Vec3::splat(out);
+        let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32) + Vec3::splat(2.0 * out);
         let tex = (p.size.0 as i32, p.size.1 as i32, p.size.2 as i32);
         for f in faces(origin, size, p.uv, tex).iter() {
-            mb.relief(f, skin, inflate, l.part as u32);
+            mb.relief(f, skin, out, l.part as u32);
         }
     }
     (mb.verts, mb.indices)

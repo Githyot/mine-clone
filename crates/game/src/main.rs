@@ -94,6 +94,7 @@ mod item_render;
 mod juice;
 mod menus;
 mod monitor;
+mod money;
 mod multiplayer;
 mod voice;
 mod mods;
@@ -555,6 +556,8 @@ pub(crate) enum Screen {
     Grimoire,
     /// A window a plugin opened.
     Plugin,
+    /// "Abrir para amigos": hosting settings, the invite and who is in (multiplayer.rs).
+    Friends,
 }
 
 /// What a row of the shader menu does.
@@ -1561,6 +1564,7 @@ impl Game {
                 }
                 Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice => self.menu_back(),
                 Screen::Loading | Screen::Dead | Screen::Title => {}
+                Screen::Friends => self.set_screen(Screen::Paused),
             },
             KeyCode::KeyE => match self.screen {
                 Screen::Playing => self.surv_open_inventory(),
@@ -1684,7 +1688,7 @@ impl Game {
             }
             Screen::Inventory if self.creative_screen_open() => self.creative_scroll(lines > 0.0),
             Screen::Inventory => {
-                if self.wheel_move(lines > 0.0) {
+                if self.shop_wheel(lines > 0.0) || self.wheel_move(lines > 0.0) {
                 } else if lines > 0.0 {
                     self.surv.book_scroll = self.surv.book_scroll.saturating_sub(1);
                 } else {
@@ -2001,7 +2005,7 @@ impl Game {
 
         // Singleplayer: the pause menu (and the option screens opened from it) stop the world.
         // With friends in it, it keeps going.
-        let paused = self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Options | Screen::Controls | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders);
+        let paused = self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Friends | Screen::Options | Screen::Controls | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders);
         if !paused && self.net.rules.daylight_cycle {
             self.time_of_day = (self.time_of_day + dt * 20.0) % 24000.0;
         }
@@ -2040,7 +2044,7 @@ impl Game {
             }
             self.update_mods(if self.args.screenshot.is_some() { 0.0 } else { dt });
         }
-        let menus_stop = !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders);
+        let menus_stop = !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Friends | Screen::Controls | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders);
         if self.world_open && sim && self.screen != Screen::Loading && !menus_stop {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let daylight = self.tr_daylight((a.sin() * 2.2 + 0.45).clamp(0.0, 1.0));
@@ -2204,7 +2208,7 @@ impl Game {
             {
                 self.pre_step(input.sneak);
                 let was_mantling = self.body.mantle.is_some();
-                if self.body.try_mantle(&self.world, &input) {
+                if self.body.try_mantle(&self.world, &input, fwd) {
                     self.mantle_started();
                 }
                 self.body.step(&self.world, &input, dt);
@@ -3355,6 +3359,13 @@ impl Game {
             put(w, x, 0, 6, "glass_pane");
             put(w, x, 1, 6, "glass_pane");
         }
+        put(w, 6, 0, 7, "glass_pane");
+        put(w, 6, 1, 7, "glass_pane");
+        // A row of wooden windows: one unbroken window, no gaps between or inside them.
+        for x in 1..=6 {
+            put(w, x, 0, 10, "cherry_window");
+            put(w, x, 1, 10, "cherry_window");
+        }
         // Doors: closed and open, and trapdoors.
         put(w, -4, 0, 9, "oak_door:2");
         put(w, -4, 1, 9, "oak_door:10");
@@ -3718,7 +3729,7 @@ impl Game {
             self.ui.rect(0.0, 0.0, w, h, [110, 30, 170, (haze * wave * 170.0) as u8]);
         }
         let menu_screen = self.is_title_screen() || matches!(self.screen, Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice);
-        if !self.hide_hud && !matches!(self.screen, Screen::Paused | Screen::Dead | Screen::Shaders) && !menu_screen {
+        if !self.hide_hud && !matches!(self.screen, Screen::Paused | Screen::Friends | Screen::Dead | Screen::Shaders) && !menu_screen {
             // Crosshair.
             if self.screen == Screen::Playing {
                 let (cx, cy) = (w / 2.0, h / 2.0);
@@ -3764,6 +3775,7 @@ impl Game {
             self.draw_mods_hud(w, h);
             if self.survival {
                 self.draw_survival_hud(hx, hy, cell);
+                self.draw_money_flash(hx, hy, cell);
                 self.draw_mana(w);
             }
             self.draw_fase6_hud(w, h, hx, hy, cell);
@@ -3928,6 +3940,7 @@ impl Game {
                 }
             }
             Screen::Paintings => self.draw_paintings_menu(w, h, mouse),
+            Screen::Friends => self.draw_friends_menu(w, h, mouse),
             Screen::Sign if self.extras.book.is_some() => self.draw_book(w, h),
             Screen::Sign if self.naming.is_some() => self.draw_naming(w, h),
             Screen::Sign if self.cmdblocks.edit.is_some() => self.draw_cmdblock_editor(w, h),
