@@ -192,27 +192,40 @@ fn march_layer(ro: vec3<f32>, dir: vec3<f32>, y0: f32, thick: f32, cell_size: f3
     let bz = (cell.y + select(0.0, 1.0, stp.y > 0.0)) * cell_size;
     var tmax = vec2<f32>(select(big, t0 + (bx - p.x) / dir.x, abs(dir.x) > 1e-6), select(big, t0 + (bz - p.z) / dir.z, abs(dir.z) > 1e-6));
     var t = t0;
+    // Neighbouring filled cells are one cloud: the face shade is picked when the ray enters the
+    // cloud from clear air and kept while it crosses into the next filled cells, so the walls
+    // between cells inside a cloud are never drawn (no grid of lines on the underside).
+    var in_cloud = false;
+    var run_shade = 1.0;
     for (var i = 0; i < max_steps; i = i + 1) {
         let t_exit = min(min(tmax.x, tmax.y), t1);
         var a = 0.0;
+        var filled = false;
         if (soft) {
             let d = cloud_density(cell, seed, cover);
             if (d > 0.0) {
-                // Thin crossings (a cloud's edge, a corner) let light through.
-                a = d * (1.0 - exp(-(t_exit - t) * 0.9));
+                filled = true;
+                // Opacity from the length of the ray inside the cloud (Beer-Lambert), so a path
+                // split over two cells gives the same result as one cell: no seam at the border.
+                // Thin crossings and low-density edges still let light through.
+                a = 1.0 - exp(-(t_exit - t) * 0.9 * d * d);
             }
         } else if (cloud_at(cell)) {
+            filled = true;
             a = 1.0;
         }
-        if (a > 0.004) {
-            var shade = face_shade(normal);
+        if (filled && !in_cloud) {
+            run_shade = face_shade(normal);
             if (soft) {
                 // Darker toward the bottom of the layer.
                 let h = clamp((ro.y + dir.y * t - y0) / thick, 0.0, 1.0);
-                shade *= mix(0.8, 1.04, h);
+                run_shade *= mix(0.8, 1.04, h);
             }
+        }
+        in_cloud = filled;
+        if (a > 0.0005) {
             let fade = 1.0 - smoothstep(CLOUD_MAX * 0.45, CLOUD_MAX, t);
-            let c = mix(g.sky_horizon.rgb, cloud_light(shade), clamp(fade * 1.2, 0.0, 1.0));
+            let c = mix(g.sky_horizon.rgb, cloud_light(run_shade), clamp(fade * 1.2, 0.0, 1.0));
             let aa = a * fade;
             res.rgba += vec4<f32>(c * aa, aa) * (1.0 - res.rgba.a);
             res.t = min(res.t, t);

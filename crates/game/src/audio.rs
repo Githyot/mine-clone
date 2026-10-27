@@ -271,6 +271,8 @@ pub struct Audio {
     music: Sink,
     /// A jukebox's record: one of the built-in tracks, played on its own while the music waits.
     disc: Sink,
+    /// How the record sounds right now: what it stands on, the walls between it and the ear.
+    pub disc_tone: std::sync::Arc<DiscTone>,
     tracks: Vec<Track>,
     /// Seconds until the next song may start.
     pub next_in: f32,
@@ -365,6 +367,7 @@ impl Audio {
             handle,
             music,
             disc,
+            disc_tone: Default::default(),
             tracks: Vec::new(),
             next_in: 0.0,
             now_playing: None,
@@ -460,7 +463,7 @@ impl Audio {
         let Some((_, bytes)) = embedded::MUSIC.iter().find(|(t, _)| *t == id) else { return false };
         match Decoder::new(Cursor::new(*bytes)) {
             Ok(d) => {
-                self.disc.append(d);
+                self.disc.append(Toned::new(d.convert_samples::<f32>(), self.disc_tone.clone()));
                 self.disc.play();
                 true
             }
@@ -619,6 +622,110 @@ pub(crate) fn room_sound(mut s: Vec<f32>, room: Room) -> Vec<f32> {
     s
 }
 
+/// The colour of a playing record, set by the game each frame and read by the audio thread.
+/// `cut` is a low-pass amount (1 = as recorded, near 0 = heavily muffled), `echo` how much
+/// comes back off hard surfaces and `delay` after how many seconds. Nothing here ever makes
+/// the sound brighter, only duller or more distant.
+pub struct DiscTone {
+    cut: std::sync::atomic::AtomicU32,
+    echo: std::sync::atomic::AtomicU32,
+    delay: std::sync::atomic::AtomicU32,
+}
+
+impl Default for DiscTone {
+    fn default() -> Self {
+        let f = |v: f32| std::sync::atomic::AtomicU32::new(v.to_bits());
+        DiscTone { cut: f(1.0), echo: f(0.0), delay: f(0.08) }
+    }
+}
+
+impl DiscTone {
+    pub fn set(&self, cut: f32, echo: f32, delay: f32) {
+        use std::sync::atomic::Ordering::Relaxed;
+        self.cut.store(cut.clamp(0.02, 1.0).to_bits(), Relaxed);
+        self.echo.store(echo.clamp(0.0, 0.6).to_bits(), Relaxed);
+        self.delay.store(delay.clamp(0.02, TONE_MAX_DELAY).to_bits(), Relaxed);
+    }
+
+    fn get(&self) -> (f32, f32, f32) {
+        use std::sync::atomic::Ordering::Relaxed;
+        let f = |a: &std::sync::atomic::AtomicU32| f32::from_bits(a.load(Relaxed));
+        (f(&self.cut), f(&self.echo), f(&self.delay))
+    }
+}
+
+const TONE_MAX_DELAY: f32 = 0.3;
+
+/// A record streamed through the jukebox's tone: a one-pole low-pass per channel and a
+/// darkened echo line. Settings glide over ~50 ms so moving or covering the box never clicks.
+pub struct Toned<S> {
+    inner: S,
+    tone: std::sync::Arc<DiscTone>,
+    channels: usize,
+    rate: f32,
+    lp: [f32; 2],
+    elp: [f32; 2],
+    ring: Vec<f32>,
+    w: usize,
+    n: usize,
+    cur: (f32, f32, f32),
+    target: (f32, f32, f32),
+}
+
+impl<S: Source<Item = f32>> Toned<S> {
+    pub fn new(inner: S, tone: std::sync::Arc<DiscTone>) -> Self {
+        let channels = (inner.channels() as usize).clamp(1, 2);
+        let rate = inner.sample_rate() as f32;
+        let len = ((TONE_MAX_DELAY * rate) as usize + 1) * channels;
+        let now = tone.get();
+        Toned { inner, tone, channels, rate, lp: [0.0; 2], elp: [0.0; 2], ring: vec![0.0; len], w: 0, n: 0, cur: now, target: now }
+    }
+}
+
+impl<S: Source<Item = f32>> Iterator for Toned<S> {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<f32> {
+        let x = self.inner.next()?;
+        if self.n % 512 == 0 {
+            self.target = self.tone.get();
+        }
+        let g = 0.0005;
+        self.cur.0 += (self.target.0 - self.cur.0) * g;
+        self.cur.1 += (self.target.1 - self.cur.1) * g;
+        self.cur.2 += (self.target.2 - self.cur.2) * g;
+        let (cut, echo, delay) = self.cur;
+        let c = self.n % self.channels;
+        self.n = self.n.wrapping_add(1);
+        // Muffling loses some loudness; give a little of it back.
+        self.lp[c] += (x - self.lp[c]) * cut;
+        let y = self.lp[c] * (1.0 + (1.0 - cut) * 0.4);
+        let len = self.ring.len();
+        let d = ((delay * self.rate) as usize).max(1) * self.channels;
+        let back = self.ring[(self.w + len - d.min(len - self.channels)) % len];
+        self.elp[c] += (back - self.elp[c]) * 0.3;
+        let out = y + self.elp[c] * echo;
+        self.ring[self.w] = y + self.elp[c] * echo * 0.5;
+        self.w = (self.w + 1) % len;
+        Some(out.clamp(-1.0, 1.0))
+    }
+}
+
+impl<S: Source<Item = f32>> Source for Toned<S> {
+    fn current_frame_len(&self) -> Option<usize> {
+        self.inner.current_frame_len()
+    }
+    fn channels(&self) -> u16 {
+        self.channels as u16
+    }
+    fn sample_rate(&self) -> u32 {
+        self.inner.sample_rate()
+    }
+    fn total_duration(&self) -> Option<std::time::Duration> {
+        self.inner.total_duration()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -630,5 +737,29 @@ mod tests {
         assert!(wet.len() > dry.len());
         assert!(wet.iter().all(|v| v.abs() < 1.5));
         assert_eq!(room_sound(dry.clone(), Room::default()).len(), dry.len());
+    }
+
+    fn tone_energy(cut: f32, echo: f32) -> (f32, f32) {
+        // A low hum plus a fast wiggle; the wiggle is what muffling should take away.
+        let rate = 44100;
+        let src: Vec<f32> = (0..rate).map(|i| { let t = i as f32 / rate as f32; (t * 110.0 * std::f32::consts::TAU).sin() * 0.3 + (t * 5000.0 * std::f32::consts::TAU).sin() * 0.3 }).collect();
+        let tone = std::sync::Arc::new(DiscTone::default());
+        tone.set(cut, echo, 0.08);
+        let out: Vec<f32> = Toned::new(rodio::buffer::SamplesBuffer::new(1, rate, src), tone).collect();
+        let tail = &out[rate as usize / 2..];
+        let hi: f32 = tail.windows(2).map(|w| (w[1] - w[0]).abs()).sum::<f32>() / tail.len() as f32;
+        let lo: f32 = tail.iter().map(|v| v.abs()).sum::<f32>() / tail.len() as f32;
+        (hi, lo)
+    }
+
+    #[test]
+    fn wool_muffles_the_record_and_nothing_gets_brighter() {
+        let (dry_hi, dry_lo) = tone_energy(1.0, 0.0);
+        let (wool_hi, wool_lo) = tone_energy(0.08, 0.0);
+        assert!(wool_hi < dry_hi * 0.4, "muffled {wool_hi} vs dry {dry_hi}");
+        assert!(wool_lo > 0.05, "the low part still plays");
+        // Stone sends an echo back: louder overall, but no brighter for it.
+        let (stone_hi, stone_lo) = tone_energy(0.9, 0.4);
+        assert!(stone_hi / stone_lo <= dry_hi / dry_lo * 1.05);
     }
 }
