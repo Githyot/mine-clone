@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use crossbeam_channel::{unbounded, Receiver};
@@ -18,11 +18,15 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
 use crate::protocol::{decode, encode, ToGuest, ToHost};
+use crate::voice::{self, Listener, VoiceOut};
 
 const ALPN: &[u8] = b"mine-clone/1";
 const MAX_FRAME: usize = 32 << 20;
 
 pub type ConnId = u32;
+
+/// The host's own place in the voice table (guests are numbered from 1).
+pub const HOST_CONN: ConnId = 0;
 
 /// A guest's outgoing frames and its connection. Through a relay the connection is the
 /// host's own link to the relay, shared by every relayed guest, so it is never closed for one.
@@ -30,9 +34,66 @@ struct Peer {
     tx: mpsc::UnboundedSender<Vec<u8>>,
     conn: quinn::Connection,
     relayed: bool,
+    /// Through a relay: the guest's number there, put before each datagram for it.
+    lane: Option<u32>,
+}
+
+impl Peer {
+    fn datagram(&self, b: &[u8]) {
+        let bytes = match self.lane {
+            Some(l) => {
+                let mut v = Vec::with_capacity(4 + b.len());
+                v.extend_from_slice(&l.to_le_bytes());
+                v.extend_from_slice(b);
+                v
+            }
+            None => b.to_vec(),
+        };
+        let _ = self.conn.send_datagram(bytes.into());
+    }
 }
 
 type Conns = Arc<Mutex<HashMap<ConnId, Peer>>>;
+
+/// Passes voice packets on to whoever should hear them (see `voice`).
+struct Hub {
+    listeners: RwLock<HashMap<ConnId, Listener>>,
+    /// Packets for the host's own ears.
+    local: crossbeam_channel::Sender<Vec<u8>>,
+    conns: Conns,
+    /// Relay lane → guest.
+    lanes: Mutex<HashMap<u32, ConnId>>,
+}
+
+impl Hub {
+    fn route(&self, mut bytes: Vec<u8>, from: ConnId) {
+        let Some(p) = voice::Packet::decode(&bytes) else { return };
+        let (lane, group) = (p.lane, p.group);
+        voice::stamp(&mut bytes, from);
+        let ls = self.listeners.read().unwrap();
+        // Not in the game yet (or never said where): nobody hears it.
+        let Some(speaker) = ls.get(&from) else { return };
+        let mut to = Vec::new();
+        for (id, l) in ls.iter() {
+            if *id != from && l.hears(speaker, lane, group) {
+                if *id == HOST_CONN {
+                    let _ = self.local.send(bytes.clone());
+                } else {
+                    to.push(*id);
+                }
+            }
+        }
+        drop(ls);
+        if !to.is_empty() {
+            let conns = self.conns.lock().unwrap();
+            for id in to {
+                if let Some(p) = conns.get(&id) {
+                    p.datagram(&bytes);
+                }
+            }
+        }
+    }
+}
 
 pub enum HostEvent {
     Joined(ConnId, SocketAddr),
@@ -89,6 +150,8 @@ pub struct Host {
     endpoint: quinn::Endpoint,
     relay: Arc<Mutex<Option<Result<(SocketAddr, u16), String>>>>,
     relay_conn: Arc<Mutex<Option<quinn::Connection>>>,
+    hub: Arc<Hub>,
+    voice_in: Receiver<Vec<u8>>,
     rt: Option<tokio::runtime::Runtime>,
 }
 
@@ -99,16 +162,32 @@ async fn serve(
     mut recv: quinn::RecvStream,
     addr: SocketAddr,
     conn: quinn::Connection,
-    relayed: bool,
+    lane: Option<u32>,
     tx: crossbeam_channel::Sender<HostEvent>,
-    conns: Conns,
+    hub: Arc<Hub>,
     next: Arc<AtomicU32>,
 ) {
+    let relayed = lane.is_some();
+    let conns = hub.conns.clone();
     let id = next.fetch_add(1, Ordering::Relaxed);
     let (wtx, wrx) = mpsc::unbounded_channel();
-    conns.lock().unwrap().insert(id, Peer { tx: wtx, conn: conn.clone(), relayed });
+    conns.lock().unwrap().insert(id, Peer { tx: wtx, conn: conn.clone(), relayed, lane });
     let _ = tx.send(HostEvent::Joined(id, addr));
     tokio::spawn(write_loop(send, wrx));
+    match lane {
+        Some(l) => {
+            hub.lanes.lock().unwrap().insert(l, id);
+        }
+        None => {
+            // A direct guest's voice comes as datagrams on its own connection.
+            let (hub, conn) = (hub.clone(), conn.clone());
+            tokio::spawn(async move {
+                while let Ok(d) = conn.read_datagram().await {
+                    hub.route(d.to_vec(), id);
+                }
+            });
+        }
+    }
     let why = loop {
         match read_frame(&mut recv).await {
             Some(f) => match decode::<ToHost>(&f) {
@@ -124,6 +203,10 @@ async fn serve(
         }
     };
     conns.lock().unwrap().remove(&id);
+    hub.listeners.write().unwrap().remove(&id);
+    if let Some(l) = lane {
+        hub.lanes.lock().unwrap().remove(&l);
+    }
     let _ = tx.send(HostEvent::Left(id, why));
 }
 
@@ -143,29 +226,31 @@ impl Host {
         let (tx, events) = unbounded();
         let conns: Conns = Arc::new(Mutex::new(HashMap::new()));
         let next = Arc::new(AtomicU32::new(1));
+        let (vtx, voice_in) = unbounded();
+        let hub = Arc::new(Hub { listeners: RwLock::new(HashMap::new()), local: vtx, conns: conns.clone(), lanes: Mutex::new(HashMap::new()) });
         let (tx_keep, next_keep) = (tx.clone(), next.clone());
-        let (ep, conns2) = (endpoint.clone(), conns.clone());
+        let (ep, hub2) = (endpoint.clone(), hub.clone());
         rt.spawn(async move {
             while let Some(incoming) = ep.accept().await {
-                let (tx, conns, next) = (tx.clone(), conns2.clone(), next.clone());
+                let (tx, hub, next) = (tx.clone(), hub2.clone(), next.clone());
                 tokio::spawn(async move {
                     let Ok(conn) = incoming.await else { return };
                     let Ok(Ok((send, recv))) = tokio::time::timeout(Duration::from_secs(10), conn.accept_bi()).await else {
                         return;
                     };
                     let addr = conn.remote_address();
-                    serve(send, recv, addr, conn, false, tx, conns, next).await;
+                    serve(send, recv, addr, conn, None, tx, hub, next).await;
                 });
             }
         });
-        Ok(Host { port, events, tx: tx_keep, conns, next: next_keep, endpoint, relay: Arc::new(Mutex::new(None)), relay_conn: Arc::new(Mutex::new(None)), rt: Some(rt) })
+        Ok(Host { port, events, tx: tx_keep, conns, next: next_keep, endpoint, relay: Arc::new(Mutex::new(None)), relay_conn: Arc::new(Mutex::new(None)), hub, voice_in, rt: Some(rt) })
     }
 
     /// Also take guests through a relay (`mine-clone --relay` on a machine with an open port),
     /// for when the router won't open ours. The room number arrives through `relay_room`.
     pub fn use_relay(&self, addr: &str) {
         let Some(rt) = &self.rt else { return };
-        let (status, slot, tx, conns, next) = (self.relay.clone(), self.relay_conn.clone(), self.tx.clone(), self.conns.clone(), self.next.clone());
+        let (status, slot, tx, hub, next) = (self.relay.clone(), self.relay_conn.clone(), self.tx.clone(), self.hub.clone(), self.next.clone());
         let addr = addr.trim().to_string();
         rt.spawn(async move {
             let set = |r: Result<(SocketAddr, u16), String>| *status.lock().unwrap() = Some(r);
@@ -179,10 +264,26 @@ impl Host {
             };
             *slot.lock().unwrap() = Some(conn.clone());
             set(Ok((conn.remote_address(), room)));
-            // Each guest arrives as a new stream, its address first.
+            // Relayed guests' voice: datagrams on our link to the relay, each led by its lane.
+            {
+                let (hub, conn) = (hub.clone(), conn.clone());
+                tokio::spawn(async move {
+                    while let Ok(d) = conn.read_datagram().await {
+                        if d.len() < 4 {
+                            continue;
+                        }
+                        let lane = u32::from_le_bytes([d[0], d[1], d[2], d[3]]);
+                        let id = hub.lanes.lock().unwrap().get(&lane).copied();
+                        if let Some(id) = id {
+                            hub.route(d[4..].to_vec(), id);
+                        }
+                    }
+                });
+            }
+            // Each guest arrives as a new stream, its address and lane first.
             while let Ok((send, mut recv)) = conn.accept_bi().await {
-                let Some(addr) = crate::relay::read_addr(&mut recv).await else { continue };
-                tokio::spawn(serve(send, recv, addr, conn.clone(), true, tx.clone(), conns.clone(), next.clone()));
+                let Some((addr, lane)) = crate::relay::read_addr(&mut recv).await else { continue };
+                tokio::spawn(serve(send, recv, addr, conn.clone(), Some(lane), tx.clone(), hub.clone(), next.clone()));
             }
             set(Err(conn.close_reason().map(|r| r.to_string()).unwrap_or_else(|| "a ponte caiu".to_string())));
         });
@@ -226,6 +327,31 @@ impl Host {
         }
     }
 
+    /// Where a player is and what they listen to (`HOST_CONN` for the host itself); None
+    /// takes them out of voice.
+    pub fn set_voice_listener(&self, id: ConnId, l: Option<Listener>) {
+        let mut ls = self.hub.listeners.write().unwrap();
+        match l {
+            Some(l) => {
+                ls.insert(id, l);
+            }
+            None => {
+                ls.remove(&id);
+            }
+        }
+    }
+
+    /// For the host's own microphone: its packets go to the guests who should hear them.
+    pub fn voice_out(&self) -> VoiceOut {
+        let hub = self.hub.clone();
+        VoiceOut(Arc::new(move |b: &[u8]| hub.route(b.to_vec(), HOST_CONN)))
+    }
+
+    /// Guests' voice packets the host itself should hear (speaker already filled in).
+    pub fn voice_in(&self) -> Receiver<Vec<u8>> {
+        self.voice_in.clone()
+    }
+
     /// Round-trip time to a guest, in milliseconds.
     pub fn ping(&self, to: ConnId) -> Option<u32> {
         self.conns.lock().unwrap().get(&to).map(|p| p.conn.rtt().as_millis() as u32)
@@ -252,6 +378,7 @@ pub struct Guest {
     events: Receiver<GuestEvent>,
     out: mpsc::UnboundedSender<Vec<u8>>,
     conn: Arc<Mutex<Option<quinn::Connection>>>,
+    voice_in: Receiver<Vec<u8>>,
     rt: Option<tokio::runtime::Runtime>,
 }
 
@@ -261,12 +388,13 @@ impl Guest {
     pub fn connect(addr: &str) -> Guest {
         let (tx, events) = unbounded();
         let (out, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        let (vtx, voice_in) = unbounded();
         let conn_slot: Arc<Mutex<Option<quinn::Connection>>> = Arc::new(Mutex::new(None));
         let rt = match runtime() {
             Ok(rt) => rt,
             Err(e) => {
                 let _ = tx.send(GuestEvent::Closed(e.to_string()));
-                return Guest { events, out, conn: conn_slot, rt: None };
+                return Guest { events, out, conn: conn_slot, voice_in, rt: None };
             }
         };
         let addr = addr.trim().to_string();
@@ -304,6 +432,17 @@ impl Guest {
                 Err(e) => return fail(e),
             };
             *slot.lock().unwrap() = Some(conn.clone());
+            // Voice from the host (direct or through the relay alike).
+            {
+                let conn = conn.clone();
+                tokio::spawn(async move {
+                    while let Ok(d) = conn.read_datagram().await {
+                        if vtx.send(d.to_vec()).is_err() {
+                            break;
+                        }
+                    }
+                });
+            }
             let (wtx, wrx) = mpsc::unbounded_channel();
             tokio::spawn(write_loop(send, wrx));
             tokio::spawn(async move {
@@ -330,7 +469,7 @@ impl Guest {
             let _ = tx.send(GuestEvent::Closed(why));
             ep.wait_idle().await;
         });
-        Guest { events, out, conn: conn_slot, rt: Some(rt) }
+        Guest { events, out, conn: conn_slot, voice_in, rt: Some(rt) }
     }
 
     pub fn poll(&self) -> Vec<GuestEvent> {
@@ -343,6 +482,21 @@ impl Guest {
 
     pub fn ping(&self) -> Option<u32> {
         self.conn.lock().unwrap().as_ref().map(|c| c.rtt().as_millis() as u32)
+    }
+
+    /// For our microphone: packets go to the host, which passes them on.
+    pub fn voice_out(&self) -> VoiceOut {
+        let slot = self.conn.clone();
+        VoiceOut(Arc::new(move |b: &[u8]| {
+            if let Some(c) = slot.lock().unwrap().as_ref() {
+                let _ = c.send_datagram(b.to_vec().into());
+            }
+        }))
+    }
+
+    /// Others' voice packets, as the host passed them on.
+    pub fn voice_in(&self) -> Receiver<Vec<u8>> {
+        self.voice_in.clone()
     }
 }
 
@@ -472,12 +626,12 @@ impl rustls::client::danger::ServerCertVerifier for AnyCert {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::protocol::PlayerState;
     use std::time::Instant;
 
-    fn wait<T>(mut f: impl FnMut() -> Option<T>) -> T {
+    pub(crate) fn wait<T>(mut f: impl FnMut() -> Option<T>) -> T {
         let t = Instant::now();
         loop {
             if let Some(v) = f() {
@@ -532,6 +686,55 @@ mod tests {
         });
         drop(guest);
         wait(|| host.poll().into_iter().find(|e| matches!(e, HostEvent::Left(..))).map(|_| ()));
+    }
+
+    /// Voice: a guest speaks, the host hears it stamped with the guest's id; the host speaks
+    /// to the group, the guest hears; a guest out of range or in another group does not.
+    pub(crate) fn voice_both_ways(host: &Host, guest: &Guest, id: ConnId) {
+        use crate::voice::{Lane, Listener, Packet};
+        let here = Listener { dim: 0, pos: [0.0, 64.0, 0.0], group: 1, on: true };
+        host.set_voice_listener(HOST_CONN, Some(here));
+        host.set_voice_listener(id, Some(Listener { pos: [10.0, 64.0, 0.0], ..here }));
+        let hin = host.voice_in();
+        let gin = guest.voice_in();
+        // Datagrams may be lost: keep saying it until it arrives.
+        let said = Packet { from: 99, seq: 1, lane: Lane::Near, group: 0, data: &[7; 40] }.encode();
+        let got = wait(|| {
+            guest.voice_out().send(&said);
+            std::thread::sleep(Duration::from_millis(20));
+            hin.try_iter().next()
+        });
+        let p = Packet::decode(&got).unwrap();
+        assert_eq!((p.from, p.lane, p.data.len()), (id, Lane::Near, 40));
+        let to_group = Packet { from: 0, seq: 2, lane: Lane::Group, group: 1, data: &[3; 30] }.encode();
+        let got = wait(|| {
+            host.voice_out().send(&to_group);
+            std::thread::sleep(Duration::from_millis(20));
+            gin.try_iter().next()
+        });
+        assert_eq!(Packet::decode(&got).unwrap().from, HOST_CONN);
+        // Another group: nothing comes.
+        let other = Packet { from: 0, seq: 3, lane: Lane::Group, group: 2, data: &[3; 30] }.encode();
+        for _ in 0..10 {
+            host.voice_out().send(&other);
+        }
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(gin.try_iter().all(|b| Packet::decode(&b).unwrap().group == 1));
+    }
+
+    #[test]
+    fn voice_direct() {
+        let host = Host::start(0).expect("host");
+        let guest = Guest::connect(&format!("127.0.0.1:{}", host.port));
+        wait(|| guest.poll().into_iter().find(|e| matches!(e, GuestEvent::Connected)).map(|_| ()));
+        guest.send(&ToHost::Chat("oi".into()));
+        let id = wait(|| {
+            host.poll().into_iter().find_map(|e| match e {
+                HostEvent::Joined(i, _) => Some(i),
+                _ => None,
+            })
+        });
+        voice_both_ways(&host, &guest, id);
     }
 
     #[test]
