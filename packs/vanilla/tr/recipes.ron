@@ -175,6 +175,7 @@
         (pattern: ["WWW", " S ", " S "], key: {'W': "white_wool", 'S': "stick"}, result: "paint_roller"),
         (pattern: ["  I", " S ", "S  "], key: {'I': "iron_ingot", 'S': "stick"}, result: "paint_scraper"),
         (pattern: ["PPP", "PNP", "PGP"], key: {'P': "oak_planks", 'N': "note_block", 'G': "gold_ingot"}, result: "music_box"),
+        (pattern: ["P P", "PDP", "PPP"], key: {'P': "oak_planks", 'D': "water_bucket"}, result: "dye_vat"),
     ],
     shapeless: [
         (ingredients: ["lens", "lens", "lens", "lens", "lens", "lens", "spider_eye"], result: "eye_lure"),

@@ -34,6 +34,8 @@ const RANGE: f32 = 48.0;
 #[derive(Default)]
 pub struct Style {
     pub vanity: [Option<ItemStack>; 4],
+    /// Dye on each piece shown (index into COLOURS), from the dye vat.
+    pub dyes: [Option<u8>; 4],
     /// Blocks painted since the last dye was used up.
     paint_uses: u8,
     /// Music boxes and the song each one recorded.
@@ -87,6 +89,49 @@ impl Game {
             "paint_scraper" => Some(self.paint(false, true)),
             _ => None,
         }
+    }
+
+    /// The name whose look an armour piece takes: dyed pieces look like the dye's cloth.
+    pub(crate) fn armor_look(&self, piece: usize, st: &ItemStack) -> String {
+        match self.t5.tr.style.dyes[piece] {
+            Some(c) => format!("dye_{}_piece", COLOURS[c as usize % 16]),
+            None => self.items.get(st.item).name.clone(),
+        }
+    }
+
+    /// The dye vat: a dye in hand dyes every piece worn (one dye); empty hand washes them.
+    pub(crate) fn use_dye_vat(&mut self) -> bool {
+        let held = self.held_stack();
+        let colour = held.and_then(|st| {
+            let name = &self.items.get(st.item).name;
+            COLOURS.iter().position(|c| name.strip_suffix("_dye") == Some(*c))
+        });
+        match colour {
+            Some(c) => {
+                if (0..4).all(|k| self.shown_armor(k).is_none()) {
+                    self.toast("Vista uma armadura ou roupa para tingir", 2.0);
+                    return true;
+                }
+                for k in 0..4 {
+                    if self.shown_armor(k).is_some() {
+                        self.t5.tr.style.dyes[k] = Some(c as u8);
+                    }
+                }
+                if self.survival {
+                    let sel = self.selected;
+                    self.surv.inv.take(sel, 1);
+                }
+                self.toast("Roupa tingida! (mão vazia na tina lava a tinta)", 2.5);
+                self.sfx(Sfx::Splash(0.4));
+            }
+            None if held.is_none() => {
+                self.t5.tr.style.dyes = [None; 4];
+                self.toast("A tinta saiu na água", 2.0);
+                self.sfx(Sfx::Splash(0.4));
+            }
+            None => self.toast("Use um corante na tina (ou a mão vazia para lavar)", 2.0),
+        }
+        true
     }
 
     /// The armour piece to draw: the vanity piece over the real one.
@@ -250,6 +295,9 @@ impl Game {
             let set = std::env::var("MC_VANITY").unwrap_or_else(|_| "pirate".into());
             for (k, piece) in ["helmet", "chestplate", "leggings", "boots"].iter().enumerate() {
                 self.t5.tr.style.vanity[k] = self.items.id(&format!("vanity_{set}_{piece}")).map(|id| ItemStack::new(id, 1));
+            }
+            if let Some(c) = std::env::var("MC_DYE").ok().and_then(|d| COLOURS.iter().position(|c| *c == d)) {
+                self.t5.tr.style.dyes = [Some(c as u8); 4];
             }
             return;
         }

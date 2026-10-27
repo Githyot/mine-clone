@@ -430,7 +430,7 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
 }
 
 /// Armour materials, by the item-name prefix, with their colour.
-pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 58] = [
+pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 74] = [
     ("leather", [134, 82, 46]),
     ("chainmail", [150, 150, 156]),
     ("iron", [206, 206, 206]),
@@ -496,6 +496,23 @@ pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 58] = [
     ("vanity_ranger", [46, 106, 46]),
     ("vanity_royal", [196, 148, 24]),
     ("vanity_shadow", [42, 34, 56]),
+    // Armour dyed in the dye vat (tr_style.rs): it takes the dye's colour.
+    ("dye_white", [233, 236, 236]),
+    ("dye_orange", [240, 118, 19]),
+    ("dye_magenta", [189, 68, 179]),
+    ("dye_light_blue", [58, 175, 217]),
+    ("dye_yellow", [248, 198, 39]),
+    ("dye_lime", [112, 185, 25]),
+    ("dye_pink", [237, 141, 172]),
+    ("dye_gray", [62, 68, 71]),
+    ("dye_light_gray", [142, 142, 134]),
+    ("dye_cyan", [21, 137, 145]),
+    ("dye_purple", [121, 42, 172]),
+    ("dye_blue", [53, 57, 157]),
+    ("dye_brown", [114, 71, 40]),
+    ("dye_green", [84, 109, 27]),
+    ("dye_red", [160, 39, 34]),
+    ("dye_black", [20, 21, 25]),
 ];
 
 /// The boxes of one armour piece (helmet, chestplate, leggings, boots) on the player model:

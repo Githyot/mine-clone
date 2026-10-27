@@ -63,6 +63,7 @@ const WEAPONS: &[WDef] = &[
     w("iron_flail", Wk::Flail(0.32), 6.0, 0.4, 22.0, None),
     w("umbral_flail", Wk::Flail(0.36), 9.0, 0.4, 24.0, None),
     w("sanguinite_flail", Wk::Flail(0.36), 9.0, 0.4, 24.0, Some((BLEEDING, 4.0))),
+    w("bone_flail", Wk::Flail(0.36), 8.0, 0.4, 24.0, None),
     w("sun_flail", Wk::Flail(0.4), 12.0, 0.4, 26.0, Some((MOB_BURN, 5.0))),
     w("flintlock_pistol", Wk::Gun(1, 0.0), 6.0, 0.4, 70.0, None),
     w("musket", Wk::Gun(1, 0.0), 10.0, 0.9, 80.0, None),

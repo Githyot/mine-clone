@@ -335,4 +335,8 @@
     (name: "paint_brush", display_name: Some("Pincel"), max_stack: Some(1)),
     (name: "paint_roller", display_name: Some("Rolo de Pintura"), max_stack: Some(1)),
     (name: "paint_scraper", display_name: Some("Raspador de Tinta"), max_stack: Some(1)),
+    (name: "golden_key", display_name: Some("Chave Dourada"), max_stack: Some(16)),
+    (name: "blue_katana", display_name: Some("Katana Azul"), max_stack: Some(1), tool: Some((kind: Sword, tier: 3, speed: 12.0, damage: 7.0, durability: 1400))),
+    (name: "bastion_shield", display_name: Some("Escudo do Bastião"), max_stack: Some(1)),
+    (name: "bone_flail", display_name: Some("Mangual de Ossos"), max_stack: Some(1)),
 ])

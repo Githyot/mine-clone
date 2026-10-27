@@ -70,4 +70,11 @@
     (name: "relic_void_blossom", display_name: Some("Relíquia: Flor do Vazio"), light: 7, hardness: 3.0, tool: Some(Pickaxe), textures: (top: Some("relic_void_blossom"), side: Some("relic_side"), bottom: Some("relic_side"))),
     (name: "relic_void_guardian", display_name: Some("Relíquia: Guardião do Vazio"), light: 7, hardness: 3.0, tool: Some(Pickaxe), textures: (top: Some("relic_void_guardian"), side: Some("relic_side"), bottom: Some("relic_side"))),
     (name: "music_box", display_name: Some("Caixa de Música"), hardness: 1.5, tool: Some(Axe), textures: (top: Some("music_box_top"), side: Some("music_box_side"), bottom: Some("music_box_side"))),
+    (name: "dungeon_brick_blue", display_name: Some("Tijolo da Masmorra Azul"), hardness: 60.0, tool: Some(Pickaxe), tier: 4),
+    (name: "dungeon_brick_green", display_name: Some("Tijolo da Masmorra Verde"), hardness: 60.0, tool: Some(Pickaxe), tier: 4),
+    (name: "dungeon_brick_pink", display_name: Some("Tijolo da Masmorra Rosa"), hardness: 60.0, tool: Some(Pickaxe), tier: 4),
+    (name: "dungeon_spikes", display_name: Some("Espinhos"), shape: Cross, transparency: Cutout, solid: false, hardness: 4.0, tool: Some(Pickaxe)),
+    (name: "locked_chest", display_name: Some("Baú Trancado"), hardness: 80.0, tool: Some(Pickaxe), tier: 4, textures: (top: Some("locked_chest_top"), side: Some("locked_chest_side"), front: Some("locked_chest_front"), bottom: Some("locked_chest_top")), drops: Some([])),
+    (name: "dungeon_lantern", display_name: Some("Lanterna da Masmorra"), light: 13, hardness: 1.0, transparency: Cutout),
+    (name: "dye_vat", display_name: Some("Tina de Tingir"), hardness: 1.5, tool: Some(Axe), textures: (top: Some("dye_vat_top"), side: Some("dye_vat_side"), bottom: Some("dye_vat_side"))),
 ])

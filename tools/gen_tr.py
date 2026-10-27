@@ -1608,6 +1608,13 @@ def structures_l3():
          grave, ["sink: 1", "rough: 3"],
          [("bone_javelin", 8, 16, 0.6), ("ectoplasm", 1, 3, 0.15), ("magic_mirror", 1, 1, 0.25), ("wormhole_potion", 1, 2, 0.4), ("bone", 4, 12, 0.8), ("tombstone", 1, 3, 0.5)],
          [("zombie", 3), ("skeleton", 2)])
+    for k, (key, _, _, biomes) in enumerate(DUNGEON_COLOURS):
+        dg, dsink = dungeon_layout(900 + k)
+        emit(f"masmorra_{key}", biomes, 96, 0.9,
+             [("B", f"dungeon_brick_{key}"), ("L", "ladder"), ("l", "dungeon_lantern"), ("v", "dungeon_spikes"), ("X", "locked_chest"), ("K", "chest"), ("b", "bookshelf"), ("w", "cobweb"), ("i", "iron_bars")],
+             dg, [f"sink: {dsink}", "rough: 14"],
+             [("golden_key", 1, 1, 0.5), ("blue_katana", 1, 1, 0.15), ("bastion_shield", 1, 1, 0.15), ("bone_flail", 1, 1, 0.15), ("water_bolt", 1, 1, 0.12), ("spirit_bell", 1, 1, 0.1), ("bone_whip", 1, 1, 0.1), ("lucky_horseshoe", 1, 1, 0.1), ("bone", 4, 12, 0.7), ("emerald", 2, 6, 0.6), ("healing_potion", 1, 3, 0.5), ("enchanted_book", 1, 1, 0.3)],
+             [("skeleton", 3), ("mutant_skeleton", 1), ("invoker", 1)])
     lines += ["])", ""]
     (OUT / "structures.ron").write_text("\n".join(lines))
 
@@ -3834,6 +3841,297 @@ SHAPELESS_L11 = [
 ]
 
 
+
+# ==============================================================================================
+# What was left (after Lote 11): the big dungeon (three colours of brick, four floors of halls
+# under a tower, spikes, locked gold chests opened with golden keys) and the dye vat that dyes
+# the armour
+# ==============================================================================================
+
+DUNGEON_COLOURS = [
+    ("blue", "Azul", pal("#0e1a3a", "#1a2c5a", "#2a447e", "#3e5e9e", "#5a7ab8"), ["Snowy Plains", "Snowy Taiga", "Taiga", "Old Growth Taiga", "Grove", "Windswept Hills", "Stony Shore"]),
+    ("green", "Verde", pal("#0e2a1a", "#1a4428", "#2a5e38", "#3e7a4a", "#5a9a62"), ["Forest", "Birch Forest", "Dark Forest", "Jungle", "Swamp", "Mangrove Swamp"]),
+    ("pink", "Rosa", pal("#3a0e2a", "#5a1a44", "#7e2a5e", "#9e3e7a", "#b85a96"), ["Plains", "Savanna", "Meadow", "Flower Forest", "Sunflower Plains", "Badlands"]),
+]
+KEY_ICON = [
+    "................",
+    "................",
+    "....1111........",
+    "...122221.......",
+    "..12333321......",
+    "..1231132111111.",
+    "..123..32222221.",
+    "..1231132211221.",
+    "..12333321..121.",
+    "...122221...11..",
+    "....1111........",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+]
+SHIELD_ICON = [
+    "................",
+    "...1111111111...",
+    "..122222222221..",
+    "..123333333321..",
+    "..1233aaaa3321..",
+    "..123aabbaa321..",
+    "..123abbbba321..",
+    "..123aabbaa321..",
+    "...1233aa3321...",
+    "...1233333321...",
+    "....12333321....",
+    ".....123321.....",
+    "......1221......",
+    ".......11.......",
+    "................",
+    "................",
+]
+
+
+def items_l12():
+    gi.MATERIALS["katana"] = pal("#14284a", "#2a4a7a", "#5a8ac4", "#a8d0f0", "#eef8ff")
+    gi.MATERIALS["bone"] = pal("#6a6250", "#9a9078", "#c8c0a8", "#e8e2cc", "#fffaee")
+    gold = pal("#5a3a08", "#a07c16", "#d4aa18", "#f4ca28", "#fff0a0")
+    return [
+        ("golden_key", "Chave Dourada", icon(KEY_ICON, gold), "max_stack: Some(16)"),
+        ("blue_katana", "Katana Azul", gi.tool("katana", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 3, speed: 12.0, damage: 7.0, durability: 1400))"),
+        ("bastion_shield", "Escudo do Bastião", icon2(SHIELD_ICON, pal("#14284a", "#2a4a7a", "#5a8ac4"), pal("#c49a10", "#f4ca28")), "max_stack: Some(1)"),
+        ("bone_flail", "Mangual de Ossos", icon2(FLAIL, gi.MATERIALS["bone"], WOOD) if any(c in "ab" for r in FLAIL for c in r) else icon(FLAIL, gi.MATERIALS["bone"]), "max_stack: Some(1)"),
+    ]
+
+
+def block_defs_l12():
+    out = []
+    for key, disp, _, _ in DUNGEON_COLOURS:
+        out.append(f'(name: "dungeon_brick_{key}", display_name: Some("Tijolo da Masmorra {disp}"), hardness: 60.0, tool: Some(Pickaxe), tier: 4)')
+    out += [
+        '(name: "dungeon_spikes", display_name: Some("Espinhos"), shape: Cross, transparency: Cutout, solid: false, hardness: 4.0, tool: Some(Pickaxe))',
+        '(name: "locked_chest", display_name: Some("Baú Trancado"), hardness: 80.0, tool: Some(Pickaxe), tier: 4, textures: (top: Some("locked_chest_top"), side: Some("locked_chest_side"), front: Some("locked_chest_front"), bottom: Some("locked_chest_top")), drops: Some([]))',
+        '(name: "dungeon_lantern", display_name: Some("Lanterna da Masmorra"), light: 13, hardness: 1.0, transparency: Cutout)',
+        '(name: "dye_vat", display_name: Some("Tina de Tingir"), hardness: 1.5, tool: Some(Axe), textures: (top: Some("dye_vat_top"), side: Some("dye_vat_side"), bottom: Some("dye_vat_side")))',
+    ]
+    return out
+
+
+def blocks_l12():
+    def brick(x, y):
+        row = y // 4
+        off = 4 if row % 2 else 0
+        return 0.12 if y % 4 == 3 or (x + off) % 8 == 7 else 0.5 + 0.25 * (((x + off) // 8 * 3 + row) % 3 == 0)
+
+    def spikes(x, y):
+        for cx in (2, 7, 12):
+            h = 13 - (abs(x - cx) * 5)
+            if abs(x - cx) <= 2 and y >= 15 - max(h, 0) and y > 2:
+                return 0.4 + 0.5 * (1 - abs(x - cx) / 2.5)
+        return -1
+
+    def chest_side(x, y):
+        rim = min(x, y, 15 - x, 15 - y) == 0 or y == 5
+        band = x in (3, 12)
+        return 0.15 if rim else (0.9 if band else 0.45 + 0.1 * (y % 3 == 0))
+
+    def chest_front(x, y):
+        lock = 6 <= x <= 9 and 4 <= y <= 8
+        hole = x in (7, 8) and y in (6, 7)
+        return 0.05 if hole else (0.95 if lock else chest_side(x, y))
+
+    def lantern(x, y):
+        frame = x in (3, 12) or y in (2, 13)
+        inside = 3 < x < 12 and 2 < y < 13
+        return 0.2 if frame and 3 <= x <= 12 and 2 <= y <= 13 else (0.95 - 0.04 * abs(y - 8) if inside else -1)
+
+    def vat_top(x, y):
+        d = ((x - 7.5) ** 2 + (y - 7.5) ** 2) ** 0.5
+        return 0.2 if d > 7 else (0.95 if d < 2 else (0.6 + 0.25 * ((x + y) % 4 < 2) if d < 6 else 0.3))
+
+    def vat_side(x, y):
+        hoop = y in (3, 12)
+        return 0.15 if hoop else 0.45 + 0.1 * (x % 4 == 0)
+
+    out = {}
+    for k, (key, _, p, _) in enumerate(DUNGEON_COLOURS):
+        out[f"dungeon_brick_{key}"] = block_noise(140 + k, brick, p)
+    steel = pal("#2a2e36", "#4a505c", "#7a828e", "#b0b8c4", "#eef2f8")
+    sp = block_noise(150, lambda x, y: max(spikes(x, y), 0.0), steel)
+    lt = block_noise(151, lambda x, y: max(lantern(x, y), 0.0), pal("#1a1a22", "#3a3a4a", "#5a8ac4", "#a8d0f0", "#eef8ff"))
+    for y in range(N):
+        for x in range(N):
+            if spikes(x, y) < 0:
+                sp[y, x, 3] = 0
+            if lantern(x, y) < 0:
+                lt[y, x, 3] = 0
+    out["dungeon_spikes"] = sp
+    out["dungeon_lantern"] = lt
+    gold = pal("#3a2a08", "#6a4a10", "#a07c16", "#d4aa18", "#fff0a0")
+    out["locked_chest_side"] = block_noise(152, chest_side, gold)
+    out["locked_chest_top"] = block_noise(153, lambda x, y: 0.15 if min(x, y, 15 - x, 15 - y) == 0 else 0.5 + 0.2 * (x in (3, 12)), gold)
+    out["locked_chest_front"] = block_noise(154, chest_front, gold)
+    rainbow = [(170, 40, 40), (220, 140, 30), (230, 210, 60), (70, 160, 60), (50, 110, 200), (130, 60, 170)]
+    vt = block_noise(155, vat_top, pal("#2a1608", "#4a2a12", "#6a4020", "#8a5a30", "#a07a40"))
+    for y in range(N):
+        for x in range(N):
+            d = ((x - 7.5) ** 2 + (y - 7.5) ** 2) ** 0.5
+            if d < 6:
+                c = rainbow[int((np.arctan2(y - 7.5, x - 7.5) + np.pi) / (2 * np.pi) * 6) % 6]
+                vt[y, x, :3] = [v * (0.8 + 0.2 * (d < 3)) for v in c]
+    out["dye_vat_top"] = vt
+    out["dye_vat_side"] = block_noise(156, vat_side, pal("#2a1608", "#4a2a12", "#6a4020", "#8a5a30", "#a07a40"))
+    return out
+
+
+SHAPED_L12 = [
+    (["P P", "PDP", "PPP"], {"P": "oak_planks", "D": "water_bucket"}, "dye_vat", 1),
+]
+SHAPELESS_L12 = []
+
+
+def dungeon_layout(seed):
+    """Four floors of rooms and halls under a brick tower: a 5x5 grid of 8-block cells per
+    floor, joined by a random spanning tree (plus a few loops) with 3-wide doorways."""
+    import random
+    rnd = random.Random(seed)
+    C, S = 5, 8
+    W = C * S + 1
+    FLOORS, FH = 4, 5
+    UNDER = FLOORS * FH + 1
+    SHAFT = 6  # air between the top floor's ceiling and the ground
+    TOWER = 9
+    H = UNDER + SHAFT + TOWER
+    grid = [[[" "] * W for _ in range(W)] for _ in range(H)]
+    mid = C // 2
+
+    def put(y, z, x, ch):
+        if 0 <= y < H and 0 <= z < W and 0 <= x < W:
+            grid[y][z][x] = ch
+
+    for f in range(FLOORS):
+        y0 = f * FH
+        # Solid brick block for this floor, then carve.
+        for y in range(y0, y0 + FH + 1):
+            for z in range(W):
+                for x in range(W):
+                    if grid[y][z][x] == " ":
+                        grid[y][z][x] = "B"
+        cells = [(cx, cz) for cz in range(C) for cx in range(C)]
+        seen = {(mid, mid)}
+        edges = []
+        stack = [(mid, mid)]
+        while stack:
+            c = stack[-1]
+            nb = [(c[0] + dx, c[1] + dz) for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1))]
+            nb = [n for n in nb if 0 <= n[0] < C and 0 <= n[1] < C and n not in seen]
+            if not nb:
+                stack.pop()
+                continue
+            n = rnd.choice(nb)
+            seen.add(n)
+            edges.append((c, n))
+            stack.append(n)
+        for _ in range(4):
+            a = rnd.choice(cells)
+            b = (a[0] + rnd.choice((-1, 1)), a[1]) if rnd.random() < 0.5 else (a[0], a[1] + rnd.choice((-1, 1)))
+            if 0 <= b[0] < C and 0 <= b[1] < C:
+                edges.append((a, b))
+        degree = {c: 0 for c in cells}
+        for a, b in edges:
+            degree[a] += 1
+            degree[b] += 1
+        # Rooms: the inside of each cell.
+        for cx, cz in cells:
+            x0, z0 = cx * S + 1, cz * S + 1
+            for y in range(y0 + 1, y0 + FH):
+                for z in range(z0, z0 + S - 1):
+                    for x in range(x0, x0 + S - 1):
+                        grid[y][z][x] = "."
+        # Doorways.
+        for (ax, az), (bx, bz) in edges:
+            if ax != bx:
+                x = max(ax, bx) * S
+                zc = az * S + S // 2
+                for y in range(y0 + 1, y0 + 4):
+                    for z in range(zc - 1, zc + 2):
+                        grid[y][z][x] = "."
+            else:
+                z = max(az, bz) * S
+                xc = ax * S + S // 2
+                for y in range(y0 + 1, y0 + 4):
+                    for x in range(xc - 1, xc + 2):
+                        grid[y][z][x] = "."
+        # Furnishing.
+        for cx, cz in cells:
+            x0, z0 = cx * S + 1, cz * S + 1
+            cxm, czm = x0 + 3, z0 + 3
+            if (cx, cz) != (mid, mid):
+                put(y0 + FH - 1, czm, cxm, "l")
+            if (cx, cz) == (mid, mid):
+                continue
+            r = rnd.random()
+            if degree[(cx, cz)] == 1:
+                # Dead ends keep the treasure: mostly locked.
+                put(y0 + 1, z0 + 1, x0 + 1, "X" if rnd.random() < 0.7 else "K")
+            elif r < 0.25:
+                for z in range(z0 + 1, z0 + 6):
+                    for x in range(x0 + 1, x0 + 6):
+                        if (x + z) % 2 == 0:
+                            put(y0 + 1, z, x, "v")
+            elif r < 0.45:
+                for z in range(z0, z0 + S - 1):
+                    put(y0 + 1, z, x0, "b")
+                    put(y0 + 2, z, x0, "b")
+            elif r < 0.6:
+                for k in range(4):
+                    put(y0 + FH - 1, z0 + rnd.randrange(S - 1), x0 + rnd.randrange(S - 1), "w")
+            elif r < 0.7:
+                for x in range(x0, x0 + S - 1):
+                    put(y0 + 1, z0 + 3, x, "i")
+                put(y0 + 1, z0 + 3, x0 + 3, ".")
+    # The shaft in the middle cell: through every floor and up to the tower, a ladder on a
+    # brick spine.
+    sx, sz = mid * S + 2, mid * S + 4
+    for y in range(1, UNDER + SHAFT + 1):
+        if y >= UNDER:
+            for dz in (-1, 0, 1):
+                for dx in (-1, 0, 1, 2):
+                    put(y, sz + dz, sx + dx, "B")
+        put(y, sz, sx, "L")
+        put(y, sz, sx + 1, "B")
+        if y < UNDER:
+            put(y, sz, sx - 1, "." if grid[y][sz][sx - 1] != "B" or y % FH == 0 else grid[y][sz][sx - 1])
+    # Floors pierced where the ladder goes up.
+    # The tower over the ground: 11x11 brick, a door, lanterns, battlements.
+    tx0, tz0 = mid * S - 1, mid * S - 1
+    T = 11
+    for k in range(TOWER):
+        y = UNDER + SHAFT + k
+        for z in range(tz0, tz0 + T):
+            for x in range(tx0, tx0 + T):
+                edge = x in (tx0, tx0 + T - 1) or z in (tz0, tz0 + T - 1)
+                if k == 0:
+                    ch = "B"
+                elif k == TOWER - 1:
+                    ch = "B" if edge and (x + z) % 2 == 0 else " "
+                elif edge:
+                    ch = "B"
+                    if (z == tz0 + T - 1) and abs(x - (tx0 + T // 2)) <= 1 and k <= 3:
+                        ch = "."
+                    if k == 4 and (x - tx0) % 5 == 0 and (z - tz0) % 5 == 0:
+                        ch = "l"
+                elif k == TOWER - 2:
+                    ch = "B"
+                else:
+                    ch = "."
+                put(y, z, x, ch)
+        put(UNDER + SHAFT + k, sz, sx, "L" if k < TOWER - 2 else grid[UNDER + SHAFT + k][sz][sx])
+        put(UNDER + SHAFT + k, sz, sx + 1, "B")
+    put(UNDER + SHAFT, sz, sx, "L")
+    sink = UNDER + SHAFT
+    return [["".join(r) for r in layer] for layer in grid], sink
+
+
 def write_skins(skins):
     parsed, layers = g.parse_mobs(str(OUT / "mobs.ron"))
     assert set(parsed) == set(skins), sorted(set(parsed) ^ set(skins))
@@ -3850,10 +4148,10 @@ def write_skins(skins):
 
 
 def main():
-    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8() + items_l9() + items_l10() + items_l11()
-    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7 + BLOCKS_L9 + block_defs_l10() + BLOCKS_L11
+    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8() + items_l9() + items_l10() + items_l11() + items_l12()
+    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7 + BLOCKS_L9 + block_defs_l10() + BLOCKS_L11 + block_defs_l12()
     mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6() + mobs_l7() + mobs_l8()
-    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9 + SHAPED_L10 + SHAPED_L11, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9 + SHAPELESS_L10 + SHAPELESS_L11, SMELTING_L2 + SMELTING_L3)
+    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9 + SHAPED_L10 + SHAPED_L11 + SHAPED_L12, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9 + SHAPELESS_L10 + SHAPELESS_L11 + SHAPELESS_L12, SMELTING_L2 + SMELTING_L3)
     structures_l3()
     skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6(), **skins_l7(), **skins_l8()})
     pics = []
@@ -3861,7 +4159,7 @@ def main():
         im = gt.to_image(img)
         im.save(os.path.join(gi.ITEM_DIR, name + ".png"))
         pics.append(im)
-    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7(), **blocks_l9(), **blocks_l10(), **blocks_l11()}
+    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7(), **blocks_l9(), **blocks_l10(), **blocks_l11(), **blocks_l12()}
     for name, img in all_blocks.items():
         im = gt.to_image(img)
         im.save(os.path.join(gi.BLOCK_DIR, name + ".png"))

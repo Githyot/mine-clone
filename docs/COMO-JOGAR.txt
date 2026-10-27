@@ -674,6 +674,18 @@ ROUPAS, TINTA E CAIXA DE MÚSICA (lado Terraria, lote 11)
   Caixa de Música (tábuas + bloco de notas + ouro): clique nela enquanto uma música toca
     para gravar. Depois o clique toca a música em repetição ou para.
 
+A MASMORRA E A TINA DE TINGIR (lado Terraria)
+  Masmorra: uma torre de tijolos (azul nas terras frias, verde nas florestas, rosa nas
+    planícies) sobre quatro andares de salas e corredores. Desça pela escada do meio.
+    Lá dentro aparecem esqueletos, invocadores e esqueletos mutantes (e espíritos depois
+    da Rainha das Trepadeiras). Cuidado com os espinhos.
+    Até você derrotar o Rei dos Ossos (Crânio Amaldiçoado, à noite) uma maldição seca a
+    sua vida lá dentro.
+    Os monstros da masmorra às vezes deixam uma Chave Dourada: ela abre um Baú Trancado,
+    com Katana Azul, Escudo do Bastião, Mangual de Ossos e outros tesouros.
+  Tina de Tingir (tábuas + balde de água): clique com um corante na mão para tingir toda a
+    armadura ou roupa que você veste. Com a mão vazia a tinta sai.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

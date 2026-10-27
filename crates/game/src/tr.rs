@@ -57,6 +57,8 @@ struct Saved {
     vanity: Vec<String>,
     #[serde(default)]
     music_boxes: Vec<((i32, i32, i32), String)>,
+    #[serde(default)]
+    dyes: Vec<Option<u8>>,
 }
 
 #[derive(Default)]
@@ -73,6 +75,7 @@ pub struct Tr {
     pub(crate) util: crate::tr_utility::Utility,
     pub(crate) modes: crate::tr_modes::Modes,
     pub(crate) style: crate::tr_style::Style,
+    pub(crate) dungeon: crate::tr_dungeon::Dungeon,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -99,6 +102,9 @@ impl Tr {
         for (k, n) in s.vanity.iter().enumerate().take(4) {
             tr.style.vanity[k] = items.id(n).map(|id| voxel::item::ItemStack::new(id, 1));
         }
+        for (k, d) in s.dyes.iter().enumerate().take(4) {
+            tr.style.dyes[k] = *d;
+        }
         tr.style.boxes = s.music_boxes.into_iter().map(|((x, y, z), t)| (glam::IVec3::new(x, y, z), t)).collect();
         tr.town.animals = s.animals.into_iter().map(|(k, (x, y, z))| (k, Vec3::new(x, y, z))).collect();
         tr
@@ -120,6 +126,7 @@ impl Tr {
             kills: self.modes.kills.iter().map(|(k, v)| (k.clone(), *v)).collect(),
             bestiary_rewards: self.modes.rewards,
             vanity: self.style.vanity.iter().map(|v| v.map(|s| items.get(s.item).name.clone()).unwrap_or_default()).collect(),
+            dyes: self.style.dyes.to_vec(),
             music_boxes: self.style.boxes.iter().map(|(p, t)| ((p.x, p.y, p.z), t.clone())).collect(),
             animals: self.town.animals.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
         };
@@ -148,6 +155,7 @@ impl Game {
         self.update_tr_utility(dt);
         self.update_tr_modes();
         self.update_tr_style();
+        self.update_tr_dungeon(dt);
     }
 
     /// Right click with an item of this file; true when it did something.
@@ -423,6 +431,7 @@ impl Game {
             "stations" | "shimmer" => self.test_tr_utility(scene),
             "relics" | "bestiary" => self.test_tr_modes(scene),
             "vanity" | "paint" => self.test_tr_style(scene),
+            "dungeon" => self.test_tr_dungeon(),
             "harvest" | "winter" | "pirates" | "martians" | "crystal" => {
                 self.test_invasion(scene);
             }

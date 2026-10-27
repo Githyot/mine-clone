@@ -68,6 +68,7 @@ mod tr_invasions;
 mod tr_utility;
 mod tr_modes;
 mod tr_style;
+mod tr_dungeon;
 mod tr_weapons;
 mod tr_world;
 mod glyphs;
@@ -4731,6 +4732,17 @@ mod data_tests {
         assert!(reg.id("oak_stairs:5").is_some());
         assert!(items.id("cobblestone_slab").is_some());
         assert!(!recipes.shaped.is_empty());
+    }
+
+    #[test]
+    fn every_structure_file_loads() {
+        // A bad structure (say, a row that isn't a string) would drop every building.
+        let base = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+        let (reg, _, _) = load_game_data(base).unwrap();
+        let s = voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, embedded::TR_STRUCTURES_RON, embedded::MODS_STRUCTURES_RON, embedded::MODS_DIMS_STRUCTURES_RON], &reg).unwrap();
+        for name in ["templo_escamado", "lago_cintilante", "masmorra_blue", "masmorra_pink"] {
+            assert!(s.list.iter().any(|st| st.def.name == name), "{name}");
+        }
     }
 
     #[test]
