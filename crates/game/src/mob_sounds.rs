@@ -49,6 +49,9 @@ static CLIPS: &[(&str, &[u8])] = &[
     ("guardian_random_1", include_bytes!("../../../assets/sounds/mobs/guardian_random_1.ogg")),
     ("guardian_random_2", include_bytes!("../../../assets/sounds/mobs/guardian_random_2.ogg")),
     ("guardian_random_3", include_bytes!("../../../assets/sounds/mobs/guardian_random_3.ogg")),
+    ("hoof_1", include_bytes!("../../../assets/sounds/mobs/hoof_1.ogg")),
+    ("hoof_2", include_bytes!("../../../assets/sounds/mobs/hoof_2.ogg")),
+    ("hoof_3", include_bytes!("../../../assets/sounds/mobs/hoof_3.ogg")),
     ("horse_death", include_bytes!("../../../assets/sounds/mobs/horse_death.ogg")),
     ("horse_hurt", include_bytes!("../../../assets/sounds/mobs/horse_hurt.ogg")),
     ("horse_random_1", include_bytes!("../../../assets/sounds/mobs/horse_random_1.ogg")),
@@ -96,6 +99,10 @@ static CLIPS: &[(&str, &[u8])] = &[
     ("vl_witch_death", include_bytes!("../../../assets/sounds/mobs/vl_witch_death.ogg")),
     ("vl_witch_laugh", include_bytes!("../../../assets/sounds/mobs/vl_witch_laugh.ogg")),
     ("vl_witch_laugh_2", include_bytes!("../../../assets/sounds/mobs/vl_witch_laugh_2.ogg")),
+    ("wagon_creak_1", include_bytes!("../../../assets/sounds/mobs/wagon_creak_1.ogg")),
+    ("wagon_creak_2", include_bytes!("../../../assets/sounds/mobs/wagon_creak_2.ogg")),
+    ("wagon_gravel_1", include_bytes!("../../../assets/sounds/mobs/wagon_gravel_1.ogg")),
+    ("wagon_gravel_2", include_bytes!("../../../assets/sounds/mobs/wagon_gravel_2.ogg")),
     ("wolf_bark_1", include_bytes!("../../../assets/sounds/mobs/wolf_bark_1.ogg")),
     ("wolf_bark_2", include_bytes!("../../../assets/sounds/mobs/wolf_bark_2.ogg")),
     ("wolf_bark_3", include_bytes!("../../../assets/sounds/mobs/wolf_bark_3.ogg")),
@@ -224,6 +231,7 @@ fn set_of(name: &str) -> Option<(&'static Set, f32)> {
         "armadillo" | "bat" => (&RABBIT, 0.8),
         "allay" | "vex" | "snow_golem" => (&VILLAGER, 0.95),
         "moose" | "bison" => (&COW, 0.8),
+        "ox" => (&COW, 0.72),
         "hippo" => (&COW, 0.8),
         "elephant" => (&COW, 0.7),
         "rhino" => (&COW, 0.85),
@@ -321,6 +329,12 @@ fn set_of(name: &str) -> Option<(&'static Set, f32)> {
 
 fn index_of(name: &str) -> Option<u16> {
     CLIPS.iter().position(|(n, _)| *n == name).map(|i| i as u16)
+}
+
+/// A recording that is not a creature's call (hooves, a wagon's wood creaking), played at
+/// `rate` (below 1: slower and deeper).
+pub fn clip(name: &str, rate: f32) -> Option<Fx> {
+    Some(Fx::Clip(index_of(name)?, rate.clamp(0.4, 1.1)))
 }
 
 /// A recorded call for this mob, or None if it has none. `depth` is 1 for a normal-sized

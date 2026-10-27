@@ -100,6 +100,7 @@ mod ui;
 mod world;
 mod vanilla_extras;
 mod vanilla_mobs;
+mod wagons;
 
 mod embedded {
     include!(concat!(env!("OUT_DIR"), "/embedded.rs"));
@@ -172,6 +173,8 @@ struct Args {
     phase4: bool,
     /// Take the --screenshot of the loading screen instead of the game.
     shot_loading: bool,
+    /// Start with the interface hidden (F1), for clean screenshots.
+    no_hud: bool,
     rain: bool,
     find: Option<String>,
     storm: bool,
@@ -250,6 +253,7 @@ fn parse_args() -> Args {
             "--redstone" => a.redstone = true,
             "--fase4" => a.phase4 = true,
             "--shot-loading" => a.shot_loading = true,
+            "--no-hud" => a.no_hud = true,
             "--rain" => a.rain = true,
             "--find" => a.find = it.next(),
             "--storm" => a.storm = true,
@@ -615,6 +619,8 @@ struct Game {
     progress: progress::Progress,
     raid: raids::Raid,
     villages: villages::Villages,
+    /// Wagons and carts on the roads and parked (ambience, not saved).
+    wagons: wagons::Wagons,
     map: explore::MapCache,
     /// Saved tame animals not back in the world yet.
     pets_waiting: Vec<pets::PetSave>,
@@ -956,6 +962,7 @@ impl Game {
         if args.rain || args.storm {
             weather_save = weather::WeatherSave { raining: true, thunder: args.storm, timer: 600.0 };
         }
+        let no_hud = args.no_hud;
         let mut game = Game {
             window: headless::Gpu::new(window),
             renderer: headless::Gpu::new(renderer),
@@ -1015,6 +1022,7 @@ impl Game {
             progress: progress::Progress::new(),
             raid: raids::Raid::default(),
             villages: villages::Villages::default(),
+            wagons: wagons::Wagons::default(),
             map: explore::MapCache::default(),
             pets_waiting: pets::load(&save.dir),
             signs: signs::load(&save.dir),
@@ -1098,7 +1106,7 @@ impl Game {
             show_perf,
             perf: monitor::FpsStats::new(),
             sysmon: monitor::SysMonitor::new(),
-            hide_hud: false,
+            hide_hud: no_hud,
             toast: None,
             packs,
             textures_name,
@@ -1671,6 +1679,7 @@ impl Game {
             self.update_fishing(dt);
             self.update_carts(dt);
             self.update_boats(dt);
+            self.update_wagons(dt);
             if sim {
                 self.update_redstone(dt);
                 self.update_random_ticks(dt);
@@ -4381,6 +4390,7 @@ impl Game {
         }
         items.extend(self.cart_instances(block));
         items.extend(self.boat_instances(block));
+        items.extend(self.wagon_instances(block, rd + 16.0));
         items.extend(self.aircraft_instances(block));
         // The player figure in the inventory, in 3D, turning its head toward the mouse.
         let mut figure_backdrop = None;
