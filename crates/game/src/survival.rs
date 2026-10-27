@@ -1654,18 +1654,6 @@ impl Game {
     pub(crate) fn drop_instances(&self, cam_block: IVec3) -> Vec<GpuItem> {
         let c = cam_block.as_vec3();
         let mut out = Vec::with_capacity(self.surv.drops.len() + self.surv.orbs.len());
-        // The block just placed swells a touch and settles back into place.
-        if let Some((pos, id, at)) = self.place_pop {
-            let k = (self.now - at) / 0.16;
-            if (0.0..1.0).contains(&k) && self.world.block_or_air(pos) == id {
-                let bl = self.reg.get(id);
-                let l = self.world.light(pos + IVec3::Y);
-                let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
-                let p = pos.as_vec3() + Vec3::splat(0.5) - c;
-                let size = 1.0 + 0.1 * (k * std::f32::consts::PI).sin() + 0.01;
-                out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [0.0, 0.0, sky, blk], layers: [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32, 0.0], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
-            }
-        }
         out.extend(self.swing_instances(cam_block));
         // The orb sprite is loaded right after the item sprites.
         let orb_layer = (self.item_base as usize + self.items.textures.len()) as f32;

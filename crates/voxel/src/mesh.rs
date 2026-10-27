@@ -137,6 +137,56 @@ impl MeshInput {
         MeshInput { blocks, light, biomes: c.biomes }
     }
 
+    /// Like `new`, but only sections `lo..=hi` (and one section above and below) are filled in:
+    /// enough to mesh just those, for an edit that has to show in the same frame.
+    pub fn new_sections(chunks: [Option<&Chunk>; 9], lo: usize, hi: usize) -> Self {
+        let mut blocks = vec![AIR; P * P * PH];
+        let mut light = vec![0xF0u8; P * P * PH];
+        let c = chunks[4].expect("centre chunk");
+        let range = lo.saturating_sub(1)..(hi + 2).min(c.sections.len());
+        for pz in 0..P {
+            for px in 0..P {
+                let wx = px as i32 - 1;
+                let wz = pz as i32 - 1;
+                let cx = wx.div_euclid(16);
+                let cz = wz.div_euclid(16);
+                let (lx, lz) = (wx.rem_euclid(16) as usize, wz.rem_euclid(16) as usize);
+                let Some(n) = chunks[((cx + 1) + (cz + 1) * 3) as usize] else { continue };
+                for s in range.clone() {
+                    let sec = &n.sections[s];
+                    let empty = sec.is_empty();
+                    for yy in 0..16 {
+                        let y = s * 16 + yy;
+                        let i = pi(px, y + 1, pz);
+                        if !empty {
+                            blocks[i] = sec.get(crate::chunk::section_index(lx, yy, lz));
+                        }
+                        light[i] = n.light_at(lx, y, lz);
+                    }
+                }
+            }
+        }
+        MeshInput { blocks, light, biomes: c.biomes }
+    }
+
+    /// Light for a block just opened up (relative to the centre chunk) before the light workers
+    /// get to it: what its neighbours would spread into it, so the faces it uncovers aren't black.
+    pub fn guess_light(&mut self, x: i32, y: i32, z: i32) {
+        if !(0..16).contains(&x) || !(0..16).contains(&z) || !(0..CHUNK_HEIGHT as i32).contains(&y) {
+            return;
+        }
+        let i = pi((x + 1) as usize, (y + 1) as usize, (z + 1) as usize);
+        let (mut sky, mut blk) = (0u8, 0u8);
+        for (d, down) in [(1isize, false), (-1, false), (P as isize, false), (-(P as isize), false), ((P * P) as isize, true), (-((P * P) as isize), false)] {
+            let l = self.light[(i as isize + d) as usize];
+            // Full sunlight keeps going straight down.
+            let s = l >> 4;
+            sky = sky.max(if down && s == 15 { 15 } else { s.saturating_sub(1) });
+            blk = blk.max((l & 15).saturating_sub(1));
+        }
+        self.light[i] = sky << 4 | blk;
+    }
+
     /// Leave out one block, given relative to the centre chunk (-1..=16 reaches the border).
     pub fn hide(&mut self, x: i32, y: i32, z: i32) {
         if (-1..=16).contains(&x) && (-1..=16).contains(&z) && (0..CHUNK_HEIGHT as i32).contains(&y) {
