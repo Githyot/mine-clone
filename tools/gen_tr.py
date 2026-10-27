@@ -4509,6 +4509,151 @@ SHAPELESS_L13 = [
 ]
 
 
+# ==============================================================================================
+# Lote 14 (second round): the late swords (Night's Edge line up to the Telluric Blade, and the
+# Herald's blades), more sentries, the gladiator set from the marble caves' hoplites, and three
+# more mounts (bunny, turtle, flying saucer)
+# ==============================================================================================
+
+SWORDS_L14 = [
+    # name, display, colours, tier, damage
+    ("night_edge", "Lâmina da Noite", pal("#1a0e2a", "#3a1a5a", "#6a3a9a", "#a87ad4", "#e0c8ff"), 3, 9.0),
+    ("radiant_blade", "Lâmina Radiante", pal("#5a4a10", "#a08a20", "#e0c040", "#f8e888", "#fffbe0"), 4, 11.0),
+    ("true_night_edge", "Lâmina da Noite Verdadeira", pal("#0e2a1a", "#2a1a5a", "#5a3aa0", "#7ae0a0", "#e0fff0"), 4, 13.0),
+    ("true_radiant_blade", "Lâmina Radiante Verdadeira", pal("#5a2a10", "#a06a20", "#f0b040", "#ffe8a0", "#ffffff"), 4, 14.0),
+    ("terra_blade", "Lâmina Telúrica", pal("#0e3a14", "#1e6a26", "#3aa040", "#9af07a", "#f0fff0"), 5, 17.0),
+    ("celestial_wrath", "Ira Celeste", pal("#3a0e3a", "#7a2a8a", "#c45ad4", "#f8a8f0", "#ffffff"), 5, 21.0),
+    ("apex_blade", "Lâmina do Ápice", pal("#1a1a3a", "#3a4a8a", "#6a9ae0", "#c0f0ff", "#ffffff"), 5, 26.0),
+]
+GLADIATOR = pal("#5a3a08", "#8a6420", "#c49a3a", "#e8c86a", "#fff0b0")
+
+
+def items_l14():
+    stack1 = "max_stack: Some(1)"
+    out = []
+    for name, disp, p, tier, dmg in SWORDS_L14:
+        gi.MATERIALS[name] = p
+        out.append((name, disp, gi.tool(name, "sword"), f"max_stack: Some(1), tool: Some((kind: Sword, tier: {tier}, speed: 12.0, damage: {dmg}, durability: {800 + 400 * tier}))"))
+    gi.MATERIALS["broken_hero"] = pal("#3a3a40", "#5a5a64", "#8a8a96", "#b0b0bc", "#d8d8e0")
+    out.append(("broken_hero_sword", "Espada do Herói Partida", gi.tool("broken_hero", "sword"), ""))
+    out += [
+        ("explosive_trap_rod", "Cajado da Armadilha Explosiva", icon2(SENTRY, pal("#3a0e08", "#7a2210", "#c4461a", "#f08a3a", "#ffd080"), WOOD), stack1),
+        ("lightning_aura_rod", "Cajado da Aura de Raios", icon2(SENTRY, pal("#0e1a3a", "#2a4a8a", "#5a8ae0", "#a8d0ff", "#ffffff"), WOOD), stack1),
+        ("fluffy_carrot", "Cenoura Felpuda", icon2(CARROT_ICON, pal("#5a2a04", "#a04a08", "#e07a18", "#f8b84a", "#fff0a0"), pal("#2a5a1a", "#4a9a2a", "#e8e8f0")), stack1),
+        ("turtle_saddle", "Sela de Tartaruga", icon2(SADDLE_ICON, pal("#1a3a14", "#2a5a1e", "#4a8a2e", "#7ab44a", "#b4e07a"), pal("#3a2410", "#7a4a24", "#b08a52")), stack1),
+        ("star_key", "Chave do Disco", icon(KEY_ICON, pal("#1a3a2a", "#2a6a4a", "#4aa07a", "#7ad4a8", "#e8fff4")), stack1),
+    ]
+    gi.ARMOR_MATERIALS["gladiator"] = GLADIATOR
+    names = {"helmet": "Elmo", "chestplate": "Peitoral", "leggings": "Saiote", "boots": "Sandálias"}
+    pts = [2, 4, 3, 2]
+    for slot, k in enumerate(gi.ARMOR_KINDS):
+        out.append((f"gladiator_{k}", f"{names[k]} de Gladiador", gi.armor("gladiator", k), f"armor: Some((slot: {slot}, points: {pts[slot]}, durability: {260 + 30 * pts[slot]}))"))
+    return out
+
+
+CARROT_ICON = [
+    "................",
+    "...........b.a..",
+    "..........bab...",
+    "...........ab...",
+    "..........1a....",
+    ".........123....",
+    "........1233....",
+    ".......12343....",
+    "......12343.....",
+    ".....12343......",
+    "....1234c3......",
+    "...1234c3.......",
+    "..12343c........",
+    "..1233..........",
+    "..11............",
+    "................",
+]
+SADDLE_ICON = [
+    "................",
+    "................",
+    "................",
+    "....11111111....",
+    "...1222222221...",
+    "..122333333221..",
+    ".12233444433221.",
+    ".12334455443321.",
+    ".12334444443321.",
+    "..123333333321..",
+    "...1aa1111aa1...",
+    "...1ab1..1ab1...",
+    "...1ab1..1ab1...",
+    "...1cc1..1cc1...",
+    "...1111..1111...",
+    "................",
+]
+
+
+def mobs_l14():
+    out = ["    // Lote 14 (second round): the hoplite of the marble caves, three more mounts."]
+    hop = dict(PSKIN=pal("#b8b0a0", "#ccc4b4", "#ddd6c8", "#ece6da", "#f8f4ec"), PHAIR=GLADIATOR, PTUNIC=pal("#7a1a1a", "#8e2222", "#a22a2a", "#b63232", "#ca3a3a"), PTROUSER=pal("#b8b0a0", "#ccc4b4", "#ddd6c8", "#ece6da"), PLEATHER=GLADIATOR, PIRIS=(20, 10, 0))
+    PERSON_L13["hoplite"] = ("Hoplita", "Hostile", 70, 8, 1.0, 2.6, hop)
+    MINI_DROPS["hoplite"] = [("bone", 1, 3, 0.8), ("gladiator_helmet", 1, 1, 0.08), ("gladiator_chestplate", 1, 1, 0.08), ("gladiator_leggings", 1, 1, 0.08), ("gladiator_boots", 1, 1, 0.08)]
+    out.append(f"""    (
+        name: "hoplite", display_name: "Hoplita", kind: Hostile, health: 70, speed: 2.6, attack: 8,
+        drops: {drops_ron(MINI_DROPS["hoplite"])}, xp: 10,
+        width: 0.6, height: 1.95, spawn: Never, scale: 1.0,
+        parts: {PERSON_PARTS},
+        layers: {PERSON_LAYERS},
+    ),""")
+    import re as _re
+    vanilla = (PACK / "mobs.ron").read_text()
+
+    def parts_of(name):
+        m = _re.search(r'name: "' + name + r'".*?parts: (\[.*?\n\s*\])', vanilla, _re.S)
+        return m.group(1)
+
+    mounts = [
+        ("mount_bunny", "Coelho de Montaria", parts_of("rabbit"), 3.2, 5.5, 1.2, 1.4, ", hops: true"),
+        ("mount_turtle", "Tartaruga de Montaria", parts_of("turtle"), 1.4, 2.8, 1.5, 0.9, ""),
+        ("mount_ufo", "Disco de Montaria", SAUCER_PARTS, 1.6, 6.0, 1.8, 1.0, ""),
+    ]
+    for name, disp, parts, scale, speed, w, h, extra in mounts:
+        out.append(f"""    (
+        name: "{name}", display_name: "{disp}", kind: Passive, health: 200, speed: {speed}, attack: 0,
+        drops: [], xp: 0,
+        width: {w}, height: {h}, spawn: Never, scale: {scale}{extra},
+        parts: {parts},
+        layers: [],
+    ),""")
+    return out
+
+
+def skins_l14():
+    hop = PERSON_L13["hoplite"][6]
+    out = {"hoplite": (g.ROLES["player"], g.townsfolk("hoplite", g.PAINTERS["player"], hop), g.townsfolk("hoplite", g.OVERLAYS["player"], hop))}
+    fur = shade(pal("#c8c0b4", "#dcd6cc", "#ece8e0", "#f8f6f2", "#ffffff"))
+    out["mount_bunny"] = (["body", "head", "ear", "ear", "tail", "leg", "leg", "leg", "leg"], zoned({"head": eyes_on(fur, (200, 60, 80), (1,)), "tail": shade(pal("#ffffff")), "*": fur}), None)
+    shell = bands(pal("#1a3a14", "#2a5a1e", "#4a8a2e", "#7ab44a", "#b4e07a"), 3)
+    skin = shade(pal("#3a6a2a", "#4a8a34", "#6aa84a", "#8ac46a", "#b0e08a"))
+    out["mount_turtle"] = (["shell", "belly", "head", "leg", "leg", "leg", "leg"], zoned({"shell": shell, "head": eyes_on(skin, (20, 20, 20), (1,)), "*": skin}), None)
+    METAL = pal("#3a3e48", "#4c515c", "#646a78", "#7e8492", "#9aa0ae")
+    out["mount_ufo"] = (["disc", "dome"], zoned({"disc": bands(METAL, 3), "dome": shade(pal("#2a4a8a", "#4a7ac4", "#7ab0f0", "#b0d8ff", "#e8f4ff"))}), None)
+    return out
+
+
+SHAPED_L14 = [
+    ([" I ", " I ", " S "], {"I": "radiant_ingot", "S": "stick"}, "radiant_blade", 1),
+]
+SHAPELESS_L14 = [
+    (["umbral_sword", "blue_katana", "hive_blade", "magmarite_sword"], "night_edge", 1),
+    (["sanguinite_sword", "blue_katana", "hive_blade", "magmarite_sword"], "night_edge", 1),
+    (["night_edge", "broken_hero_sword", "soul_of_fright", "soul_of_might", "soul_of_sight"], "true_night_edge", 1),
+    (["radiant_blade", "broken_hero_sword", "verdite_ingot", "verdite_ingot", "verdite_ingot"], "true_radiant_blade", 1),
+    (["true_night_edge", "true_radiant_blade"], "terra_blade", 1),
+    (["terra_blade", "celestial_wrath", "star_saber", "nebula_blade", "enchanted_sword", "lumite_ingot"], "apex_blade", 1),
+    (["ether_crystal", "ether_crystal", "ether_crystal", "ether_crystal", "ether_crystal", "tnt", "stick"], "explosive_trap_rod", 1),
+    (["ether_crystal", "ether_crystal", "ether_crystal", "ether_crystal", "ether_crystal", "copper_ingot", "glowstone_dust", "stick"], "lightning_aura_rod", 1),
+    (["saddle", "turtle_scute", "turtle_scute"], "turtle_saddle", 1),
+    (["golden_carrot", "rabbit_foot"], "fluffy_carrot", 1),
+]
+
+
 def write_skins(skins):
     parsed, layers = g.parse_mobs(str(OUT / "mobs.ron"))
     assert set(parsed) == set(skins), sorted(set(parsed) ^ set(skins))
@@ -4525,12 +4670,12 @@ def write_skins(skins):
 
 
 def main():
-    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8() + items_l9() + items_l10() + items_l11() + items_l12() + items_comfort() + items_l13()
+    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8() + items_l9() + items_l10() + items_l11() + items_l12() + items_comfort() + items_l13() + items_l14()
     blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7 + BLOCKS_L9 + block_defs_l10() + BLOCKS_L11 + block_defs_l12() + block_defs_comfort() + block_defs_l13()
-    mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6() + mobs_l7() + mobs_l8() + mobs_l13()
-    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9 + SHAPED_L10 + SHAPED_L11 + SHAPED_L12 + SHAPED_COMFORT + SHAPED_L13, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9 + SHAPELESS_L10 + SHAPELESS_L11 + SHAPELESS_L12 + SHAPELESS_COMFORT + SHAPELESS_L13, SMELTING_L2 + SMELTING_L3)
+    mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6() + mobs_l7() + mobs_l8() + mobs_l13() + mobs_l14()
+    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9 + SHAPED_L10 + SHAPED_L11 + SHAPED_L12 + SHAPED_COMFORT + SHAPED_L13 + SHAPED_L14, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9 + SHAPELESS_L10 + SHAPELESS_L11 + SHAPELESS_L12 + SHAPELESS_COMFORT + SHAPELESS_L13 + SHAPELESS_L14, SMELTING_L2 + SMELTING_L3)
     structures_l3()
-    skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6(), **skins_l7(), **skins_l8(), **skins_l13()})
+    skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6(), **skins_l7(), **skins_l8(), **skins_l13(), **skins_l14()})
     pics = []
     for name, _, img, _ in items:
         im = gt.to_image(img)

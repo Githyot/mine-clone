@@ -22,7 +22,7 @@ use crate::Game;
 
 const MINIS: &[&str] = &["werewolf", "lost_girl", "nymph", "clown", "ice_golem", "goblin_summoner"];
 
-const GOODIES: &[(&str, u8, u8)] = &[("pumpkin_pie", 1, 3), ("cookie", 2, 6), ("jack_o_lantern", 1, 2), ("carved_pumpkin", 1, 1), ("emerald", 1, 4), ("bone", 2, 5), ("vanity_shadow_helmet", 1, 1), ("vanity_wizard_helmet", 1, 1)];
+const GOODIES: &[(&str, u8, u8)] = &[("fluffy_carrot", 1, 1), ("pumpkin_pie", 1, 3), ("cookie", 2, 6), ("jack_o_lantern", 1, 2), ("carved_pumpkin", 1, 1), ("emerald", 1, 4), ("bone", 2, 5), ("vanity_shadow_helmet", 1, 1), ("vanity_wizard_helmet", 1, 1)];
 const PRESENTS: &[(&str, u8, u8)] = &[("cake", 1, 1), ("cookie", 4, 8), ("diamond", 1, 2), ("firework_rocket", 4, 10), ("emerald", 2, 6), ("snowball", 8, 16), ("spruce_sapling", 1, 3), ("vanity_royal_helmet", 1, 1)];
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -119,6 +119,8 @@ impl Game {
             ("werewolf", false, if self.full_moon() { 0.8 } else { 0.15 })
         } else if hard && surface && self.is_snowy(me) && (night || self.weather.state.raining) && self.count_alive(&["ice_golem"]) == 0 {
             ("ice_golem", false, 0.15)
+        } else if !surface && self.ubiome() == voxel::worldgen::deep::UBiome::Marble && self.count_alive(&["hoplite"]) < 3 {
+            ("hoplite", true, 0.6)
         } else if !surface && me.y < 20.0 && self.count_alive(&["lost_girl", "nymph"]) == 0 {
             ("lost_girl", true, 0.06)
         } else {
@@ -284,8 +286,15 @@ impl Game {
         }
     }
 
-    /// Holiday gifts from monsters.
+    /// Holiday gifts from monsters, and the broken hero sword from the eclipse moth.
     pub(crate) fn minis_deaths(&mut self, deaths: &[(usize, Vec3)]) {
+        if let Some(id) = self.items.id("broken_hero_sword") {
+            for &(def, pos) in deaths {
+                if self.mobs.reg.defs[def].name == "eclipse_moth" && self.surv.rng.f32() < 0.25 {
+                    self.spawn_drop(pos + Vec3::Y * 0.5, ItemStack::new(id, 1), Vec3::Y * 2.0);
+                }
+            }
+        }
         let gift = match holiday() {
             Holiday::Halloween => "goodie_bag",
             Holiday::Christmas => "present",
@@ -299,8 +308,19 @@ impl Game {
         }
     }
 
-    /// A boss fell: one time in ten, its trophy.
+    /// A boss fell: one time in ten, its trophy (and some bosses' own prizes).
     pub(crate) fn minis_boss_defeated(&mut self, name: &str) {
+        let prize = match name {
+            "celestial_herald" => Some(("celestial_wrath", 0.35)),
+            "saucer" => Some(("star_key", 0.3)),
+            _ => None,
+        };
+        if let Some((item, chance)) = prize {
+            if let (Some(id), true) = (self.items.id(item), self.surv.rng.f32() < chance) {
+                let at = self.body.pos + Vec3::Y * 1.5;
+                self.spawn_drop(at, ItemStack::new(id, 1), Vec3::Y * 3.0);
+            }
+        }
         if self.surv.rng.f32() >= 0.1 {
             return;
         }

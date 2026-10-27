@@ -715,6 +715,20 @@ MINI-CHEFES, TROFÉUS E DATAS FESTIVAS (lado Terraria)
   De 10 de outubro a 1 de novembro os monstros às vezes deixam Sacos de Gostosuras; de 15
     a 31 de dezembro, Presentes.
 
+ESPADAS DO FIM, SENTINELAS, GLADIADOR E MONTARIAS (lado Terraria)
+  Lâmina da Noite: Espada de Sombraço (ou de Sanguinita) + Katana Azul + Lâmina da Colmeia +
+    Espada de Magmarita. Lâmina Radiante: barras radiantes como uma espada.
+  A Mariposa do Eclipse às vezes deixa a Espada do Herói Partida: com ela e as almas viram
+    as versões Verdadeiras; as duas Verdadeiras juntas fazem a Lâmina Telúrica.
+  O Arauto Celestial às vezes deixa a Ira Celeste (chuva de estrelas). A Lâmina do Ápice
+    junta Telúrica, Ira Celeste, Sabre Estelar, Lâmina Nebulosa, Espada Encantada e lumita.
+  Sentinelas (cristais etéreos da Defesa do Cristal): Armadilha Explosiva e Aura de Raios;
+    a Sentinela de Chamas agora atira também. Cada tipo fica de pé ao mesmo tempo.
+  Nas cavernas de mármore aparecem Hoplitas, que às vezes deixam a armadura de Gladiador.
+  Montarias novas: Cenoura Felpuda (coelho que salta alto; vem nos Sacos de Gostosuras ou
+    cenoura dourada + pé de coelho), Sela de Tartaruga (rápida na água) e Chave do Disco
+    (do Disco Voador: voa sem limite, Espaço sobe).
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

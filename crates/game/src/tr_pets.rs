@@ -43,7 +43,15 @@ const PETS: &[(&str, &str, bool)] = &[
 ];
 
 /// (item, mount mob)
-const MOUNTS: &[(&str, &str)] = &[("jelly_saddle", "mount_jelly"), ("honey_goggles", "mount_bee"), ("blessed_apple", "mount_unicorn")];
+const MOUNTS: &[(&str, &str)] = &[
+    ("jelly_saddle", "mount_jelly"),
+    ("honey_goggles", "mount_bee"),
+    ("blessed_apple", "mount_unicorn"),
+    // Lote 14 (second round).
+    ("fluffy_carrot", "mount_bunny"),
+    ("turtle_saddle", "mount_turtle"),
+    ("star_key", "mount_ufo"),
+];
 
 /// How bright a light pet is (None: not one).
 pub fn light_of(mob: &str) -> Option<f32> {
@@ -187,6 +195,39 @@ impl Game {
                 }
                 m.body.fall_distance = 0.0;
             }
+            "mount_bunny" => {
+                // Hops high and far.
+                let m = &mut self.mobs.list[i];
+                if m.body.on_ground && space {
+                    m.body.vel.y = 11.0;
+                }
+                m.body.fall_distance = 0.0;
+            }
+            "mount_turtle" => {
+                // Slow on land, quick in the water, and it never sinks.
+                let f = self.forward();
+                let flat = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
+                let ahead = self.keys.contains(&KeyCode::KeyW);
+                let m = &mut self.mobs.list[i];
+                if m.body.in_water {
+                    if ahead {
+                        m.body.vel.x = flat.x * 7.0;
+                        m.body.vel.z = flat.z * 7.0;
+                    }
+                    m.body.vel.y = m.body.vel.y.max(if space { 3.0 } else { 0.0 });
+                }
+            }
+            "mount_ufo" => {
+                // Flies as long as you like: Space up, otherwise it slowly settles.
+                let glow = self.glow_layer();
+                let m = &mut self.mobs.list[i];
+                m.body.vel.y = if space { 7.0 } else { m.body.vel.y.max(-1.5) };
+                m.body.fall_distance = 0.0;
+                let at = m.body.pos;
+                if (self.now * 10.0) as i32 % 2 == 0 {
+                    self.particles.glow(at, -Vec3::Y * 2.0, glow, [0.6, 1.8, 1.2], 0.1, 0.3);
+                }
+            }
             "mount_unicorn" => {
                 let p = &mut self.t5.tr.pets;
                 for t in p.trampled.iter_mut() {
@@ -321,7 +362,7 @@ impl Game {
         let ground = |g: &Game, p: Vec3| g.world.surface_y(p.x.floor() as i32, p.z.floor() as i32).map(|y| y as f32 + 1.0).unwrap_or(p.y);
         let names: &[&str] = match scene {
             "pets" => &["pet_eye", "pet_bee", "pet_jelly", "pet_fairy", "pet_orb", "pet_heart", "pet_wisp"],
-            "mounts" => &["mount_jelly", "mount_bee", "mount_unicorn"],
+            "mounts" => &["mount_jelly", "mount_bee", "mount_unicorn", "mount_bunny", "mount_turtle", "mount_ufo"],
             "harpies" => &["harpy", "harpy", "harpy"],
             _ => &[],
         };

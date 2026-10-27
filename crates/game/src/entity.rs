@@ -490,7 +490,7 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
 }
 
 /// Armour materials, by the item-name prefix, with their colour.
-pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 74] = [
+pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 75] = [
     ("leather", [134, 82, 46]),
     ("chainmail", [150, 150, 156]),
     ("iron", [206, 206, 206]),
@@ -547,6 +547,8 @@ pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 74] = [
     ("bloodmage", [130, 18, 30]),
     ("cultist", [18, 110, 116]),
     ("archevoker", [140, 120, 72]),
+    // The gladiator set of the marble caves (tr_minis.rs).
+    ("gladiator", [196, 154, 58]),
     // Vanity clothes, worn over the armour (tr_style.rs).
     ("vanity_pirate", [154, 42, 34]),
     ("vanity_wizard", [74, 42, 138]),
