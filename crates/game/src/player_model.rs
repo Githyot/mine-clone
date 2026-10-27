@@ -159,6 +159,10 @@ impl Animator {
 
         // Whole-body transform: squash on landing, crouch, swim and fly tilt.
         let mut root = Mat4::from_translation(rel) * Mat4::from_rotation_y(self.body_yaw);
+        // A spring in the step: the body rises as each leg passes under it and the weight
+        // shifts from foot to foot.
+        let step = if p.on_ground && !p.sitting && p.crawling < 0.5 && !p.in_water { a.min(1.2) } else { 0.0 };
+        root = root * Mat4::from_translation(Vec3::new(0.0, t.cos().abs() * (0.04 + p.sprinting as u8 as f32 * 0.03) * step, 0.0)) * Mat4::from_rotation_z(t.sin() * 0.02 * step);
         let squash = self.land * 0.12;
         root = root * Mat4::from_translation(Vec3::new(0.0, -crouch * 0.18 - squash * 0.5, 0.0));
         // Lying down: the body tips flat and sinks to the ground.

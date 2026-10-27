@@ -4,20 +4,20 @@
 
 use std::path::Path;
 
-use glam::{IVec3, Mat4, Quat, Vec3};
+use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
 use crate::embedded;
 use crate::paintings::PaintingDef;
 use crate::renderer::Renderer;
-use voxel::mob::{Anim, Mob, MobDef, MobRegistry, DEATH_TIME};
+use voxel::mob::{Anim, MobDef, MobRegistry};
 
 /// The skin layout, in model pixels (mobs.ron's texture coordinates).
 pub const SKIN_W: u32 = 64;
 pub const SKIN_H: u32 = 128;
 /// Texels per model pixel of the base game's skins (64x art: a block is 16 model pixels).
 pub const SKIN_DETAIL: u32 = 4;
-const MAX_PARTS: usize = 16;
+pub(crate) const MAX_PARTS: usize = 16;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -47,13 +47,13 @@ impl Default for Bones {
 }
 
 /// Test hook for screenshots: MC_BLINK=1 keeps every mob's eyes shut.
-fn eyes_shut_test() -> bool {
+pub(crate) fn eyes_shut_test() -> bool {
     static SHUT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *SHUT.get_or_init(|| std::env::var("MC_BLINK").is_ok())
 }
 
 /// Part slot of the eyelid quads, for models with fewer parts than that.
-const EYELID_PART: usize = MAX_PARTS - 1;
+pub(crate) const EYELID_PART: usize = MAX_PARTS - 1;
 
 struct MobMesh {
     vbuf: wgpu::Buffer,
@@ -969,90 +969,4 @@ impl EntityRenderer {
             pass.draw_indexed(0..mesh.indices, 0, first..first + count);
         }
     }
-}
-
-/// Part matrices for one mob at this moment.
-pub fn bones_for(mob: &Mob, def: &MobDef, cam_block: IVec3, sky: f32, blk: f32) -> Bones {
-    let mut b = Bones { light: [sky, blk, if mob.hurt_age < 0.3 { 1.0 } else { 0.0 }, 0.0], ..Default::default() };
-    let swell = mob.fuse();
-    if swell > 0.0 {
-        b.light[3] = swell * 0.5 * ((mob.age * 18.0).sin() * 0.5 + 0.5);
-    }
-    let rel = mob.body.pos - cam_block.as_vec3();
-    let mut model = Mat4::from_translation(rel) * Mat4::from_rotation_y(mob.yaw);
-    if !mob.alive() {
-        // Fall over sideways and sink a little.
-        let t = (mob.dead_age / DEATH_TIME).clamp(0.0, 1.0);
-        model = model * Mat4::from_translation(Vec3::new(0.0, -t * 0.4, 0.0)) * Mat4::from_rotation_z(t * std::f32::consts::FRAC_PI_2);
-    }
-    let scale = def.scale / 16.0 * (1.0 + swell * 0.3);
-    model = model * Mat4::from_scale(Vec3::splat(scale));
-    // Asleep: legs folded flat, the body resting on the ground.
-    let leg_h = def.parts.iter().filter(|p| matches!(p.anim, Anim::Leg(_))).map(|p| p.size.1 as f32).fold(0.0, f32::max);
-    if mob.sleeping && mob.alive() {
-        model = model * Mat4::from_translation(Vec3::new(0.0, -(leg_h - 1.0).max(0.0), 0.0));
-    }
-    let amp = (mob.walk_speed / def.speed.max(0.1)).min(1.3);
-    let t = mob.walk;
-    let airborne = !mob.body.on_ground && !mob.body.in_water;
-    // Livelier movement (Fresh Animations idea): a bounce in the step, slow breathing, and an
-    // idle head that looks around and tilts now and then.
-    let idle = (1.0 - amp).clamp(0.0, 1.0) * if mob.alive() && !mob.sleeping { 1.0 } else { 0.0 };
-    let ph = mob.age + mob.phase * 3.0;
-    let breathe = (ph * 1.7).sin();
-    if mob.alive() && !airborne {
-        let bob = (t * 2.0).sin().abs() * 0.6 * amp.min(1.0) + breathe * 0.12 * idle;
-        model = model * Mat4::from_translation(Vec3::new(0.0, bob, 0.0));
-    }
-    let look = ((ph * 0.31).sin() * 0.45 + (ph * 0.13).sin() * 0.3) * idle;
-    let tilt = (ph * 0.23).sin().max(0.0).powi(3) * 0.25 * idle;
-    for (i, p) in def.parts.iter().enumerate().take(MAX_PARTS) {
-        let pivot = Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32, p.pivot.2 as f32);
-        let rot = match p.anim {
-            Anim::None => Quat::IDENTITY,
-            Anim::Head => {
-                // Walking: a small nod with each step.
-                let nod = (t * 2.0).sin() * 0.06 * amp.min(1.0) + breathe * 0.02 * idle;
-                Quat::from_rotation_y(mob.head_yaw + look) * Quat::from_rotation_x(mob.head_pitch + nod) * Quat::from_rotation_z(tilt)
-            }
-            Anim::Leg(_) if mob.sleeping && mob.alive() => {
-                // Front legs tuck forward, hind legs back.
-                Quat::from_rotation_x(if p.pivot.2 >= 0 { -std::f32::consts::FRAC_PI_2 } else { std::f32::consts::FRAC_PI_2 })
-            }
-            Anim::Leg(k) => Quat::from_rotation_x((t + k as f32 * std::f32::consts::PI).sin() * 0.8 * amp),
-            Anim::Arm(k) => {
-                let side = if k == 0 { 1.0 } else { -1.0 };
-                Quat::from_rotation_x((t + k as f32 * std::f32::consts::PI + std::f32::consts::PI).sin() * 0.7 * amp + breathe * 0.04 * idle * side)
-                    * Quat::from_rotation_z(side * (0.04 + breathe * 0.03) * idle)
-            }
-            Anim::ArmForward(k) => Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2 + (mob.age * 2.0 + k as f32).sin() * 0.08),
-            Anim::Wing(k) => {
-                let side = if k == 0 { 1.0 } else { -1.0 };
-                let flap = if airborne { (mob.age * 25.0).sin().abs() * 0.9 } else { 0.0 };
-                Quat::from_rotation_z(flap * side)
-            }
-            Anim::SpiderLeg(k) => {
-                let side = if k < 4 { 1.0 } else { -1.0 };
-                let kk = (k % 4) as f32;
-                let fan = (kk - 1.5) * 0.4 * side;
-                let swing = (t * 2.0 + kk * 1.3 + if k < 4 { 0.0 } else { std::f32::consts::PI }).sin() * 0.35 * amp;
-                let lift = ((t * 2.0 + kk * 1.3).cos().max(0.0)) * 0.3 * amp;
-                // The legs reach out and down to the ground; lifting raises the tip.
-                Quat::from_rotation_y(fan + swing) * Quat::from_rotation_z((0.5 - lift) * side)
-            }
-        };
-        let part = Mat4::from_translation(pivot) * Mat4::from_quat(rot) * Mat4::from_translation(-pivot);
-        b.m[i] = (model * part).to_cols_array_2d();
-        // Blinking: every few seconds (each mob on its own beat) for a tenth of a second, and
-        // always while asleep or dead.
-        if p.anim == Anim::Head && def.parts.len() <= EYELID_PART {
-            let period = 3.2 + mob.phase.fract() * 3.0;
-            let beat = (mob.age + mob.phase * 7.0) % period;
-            let double = mob.phase.fract() > 0.7 && (0.25..0.37).contains(&beat);
-            if beat < 0.12 || double || mob.sleeping || !mob.alive() || eyes_shut_test() {
-                b.m[EYELID_PART] = b.m[i];
-            }
-        }
-    }
-    b
 }
