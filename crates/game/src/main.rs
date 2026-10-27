@@ -4,6 +4,10 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod ambient;
+mod companions;
+mod sentries;
+mod vanity;
+mod wings;
 mod keybinds;
 mod lang;
 mod subtitles;
@@ -364,11 +368,13 @@ fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) 
     let i0 = terraria::with_extra(&merge_list(items[0], &fase6_text(None, "items.ron")), embedded::T5_ITEMS_RON);
     // The stats content (rpg.rs) after the Terraria side's own items.
     let i0 = terraria::with_extra(&i0, embedded::RPG_ITEMS_RON);
+    let i0 = terraria::with_extra(&i0, embedded::LOTE11_ITEMS_RON);
     let reg = BlockRegistry::from_ron_many(&[b0.as_str(), blocks[1]])?;
     let items = ItemRegistry::from_ron_many(&[i0.as_str(), items[1]], &reg)?;
     let mut recipes = Recipes::from_ron_many(&recipes, &items)?;
     terraria::add_recipes(&mut recipes, embedded::T5_RECIPES_RON, &items)?;
     terraria::add_recipes(&mut recipes, embedded::RPG_RECIPES_RON, &items)?;
+    terraria::add_recipes(&mut recipes, embedded::LOTE11_RECIPES_RON, &items)?;
     let extra = fase6_text(None, "recipes.ron");
     if !extra.trim().is_empty() {
         let more = Recipes::from_ron(&extra, &items)?;
@@ -598,8 +604,6 @@ struct Game {
     subtitles: Vec<subtitles::Subtitle>,
     /// Hearts: the health last frame, and when the last healing began (its wave runs across).
     last_health: f32,
-    /// The block just placed and when, for its pop.
-    place_pop: Option<(IVec3, BlockId, f32)>,
     /// Doors and chest lids swinging (swing.rs).
     swings: swing::Swings,
     /// What armor stands wear (stands.rs).
@@ -1022,7 +1026,6 @@ impl Game {
             key_rebinding: None,
             subtitles: Vec::new(),
             last_health: 0.0,
-            place_pop: None,
             swings: Default::default(),
             stands: Default::default(),
             pale,
@@ -1935,6 +1938,10 @@ impl Game {
                     // Test hook: stats, minions, debuffs (rpg.rs, test_rpg).
                     self.test_rpg(&scene);
                 }
+                if let Ok(scene) = std::env::var("MC_LOTE11") {
+                    // Test hook: wings, mounts, pets, vanity, sentries (companions.rs).
+                    self.test_lote11(&scene);
+                }
                 self.mods_test_hooks();
                 if let Some(m) = self.args.mouse {
                     self.mouse_pos = m;
@@ -2007,6 +2014,7 @@ impl Game {
             // Screenshots hold the world still so the picture is stable.
             let mdt = if self.args.screenshot.is_some() { 0.0 } else { dt };
             self.before_mobs();
+            self.mobs.raining = self.dim == voxel::worldgen::Dim::Overworld && self.weather.rain > 0.2;
             let out = self.mobs.update(&self.world, self.body.pos, creative, daylight, mdt);
             for (dmg, from) in out.damage {
                 self.mob_hit_effects(from);
@@ -2145,6 +2153,7 @@ impl Game {
                 && !self.ride_step(wish, input.sneak)
                 && !self.pilot_step(wish, input.sneak, dt)
                 && !self.boat_step(wish, input.sneak, dt)
+                && !self.companion_mount_step(wish, input.jump, input.sneak, dt)
                 && !self.mount_step(wish, input.jump, input.sneak, dt)
                 && !self.strider_step(wish, input.sneak, dt)
                 && !self.elytra_step(input.jump, dt)
@@ -2385,6 +2394,7 @@ impl Game {
                 let id = self.world.block_or_air(hit.block);
                 if id != AIR && (self.reg.get(id).hardness >= 0.0 || !self.survival) && self.world.break_block(hit.block) {
                     self.mining = None;
+                    self.world.mesh_now(hit.block);
                     self.after_break(hit.block, id);
                     if self.survival {
                         self.surv_block_broken(hit.block, id);
@@ -2728,7 +2738,7 @@ impl Game {
             sprinting: self.sprinting,
             burning,
             hurt: self.survival && self.hurt_age < 0.3,
-            sitting: self.riding.is_some() || self.seat.is_some() || self.mods.aircraft.pilot.is_some(),
+            sitting: self.riding.is_some() || self.seat.is_some() || self.mods.aircraft.pilot.is_some() || self.t5.comp.mount.is_some(),
             holding: self.held_stack().is_some(),
             torch: self.held_torch().is_some(),
             mantle: self.body.mantle.map_or(0.0, |m| m.progress().max(1e-3)),
@@ -3254,10 +3264,7 @@ impl Game {
         if self.reg.get(id).shape == Shape::Sign && self.args.screenshot.is_none() {
             self.edit_sign(pos);
         }
-        // A full block gives a little "pop" as it goes down (game feel, Lote 6).
-        if self.reg.get(id).shape == Shape::Cube && !self.settings.reduce_motion {
-            self.place_pop = Some((pos, id, self.now));
-        }
+        self.world.mesh_now(pos);
         Some(pos)
     }
 
@@ -4290,6 +4297,14 @@ impl Game {
             self.frame_times.clear();
         }
         self.update(dt);
+        // Blocks placed or broken this frame show in this very frame, with their real look.
+        self.world.remesh_edits();
+        if !self.world.events.is_empty() {
+            let events = std::mem::take(&mut self.world.events);
+            if let Some(r) = self.renderer.get_mut() {
+                r.apply_mesh_events(events);
+            }
+        }
         if self.bench_tick(raw_dt) {
             self.save_all();
             std::process::exit(0);
@@ -4464,9 +4479,31 @@ impl Game {
             if self.loaded_frames % 30 == 0 {
                 log::info!("screenshot wait: frame {}, {:.1} fps, {} jobs pending", self.loaded_frames, self.fps, self.world.pending_jobs());
             }
-            if (self.loaded_frames > 30 && self.world.pending_jobs() == 0 && self.lod.is_complete() && self.fluids.time >= self.args.wait as f64) || self.loaded_frames > 1500 {
+            // Test hook: MC_PLACE=frames puts a block where the player aims once the view is
+            // ready and saves that many frames after it (out_0.png, out_1.png...).
+            static PLACED: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+            let place_frames = std::env::var("MC_PLACE").ok().and_then(|v| v.parse::<i32>().ok());
+            let k = PLACED.load(std::sync::atomic::Ordering::Relaxed);
+            if let (Some(n), true) = (place_frames, k >= 0) {
                 capture = true;
-                exit_after = true;
+                PLACED.store(k + 1, std::sync::atomic::Ordering::Relaxed);
+                exit_after = k >= n;
+            } else if (self.loaded_frames > 30 && self.world.pending_jobs() == 0 && self.lod.is_complete() && self.fluids.time >= self.args.wait as f64) || self.loaded_frames > 1500 {
+                if place_frames.is_some() {
+                    let name = std::env::var("MC_PLACE_BLOCK").unwrap_or("oak_planks".into());
+                    if let (true, Some(hit)) = (name == "break", self.target) {
+                        // MC_PLACE_BLOCK=break: break the block aimed at instead.
+                        self.world.break_block(hit.block);
+                        self.world.mesh_now(hit.block);
+                    } else {
+                        let id = self.reg.id_or_air(&name);
+                        log::info!("place test: {:?}", self.place_block_as(id));
+                    }
+                    PLACED.store(0, std::sync::atomic::Ordering::Relaxed);
+                } else {
+                    capture = true;
+                    exit_after = true;
+                }
             }
         }
         let selection = if self.screen == Screen::Playing || self.args.screenshot.is_some() { self.target.map(|t| t.block) } else { None };
@@ -4622,6 +4659,7 @@ impl Game {
         drops.extend(held_third);
         drops.extend(mob_items);
         drops.extend(self.minion_instances(block));
+        drops.extend(self.sentry_instances(block));
         drops.extend(net_held);
         if let (Some(k), Some(h)) = (self.args.mine, self.target) {
             let id = self.world.block_or_air(h.block);
@@ -4660,7 +4698,10 @@ impl Game {
         };
         self.last_frame_info = (info.sections_drawn, info.quads_drawn, info.lod_drawn);
         if let Some((w, h, px)) = shot {
-            let path = if exit_after {
+            let k = std::env::var("MC_PLACE").ok().map(|_| self.loaded_frames);
+            let path = if let (Some(k), Some(p)) = (k, self.args.screenshot.as_ref()) {
+                p.with_file_name(format!("{}_{k}.png", p.file_stem().unwrap_or_default().to_string_lossy()))
+            } else if exit_after {
                 self.args.screenshot.clone().unwrap()
             } else {
                 let dir = self.base.join("screenshots");

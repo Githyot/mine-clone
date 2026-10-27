@@ -4,6 +4,8 @@ struct Bones {
     m: array<mat4x4<f32>, 16>,
     // x: sky light 0..1, y: block light 0..1, z: hurt flash 0..1, w: swell (exploding mobs)
     light: vec4<f32>,
+    // A dye: rgb, and w = 0 none, 1 dyed, 2 dyed and glowing, 3 glowing only.
+    tint: vec4<f32>,
 };
 
 @group(1) @binding(0) var skins: texture_2d_array<f32>;
@@ -17,6 +19,7 @@ struct EOut {
     @location(2) shade: f32,
     @location(3) light: vec4<f32>,
     @location(4) dist: f32,
+    @location(5) tint: vec4<f32>,
 };
 
 fn light_curve(l: f32) -> f32 {
@@ -42,6 +45,7 @@ fn vs_entity(
     o.layer = layer;
     o.shade = shade;
     o.light = b.light;
+    o.tint = b.tint;
     o.dist = length(p.xyz - g.cam_pos.xyz);
     return o;
 }
@@ -58,7 +62,17 @@ fn fs_entity(in: EOut) -> @location(0) vec4<f32> {
     var l = max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82));
     l = max(mix(l, sqrt(l), 0.15), vec3<f32>(0.05));
     l = max(l, dim_ambient());
-    var rgb = c.rgb * in.shade * l;
+    var base = c.rgb;
+    let mode = in.tint.w;
+    if (mode > 0.5 && mode < 2.5) {
+        // A dye keeps the picture's light and dark and takes on its own colour.
+        let lum = dot(base, vec3<f32>(0.299, 0.587, 0.114));
+        base = in.tint.rgb * (lum * 1.6 + 0.06);
+    }
+    if (mode > 1.5) {
+        l = max(l, vec3<f32>(0.85));
+    }
+    var rgb = base * in.shade * l;
     rgb = mix(rgb, vec3<f32>(1.0, 0.25, 0.2), in.light.z * 0.6);
     rgb = mix(rgb, vec3<f32>(1.0), in.light.w);
     let fog = smoothstep(g.fog.x, g.fog.y, in.dist);
