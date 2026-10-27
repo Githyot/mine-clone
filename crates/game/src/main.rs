@@ -2160,7 +2160,7 @@ impl Game {
             {
                 self.pre_step(input.sneak);
                 let was_mantling = self.body.mantle.is_some();
-                if self.body.try_mantle(&self.world, &input) {
+                if self.body.try_mantle(&self.world, &input, fwd) {
                     self.mantle_started();
                 }
                 self.body.step(&self.world, &input, dt);

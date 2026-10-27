@@ -62,7 +62,7 @@ impl Game {
             self.body.pos = probe;
         }
         let input = Input { wish: -Vec3::Z, jump: true, ..Default::default() };
-        if !self.body.try_mantle(&self.world, &input) {
+        if !self.body.try_mantle(&self.world, &input, -Vec3::Z) {
             log::error!("test mantle: no ledge to climb at {:?}", self.body.pos);
             return;
         }
