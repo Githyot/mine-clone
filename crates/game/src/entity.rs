@@ -10,7 +10,7 @@ use wgpu::util::DeviceExt;
 use crate::embedded;
 use crate::paintings::PaintingDef;
 use crate::renderer::Renderer;
-use voxel::mob::{Anim, MobDef, MobRegistry};
+use voxel::mob::{Anim, MobDef, MobRegistry, PartDef};
 
 /// The skin layout, in model pixels (mobs.ron's texture coordinates).
 pub const SKIN_W: u32 = 64;
@@ -35,6 +35,10 @@ pub struct Bones {
     pub m: [[[f32; 4]; 4]; MAX_PARTS],
     /// sky light, block light, hurt flash, swell
     pub light: [f32; 4],
+    /// Knees and elbows, per part: (joint height, joint depth, bend angle, unused) in model
+    /// pixels. Limb meshes are split at the joint (see `joint`), and the shader turns
+    /// everything below it about the joint's X axis, blending over a pixel either side.
+    pub bend: [[f32; 4]; MAX_PARTS],
 }
 
 impl Default for Bones {
@@ -42,8 +46,38 @@ impl Default for Bones {
         let mut m = [Mat4::IDENTITY.to_cols_array_2d(); MAX_PARTS];
         // The last slot carries the eyelids (see `add_eyelids`): folded to a point = eyes open.
         m[EYELID_PART] = [[0.0; 4]; 4];
-        Bones { m, light: [1.0, 0.0, 0.0, 0.0] }
+        Bones { m, light: [1.0, 0.0, 0.0, 0.0], bend: [[0.0; 4]; MAX_PARTS] }
     }
+}
+
+impl Bones {
+    /// Bend part `i` (a leg or arm) at its knee or elbow by `angle` (positive swings the lower
+    /// half back, toward -Z).
+    pub fn set_bend(&mut self, i: usize, p: &PartDef, angle: f32) {
+        if let (Some((y, z)), true) = (joint(p), i < MAX_PARTS) {
+            self.bend[i] = [y, z, angle, 0.0];
+        }
+    }
+
+    /// Where the lower half of part `i` is (the forearm, for something held in the hand).
+    pub fn forearm(&self, i: usize) -> [[f32; 4]; 4] {
+        let [y, z, a, _] = self.bend[i];
+        let m = Mat4::from_cols_array_2d(&self.m[i]);
+        if a == 0.0 {
+            return self.m[i];
+        }
+        let j = Vec3::new(0.0, y, z);
+        (m * Mat4::from_translation(j) * Mat4::from_rotation_x(a) * Mat4::from_translation(-j)).to_cols_array_2d()
+    }
+}
+
+/// The knee or elbow of a limb part: halfway down, in the middle of its depth. Short legs
+/// (chickens, spiders) don't get one.
+pub(crate) fn joint(p: &PartDef) -> Option<(f32, f32)> {
+    if !matches!(p.anim, Anim::Leg(_) | Anim::Arm(_) | Anim::ArmForward(_)) || p.size.1 < 6 {
+        return None;
+    }
+    Some((p.origin.1 as f32 + (p.size.1 / 2) as f32, p.origin.2 as f32 + p.size.2 as f32 * 0.5))
 }
 
 /// Test hook for screenshots: MC_BLINK=1 keeps every mob's eyes shut.
@@ -207,9 +241,21 @@ struct MeshBuilder {
     verts: Vec<EntityVertex>,
     indices: Vec<u32>,
     layer: u32,
+    /// Knee/elbow height per part: side faces are cut there so the limb can bend.
+    joints: [Option<f32>; MAX_PARTS],
 }
 
 impl MeshBuilder {
+    fn new(layer: u32, def: Option<&MobDef>) -> MeshBuilder {
+        let mut joints = [None; MAX_PARTS];
+        if let Some(d) = def {
+            for (i, p) in d.parts.iter().enumerate().take(MAX_PARTS) {
+                joints[i] = joint(p).map(|j| j.0);
+            }
+        }
+        MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer, joints }
+    }
+
     fn quad(&mut self, p: [Vec3; 4], uv: [[f32; 2]; 4], n: Vec3, shade: f32, part: u32) {
         let base = self.verts.len() as u32;
         let packed = part | (((shade * 255.0) as u32) << 4);
@@ -228,6 +274,20 @@ impl MeshBuilder {
     fn face(&mut self, f: &Face, part: u32) {
         let (rx, ry, rw, rh) = f.rect;
         let uv = |x: i32, y: i32| [x as f32 / SKIN_W as f32, y as f32 / SKIN_H as f32];
+        // A side of a limb: two quads, cut at the joint.
+        if let Some(jy) = self.joints.get(part as usize).copied().flatten() {
+            let (top, bot) = (f.corner.y, f.corner.y + f.v.y);
+            if f.v.x == 0.0 && f.v.z == 0.0 && f.v.y < 0.0 && jy < top - 0.01 && jy > bot + 0.01 {
+                let s = (top - jy) / (top - bot);
+                let uvf = |x: f32, y: f32| [x / SKIN_W as f32, y / SKIN_H as f32];
+                let (x0, x1, y0, y1) = (rx as f32, (rx + rw) as f32, ry as f32, (ry + rh) as f32);
+                let ym = y0 + (y1 - y0) * s;
+                let mid = f.corner + f.v * s;
+                self.quad([f.corner, f.corner + f.u, mid + f.u, mid], [uvf(x0, y0), uvf(x1, y0), uvf(x1, ym), uvf(x0, ym)], f.n, f.shade, part);
+                self.quad([mid, mid + f.u, f.corner + f.u + f.v, f.corner + f.v], [uvf(x0, ym), uvf(x1, ym), uvf(x1, y1), uvf(x0, y1)], f.n, f.shade, part);
+                return;
+            }
+        }
         self.quad(
             [f.corner, f.corner + f.u, f.corner + f.u + f.v, f.corner + f.v],
             [uv(rx, ry), uv(rx + rw, ry), uv(rx + rw, ry + rh), uv(rx, ry + rh)],
@@ -283,7 +343,7 @@ impl MeshBuilder {
 }
 
 fn build_mesh(def: &MobDef, skin: &Skin, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
-    let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
+    let mut mb = MeshBuilder::new(layer, Some(def));
     for (pi, p) in def.parts.iter().enumerate() {
         let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32);
         let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32);
@@ -413,7 +473,7 @@ fn add_eyelids(mb: &mut MeshBuilder, def: &MobDef, skin: &Skin) {
 
 /// A painting: a canvas one pixel thick, picture on the front, wood everywhere else.
 fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
-    let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
+    let mut mb = MeshBuilder::new(layer, None);
     let (w, h) = ((p.width * 16) as f32, (p.height * 16) as f32);
     let (iw, ih) = ((p.width * 16) as i32, (p.height * 16) as i32);
     let fs = faces(Vec3::ZERO, Vec3::new(w, h, 1.0), (0, 0), (iw, ih, 1));
@@ -755,7 +815,7 @@ fn armor_mesh(def: &MobDef, piece: usize, layer: u32) -> (Vec<EntityVertex>, Vec
 }
 
 fn armor_mesh_over(def: &MobDef, piece: usize, layer: u32, over: f32) -> (Vec<EntityVertex>, Vec<u32>) {
-    let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
+    let mut mb = MeshBuilder::new(layer, Some(def));
     for (part, origin, size, uv, inflate) in armor_boxes(def, piece) {
         let inflate = inflate + over;
         let tex = (size.x as i32, size.y as i32, size.z as i32);

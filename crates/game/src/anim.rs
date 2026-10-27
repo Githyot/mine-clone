@@ -631,6 +631,8 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
     for (i, p) in def.parts.iter().enumerate().take(MAX_PARTS) {
         let pivot = rig.pivots[i];
         let role = rig.roles[i];
+        // Knee or elbow angle: positive swings the lower half back.
+        let mut bend = 0.0f32;
         let rot = match role {
             Role::Fixed | Role::Body | Role::Head | Role::Ear(_) => Quat::IDENTITY,
             Role::Leg { .. } if sleeping => {
@@ -639,7 +641,7 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
             }
             Role::Leg { pair, front, side } => {
                 let k = pair as f32 * PI;
-                let mut a = match style {
+                let swing_at = |t: f32| match style {
                     Style::Quadruped => {
                         let walk = (t + k).sin() * (0.7 - rig.heavy * 0.15);
                         // Gallop: front legs together, hind legs together, a beat apart.
@@ -650,10 +652,16 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
                     Style::Bird => (t * 1.2 + k).sin() * 0.9 * amp.min(1.1),
                     _ => (t + k).sin() * (0.7 + run * 0.2) * amp.min(1.1),
                 };
+                let mut a = swing_at(t);
+                // The knee folds while the foot swings forward through the air, and stays a
+                // little soft while it carries the weight.
+                let forward = ((a - swing_at(t + 0.15)) / 0.15).max(0.0);
+                let mut knee = forward * (1.1 + run * 0.4) + 0.05 * amp.min(1.0);
                 if swim > 0.0 {
                     // Paddling.
                     let paddle = (clock * 6.0 + k + if front { 0.0 } else { 1.3 }).sin() * 0.6 - 0.2;
                     a = a * (1.0 - swim) + paddle * swim;
+                    knee = knee * (1.0 - swim) + (0.5 + (clock * 6.0 + k + 1.2).sin() * 0.35) * swim;
                 }
                 if airborne {
                     let leap = if style == Style::Quadruped {
@@ -667,8 +675,13 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
                     };
                     let w = smooth((st.air - 0.15) / 0.15);
                     a = a * (1.0 - w) + leap * w;
+                    let tuck = if style == Style::Quadruped { 0.85 } else if st.air < 0.5 { if pair == 0 { 1.0 } else { 0.35 } } else { 0.45 + (clock * 10.0 + k).cos() * 0.3 };
+                    knee = knee * (1.0 - w) + tuck * w;
                 }
+                // Hind legs of four-legged animals bend the other way (the hock).
+                bend = if style == Style::Quadruped && !front { -knee * 0.8 } else { knee };
                 if !alive {
+                    bend = 0.25 * (mob.dead_age / DEATH_TIME).clamp(0.0, 1.0);
                     // Gone limp, splayed a little.
                     let d = (mob.dead_age / DEATH_TIME).clamp(0.0, 1.0);
                     return_leg(d, side)
@@ -680,6 +693,8 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
                 let side = if k == 0 { 1.0 } else { -1.0 };
                 let swing = (t + k as f32 * PI + PI).sin() * 0.7 * (1.0 + run * 0.45) * amp.min(1.3);
                 let mut q = Quat::from_rotation_x(swing + breathe * 0.04 * idle * side) * Quat::from_rotation_z(side * (0.04 + breathe * 0.03) * idle);
+                // Elbows: soft at rest, bending as the arm swings forward, pumping when running.
+                let mut elbow = -(0.12 + (-swing).max(0.0) * 0.5 + run * 0.75);
                 if rig.town && idle > 0.6 && greet <= 0.0 && k == 0 {
                     // Talking with the hands now and then.
                     let c = (clock + mob.phase * 4.0) % 9.0;
@@ -687,36 +702,47 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
                     if g > 0.0 {
                         let talk = Quat::from_rotation_x(-0.85 + (clock * 3.5).sin() * 0.18) * Quat::from_rotation_y(0.25 + (clock * 2.3).sin() * 0.15);
                         q = q.slerp(talk, g);
+                        elbow = elbow * (1.0 - g) - (1.0 + (clock * 3.1).sin() * 0.2) * g;
                     }
                 }
                 if greet > 0.0 && k == 0 {
                     let wave = Quat::from_rotation_x(-PI + 0.35) * Quat::from_rotation_z(-side * (0.45 + (clock * 11.0).sin() * 0.3));
                     q = q.slerp(wave, greet);
+                    elbow = elbow * (1.0 - greet) - (0.55 + (clock * 11.0).cos() * 0.25) * greet;
                 }
                 if aiming {
                     // Bow up, both arms reaching toward the target.
                     let aim = Quat::from_rotation_x(-FRAC_PI_2 + st.head_pitch) * Quat::from_rotation_y(-side * 0.12);
                     q = q.slerp(aim, 0.9);
+                    // The bow arm straight, the string hand drawn back to the cheek.
+                    elbow = if k == 0 { -0.05 } else { -0.9 };
                 } else if strike > 0.0 {
                     let hit = Quat::from_rotation_x(-0.4 - 1.6 * strike) * Quat::from_rotation_z(side * 0.15 * strike);
                     q = q.slerp(hit, if k == 0 { 1.0 } else { 0.4 });
+                    // Cocked on the way up, snapping straight into the blow.
+                    let ph = (st.attack / 0.5).clamp(0.0, 1.0);
+                    elbow = elbow * (1.0 - strike) - if ph < 0.45 { 1.1 * strike } else { 0.1 * strike };
                 }
                 if airborne {
                     let w = smooth((st.air - 0.15) / 0.15);
                     let up = if st.air < 0.5 { Quat::from_rotation_x(-0.5) * Quat::from_rotation_z(-side * 0.4) } else { Quat::from_rotation_z(-side * (1.1 + (clock * 14.0 + k as f32).sin() * 0.35)) };
                     q = q.slerp(up, w);
+                    elbow = elbow * (1.0 - w) - 0.35 * w;
                 }
                 if swim > 0.0 {
                     let s = (clock * 3.2).sin() * 0.5 + 0.5;
                     let stroke = Quat::from_rotation_x(-PI + 0.4 + s * 0.6) * Quat::from_rotation_z(-side * s * 1.0);
                     q = q.slerp(stroke, swim * 0.85);
+                    elbow = elbow * (1.0 - swim) - (0.2 + (1.0 - s) * 0.9) * swim;
                 }
                 if hurt > 0.0 {
                     q = Quat::from_rotation_z(-side * 0.45 * hurt) * q;
                 }
                 if !alive {
                     q = Quat::from_rotation_z(-side * 0.3);
+                    elbow = -0.2;
                 }
+                bend = elbow;
                 q
             }
             Role::ArmForward(k) => {
@@ -730,6 +756,8 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
                     0.0
                 };
                 let q = Quat::from_rotation_x(reach + slam - hurt * 0.4) * Quat::from_rotation_z(side * (0.06 + (clock * 1.3 + k as f32).sin() * 0.04));
+                // Forearms hang a little from the elbows, bobbing; raised high for the slam.
+                bend = if alive { 0.3 + (clock * 2.0 + k as f32).sin() * 0.06 - slam.min(0.0) * 0.6 } else { 0.0 };
                 if alive { q } else { Quat::from_rotation_z(-side * 0.3) }
             }
             Role::Wing(k) => {
@@ -804,6 +832,9 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
             _ => chain * own,
         };
         b.m[i] = (base * m).to_cols_array_2d();
+        if bend != 0.0 {
+            b.set_bend(i, p, bend);
+        }
         // Blinking: every few seconds (each mob on its own beat) for a tenth of a second, and
         // always while asleep or dead.
         if Some(i) == rig.head && def.parts.len() <= EYELID_PART {
