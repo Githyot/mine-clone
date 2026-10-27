@@ -1689,7 +1689,13 @@ impl Game {
             let r = self.net.remotes.get_mut(&id).unwrap();
             r.anim.update(&pose, dt);
             r.anim.swing = swing;
-            let bones = r.anim.bones(def, &pose, block, sky, blk);
+            let mut bones = r.anim.bones(def, &pose, block, sky, blk);
+            // An instrument in their hands: held with both, in 3D.
+            if let Some(i) = crate::instruments::index(&item) {
+                if let (Some(ib), Some(mesh)) = (crate::instruments::pose(def, &mut bones, i, None), self.entities.instrument_mesh(i)) {
+                    models.push((mesh, ib));
+                }
+            }
             for (piece, name) in armor.iter().enumerate() {
                 if !name.is_empty() {
                     if let Some(m) = self.entities.armor_mesh(name, piece) {

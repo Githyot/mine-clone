@@ -1,5 +1,6 @@
 //! Immersive Melodies idea: instruments that play whole melodies. Besides the lute, flute and
-//! cello there are a didgeridoo, a bagpipe, a piano, a tiny drum and a handpan, all tuned low.
+//! cello there are a didgeridoo, a bagpipe, a piano, a tiny drum and a handpan, all tuned low
+//! and played with real recordings (CC0, see assets/sounds/instruments/CREDITS.md).
 //! Sneak + right click picks the next melody, right click plays it. Melodies are written in a
 //! small part of ABC notation: the built-in ones are our own tunes, and any `.abc` file the
 //! player drops in the `melodies` folder joins the list.
@@ -246,125 +247,237 @@ impl Noise {
     }
 }
 
-/// The samples of melody `tune` on instrument `inst`.
+/// Real recordings the instruments play with (CC0, VS Chamber Orchestra Community Edition,
+/// see assets/sounds/instruments/CREDITS.md): (set, MIDI note it sounds, Ogg Vorbis bytes).
+/// A note is played with the nearest recording of its set, retuned by changing its speed.
+static CLIPS: &[(&str, f32, &[u8])] = &[
+    ("lute", 45.0, include_bytes!("../../../../assets/sounds/instruments/lute_0.ogg")),
+    ("lute", 48.0, include_bytes!("../../../../assets/sounds/instruments/lute_1.ogg")),
+    ("lute", 52.0, include_bytes!("../../../../assets/sounds/instruments/lute_2.ogg")),
+    ("lute", 55.0, include_bytes!("../../../../assets/sounds/instruments/lute_3.ogg")),
+    ("lute", 59.0, include_bytes!("../../../../assets/sounds/instruments/lute_4.ogg")),
+    ("lute", 62.0, include_bytes!("../../../../assets/sounds/instruments/lute_5.ogg")),
+    ("cello", 36.0, include_bytes!("../../../../assets/sounds/instruments/cello_0.ogg")),
+    ("cello", 43.0, include_bytes!("../../../../assets/sounds/instruments/cello_1.ogg")),
+    ("cello", 50.0, include_bytes!("../../../../assets/sounds/instruments/cello_2.ogg")),
+    ("cello", 57.0, include_bytes!("../../../../assets/sounds/instruments/cello_3.ogg")),
+    ("cello", 64.0, include_bytes!("../../../../assets/sounds/instruments/cello_4.ogg")),
+    ("flute", 60.0, include_bytes!("../../../../assets/sounds/instruments/flute_0.ogg")),
+    ("flute", 64.0, include_bytes!("../../../../assets/sounds/instruments/flute_1.ogg")),
+    ("flute", 69.0, include_bytes!("../../../../assets/sounds/instruments/flute_2.ogg")),
+    ("chanter", 50.0, include_bytes!("../../../../assets/sounds/instruments/chanter_0.ogg")),
+    ("chanter", 53.0, include_bytes!("../../../../assets/sounds/instruments/chanter_1.ogg")),
+    ("chanter", 58.0, include_bytes!("../../../../assets/sounds/instruments/chanter_2.ogg")),
+    ("chanter", 62.0, include_bytes!("../../../../assets/sounds/instruments/chanter_3.ogg")),
+    ("chanter", 65.0, include_bytes!("../../../../assets/sounds/instruments/chanter_4.ogg")),
+    ("reed_low", 46.0, include_bytes!("../../../../assets/sounds/instruments/reed_low_0.ogg")),
+    ("reed_low", 48.0, include_bytes!("../../../../assets/sounds/instruments/reed_low_1.ogg")),
+    ("reed_low", 55.0, include_bytes!("../../../../assets/sounds/instruments/reed_low_2.ogg")),
+    ("reed_low", 60.0, include_bytes!("../../../../assets/sounds/instruments/reed_low_3.ogg")),
+    ("piano", 36.0, include_bytes!("../../../../assets/sounds/instruments/piano_0.ogg")),
+    ("piano", 43.0, include_bytes!("../../../../assets/sounds/instruments/piano_1.ogg")),
+    ("piano", 48.0, include_bytes!("../../../../assets/sounds/instruments/piano_2.ogg")),
+    ("piano", 55.0, include_bytes!("../../../../assets/sounds/instruments/piano_3.ogg")),
+    ("piano", 60.0, include_bytes!("../../../../assets/sounds/instruments/piano_4.ogg")),
+    ("piano", 67.0, include_bytes!("../../../../assets/sounds/instruments/piano_5.ogg")),
+    ("drum", 48.0, include_bytes!("../../../../assets/sounds/instruments/drum_0.ogg")),
+    ("drum", 48.0, include_bytes!("../../../../assets/sounds/instruments/drum_1.ogg")),
+    ("drum", 36.0, include_bytes!("../../../../assets/sounds/instruments/drum_2.ogg")),
+    ("marimba", 59.0, include_bytes!("../../../../assets/sounds/instruments/marimba_0.ogg")),
+    ("marimba", 65.0, include_bytes!("../../../../assets/sounds/instruments/marimba_1.ogg")),
+    ("marimba", 72.0, include_bytes!("../../../../assets/sounds/instruments/marimba_2.ogg")),
+    ("marimba", 79.0, include_bytes!("../../../../assets/sounds/instruments/marimba_3.ogg")),
+];
+
+/// Every clip decoded to mono samples (once), with its sample rate.
+fn decoded() -> &'static Vec<(Vec<f32>, f32)> {
+    static D: OnceLock<Vec<(Vec<f32>, f32)>> = OnceLock::new();
+    D.get_or_init(|| {
+        use rodio::Source;
+        CLIPS
+            .iter()
+            .map(|(_, _, bytes)| match rodio::Decoder::new(std::io::Cursor::new(*bytes)) {
+                Ok(src) => {
+                    let (ch, sr) = (src.channels().max(1) as usize, src.sample_rate() as f32);
+                    let all: Vec<f32> = src.convert_samples::<f32>().collect();
+                    (all.chunks(ch).map(|c| c.iter().sum::<f32>() / ch as f32).collect(), sr)
+                }
+                Err(_) => (Vec::new(), RATE),
+            })
+            .collect()
+    })
+}
+
+/// The clip of `set` closest to `midi` (round-robin among equals with `k`).
+fn nearest(set: &str, midi: f32, k: usize) -> Option<usize> {
+    let best = CLIPS.iter().filter(|c| c.0 == set).map(|c| (c.1 - midi).abs()).fold(f32::MAX, f32::min);
+    let near: Vec<usize> = (0..CLIPS.len()).filter(|&i| CLIPS[i].0 == set && (CLIPS[i].1 - midi).abs() <= best + 0.01).collect();
+    near.get(k % near.len().max(1)).copied()
+}
+
+/// Add clip `i` into `out` from `start`, retuned to `midi`, for `len` output samples. A held
+/// note longer than the recording keeps going by crossfading back into its steady middle.
+fn add_clip(out: &mut [f32], start: usize, i: usize, midi: f32, len: usize, gain: f32) {
+    let (src, sr) = &decoded()[i];
+    if src.len() < 64 {
+        return;
+    }
+    let step = sr / RATE * 2f32.powf((midi - CLIPS[i].1) / 12.0);
+    let xfade = (0.2 * RATE) as usize;
+    let release = (0.15 * RATE) as usize;
+    // Output samples one pass of the recording lasts (its end already fades out).
+    let pass = ((src.len() as f32 - 2.0) / step) as usize;
+    let loop_from = (0.5 * sr) as f32;
+    let mut seg_start = 0usize;
+    let mut offset = 0.0f32;
+    let mut first = true;
+    while seg_start < len {
+        let seg_len = (((src.len() as f32 - 2.0 - offset) / step) as usize).min(pass);
+        if seg_len <= xfade * 2 {
+            break;
+        }
+        for k in 0..seg_len {
+            let at = seg_start + k;
+            if at >= len {
+                break;
+            }
+            let p = offset + k as f32 * step;
+            let j = p as usize;
+            let f = p - j as f32;
+            let v = src[j] * (1.0 - f) + src[j + 1] * f;
+            let fade_in = if first { 1.0 } else { (k as f32 / xfade as f32).min(1.0) };
+            let end = (len - at).min(seg_len - k);
+            let fade_out = if seg_start + seg_len >= len || end > xfade { (((len - at) as f32) / release as f32).min(1.0) } else { end as f32 / xfade as f32 };
+            if let Some(o) = out.get_mut(start + at) {
+                *o += v * gain * fade_in * fade_out;
+            }
+        }
+        if seg_start + seg_len >= len || loop_from >= src.len() as f32 * 0.6 {
+            break;
+        }
+        seg_start += seg_len - xfade;
+        offset = loop_from;
+        first = false;
+    }
+}
+
+/// The samples of melody `tune` on instrument `inst`, played with real recordings: lute on
+/// harp strings, flute, a cello section, a didgeridoo made of a low bassoon drone with breathy
+/// low notes, a bagpipe of clarinet over a bassoon drone, an upright piano, a hand drum and
+/// a marimba for the handpan. All kept low and warm.
 pub fn synth_tune(inst: u8, tune: u16, seed: u32) -> Vec<f32> {
     let Some(m) = store().lock().ok().and_then(|s| s.get(tune as usize).cloned()) else { return vec![0.0; 100] };
     let beat = m.beat * if inst == 2 { 1.25 } else { 1.0 };
     let total: f32 = (m.notes.iter().map(|n| n.1).sum::<f32>() * beat + 1.5).min(MAX_SECONDS + 1.5);
     let mut out = vec![0.0f32; (total * RATE) as usize];
-    let mut rng = Noise(seed | 1);
-    let mut t0 = 0.0;
-    // Drones under the didgeridoo and bagpipe.
-    if inst == 3 || inst == 4 {
-        let f = if inst == 3 { 73.4 } else { 110.0 };
-        let mut lp = Lp::new(if inst == 3 { 420.0 } else { 600.0 });
-        let n = out.len();
-        for (k, o) in out.iter_mut().enumerate() {
-            let t = k as f32 / RATE;
-            let env = (t / 0.3).min(1.0) * ((n - k) as f32 / RATE / 0.6).min(1.0);
-            let wob = 1.0 + 0.5 * (t * 2.3 * TAU).sin();
-            let x = (t * f * TAU).sin() + 0.6 * (t * f * 2.0 * TAU).sin() * wob + 0.3 * ((t * f).fract() * 2.0 - 1.0);
-            *o += lp.run(x) * env * 0.18;
+    let n_out = out.len();
+    // Drones under the didgeridoo and the bagpipe, for the whole tune.
+    match inst {
+        3 => {
+            if let Some(i) = nearest("reed_low", 38.0, 0) {
+                add_clip(&mut out, 0, i, 38.0, n_out, 0.35);
+            }
         }
+        4 => {
+            if let Some(i) = nearest("reed_low", 45.0, 0) {
+                add_clip(&mut out, 0, i, 45.0, n_out, 0.22);
+                add_clip(&mut out, 0, i, 33.0, n_out, 0.18);
+            }
+        }
+        _ => {}
     }
-    for &(note, beats) in &m.notes {
+    let (set, ring, gain, shift) = match inst {
+        0 => ("lute", 1.0, 0.6, 0.0),
+        1 => ("flute", 0.0, 0.5, 0.0),
+        2 => ("cello", 0.0, 0.55, -12.0),
+        3 => ("reed_low", 0.0, 0.3, -12.0),
+        4 => ("chanter", 0.0, 0.45, 0.0),
+        5 => ("piano", 1.1, 0.6, 0.0),
+        6 => ("drum", 0.6, 0.7, 0.0),
+        _ => ("marimba", 1.2, 0.6, 0.0),
+    };
+    let mut t0 = 0.0;
+    for (k, &(note, beats)) in m.notes.iter().enumerate() {
         let dur = beats * beat;
         if t0 > MAX_SECONDS {
             break;
         }
         if let Some(midi) = note {
-            let f = freq(midi - if inst == 2 { 12.0 } else { 0.0 });
+            let mut midi = midi + shift;
+            // Recordings stretched too far sound wrong: keep the flute near its own range.
+            if inst == 1 && midi < 53.0 {
+                midi += 12.0;
+            }
             let start = (t0 * RATE) as usize;
-            let tail = match inst {
-                0 | 5 | 7 => 1.2,
-                6 => 0.35,
-                _ => 0.12,
-            };
-            let len = ((dur + tail) * RATE) as usize;
-            let mut lp = Lp::new(match inst {
-                0 => 1100.0,
-                1 => 900.0,
-                4 => 950.0,
-                5 => 1200.0,
-                6 => 300.0,
-                7 => 1000.0,
-                _ => 800.0,
-            });
-            if inst == 0 {
-                // Plucked string.
-                let n = (RATE / f) as usize;
-                let mut buf: Vec<f32> = (0..n.max(2)).map(|_| rng.next() * 0.6).collect();
-                for k in 0..len {
-                    let i = k % buf.len();
-                    let j = (k + 1) % buf.len();
-                    let v = (buf[i] + buf[j]) * 0.4985;
-                    buf[i] = v;
-                    if let Some(o) = out.get_mut(start + k) {
-                        *o += lp.run(v) * 0.9;
-                    }
-                }
+            // Plucked and struck notes ring on; held ones stop with the note.
+            let len = ((if ring > 0.0 { dur + ring } else { dur * if inst == 3 { 0.8 } else { 1.0 } + 0.08 }) * RATE) as usize;
+            // The drum keeps its own pitch, only nudged by the note, and alternates hands.
+            let (pick, tuned) = if inst == 6 {
+                let i = if midi < 45.0 { nearest("drum", 36.0, 0) } else { nearest("drum", 48.0, k + seed as usize) };
+                (i, i.map(|i| CLIPS[i].1 + (midi - 48.0) * 0.25).unwrap_or(48.0))
             } else {
-                let mut ph = 0.0f32;
-                for k in 0..len {
-                    let t = k as f32 / RATE;
-                    let x = match inst {
-                        // Flute: breathy sine.
-                        1 => {
-                            ph += f * (1.0 + (t * 5.2 * TAU).sin() * 0.004) / RATE;
-                            let env = (t / 0.08).min(1.0) * (((dur + 0.12) - t) / 0.12).clamp(0.0, 1.0);
-                            ((ph.fract() * TAU).sin() + 0.15 * (ph.fract() * 2.0 * TAU).sin() + rng.next() * 0.04) * env * 0.4
-                        }
-                        // Cello: bowed saw.
-                        2 => {
-                            ph += f * (1.0 + (t * 5.0 * TAU).sin() * 0.005) / RATE;
-                            let env = (t / 0.1).min(1.0) * (((dur + 0.12) - t) / 0.12).clamp(0.0, 1.0);
-                            ((ph.fract() * 2.0 - 1.0) * 0.6 + (ph.fract() * TAU).sin() * 0.5) * env * 0.35
-                        }
-                        // Didgeridoo: a growl on top of the drone, an octave down.
-                        3 => {
-                            ph += f * 0.5 / RATE;
-                            let env = (t / 0.05).min(1.0) * (-t / (dur + 0.1)).exp() * (((dur + 0.12) - t) / 0.12).clamp(0.0, 1.0);
-                            ((ph.fract() * TAU).sin() + 0.5 * (ph.fract() * 3.0 * TAU).sin()) * env * 0.35
-                        }
-                        // Bagpipe chanter: a reedy pulse.
-                        4 => {
-                            ph += f / RATE;
-                            let env = (t / 0.03).min(1.0) * (((dur + 0.12) - t) / 0.12).clamp(0.0, 1.0);
-                            (if ph.fract() < 0.3 { 1.0 } else { -0.43 }) * env * 0.25
-                        }
-                        // Piano: a struck string, slightly stretched partials, fading.
-                        5 => {
-                            let env = (t / 0.004).min(1.0) * (-t / 0.9).exp();
-                            ((t * f * TAU).sin() + 0.45 * (t * f * 2.003 * TAU).sin() + 0.2 * (t * f * 3.01 * TAU).sin()) * env * 0.35
-                        }
-                        // Tiny drum: a low thump whose pitch drops.
-                        6 => {
-                            let df = 55.0 + (f - 55.0).max(0.0) * 0.25;
-                            ph += df * (1.0 + 0.6 * (-t / 0.03).exp()) / RATE;
-                            let env = (-t / 0.18).exp();
-                            ((ph.fract() * TAU).sin() + rng.next() * 0.25 * (-t / 0.02).exp()) * env * 0.6
-                        }
-                        // Handpan: a soft bell with its octave and a fifth above.
-                        _ => {
-                            let env = (t / 0.01).min(1.0) * (-t / 1.1).exp();
-                            ((t * f * TAU).sin() + 0.35 * (t * f * 2.0 * TAU).sin() + 0.12 * (t * f * 2.98 * TAU).sin()) * env * 0.35
-                        }
-                    };
-                    if let Some(o) = out.get_mut(start + k) {
-                        *o += lp.run(x);
-                    }
-                }
+                (nearest(set, midi, k + seed as usize), midi)
+            };
+            if let Some(i) = pick {
+                add_clip(&mut out, start, i, tuned, len.min(n_out.saturating_sub(start)), gain);
             }
         }
         t0 += dur;
     }
+    // Every instrument equally loud; a gentle low-pass keeps the top soft.
+    let mut lp = Lp::new(4200.0);
+    let peak = out.iter().fold(0.0f32, |a, x| a.max(x.abs()));
+    let k = 0.75 / peak.max(1e-4);
+    for o in out.iter_mut() {
+        *o = lp.run(*o * k);
+    }
     out
+}
+
+/// How long melody `tune` lasts on instrument `inst`, in seconds.
+pub fn melody_seconds(tune: usize, inst: u8) -> f32 {
+    store().lock().ok().and_then(|s| s.get(tune).map(|m| m.notes.iter().map(|n| n.1).sum::<f32>() * m.beat * if inst == 2 { 1.25 } else { 1.0 })).unwrap_or(6.0)
+}
+
+/// The note sounding `t` seconds into melody `tune` on instrument `inst`, for the hands.
+pub fn note_at(tune: usize, inst: u8, t: f32) -> crate::instruments::Play {
+    let s = store().lock().ok();
+    let Some(m) = s.as_ref().and_then(|s| s.get(tune)) else { return crate::instruments::Play::steady(t) };
+    let beat = m.beat * if inst == 2 { 1.25 } else { 1.0 };
+    let mut t0 = 0.0;
+    let mut last = crate::instruments::Play { since: t, dur: 0.5, pitch: 0.4, note: 0, t };
+    for (k, &(note, beats)) in m.notes.iter().enumerate() {
+        let dur = beats * beat;
+        if let Some(midi) = note {
+            if t0 > t {
+                break;
+            }
+            last = crate::instruments::Play { since: t - t0, dur, pitch: ((midi - 40.0) / 24.0).clamp(0.0, 1.0), note: k, t };
+        }
+        t0 += dur;
+    }
+    last
+}
+
+/// A melody being played by the player.
+pub struct Playing {
+    pub inst: usize,
+    pub tune: usize,
+    /// Its length in seconds (the cooldown it started with).
+    pub len: f32,
 }
 
 #[derive(Default)]
 pub struct Melodies {
     /// The melody picked for the instruments.
     pub pick: usize,
+    pub playing: Option<Playing>,
+}
+
+impl Melodies {
+    pub fn play_at(&self, inst: usize, tune: usize, t: f32) -> crate::instruments::Play {
+        note_at(tune, inst as u8, t)
+    }
 }
 
 impl Game {
@@ -385,9 +498,9 @@ impl Game {
         }
         let pick = self.mods.melodies.pick % n;
         self.sfx(Sfx::Tune(inst as u8, pick as u16));
-        let secs = store().lock().ok().and_then(|s| s.get(pick).map(|m| m.notes.iter().map(|n| n.1).sum::<f32>() * m.beat)).unwrap_or(6.0);
+        let secs = melody_seconds(pick, inst as u8);
         self.melody_cd = secs.clamp(2.0, MAX_SECONDS);
-        self.anim.start_swing();
+        self.mods.melodies.playing = Some(Playing { inst, tune: pick, len: self.melody_cd });
         let glow = self.glow_layer();
         let at = self.body.eye() + self.forward() * 0.6;
         for k in 0..8 {
@@ -424,6 +537,24 @@ mod tests {
             let zc = v.windows(2).filter(|w| (w[0] >= 0.0) != (w[1] >= 0.0)).count();
             let bright = zc as f32 / (v.len() as f32 / RATE) / 2.0;
             assert!(bright < 900.0, "instrument {inst} too bright: {bright}");
+            // MC_DUMP_TUNES=folder writes each one as a .wav to listen to.
+            if let Ok(dir) = std::env::var("MC_DUMP_TUNES") {
+                let mut w = Vec::new();
+                let n = v.len() as u32 * 2;
+                w.extend_from_slice(b"RIFF");
+                w.extend_from_slice(&(36 + n).to_le_bytes());
+                w.extend_from_slice(b"WAVEfmt ");
+                w.extend_from_slice(&[16, 0, 0, 0, 1, 0, 1, 0]);
+                w.extend_from_slice(&44100u32.to_le_bytes());
+                w.extend_from_slice(&88200u32.to_le_bytes());
+                w.extend_from_slice(&[2, 0, 16, 0]);
+                w.extend_from_slice(b"data");
+                w.extend_from_slice(&n.to_le_bytes());
+                for x in &v {
+                    w.extend_from_slice(&((x.clamp(-1.0, 1.0) * 32000.0) as i16).to_le_bytes());
+                }
+                let _ = std::fs::write(format!("{dir}/{}.wav", INSTRUMENTS[inst as usize]), w);
+            }
         }
     }
 }

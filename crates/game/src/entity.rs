@@ -78,6 +78,8 @@ pub struct EntityRenderer {
     armor_meshes: Option<usize>,
     /// First armour trim mesh (trim material * 4 + piece), drawn just over the armour.
     trim_meshes: Option<usize>,
+    /// First musical instrument mesh (instruments.rs order).
+    instrument_meshes: usize,
     /// (mesh, first instance, count) for this frame.
     draws: Vec<(usize, u32, u32)>,
     pub instance_count: usize,
@@ -722,6 +724,42 @@ fn armor_mesh_over(def: &MobDef, piece: usize, layer: u32, over: f32) -> (Vec<En
     (mb.verts, mb.indices)
 }
 
+/// A musical instrument (instruments.rs): its boxes, each face painted with its material's
+/// swatch, the grain running along the longer side.
+fn instrument_mesh(i: usize, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
+    let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
+    let light = Vec3::new(0.2, 0.6, 0.8).normalize();
+    for p in crate::instruments::model(i) {
+        for b in &p.boxes {
+            for axis in 0..3 {
+                for s in [-1.0f32, 1.0] {
+                    let (t1, t2) = ((axis + 1) % 3, (axis + 2) % 3);
+                    let plane = if s > 0.0 { b.hi[axis] } else { b.lo[axis] };
+                    let corner = |a: f32, c: f32| {
+                        let mut v = Vec3::ZERO;
+                        v[axis] = plane;
+                        v[t1] = a;
+                        v[t2] = c;
+                        p.place.transform_point3(v)
+                    };
+                    let pts = [corner(b.lo[t1], b.lo[t2]), corner(b.hi[t1], b.lo[t2]), corner(b.hi[t1], b.hi[t2]), corner(b.lo[t1], b.hi[t2])];
+                    let (l1, l2) = (b.hi[t1] - b.lo[t1], b.hi[t2] - b.lo[t2]);
+                    let along = l1 >= l2;
+                    let (x, y, w, h) = if along { crate::instruments::swatch(b.mat, l1, l2) } else { crate::instruments::swatch(b.mat, l2, l1) };
+                    let uv = |u: f32, v: f32| [(x + u * w) / SKIN_W as f32, (y + v * h) / SKIN_H as f32];
+                    let uvs = if along { [uv(0.0, 0.0), uv(1.0, 0.0), uv(1.0, 1.0), uv(0.0, 1.0)] } else { [uv(0.0, 0.0), uv(0.0, 1.0), uv(1.0, 1.0), uv(1.0, 0.0)] };
+                    let mut n = Vec3::ZERO;
+                    n[axis] = s;
+                    let n = p.place.transform_vector3(n).normalize_or_zero();
+                    let shade = 0.6 + 0.4 * n.dot(light).max(0.0);
+                    mb.quad(pts, uvs, n, shade, p.part);
+                }
+            }
+        }
+    }
+    (mb.verts, mb.indices)
+}
+
 impl EntityRenderer {
     /// `texture_res` is the texture resolution setting (pixels per block face): skins get one
     /// texel per model pixel at 16, up to SKIN_DETAIL at 64 and above.
@@ -740,6 +778,8 @@ impl EntityRenderer {
         if let Some(pd) = player {
             skins.extend(crate::smithing::MATERIALS.iter().map(|m| trim_skin(pd, m.2).rescaled(scale)));
         }
+        let instrument_layer = skins.len();
+        skins.push(Skin { pixels: crate::instruments::paint_skin(SKIN_DETAIL), scale: SKIN_DETAIL }.rescaled(scale));
         let layers = skins.len().max(1) as u32;
         let (tw, th) = (SKIN_W * scale, SKIN_H * scale);
         let levels = scale.trailing_zeros() + 1;
@@ -874,9 +914,18 @@ impl EntityRenderer {
             }
             first
         });
+        let instrument_meshes = meshes.len();
+        for i in 0..crate::instruments::COUNT {
+            let (v, idx) = instrument_mesh(i, instrument_layer as u32);
+            meshes.push(MobMesh {
+                vbuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("instrument verts"), contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX }),
+                ibuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("instrument idx"), contents: bytemuck::cast_slice(&idx), usage: wgpu::BufferUsages::INDEX }),
+                indices: idx.len() as u32,
+            });
+        }
         let particles = crate::particles::ParticleGpu::new(r);
         let items = crate::item_render::ItemGpu::new(r);
-        EntityRenderer { particles, items, pipelines, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, armor_meshes, trim_meshes, draws: Vec::new(), instance_count: 0 }
+        EntityRenderer { particles, items, pipelines, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, armor_meshes, trim_meshes, instrument_meshes, draws: Vec::new(), instance_count: 0 }
     }
 
     /// Mesh index of an armour piece (0 helmet .. 3 boots) for the item named `item`.
@@ -889,6 +938,11 @@ impl EntityRenderer {
     /// Mesh index of the trim over an armour piece, by trim material.
     pub fn trim_mesh(&self, material: usize, piece: usize) -> Option<usize> {
         Some(self.trim_meshes? + material * 4 + piece.min(3))
+    }
+
+    /// Mesh index of musical instrument `i`.
+    pub fn instrument_mesh(&self, i: usize) -> Option<usize> {
+        (i < crate::instruments::COUNT).then_some(self.instrument_meshes + i)
     }
 
     /// Mesh index of a painting, for `prepare`.
