@@ -937,7 +937,7 @@ impl Game {
             for m in &w.animals {
                 let def = &reg.defs[m.def];
                 let l = self.world.light((m.body.pos + Vec3::Y).floor().as_ivec3());
-                let bones = crate::entity::bones_for(m, def, cam_block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
+                let bones = self.mobs.anim.bones_now(m, def, m.def, cam_block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
                 if let Some(h) = d.harness.filter(|_| w.team != Team::Oxen) {
                     let mut hb = Bones { light: bones.light, ..Default::default() };
                     for k in 0..reg.defs[h].parts.len() {

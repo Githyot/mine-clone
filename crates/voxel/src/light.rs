@@ -2,13 +2,16 @@
 //! Light travels at most 15 blocks, so a 15-block margin around the chunk is enough to get
 //! exactly the same answer as lighting the whole world at once. Each chunk is lit independently,
 //! which makes lighting trivially parallel.
+//!
+//! The world is 1024 blocks tall but only a band of sections around the player is lit (and
+//! drawn): lighting costs the same as in a 256-block world wherever you are. The band is lit
+//! with one extra section above and below so light coming in from just outside it is right.
 
 use crate::block::BlockRegistry;
-use crate::chunk::{column_index, Chunk, CHUNK_HEIGHT, CHUNK_VOLUME};
+use crate::chunk::{column_index, Chunk, SECTIONS};
 
 const MARGIN: usize = 15;
 const W: usize = 16 + 2 * MARGIN;
-const H: usize = CHUNK_HEIGHT;
 const LAYER: usize = W * W;
 
 #[inline(always)]
@@ -18,8 +21,14 @@ fn ri(x: usize, y: usize, z: usize) -> usize {
 
 /// `chunks[(dx + 1) + (dz + 1) * 3]` is the chunk at offset (dx, dz); index 4 is the chunk being lit.
 /// Missing neighbours are treated as solid rock, which only matters at the edge of the loaded area.
-pub fn compute_light(reg: &BlockRegistry, chunks: [Option<&Chunk>; 9]) -> Vec<u8> {
-    let n = W * W * H;
+/// Returns the light of local sections `lo..hi` (see `Chunk::light`).
+pub fn compute_light(reg: &BlockRegistry, chunks: [Option<&Chunk>; 9], lo: usize, hi: usize) -> Vec<u8> {
+    let (lo, hi) = (lo.min(SECTIONS), hi.min(SECTIONS).max(lo));
+    // The computed region (local sections), one wider than the band.
+    let (clo, chi) = (lo.saturating_sub(1), (hi + 1).min(SECTIONS));
+    let base = clo * 16;
+    let h = (chi - clo) * 16;
+    let n = W * W * h;
     // 255 = opaque, otherwise extra light lost when entering the cell (beyond the usual 1).
     let mut filter = vec![0u8; n];
     let mut emit: Vec<(usize, u8)> = Vec::new();
@@ -42,6 +51,7 @@ pub fn compute_light(reg: &BlockRegistry, chunks: [Option<&Chunk>; 9]) -> Vec<u8
         })
         .collect();
 
+    let mut open_top = vec![true; W * W];
     for rz in 0..W {
         for rx in 0..W {
             let wx = rx as i32 - MARGIN as i32; // relative to the centre chunk origin
@@ -53,18 +63,36 @@ pub fn compute_light(reg: &BlockRegistry, chunks: [Option<&Chunk>; 9]) -> Vec<u8
             let chunk = chunks[((cx + 1) + (cz + 1) * 3) as usize];
             match chunk {
                 None => {
-                    for y in 0..H {
+                    for y in 0..h {
                         filter[ri(rx, y, rz)] = 255;
                     }
+                    open_top[rx + rz * W] = false;
                 }
                 Some(c) => {
-                    for s in 0..16 {
+                    // Does the sky reach down to the top of the region? Only above-band blocks
+                    // decide that; most columns stop at the surface right away.
+                    if chi < SECTIONS {
+                        'scan: for s in (chi..SECTIONS).rev() {
+                            let sec = &c.sections[s];
+                            if sec.is_empty() {
+                                continue;
+                            }
+                            for yy in (0..16).rev() {
+                                let id = sec.get(crate::chunk::section_index(lx, yy, lz));
+                                if id != 0 && filt_of[id as usize] != 0 {
+                                    open_top[rx + rz * W] = false;
+                                    break 'scan;
+                                }
+                            }
+                        }
+                    }
+                    for s in clo..chi {
                         let sec = &c.sections[s];
                         if sec.is_empty() {
                             continue;
                         }
                         for yy in 0..16 {
-                            let y = s * 16 + yy;
+                            let y = (s - clo) * 16 + yy;
                             let id = sec.get(crate::chunk::section_index(lx, yy, lz));
                             if id == 0 {
                                 continue;
@@ -85,11 +113,11 @@ pub fn compute_light(reg: &BlockRegistry, chunks: [Option<&Chunk>; 9]) -> Vec<u8
     // ---- Sky light ----
     let mut sky = vec![0u8; n];
     // Lowest y that still sees the sky directly, per column.
-    let mut sky_floor = vec![H as u16; W * W];
+    let mut sky_floor = vec![h as u16; W * W];
     for rz in 0..W {
         for rx in 0..W {
-            let mut y = H;
-            while y > 0 {
+            let mut y = h;
+            while y > 0 && open_top[rx + rz * W] {
                 let i = ri(rx, y - 1, rz);
                 if filter[i] != 0 {
                     break;
@@ -112,16 +140,16 @@ pub fn compute_light(reg: &BlockRegistry, chunks: [Option<&Chunk>; 9]) -> Vec<u8
                     top = top.max(sky_floor[nx as usize + nz as usize * W] as usize);
                 }
             }
-            for y in f..top.min(H) {
+            for y in f..top.min(h) {
                 queue.push(ri(rx, y, rz) as u32);
             }
             // The cell right below the sky column (water, leaves) also starts spreading.
-            if f < H && f > 0 {
+            if f < h && f > 0 && open_top[rx + rz * W] {
                 queue.push(ri(rx, f, rz) as u32);
             }
         }
     }
-    flood(&mut sky, &filter, &mut queue);
+    flood(&mut sky, &filter, &mut queue, h);
 
     // ---- Block light ----
     let mut blk = vec![0u8; n];
@@ -130,13 +158,14 @@ pub fn compute_light(reg: &BlockRegistry, chunks: [Option<&Chunk>; 9]) -> Vec<u8
         blk[i] = l;
         queue.push(i as u32);
     }
-    flood(&mut blk, &filter, &mut queue);
+    flood(&mut blk, &filter, &mut queue, h);
 
-    let mut out = vec![0u8; CHUNK_VOLUME];
-    for y in 0..H {
+    let mut out = vec![0u8; (hi - lo) * 16 * 256];
+    let skip = lo * 16 - base;
+    for y in 0..(hi - lo) * 16 {
         for z in 0..16 {
             for x in 0..16 {
-                let i = ri(x + MARGIN, y, z + MARGIN);
+                let i = ri(x + MARGIN, y + skip, z + MARGIN);
                 out[column_index(x, y, z)] = (sky[i] << 4) | blk[i];
             }
         }
@@ -145,7 +174,7 @@ pub fn compute_light(reg: &BlockRegistry, chunks: [Option<&Chunk>; 9]) -> Vec<u8
 }
 
 /// Breadth-first spread: each step loses 1 light (plus the cell's filter).
-fn flood(light: &mut [u8], filter: &[u8], queue: &mut Vec<u32>) {
+fn flood(light: &mut [u8], filter: &[u8], queue: &mut Vec<u32>, h: usize) {
     let mut head = 0;
     while head < queue.len() {
         let i = queue[head] as usize;
@@ -180,7 +209,7 @@ fn flood(light: &mut [u8], filter: &[u8], queue: &mut Vec<u32>) {
         if z > 0 {
             try_n(i - W);
         }
-        if y + 1 < H {
+        if y + 1 < h {
             try_n(i + LAYER);
         }
         if y > 0 {
@@ -228,10 +257,16 @@ mod tests {
         }
         cs[4].set(5, 20, 5, r.id("glowstone").unwrap());
         let refs: [Option<&Chunk>; 9] = std::array::from_fn(|i| Some(&cs[i]));
-        let l = compute_light(&r, refs);
+        let b = crate::chunk::BASE_SECTION;
+        let l = compute_light(&r, refs, b, SECTIONS);
         assert_eq!(l[column_index(3, 100, 3)] >> 4, 15);
         assert_eq!(l[column_index(8, 22, 8)] >> 4, 0);
         assert_eq!(l[column_index(5, 21, 5)] & 15, 14);
         assert!(l[column_index(9, 23, 9)] & 15 > 0);
+        // A band that stops below the surface: sky stays out, the lamp still shines.
+        cs[4].light = compute_light(&r, refs, b, b + 3);
+        (cs[4].light_lo, cs[4].light_hi) = (b, b + 3);
+        assert_eq!(cs[4].light_at(8, 22, 8) >> 4, 0);
+        assert_eq!(cs[4].light_at(5, 21, 5) & 15, 14);
     }
 }

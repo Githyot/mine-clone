@@ -9,6 +9,8 @@ mod options;
 mod sentries;
 mod vanity;
 mod wings;
+mod anim;
+mod deep;
 mod keybinds;
 mod lang;
 mod subtitles;
@@ -61,6 +63,20 @@ mod rpg;
 mod accessories;
 mod affixes;
 mod boss_ai;
+mod tr;
+mod tr_bosses;
+mod tr_events;
+mod tr_pets;
+mod tr_town;
+mod tr_endgame;
+mod tr_fishing;
+mod tr_invasions;
+mod tr_utility;
+mod tr_modes;
+mod tr_style;
+mod tr_dungeon;
+mod tr_weapons;
+mod tr_world;
 mod glyphs;
 mod hardmode;
 mod hook;
@@ -366,16 +382,24 @@ fn game_data(blocks: &str, items: &str, recipes: &str) -> Result<(BlockRegistry,
 /// and Fase 6 keep their data in their own files, joined onto the base lists.
 fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
     let b0 = terraria::with_extra(&merge_list(blocks[0], &fase6_text(None, "blocks.ron")), embedded::T5_BLOCKS_RON);
+    // The deep world's blocks and items (worldgen/deep.rs).
+    let b0 = terraria::with_extra(&b0, embedded::DEEP_BLOCKS_RON);
+    // The rest of the Terraria side (tr.rs).
+    let b0 = terraria::with_extra(&b0, embedded::TR_BLOCKS_RON);
     let i0 = terraria::with_extra(&merge_list(items[0], &fase6_text(None, "items.ron")), embedded::T5_ITEMS_RON);
     // The stats content (rpg.rs) after the Terraria side's own items.
     let i0 = terraria::with_extra(&i0, embedded::RPG_ITEMS_RON);
     let i0 = terraria::with_extra(&i0, embedded::LOTE11_ITEMS_RON);
+    let i0 = terraria::with_extra(&i0, embedded::DEEP_ITEMS_RON);
+    let i0 = terraria::with_extra(&i0, embedded::TR_ITEMS_RON);
     let reg = BlockRegistry::from_ron_many(&[b0.as_str(), blocks[1]])?;
     let items = ItemRegistry::from_ron_many(&[i0.as_str(), items[1]], &reg)?;
     let mut recipes = Recipes::from_ron_many(&recipes, &items)?;
     terraria::add_recipes(&mut recipes, embedded::T5_RECIPES_RON, &items)?;
     terraria::add_recipes(&mut recipes, embedded::RPG_RECIPES_RON, &items)?;
     terraria::add_recipes(&mut recipes, embedded::LOTE11_RECIPES_RON, &items)?;
+    terraria::add_recipes(&mut recipes, embedded::DEEP_RECIPES_RON, &items)?;
+    terraria::add_recipes(&mut recipes, embedded::TR_RECIPES_RON, &items)?;
     let extra = fase6_text(None, "recipes.ron");
     if !extra.trim().is_empty() {
         let more = Recipes::from_ron(&extra, &items)?;
@@ -436,10 +460,11 @@ fn load_game_data(base: &Path) -> Result<(BlockRegistry, ItemRegistry, Recipes),
 fn load_structures(base: &Path, reg: &BlockRegistry) -> Arc<voxel::structures::Structures> {
     let [text, mods] = read_pack_pair(base, "structures.ron", embedded::STRUCTURES_RON, embedded::MODS_STRUCTURES_RON);
     let text = merge_list(&text, &fase6_text(Some(base), "structures.ron"));
+    let text = merge_list(&text, embedded::TR_STRUCTURES_RON);
     let [_, dims] = read_pack_pair(base, "dims_structures.ron", "", embedded::MODS_DIMS_STRUCTURES_RON);
     let parsed = voxel::structures::Structures::from_ron_many(&[&text, &mods, &dims], reg).or_else(|e| {
         log::error!("{e}; using the built-in structures");
-        voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, embedded::MODS_STRUCTURES_RON, embedded::MODS_DIMS_STRUCTURES_RON], reg)
+        voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, embedded::TR_STRUCTURES_RON, embedded::MODS_STRUCTURES_RON, embedded::MODS_DIMS_STRUCTURES_RON], reg)
     });
     Arc::new(parsed.unwrap_or_else(|e| {
         log::error!("{e}");
@@ -894,6 +919,7 @@ impl Game {
         // Mobs: a mobs.ron on disk wins, like blocks.
         let [mobs_text, mods_mobs] = read_pack_pair(&base, "mobs.ron", embedded::MOBS_RON, embedded::MODS_MOBS_RON);
         let mobs_text = terraria::with_extra(&merge_list(&mobs_text, &fase6_text(Some(&base), "mobs.ron")), embedded::T5_MOBS_RON);
+        let mobs_text = terraria::with_extra(&mobs_text, embedded::TR_MOBS_RON);
         let [_, dims_mobs] = read_pack_pair(&base, "dims_mobs.ron", "", embedded::MODS_DIMS_MOBS_RON);
         let mob_reg = voxel::mob::MobRegistry::from_ron_many(&[&mobs_text, &mods_mobs, &dims_mobs]).unwrap_or_else(|e| {
             log::error!("{e}; using built-in mobs");
@@ -1228,6 +1254,10 @@ impl Game {
                 }
             }
         }
+        if let Ok(what) = std::env::var("MC_DEEP") {
+            // Test hook: somewhere deep down (deep.rs).
+            game.test_deep(&what);
+        }
         game.load_mods();
         game.mods_dim_test_hook();
         game.key_map = keybinds::KeyMap::new(&game.settings.key_binds);
@@ -1445,6 +1475,7 @@ impl Game {
             Screen::Loading => Situation::Title,
             _ if self.body.head_in_water => Situation::Underwater,
             _ if self.dim == voxel::worldgen::Dim::Nether => Situation::Nether,
+            _ if self.layer() == voxel::worldgen::deep::Layer::Underworld => Situation::Nether,
             _ if self.dim == voxel::worldgen::Dim::End => Situation::End,
             _ => Situation::Creative,
         }
@@ -1557,6 +1588,7 @@ impl Game {
                 }
             }
             KeyCode::KeyB if self.screen == Screen::Playing => self.quick_buff(),
+            KeyCode::KeyF if self.screen == Screen::Playing && self.survival => self.quick_hook(),
             KeyCode::KeyC if matches!(self.screen, Screen::Playing | Screen::Inventory) => self.t5.rpg.sheet = !self.t5.rpg.sheet,
             KeyCode::KeyR if self.screen == Screen::Inventory && self.survival => self.surv.want_recipe = true,
             KeyCode::KeyU if self.screen == Screen::Inventory && self.survival => {
@@ -1675,6 +1707,7 @@ impl Game {
         let rd = self.settings.render_distance;
         let eye = self.body.eye();
         let center = ChunkPos::new((eye.x.floor() as i32) >> 4, (eye.z.floor() as i32) >> 4);
+        self.world.set_focus(eye.y);
         self.world.update(center, rd);
         self.swing_update();
         let events = std::mem::take(&mut self.world.events);
@@ -1931,6 +1964,10 @@ impl Game {
                     // Test hook: an Etapa 5 scene (terraria.rs, test_t5).
                     self.test_t5(&scene);
                 }
+                if let Ok(scene) = std::env::var("MC_TR") {
+                    // Test hook: the rest of the Terraria side (tr.rs, test_tr).
+                    self.test_tr(&scene);
+                }
                 if let Ok(scene) = std::env::var("MC_RPG") {
                     // Test hook: stats, minions, debuffs (rpg.rs, test_rpg).
                     self.test_rpg(&scene);
@@ -2003,7 +2040,7 @@ impl Game {
         let menus_stop = !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Friends | Screen::Controls | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders);
         if self.world_open && sim && self.screen != Screen::Loading && !menus_stop {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
-            let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
+            let daylight = self.tr_daylight((a.sin() * 2.2 + 0.45).clamp(0.0, 1.0));
             let creative = !self.hunted();
             if self.screen == Screen::Playing && self.dim == voxel::worldgen::Dim::Overworld {
                 self.update_wanderers(if self.args.screenshot.is_some() { 0.0 } else { dt }, daylight);
@@ -2043,6 +2080,7 @@ impl Game {
                 }
             }
             self.progress_deaths(&out.deaths);
+            self.tr_deaths(&out.deaths);
             // Mobs a friend finished off drop their loot for that friend.
             let deaths = self.net_kill_credit(&out.deaths);
             if self.survival {
@@ -2062,6 +2100,12 @@ impl Game {
                     p.cells(defs).iter().all(|&c| world.block(c - n).is_none() || voxel::physics::Terrain::solid(world, c - n))
                 });
             }
+        }
+        // Mob animation runs on frame time (smooth for guests too), and holds still with the
+        // world in a paused single-player game.
+        if self.world_open && !menus_stop {
+            let adt = if self.args.screenshot.is_some() { 0.0 } else { dt };
+            self.mobs.animate(self.body.pos, adt);
         }
 
         let sit = self.situation();
@@ -2787,8 +2831,9 @@ impl Game {
         }
         // Monsters and blasts hit harder on harder difficulties.
         let amount = if from.is_some() && !pvp { amount * [0.0, 0.5, 1.0, 1.5][self.settings.difficulty.min(3) as usize] } else { amount };
+        let amount = if from.is_some() && !pvp { amount * self.mode_damage() } else { amount };
         // Dodged (mirror charm, the radiant set): nothing at all.
-        if self.rpg_dodge(from) {
+        if self.rpg_dodge(from) || self.tr_ignores_hit(from) {
             self.prog.next_kind = Default::default();
             return;
         }
@@ -3045,7 +3090,9 @@ impl Game {
                 // Face the camera.
                 let m = self.mobs.list.last_mut().unwrap();
                 let to = self.body.pos - at;
-                m.yaw = to.x.atan2(to.z);
+                // MC_FACE=degrees turns them (90 = side-on, to see the legs move).
+                let turn = std::env::var("MC_FACE").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0).to_radians();
+                m.yaw = to.x.atan2(to.z) + turn;
             }
         }
         // An arrow on its way, frozen in the air, for the test picture.
@@ -3490,7 +3537,8 @@ impl Game {
                 *v = (*v + (grey - *v) * (gloom * 1.8).min(1.0)) * (1.0 - gloom * 0.85) + flash * 0.5;
             }
         }
-        let daylight = daylight * (1.0 - gloom) + flash * 0.6;
+        let mut daylight = daylight * (1.0 - gloom) + flash * 0.6;
+        self.tr_sky(&mut top, &mut horizon, &mut daylight);
         (top, horizon, daylight.clamp(0.16, 1.0), sun)
     }
 
@@ -4305,22 +4353,27 @@ impl Game {
         let eye = if playing_view { eye + self.shake_offset() } else { eye };
         let block = eye.floor().as_ivec3();
         let (top, horizon, daylight, sun) = self.sky();
+        // Deep down the sky fades out, and the Underworld glows red like the Nether (deep.rs).
+        let (top, horizon, daylight, underworld) = self.deep_sky(eye.y, top, horizon, daylight);
         let underwater = self.body.head_in_water;
         let rd = self.settings.render_distance as f32 * 16.0;
         // Distant terrain pushes the fog out to its own edge.
         // The Nether has a roof: no distant terrain there.
-        let nether = self.dim == voxel::worldgen::Dim::Nether;
+        let nether = self.dim == voxel::worldgen::Dim::Nether || underworld;
         let end = self.dim == voxel::worldgen::Dim::End;
         // The Otherside (mods/portals.rs) is a closed, dark world like the Nether.
         let other = self.dim == voxel::worldgen::Dim::Otherside;
         // Nor in the mod pack's dimensions (floating islands, closed caverns).
-        let extra = if self.dim != voxel::worldgen::Dim::Overworld { 0.0 } else { self.settings.lod_distance.max(0) as f32 };
+        let extra = if self.dim != voxel::worldgen::Dim::Overworld || eye.y < -24.0 { 0.0 } else { self.settings.lod_distance.max(0) as f32 };
         let view_end = rd + extra;
         let (fog_color, fog_start, fog_end) = if underwater {
             ([0.04, 0.12, 0.35], 0.0, 28.0)
         } else if end {
             // A dark violet void.
             ([0.03, 0.018, 0.045], rd * 0.45, rd - 2.0)
+        } else if underworld {
+            // The Underworld: a hot haze over the lava sea.
+            ([0.22, 0.06, 0.03], rd * 0.2, rd * 0.9)
         } else if nether {
             // A thick red haze instead of a sky.
             ([0.2, 0.035, 0.025], rd * 0.15, rd * 0.85)
@@ -4493,9 +4546,9 @@ impl Game {
                 let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
                 let mut bones = self.anim.bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
                 let pv = def.parts[2].pivot;
-                held_third = self.held_item_third_person(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32));
+                held_third = self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32));
                 if let Some((t, mesh)) = self.held_torch().and_then(|t| Some((t, self.entities.torch_mesh(t)?))) {
-                    let (tb, top) = torch::hold(t, bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 1.0, 0.62, self.now, [bones.light[0], 1.0, 0.0, 0.0]);
+                    let (tb, top) = torch::hold(t, bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 1.0, 0.62, self.now, [bones.light[0], 1.0, 0.0, 0.0]);
                     items.push((mesh, tb));
                     torch_top = Some((t, top + block.as_vec3(), 1.0));
                 }
@@ -4653,7 +4706,7 @@ impl Game {
         self.entities.items.prepare(&self.renderer, &drops);
         let grab_backdrop = self.want_backdrop && self.screen == Screen::Loading;
         self.renderer.extra_lines = self.fishing_line(block, third);
-        let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds && self.dim == voxel::worldgen::Dim::Overworld, Some(&self.entities), Some(&self.lod), &self.ui, capture || grab_backdrop);
+        let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds && self.dim == voxel::worldgen::Dim::Overworld && self.body.pos.y > -24.0, Some(&self.entities), Some(&self.lod), &self.ui, capture || grab_backdrop);
         let shot = if grab_backdrop {
             self.want_backdrop = false;
             if let Some((w, h, px)) = &shot {
@@ -4877,6 +4930,17 @@ mod data_tests {
         assert!(reg.id("oak_stairs:5").is_some());
         assert!(items.id("cobblestone_slab").is_some());
         assert!(!recipes.shaped.is_empty());
+    }
+
+    #[test]
+    fn every_structure_file_loads() {
+        // A bad structure (say, a row that isn't a string) would drop every building.
+        let base = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+        let (reg, _, _) = load_game_data(base).unwrap();
+        let s = voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, embedded::TR_STRUCTURES_RON, embedded::MODS_STRUCTURES_RON, embedded::MODS_DIMS_STRUCTURES_RON], &reg).unwrap();
+        for name in ["templo_escamado", "lago_cintilante", "masmorra_blue", "masmorra_pink"] {
+            assert!(s.list.iter().any(|st| st.def.name == name), "{name}");
+        }
     }
 
     #[test]

@@ -1396,14 +1396,14 @@ impl Game {
 
     /// A block change in a dimension (or an area) the host has not loaded.
     fn off_apply(&mut self, dim: u8, p: IVec3, id: BlockId) {
-        if p.y < 0 || p.y >= voxel::chunk::CHUNK_HEIGHT as i32 {
+        if p.y < voxel::chunk::MIN_Y || p.y >= voxel::chunk::CHUNK_HEIGHT as i32 {
             return;
         }
         let reg = self.reg.clone();
         let (cp, x, z) = split_xz(p.x, p.z);
         let o = self.off_dim(dim);
-        let c = o.chunks.entry(cp).or_insert_with(|| o.save.load_chunk(&reg, cp).unwrap_or_else(|| o.gen.generate(cp)));
-        c.set(x, p.y as usize, z, id);
+        let c = o.chunks.entry(cp).or_insert_with(|| crate::world::load_or_generate(&o.save, &o.gen, &reg, cp, 0));
+        c.set_w(x, p.y, z, id);
         c.modified = true;
         o.dirty.insert(cp);
     }
@@ -1712,7 +1712,8 @@ impl Game {
                     return;
                 }
                 let p = ChunkPos::new(pos[0], pos[1]);
-                if let Some(c) = decode_chunk(&self.reg, p, &data) {
+                if let Some(mut c) = decode_chunk(&self.reg, p, &data) {
+                    crate::world::fill_legacy(&self.world.gen, &self.reg, &mut c);
                     self.world.replace_chunk(c);
                     self.guest().pending.remove(&(dim, p));
                 }
@@ -2048,7 +2049,7 @@ impl Game {
                 let sel = self.selected;
                 let mine = self.surv.inv.slots[sel];
                 self.surv.inv.slots[sel] = Some(ItemStack::new(it, 1));
-                held.extend(self.held_item_third_person(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32)));
+                held.extend(self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32)));
                 self.surv.inv.slots[sel] = mine;
             }
         }

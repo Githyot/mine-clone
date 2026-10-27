@@ -1,7 +1,9 @@
 //! Accessories (Terraria's idea): five slots beside the inventory for things that change how you
 //! move and fight. Boots run faster, a cloud in a bottle gives a second jump, wings fly for a
 //! moment and then glide, a cape dashes on a double tap, claws climb walls, the horseshoe takes
-//! the sting out of falls; rings, amulets and emblems help mana, magic and melee.
+//! the sting out of falls; rings, amulets and emblems help mana, magic and melee. From the deep
+//! world: more jumps in a bottle (each one once per jump, and they stack), rocket boots, boots
+//! that walk on water, a shield that charges through monsters, and gear that wall-jumps.
 
 use glam::Vec3;
 use voxel::physics::{Terrain, WALK_SPEED};
@@ -37,15 +39,55 @@ pub struct Moves {
     last_a: f32,
     last_d: f32,
     dash_cd: f32,
+    /// Extra jumps already used since leaving the ground (bit per JUMPS entry).
+    jumps_used: u8,
+    /// Seconds of the sandstorm's floaty rise left.
+    sand_t: f32,
+    /// Seconds of the shield charge left (it hurts what it runs through).
+    charge_t: f32,
+    charge_dir: Vec3,
     pub lava_t: f32,
     /// Flying on wings right now (for the HUD).
     pub flying: bool,
 }
 
+/// Accessories that are several in one (Lote 9): wearing one counts as wearing its parts.
+const COMBOS: &[(&str, &[&str])] = &[
+    ("terraspark_boots", &["frost_spark_boots", "water_walking_boots", "obsidian_charm"]),
+    ("bundle_of_balloons", &["cloud_bottle", "blizzard_bottle", "sandstorm_bottle", "shiny_balloon"]),
+];
+
+/// Extra jumps in the air, used in this order: (accessory, upward speed).
+const JUMPS: &[(&str, f32)] = &[
+    ("cloud_bottle", 9.5),
+    ("cloud_balloon", 9.5),
+    ("blizzard_bottle", 12.0),
+    ("sandstorm_bottle", 7.5),
+    ("leap_boots", 10.5),
+];
+
 impl Game {
+    /// Seconds of lift in the air: wings, then rocket boots, then steam boots.
+    fn flight_max(&self) -> f32 {
+        if let Some(k) = self.worn_wings() {
+            crate::wings::WINGS[k].flight
+        } else if let Some(t) = self.tr_wing().map(|w| w.1) {
+            t
+        } else if self.wears("comet_boots") {
+            2.6
+        } else if self.wears("rocket_boots") {
+            1.8
+        } else {
+            0.9
+        }
+    }
+
     /// Is this accessory worn (in an open slot)?
     pub(crate) fn wears(&self, name: &str) -> bool {
-        self.t5.acc[..self.acc_slots()].iter().flatten().any(|s| self.items.get(s.item).name == name)
+        self.t5.acc[..self.acc_slots()].iter().flatten().any(|s| {
+            let worn = &self.items.get(s.item).name;
+            worn == name || COMBOS.iter().any(|(c, parts)| c == worn && parts.contains(&name))
+        })
     }
 
     /// Melee damage multiplier: emblems, sets, buffs (rpg.rs).
@@ -132,9 +174,30 @@ impl Game {
         if ground {
             self.t5.moves.jumped_twice = false;
             // Each pair flies for its own time; steam boots give a short lift, no glide.
-            self.t5.moves.wing_t = self.worn_wings().map_or(0.9, |k| crate::wings::WINGS[k].flight);
+            self.t5.moves.jumps_used = 0;
+            self.t5.moves.wing_t = self.flight_max();
             self.t5.moves.flying = false;
             self.t5.moves.balloon_done = false;
+        }
+        // Water walking boots: the surface holds you up unless you sneak.
+        let sneak = playing && (self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight));
+        if self.wears("water_walking_boots") && !sneak && self.body.vel.y <= 0.5 {
+            let p = self.body.pos;
+            let below = (p - Vec3::Y * 0.45).floor().as_ivec3();
+            let top = below.y as f32 + 1.0;
+            let water = self.world.fluid(self.world.block_or_air(below)) == 1;
+            let open = self.world.fluid(self.world.block_or_air(below + glam::IVec3::Y)) == 0;
+            if water && open && p.y > top - 0.45 {
+                self.body.pos.y = top + 0.02;
+                self.body.vel.y = 0.0;
+                self.body.in_water = false;
+                self.fall_peak = top;
+                self.t5.moves.jumps_used = 0;
+                self.t5.moves.wing_t = self.flight_max();
+                if pressed {
+                    self.body.vel.y = 8.5;
+                }
+            }
         }
         // Balloon, frog charm: the jump that just left the ground goes higher.
         let jump = self.t5.rpg.stats.jump;
@@ -146,19 +209,54 @@ impl Game {
         let glow = self.glow_layer();
         let hooked = self.t5.hook.attached();
         if !ground && !hooked && self.seat.is_none() && self.riding.is_none() {
+            // The painted pairs (wings.rs) first, then the Terraria side's own (tr_pets.rs).
             let worn = self.worn_wings();
-            let wings = worn.is_some();
-            let steam = !wings && self.wears("steam_boots");
-            if pressed && self.wears("cloud_bottle") && !self.t5.moves.jumped_twice {
-                // A puff of cloud and a second jump.
+            let tr_wing = if worn.is_none() { self.tr_wing() } else { None };
+            let wings = worn.is_some() || tr_wing.is_some();
+            let rocket = !wings && (self.wears("rocket_boots") || self.wears("comet_boots"));
+            let steam = !wings && !rocket && self.wears("steam_boots");
+            let next = if pressed {
+                JUMPS.iter().enumerate().find(|(k, j)| self.t5.moves.jumps_used & (1 << k) == 0 && self.wears(j.0))
+            } else {
+                None
+            };
+            if let Some((k, &(name, up))) = next {
+                // A puff of cloud, snow or sand, and one more jump.
+                self.t5.moves.jumps_used |= 1 << k;
                 self.t5.moves.jumped_twice = true;
-                self.body.vel.y = 9.5;
+                self.body.vel.y = up;
                 self.fall_peak = self.body.pos.y;
+                self.t5.moves.sand_t = if name == "sandstorm_bottle" { 0.7 } else { 0.0 };
+                let tint = match name {
+                    "blizzard_bottle" => [1.0, 1.2, 1.5],
+                    "sandstorm_bottle" => [1.4, 1.15, 0.7],
+                    "leap_boots" => [0.8, 1.3, 0.8],
+                    _ => [1.3, 1.3, 1.35],
+                };
                 for _ in 0..14 {
                     let v = Vec3::new(self.surv.rng.f32() - 0.5, -0.4, self.surv.rng.f32() - 0.5) * 3.0;
-                    self.particles.glow(self.body.pos, v, glow, [1.3, 1.3, 1.35], 0.18, 0.6);
+                    self.particles.glow(self.body.pos, v, glow, tint, 0.18, 0.6);
                 }
                 self.sfx(Sfx::Place(crate::audio::Material::Cloth));
+            } else if space && self.t5.moves.sand_t > 0.0 {
+                // The sandstorm keeps lifting you for a moment while Space is held.
+                self.t5.moves.sand_t -= dt;
+                self.body.vel.y = self.body.vel.y.max(5.0);
+                self.fall_peak = self.body.pos.y;
+                if self.surv.rng.f32() < dt * 30.0 {
+                    self.particles.glow(self.body.pos, Vec3::new(0.0, -1.0, 0.0), glow, [1.4, 1.15, 0.7], 0.12, 0.5);
+                }
+            } else if space && rocket && self.t5.moves.wing_t > 0.0 && (self.body.vel.y < 3.0 || self.t5.moves.flying) {
+                // Rocket boots: once the jump runs out, hold Space to burn upward.
+                self.t5.moves.wing_t -= dt;
+                self.body.vel.y = (self.body.vel.y + 50.0 * dt).min(8.0);
+                self.t5.moves.flying = true;
+                self.fall_peak = self.body.pos.y;
+                if self.surv.rng.f32() < dt * 40.0 {
+                    let v = Vec3::new(self.surv.rng.f32() - 0.5, -6.0, self.surv.rng.f32() - 0.5);
+                    let tint = if self.wears("comet_boots") { [1.2, 0.9, 1.6] } else { [1.6, 0.8, 0.3] };
+                    self.particles.glow(self.body.pos, v, glow, tint, 0.1, 0.35);
+                }
             } else if space && steam && self.t5.moves.wing_t > 0.0 {
                 // Steam boots: puff upward for a moment.
                 self.t5.moves.wing_t -= dt;
@@ -168,30 +266,50 @@ impl Game {
                 if self.surv.rng.f32() < dt * 25.0 {
                     self.particles.glow(self.body.pos, Vec3::new(0.0, -2.0, 0.0), glow, [1.1, 1.1, 1.1], 0.1, 0.4);
                 }
-            } else if let (true, Some(k)) = (space, worn) {
-                let def = &crate::wings::WINGS[k];
+            } else if space && wings {
+                let (lift, speed) = worn.map_or((7.5, 1.35), |k| (crate::wings::WINGS[k].lift, crate::wings::WINGS[k].speed));
                 if self.t5.moves.wing_t > 0.0 {
                     self.t5.moves.wing_t -= dt;
-                    self.body.vel.y = (self.body.vel.y + 45.0 * dt).min(def.lift);
+                    self.body.vel.y = (self.body.vel.y + 45.0 * dt).min(lift);
                     self.t5.moves.flying = true;
                     // Faster through the air than on foot.
                     let base = self.body.speed_override.unwrap_or(WALK_SPEED);
-                    self.body.speed_override = Some(base * def.speed);
+                    self.body.speed_override = Some(base * speed);
                 } else if self.body.vel.y < -2.5 {
                     // Out of flight time: glide down.
                     self.body.vel.y = -2.5;
                 }
                 self.fall_peak = self.body.pos.y;
                 if self.surv.rng.f32() < dt * 20.0 {
-                    let c = crate::wings::WINGS[k].colors[2];
-                    let tint = [c[0] as f32 / 200.0, c[1] as f32 / 200.0, c[2] as f32 / 200.0];
+                    let tint = match (worn, tr_wing) {
+                        (Some(k), _) => {
+                            let c = crate::wings::WINGS[k].colors[2];
+                            [c[0] as f32 / 200.0, c[1] as f32 / 200.0, c[2] as f32 / 200.0]
+                        }
+                        (None, Some(w)) => w.2,
+                        _ => [1.2, 1.2, 1.2],
+                    };
                     self.particles.glow(self.body.pos + Vec3::Y * 1.2, Vec3::new(0.0, -1.5, 0.0), glow, tint, 0.08, 0.5);
                 }
             }
             // Claws: hold Space against a wall to climb it.
-            if space && (self.wears("climbing_claws") || self.wears("shadow_gear")) && self.against_wall() {
-                self.body.vel.y = self.body.vel.y.max(3.5);
+            let gear = self.wears("climbing_gear");
+            if space && (gear || self.wears("climbing_claws") || self.wears("shadow_gear")) && self.against_wall() {
+                self.body.vel.y = self.body.vel.y.max(if gear { 4.5 } else { 3.5 });
                 self.fall_peak = self.body.pos.y;
+            }
+            // Climbing gear: hold Shift against a wall to slide slowly, tap Space to kick off it.
+            if gear && self.against_wall() {
+                if sneak && self.body.vel.y < -1.5 {
+                    self.body.vel.y = -1.5;
+                    self.fall_peak = self.body.pos.y;
+                }
+                if pressed && self.body.vel.y < 1.0 {
+                    let f = Vec3::new(-self.yaw.sin(), 0.0, -self.yaw.cos());
+                    self.body.vel = -f * 7.0 + Vec3::Y * 9.0;
+                    self.t5.moves.jumps_used = 0;
+                    self.sfx(Sfx::Place(crate::audio::Material::Cloth));
+                }
             }
         }
         // The cape: tap A or D twice quickly to dash that way.
@@ -213,14 +331,49 @@ impl Game {
         }
         self.t5.moves.a_was = a;
         self.t5.moves.d_was = d;
-        if dash != 0.0 && self.t5.moves.dash_cd <= 0.0 && (self.wears("wind_cape") || self.wears("shadow_gear")) {
+        let shield = self.wears("charge_shield") || self.wears("watcher_shield");
+        if dash != 0.0 && self.t5.moves.dash_cd <= 0.0 && (shield || self.wears("wind_cape") || self.wears("shadow_gear")) {
             self.t5.moves.dash_cd = 1.0;
             let right = Vec3::new(self.yaw.cos(), 0.0, -self.yaw.sin());
-            self.body.vel += right * dash * 16.0;
+            self.body.vel += right * dash * if shield { 19.0 } else { 16.0 };
+            if shield {
+                self.t5.moves.charge_t = 0.35;
+                self.t5.moves.charge_dir = right * dash;
+            }
             for _ in 0..12 {
                 self.particles.glow(self.body.pos + Vec3::Y * 0.8, -right * dash * 2.0, glow, [0.9, 1.1, 1.2], 0.1, 0.4);
             }
             self.sfx(Sfx::Place(crate::audio::Material::Cloth));
+        }
+        self.shield_charge(dt);
+    }
+
+    /// The shield charge: monsters it runs into are hit and thrown aside, once each.
+    fn shield_charge(&mut self, dt: f32) {
+        if self.t5.moves.charge_t <= 0.0 {
+            return;
+        }
+        self.t5.moves.charge_t -= dt;
+        let at = self.body.pos + Vec3::Y * 0.9;
+        let dir = self.t5.moves.charge_dir;
+        let hit: Vec<usize> = self
+            .mobs
+            .list
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.alive() && m.body.center().distance(at) < 1.6)
+            .map(|(k, _)| k)
+            .collect();
+        for k in hit {
+            let dmg = 6.0 * self.melee_bonus();
+            let m = &mut self.mobs.list[k];
+            m.hurt(dmg, at - dir);
+            m.body.vel += dir * 9.0 + Vec3::Y * 4.0;
+            let def = &self.mobs.reg.defs[m.def];
+            self.last_hit = Some((def.display_name.clone(), m.health.max(0.0), m.max_health, self.now + 3.0));
+            self.sfx(Sfx::Hit(crate::audio::Material::Metal));
+            // One bump per charge.
+            self.t5.moves.charge_t = 0.0;
         }
     }
 
@@ -261,7 +414,7 @@ impl Game {
         let s = self.ui.scale;
         // The depth meter and the other info accessories draw in rpg.rs.
         if self.t5.moves.flying && self.t5.moves.wing_t > 0.0 {
-            let max = self.worn_wings().map_or(0.9, |k| crate::wings::WINGS[k].flight);
+            let max = self.flight_max();
             let k = (self.t5.moves.wing_t / max).clamp(0.0, 1.0);
             self.ui.rect(4.0 * s, h - 34.0 * s, 40.0 * s, 3.0 * s, [30, 30, 30, 200]);
             self.ui.rect(4.0 * s, h - 34.0 * s, 40.0 * s * k, 3.0 * s, [240, 230, 160, 230]);

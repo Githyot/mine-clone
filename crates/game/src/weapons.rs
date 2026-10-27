@@ -429,6 +429,9 @@ impl Game {
     /// Right click with a ranged weapon or a wind charge. True when it is one (the draw happens
     /// while the button is held, in `update_weapons`).
     pub(crate) fn weapon_use(&mut self, name: &str) -> bool {
+        if crate::tr_weapons::bow_power(name).is_some() {
+            return true;
+        }
         match name {
             "bow" | "trident" => true,
             "crossbow" => {
@@ -501,7 +504,11 @@ impl Game {
     pub(crate) fn update_weapons(&mut self, dt: f32, use_held: bool) {
         self.prog.wind_t -= dt;
         self.prog.sweep = (self.prog.sweep - dt).max(0.0);
-        let name = self.held_key();
+        let mut name = self.held_key();
+        // Ore bows (tr_weapons.rs) draw like the plain bow.
+        if crate::tr_weapons::bow_power(&name).is_some() {
+            name = "bow".into();
+        }
         let playing = self.screen == crate::Screen::Playing;
         let holding = use_held && playing;
         match name.as_str() {
@@ -551,7 +558,7 @@ impl Game {
     /// How far the bow is drawn (0..1), for the arm pose and the zoom.
     pub(crate) fn bow_pull(&self) -> f32 {
         let n = self.held_key();
-        if n == "bow" {
+        if n == "bow" || crate::tr_weapons::bow_power(&n).is_some() {
             (self.prog.draw / 1.0).min(1.0)
         } else if n == "crossbow" {
             if self.prog.loaded {
@@ -591,7 +598,8 @@ impl Game {
         let mut s = Shot::new(self.body.eye() + f * 0.3, f * 60.0 * pull, ShotKind::Arrow { potion, pickup }, 0.0);
         let power = self.held_ench(POWER) as f32;
         let ranged = self.t5.rpg.stats.dmg[crate::rpg::RANGED];
-        s.damage = (6.0 * pull) * if power > 0.0 { 1.0 + 0.25 * (power + 1.0) } else { 1.0 } * ranged;
+        let ore = crate::tr_weapons::bow_power(&self.held_key()).unwrap_or(1.0);
+        s.damage = (6.0 * pull) * if power > 0.0 { 1.0 + 0.25 * (power + 1.0) } else { 1.0 } * ranged * ore;
         s.crit = pull >= 1.0 || pull > 0.6 && self.surv.rng.f32() < self.t5.rpg.stats.crit[crate::rpg::RANGED];
         s.punch = self.held_ench(PUNCH);
         s.flame = self.held_ench(FLAME) > 0;

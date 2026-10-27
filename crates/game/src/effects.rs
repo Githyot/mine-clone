@@ -621,7 +621,7 @@ impl Game {
             let next = t.pos + t.vel * dt;
             let hit_block = voxel::physics::Terrain::solid(&self.world, next.floor().as_ivec3());
             let hit_mob = self.mobs.list.iter().any(|m| m.alive() && (m.body.pos + Vec3::Y * m.body.height * 0.5 - next).length() < m.body.half_width + 0.5);
-            if hit_block || hit_mob || t.pos.y < -64.0 {
+            if hit_block || hit_mob || t.pos.y < voxel::chunk::MIN_Y as f32 - 64.0 {
                 burst.push((t.pos, t.potion, t.lingering));
                 t.pos.y = -1000.0;
             } else {

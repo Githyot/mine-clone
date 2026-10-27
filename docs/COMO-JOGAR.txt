@@ -491,6 +491,232 @@ STATUS, ACESSÓRIOS E POÇÕES (lado Terraria)
     alguns acessórios dão imunidade. Suas armas e acessórios também passam debuffs aos mobs.
   Invocador: cajados de lacaio chamam ajudantes que lutam por você; chicotes marcam o alvo.
 
+O MUNDO PROFUNDO E O SUBMUNDO
+  O mundo agora desce até a camada -768 (antes parava no 0), como a profundidade do Terraria:
+    Subsolo (0 a 40) > Profundezas (até -160) > Cavernas (até -608) > Submundo (o fundo).
+  Lá embaixo: túneis compridos que atravessam o mundo, abismos, lagos de água (e de lava
+    nas Cavernas), biomas escondidos (selva, gelo, deserto, cogumelos brilhantes, mármore,
+    granito, ninhos de aranha, gemas) e construções com baús: cabanas, minas abandonadas,
+    santuários, cofres, casas e torres em ruínas.
+  O Submundo: chão de cinzas, um mar de lava, árvores de brasa e torres em ruínas. Lá dá
+    magmarita (picareta de diamante), que vira ferramentas, armadura e o gancho de magmarita.
+    Armadura de magmarita completa: fogo e lava não queimam.
+  Monstros mudam com a camada e o bioma. O medidor de profundidade mostra a camada e o bioma.
+  F               lança o melhor gancho do inventário (sem trocar o item da mão)
+  Pulos a mais (acessórios, eles se somam: um de cada por pulo): garrafa de nuvem, balão de
+    nuvem, nevasca na garrafa (bem alto), tempestade de areia (sobe enquanto segura Espaço),
+    botas de pulo duplo.
+  Botas-foguete / do cometa: segure Espaço no ar para subir. Botas de andar na água: a água
+    vira chão (Shift afunda). Escudo de investida: dois toques em A ou D derrubam monstros.
+    Equipamento de escalada: sobe paredes, desliza com Shift e salta da parede com Espaço.
+
+CHEFES DO COMEÇO (lado Terraria, lote 1)
+  Rei Geleia: Coroa Gelatinosa (gel em volta de uma barra de ouro), na superfície. Pula em
+    cima de você, solta geleias quando apanha. Cai: gel, Gel Real (geleias não atacam mais),
+    Gancho Gelatinoso, Cajado Gelatinoso (invoca uma geleinha).
+  Grande Olho: Olho Suspeito (6 lentes + olho de aranha), à noite. Com 15 corações ele pode
+    vir sozinho. Chama olhos servos e investe; na metade gira e fica furioso.
+    Cai: lentes, Escudo do Vigia (dois toques em A ou D = investida).
+  Mente da Chaga: Espinha da Chaga, abaixo da altura 0. Os rastejantes a protegem: mate-os
+    antes. Depois ela some e reaparece perto de você. Cai: Tecido da Chaga, Guarda da Mente.
+  Rainha da Colmeia: quebre a Larva Real dentro de uma colmeia gigante (embaixo da selva) ou
+    use o Favo Real na selva. Pica, investe e chama zangões. Cai: Cajado da Colmeia,
+    Lâmina da Colmeia, Mochila da Colmeia (abelhas picam quem te machuca), cera.
+  Colosso do Gelo: Chifre Gelado, na neve. Linhas de espinhos de gelo e, furioso, um rugido
+    que escurece e deixa lento. Cai: Cajado do Colosso, Manto de Pelo (imune a frio).
+  Geleias: verde, azul, vermelha (cavernas), de gelo, de lava (Submundo), rosa (rara).
+    Gel + graveto = 3 tochas.
+
+EVENTOS (lado Terraria, lote 2)
+  Meteoro: depois que algum chefe cai, às vezes à noite um meteoro risca o céu e abre uma
+    cratera de meteorito ("Um meteoro caiu ao leste!"). Cabeças de Meteoro voam por perto.
+    Meteorito vira barra na fornalha: armadura de Meteoro (bônus: o Disparador de Meteoro
+    não gasta mana) e o Disparador de Meteoro (tiros rápidos de fogo).
+  Estrelas cadentes: em noites na superfície estrelas caem e viram Estrelas Caídas.
+    5 estrelas = Cristal de Mana; estrela + frasco = poção de mana pequena.
+  Chuva de geleias: algumas manhãs chovem geleias. Mate o bastante (barra no topo) e o
+    Rei Geleia cai do céu.
+  Tempestade de areia: o vento sobe nos desertos, cheio de areia que empurra você e
+    Espíritos da Areia (podem soltar a Areia na Garrafa).
+  Noite das lanternas: depois de vencer um chefe (ou por sorte) lanternas sobem a noite
+    toda e nenhum monstro nasce na superfície.
+  Eclipse: na era do Quebra-Mundo, às vezes de manhã, ou com a Tábua Solar de dia. O sol
+    escurece; vêm Ceifadores, Vultos Brutais e a Mariposa do Eclipse. Caem Lascas Sombrias
+    e, raro, a Foice do Eclipse.
+
+TERRAS QUE MUDAM O MUNDO (lado Terraria, lote 3)
+  Cada mundo tem uma terra má: a Ruína (roxa, com abismos) ou a Chaga (vermelha, com
+    cavernas). Ficam em manchas a algumas centenas de blocos umas das outras. A grama, a
+    pedra e a areia mudam de cor, as plantas morrem e o céu fica roxo ou vermelho.
+  No fundo dos abismos há Orbes da Ruína (ou Corações da Chaga). Quebrar um dá um prêmio
+    (Espinho Vil, Anel Estelar, Bastão da Chaga, barras...). O primeiro atrai um meteoro e
+    cada terceiro acorda o chefe da terra (o Verme das Profundezas ou a Mente da Chaga).
+  O altar no meio da mancha só quebra com picareta do modo difícil, e a terra em volta
+    apodrece quando ele quebra.
+  Minérios: Sombraço (Ruína) e Sanguinita (Chaga), na pedra das manchas. O Grande Olho
+    também deixa 30 minérios ao cair. Com eles se fazem picaretas, espadas e armaduras.
+  Prisma: depois do Quebra-Mundos surgem manchas de cores claras, com Fadas e Unicórnios.
+    Na era do Quebra-Mundos todas essas terras se espalham devagar pelos blocos vizinhos.
+  Pó Purificador (cogumelo marrom + pó de pedra luminosa = 5): devolve a terra em volta ao
+    normal. O Pó Vil faz o contrário.
+  Ilhas do céu: flutuam na altura 150, com uma casinha de Tijolo Celeste e um baú
+    (ferradura, balão, nuvem na garrafa, Lâmina Celeste, estrelas).
+  Pirâmide: no deserto, com um corredor e uma escada até a sala do tesouro embaixo.
+  Armaduras novas: Sombraço, Sanguinita, Abelha (cera), Selva (esporos), Fóssil, Necro
+    (ossos) e Ninja (cai do Rei Geleia). Cada uma tem seu bônus de conjunto.
+
+ARMAS NOVAS (lado Terraria, lote 4)
+  Ioiôs: segure o botão direito e o ioiô vai até onde você mira, batendo no que encostar.
+    Solte e ele volta. Madeira, Selva (veneno), Sombraço, Sanguinita (sangra), Magma (fogo).
+  Bumerangues e manguais: botão direito joga, e eles voltam para a mão. O mangual é curto
+    e pesado. Bumerangue de madeira, encantado (estrela caída), de gelo, Chakram, de fogo.
+  Armas de fogo: usam Balas de Mosquete (1 barra de chumbo = 50) ou Balas de Meteoro
+    (atravessam). Pistola de Pederneira, Mosquete, Espingarda (4 chumbos) e Metralhadora
+    Leve (segure para atirar sem parar).
+  Arremessáveis: Shuriken e Faca de Arremesso. Bomba e Dinamite abrem o chão; a Granada
+    só machuca os monstros.
+  Arcos de minério: cobre, prata, platina, sombraço e sanguinita (puxam como o arco
+    normal e batem mais forte).
+  Cajado da Balista: põe uma balista no chão que atira nos monstros por 2 minutos.
+  Espada Encantada: cada golpe solta um raio azul. Sabre Estelar: estrelas caem onde
+    você mira.
+  Magias: Raio d'Água, Foice Demoníaca.
+
+ASAS, MONTARIAS E MASCOTES (lado Terraria, lote 5)
+  Almas: no modo difícil, monstros da Ruína e da Chaga soltam Alma da Noite, os do Prisma
+    soltam Alma da Luz, e as harpias soltam Alma do Voo.
+  Céu alto: acima da altura 200 você cai mais devagar. Harpias voam acima de 120.
+  Asas (acessório): de Fada, de Demônio, de Folha, de Gelo, de Chama e de Abelha. Cada uma
+    voa por um tempo diferente. Segure Espaço no ar para voar e para planar. Em terceira
+    pessoa (F5) você vê as asas nas costas. Receita: material da asa + Almas do Voo.
+  Montarias: use o item para chamar e agache (Shift) para descer.
+    Sela de Geleia (Rei Geleia): pula muito alto, e cair em cima de um monstro machuca.
+    Óculos de Mel (Rainha da Colmeia): a abelha voa enquanto você segura Espaço.
+    Maçã Abençoada (Unicórnio do Prisma, raro): corre rápido e atropela monstros.
+  Mascotes: use o item para chamar, use de novo para mandar para casa.
+    Mola do Olho (Grande Olho), Pote de Mel (Rainha da Colmeia), Bolha de Geleia (Rei Geleia).
+  Mascotes de luz iluminam o caminho: Sino de Fada (pó de fada + ouro), Lâmpada do Orbe
+    Sombrio (orbe da Ruína), Lâmpada da Chaga (coração da Chaga), Pote de Fogo-fátuo
+    (Alma da Noite + caco sombrio + pó de pedra luminosa + frasco).
+  Dá para ter um mascote e um mascote de luz ao mesmo tempo.
+
+VILA: MORADORES, FELICIDADE, PILONES, MASCATE E FESTA (lado Terraria, lote 6)
+  Moradores novos (cada um precisa de uma casa livre):
+    Druida (depois do 1º chefe), Demolidor (carregue bombas ou TNT), Armeira (carregue arma
+    de fogo ou balas), Pescador (carregue um peixe), Barbeira (linha + 3 moradores),
+    Tintureira (carregue um corante), Pintor (6 moradores), Alfaiate (depois do Rei dos
+    Ossos), Curandeiro da Selva (depois da Rainha da Colmeia), Zoóloga (carregue uma guia),
+    Festeira (9 moradores), Pirata (modo difícil + 7 moradores), Engenheira a Vapor (depois
+    de um chefe mecânico), Ciborgue (depois da Rainha das Vinhas), Princesa (14 moradores).
+  Felicidade: ao conversar, o morador diz como se sente. Cada um gosta de um tipo de lugar
+    (floresta, deserto, neve, selva, mar ou caverna), gosta de certos vizinhos e não
+    suporta outros, e não gosta de muita gente perto. Morador feliz vende mais barato.
+  Pilones: um morador feliz vende o pilone do lugar onde mora. Coloque o pilone no lugar
+    certo, com 2 moradores por perto, e clique com o direito para ir ao próximo pilone.
+  Mascate: em algumas manhãs ele visita a vila com 6 itens raros e vai embora ao anoitecer.
+  Festa: em alguns dias a Festeira faz uma festa (ou use um Kit de Festa). Tem confete e os
+    preços caem. Confete também pode ser jogado com o botão direito.
+  Bichos da vila: a Zoóloga vende Licença de Gato, de Cachorro e de Coelho. O bicho mora na
+    casa mais perto.
+
+CHEFES DO FIM (lado Terraria, lote 7)
+  Rainha Geleia: use um Cristal Gelatinoso no Prisma, no modo difícil. Primeiro ela pula e
+    joga cristais, depois abre as asas, voa e mergulha em você.
+  Ídolo Escamado: o Templo Escamado fica enterrado na selva (desça pela escada). Use o
+    Núcleo do Ídolo no altar do meio, depois da Rainha das Vinhas. Ele soca de perto e
+    atira raios dos olhos. No fim, a cabeça se solta e voa.
+  Duque das Marés: use a Isca das Marés no mar ou na praia. Ele cospe bolhas e avança.
+  Imperatriz Prismática: use a Lâmpada Prismática no Prisma, à noite. Ela solta espirais de
+    arco-íris, faz chover lanças e avança. De dia ela fica muito mais forte.
+  Profeta Lunar: use a Tábua Lunar na superfície, depois do Ídolo. Quando ele cai, nascem 4
+    pilares ao seu redor. Derrote 40 criaturas perto de um pilar para tirar o escudo dele,
+    depois derrube o pilar. Quando o último cai, o Arauto Celeste desce.
+  Ectoplasma: espíritos aparecem nas profundezas (abaixo de -40) depois da Rainha das Vinhas.
+  Barras novas: Espectral (verdita + ectoplasma) e Esporita (verdita + 2 cogumelos brilhantes).
+  Armaduras do fim: Espectral, Esporita, Escamada, Tartaruga, Solar, Vórtice, Nebulosa e
+    Pó Estelar (as 4 últimas com fragmentos + barras de lumita).
+  Armas: Ioiô de Cristal, Punho de Pedra, Cajado da Pedra do Sol, Bumerangue das Marés,
+    Rifle de Bolhas, Sabre Prismático, Erupção Solar, Batedor do Vórtice, Lâmina da
+    Nebulosa, Ioiô de Pó Estelar. Asas: de Cristal, das Marés, da Imperatriz.
+  Os 4 fragmentos juntos também fazem o Selo Celeste.
+
+PESCA E INVASÕES (lado Terraria, lote 8)
+  Poder de pesca: a vara + a melhor isca da bolsa + a Poção de Pesca. Mais poder, mordidas
+    mais rápidas, mais caixas e mais chance do peixe do Pescador.
+  Varas: Reforçada (20), de Magma (30, pesca na lava), Dourada (45, presente do Pescador).
+  Iscas na bolsa: de Aprendiz, de Viajante, de Mestre. Elas se gastam ao pescar.
+  Caixas: de Madeira, Ferro e Dourada, e da Selva, Congelada, do Oceano, de Arenito,
+    Corrompida, Prismática e de Obsidiana (lava). Clique com o direito para abrir.
+  Missões: converse com o Pescador. Ele pede um peixe por dia e dá um presente.
+  Poções: Pesca (mais poder), Caixas (o dobro de caixas), Sonar (o peixe fica mais no anzol).
+  Invasões em ondas (no modo difícil; derrote as criaturas para encher a barra):
+    Lua da Colheita: Medalhão de Abóbora, à noite. Chefe: Rei Abóbora.
+    Lua do Inverno: Medalhão de Gelo, à noite. Chefe: Rainha do Gelo.
+    Saqueadores do Mar: Mapa do Tesouro. Chefe: Capitão Saqueador.
+    Visitantes das Estrelas: depois do Ídolo, uma sonda pode aparecer. Se ela fugir, eles vêm.
+      Chefe: Disco Voador.
+    Defesa do Cristal: Cristal Etéreo. Proteja o cristal por 5 ondas. Chefe: Mago Sombrio.
+
+ESTAÇÕES, VIAGEM E O LAGO CINTILANTE (lado Terraria, lote 9)
+  Estações (a até 4 blocos de você, a receita só aparece na mesa perto delas):
+    Forja Infernal (fornalha + obsidiana + minério de magmarita): armas e armaduras de magmarita.
+    Bigorna Arcana (bigorna + barras de mitril ou oricalco): mitril, oricalco, adamantita,
+      titânio, radiante, verdita, espectral, esporita, besouro e tartaruga.
+    Forja Titânica (forja infernal + adamantita ou titânio + ectoplasma): lumita e o fim.
+    Mesa de Alquimia (suporte de poções + garrafa + bancada): as poções novas e as soluções.
+  Poções de viagem: Retorno (volta para a cama), Teletransporte (lugar aleatório longe),
+    Gravidade (3 min: segure Espaço no ar para flutuar, sem dano de queda) e Buraco de
+    Minhoca (vai até a casa de um morador da cidade, um de cada vez).
+  Espelho Mágico: o Retorno que não se gasta. Concha Mágica: leva até a praia mais perto.
+  PDA do Explorador: todos os informativos mesmo na mochila, e volta para casa no clique.
+    Os outros informativos (medidor, relógio, radar...) também valem na mochila agora.
+  Cofrinho e Cofre: cada um guarda as mesmas coisas em todos os que você fizer.
+    O Cocho do Cofrinho abre o cofrinho de qualquer lugar.
+  Botas Terrafagulha: botas de faísca + botas de andar na água + amuleto de obsidiana.
+  Cacho de Balões: as três garrafas de pulo + balão, num espaço só.
+  Aspersor: espalha Solução Pura (ou Vil) longe, onde você mira. Gasta uma por jato.
+  Azagaias: de pedra, de osso (sangra) e do Sol (queima). Jogue com o direito.
+  Lago Cintilante: escondido uns 25 blocos abaixo das planícies e florestas; cristais
+    marcam a escada. Jogue itens nele: as barras trocam de par (cobre/estanho, ouro/platina...),
+    o resto se desmancha no que o fez. Cristal de Vida, Cristal de Mana e Maçã Dourada viram
+    melhorias para sempre: Cristal Vital, Lasca Arcana e Fruta da Égide.
+  Mundo: oásis no deserto (concha, azagaias) e cemitérios com lápides (e zumbis).
+
+DIFICULDADE DO MUNDO, SACOLAS E BESTIÁRIO (lado Terraria, lote 10)
+  Ao criar o mundo: Dificuldade Normal, Especialista ou Mestre (botão na tela de criar).
+    Especialista: monstros com o dobro de vida e 1,5x mais fortes.
+    Mestre: o triplo de vida e o dobro de força.
+    Num mundo que já existe: a Pedra da Ousadia (pedra + diamantes + obsidiana) troca a dificuldade.
+  Sacolas do Tesouro: no Especialista e no Mestre, cada chefe deixa a sua. Clique com o
+    direito: o saque do chefe de novo, esmeraldas e, em 16 chefes, um acessório que só existe
+    ali (Coração de Geleia, Olho Vigia, Véu da Mente, Cachecol do Verme, Núcleo Mecânico...).
+  Relíquias: no Mestre, cada chefe deixa também a sua relíquia dourada para enfeitar a casa.
+  Bestiário (livro + olho de aranha + osso): conta cada criatura que você derrota. Ao achar
+    25%, 50%, 75% e 100% delas você ganha um presente.
+
+ROUPAS, TINTA E CAIXA DE MÚSICA (lado Terraria, lote 11)
+  Roupas de vaidade (lã colorida + linha): Pirata, Mago, Gala, Explorador, Marinheiro,
+    Patrulheiro, Real e Sombras, cada uma com chapéu, casaco, calças e botas. Clique com o
+    direito para vestir por cima da armadura: muda só a aparência, a armadura continua
+    protegendo. O Espelho de Vaidade tira tudo.
+  Tinta: Pincel (um bloco), Rolo de Pintura (3x3) e Raspador (tira a cor). Usa o primeiro
+    corante da barra; um corante pinta 8 blocos. Pegam tinta: lã, tapete, concreto,
+    terracota e vidro.
+  Caixa de Música (tábuas + bloco de notas + ouro): clique nela enquanto uma música toca
+    para gravar. Depois o clique toca a música em repetição ou para.
+
+A MASMORRA E A TINA DE TINGIR (lado Terraria)
+  Masmorra: uma torre de tijolos (azul nas terras frias, verde nas florestas, rosa nas
+    planícies) sobre quatro andares de salas e corredores. Desça pela escada do meio.
+    Lá dentro aparecem esqueletos, invocadores e esqueletos mutantes (e espíritos depois
+    da Rainha das Trepadeiras). Cuidado com os espinhos.
+    Até você derrotar o Rei dos Ossos (Crânio Amaldiçoado, à noite) uma maldição seca a
+    sua vida lá dentro.
+    Os monstros da masmorra às vezes deixam uma Chave Dourada: ela abre um Baú Trancado,
+    com Katana Azul, Escudo do Bastião, Mangual de Ossos e outros tesouros.
+  Tina de Tingir (tábuas + balde de água): clique com um corante na mão para tingir toda a
+    armadura ou roupa que você veste. Com a mão vazia a tinta sai.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

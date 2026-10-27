@@ -4,7 +4,7 @@
 //! Chunk files store block *names* in a small table, so adding or removing blocks never corrupts a world.
 
 use crate::block::{BlockId, BlockRegistry, AIR};
-use crate::chunk::{Chunk, ChunkPos, CHUNK_VOLUME};
+use crate::chunk::{Chunk, ChunkPos, PalettedSection, BASE_SECTION, SECTIONS, SECTION_VOLUME};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -12,7 +12,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 const MAGIC: &[u8; 4] = b"MCRS";
-const VERSION: u16 = 1;
+/// 2: the deep world (1024 blocks tall). 1 was 256 tall (world y 0..256): those chunks load
+/// with `legacy` set and the generator fills in the depths below them.
+const VERSION: u16 = 2;
+const LEGACY_VOLUME: usize = 16 * 16 * 256;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LevelData {
@@ -109,14 +112,27 @@ pub fn encode_chunk(reg: &BlockRegistry, chunk: &Chunk) -> Vec<u8> {
     // Local palette: only names of blocks present in this chunk.
     let mut local: HashMap<BlockId, u16> = HashMap::new();
     let mut names: Vec<&str> = Vec::new();
-    let mut ids = Vec::with_capacity(CHUNK_VOLUME * 2);
-    for &b in &blocks {
+    let mut lid = |b: BlockId| {
         let next = names.len() as u16;
-        let l = *local.entry(b).or_insert_with(|| {
+        *local.entry(b).or_insert_with(|| {
             names.push(&reg.get(b).name);
             next
-        });
-        ids.extend_from_slice(&l.to_le_bytes());
+        })
+    };
+    // One byte per section: 0 + id when it is all one block (sky, deep rock), else 1 and its
+    // blocks go in the compressed stream.
+    let mut kinds = Vec::with_capacity(SECTIONS * 3);
+    let mut ids = Vec::new();
+    for sec in blocks.chunks_exact(SECTION_VOLUME) {
+        if sec.iter().all(|&b| b == sec[0]) {
+            kinds.push(0);
+            kinds.extend_from_slice(&lid(sec[0]).to_le_bytes());
+        } else {
+            kinds.push(1);
+            for &b in sec {
+                ids.extend_from_slice(&lid(b).to_le_bytes());
+            }
+        }
     }
     let mut out = Vec::new();
     out.extend_from_slice(MAGIC);
@@ -127,6 +143,8 @@ pub fn encode_chunk(reg: &BlockRegistry, chunk: &Chunk) -> Vec<u8> {
         out.extend_from_slice(n.as_bytes());
     }
     out.extend_from_slice(&chunk.biomes);
+    out.push(chunk.deep_lo as u8);
+    out.extend_from_slice(&kinds);
     out.extend_from_slice(&lz4_flex::compress_prepend_size(&ids));
     out
 }
@@ -135,6 +153,7 @@ pub fn decode_chunk(reg: &BlockRegistry, pos: ChunkPos, bytes: &[u8]) -> Option<
     if bytes.len() < 8 || &bytes[0..4] != MAGIC {
         return None;
     }
+    let version = u16::from_le_bytes([bytes[4], bytes[5]]);
     let mut i = 6;
     let count = u16::from_le_bytes([bytes[i], bytes[i + 1]]) as usize;
     i += 2;
@@ -147,18 +166,55 @@ pub fn decode_chunk(reg: &BlockRegistry, pos: ChunkPos, bytes: &[u8]) -> Option<
         // Blocks that no longer exist (removed mod) turn into air.
         map.push(reg.id(name).unwrap_or(AIR));
     }
+    let id_of = |l: u16| *map.get(l as usize).unwrap_or(&AIR);
     let biomes: [u8; 256] = bytes.get(i..i + 256)?.try_into().ok()?;
     i += 256;
-    let raw = lz4_flex::decompress_size_prepended(&bytes[i..]).ok()?;
-    if raw.len() != CHUNK_VOLUME * 2 {
-        return None;
-    }
-    let blocks: Vec<BlockId> = raw
-        .chunks_exact(2)
-        .map(|c| *map.get(u16::from_le_bytes([c[0], c[1]]) as usize).unwrap_or(&AIR))
-        .collect();
     let mut chunk = Chunk::new(pos);
-    chunk.set_all_blocks(&blocks);
+    if version < 2 {
+        // The old world was 256 tall from y 0: everything below it is still to be generated.
+        let raw = lz4_flex::decompress_size_prepended(bytes.get(i..)?).ok()?;
+        if raw.len() != LEGACY_VOLUME * 2 {
+            return None;
+        }
+        let mut blocks = vec![AIR; BASE_SECTION * SECTION_VOLUME];
+        blocks.extend(raw.chunks_exact(2).map(|c| id_of(u16::from_le_bytes([c[0], c[1]]))));
+        chunk.set_all_blocks(&blocks);
+        chunk.legacy = true;
+    } else {
+        chunk.deep_lo = (*bytes.get(i)? as usize).min(SECTIONS);
+        i += 1;
+        let mut kinds = Vec::with_capacity(SECTIONS);
+        for _ in 0..SECTIONS {
+            match *bytes.get(i)? {
+                0 => {
+                    kinds.push(Some(id_of(u16::from_le_bytes([*bytes.get(i + 1)?, *bytes.get(i + 2)?]))));
+                    i += 3;
+                }
+                _ => {
+                    kinds.push(None);
+                    i += 1;
+                }
+            }
+        }
+        let raw = lz4_flex::decompress_size_prepended(bytes.get(i..)?).ok()?;
+        if raw.len() != kinds.iter().filter(|k| k.is_none()).count() * SECTION_VOLUME * 2 {
+            return None;
+        }
+        let mut at = 0;
+        for (s, k) in kinds.into_iter().enumerate() {
+            chunk.sections[s] = match k {
+                Some(id) => PalettedSection::filled(id),
+                None => {
+                    let mut sec = PalettedSection::default();
+                    for j in 0..SECTION_VOLUME {
+                        sec.set(j, id_of(u16::from_le_bytes([raw[at], raw[at + 1]])));
+                        at += 2;
+                    }
+                    sec
+                }
+            };
+        }
+    }
     chunk.biomes = biomes;
     chunk.modified = true;
     Some(chunk)
@@ -174,6 +230,7 @@ mod tests {
         let mut c = Chunk::new(ChunkPos::new(2, -7));
         c.set(1, 2, 3, reg.id("dirt").unwrap());
         c.set(4, 200, 9, reg.id("stone").unwrap());
+        c.set_w(5, -700, 9, reg.id("stone").unwrap());
         c.biomes[10] = 3;
         let bytes = encode_chunk(&reg, &c);
         // A registry with a different order still loads the right blocks.
@@ -181,6 +238,7 @@ mod tests {
         let d = decode_chunk(&reg2, c.pos, &bytes).unwrap();
         assert_eq!(d.get(1, 2, 3), reg2.id("dirt").unwrap());
         assert_eq!(d.get(4, 200, 9), reg2.id("stone").unwrap());
+        assert_eq!(d.get_w(5, -700, 9), reg2.id("stone").unwrap());
         assert_eq!(d.biomes[10], 3);
         assert!(bytes.len() < 4000, "{}", bytes.len());
     }

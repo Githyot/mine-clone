@@ -52,7 +52,7 @@ const SUMMONS: &[(&str, &str, &str)] = &[
 
 /// Bosses whose whole fight is in this file (bosses.rs leaves them alone).
 pub fn own_ai(name: &str) -> bool {
-    matches!(name, "deep_worm" | "mech_worm" | "mech_eye" | "bone_king" | "mech_skull" | "celestial_herald")
+    matches!(name, "deep_worm" | "mech_worm" | "mech_eye" | "bone_king" | "mech_skull" | "celestial_herald") || crate::tr_bosses::own_ai(name)
 }
 
 fn is_worm_head(name: &str) -> bool {
@@ -513,6 +513,7 @@ impl Game {
 
     /// What a fallen Etapa 5 boss opens.
     pub(crate) fn t5_boss_defeated(&mut self, name: &str) {
+        self.tr_boss_defeated(name);
         match name {
             "world_breaker" => self.enter_hard_mode(),
             "bone_king" => {
