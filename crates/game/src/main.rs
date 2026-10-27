@@ -86,6 +86,7 @@ mod juice;
 mod menus;
 mod monitor;
 mod multiplayer;
+mod voice;
 mod mods;
 mod lod;
 mod mobs;
@@ -114,6 +115,7 @@ mod ui;
 mod world;
 mod vanilla_extras;
 mod vanilla_mobs;
+mod wagons;
 
 mod embedded {
     include!(concat!(env!("OUT_DIR"), "/embedded.rs"));
@@ -186,6 +188,8 @@ struct Args {
     phase4: bool,
     /// Take the --screenshot of the loading screen instead of the game.
     shot_loading: bool,
+    /// Start with the interface hidden (F1), for clean screenshots.
+    no_hud: bool,
     rain: bool,
     find: Option<String>,
     storm: bool,
@@ -226,6 +230,8 @@ struct Args {
     shader: Option<String>,
     /// Distant terrain past the render distance, in blocks (0 = off).
     lod: Option<i32>,
+    /// Block depth level 0..3 (test screenshots and benchmarks).
+    parallax: Option<u8>,
 }
 
 fn parse_args() -> Args {
@@ -264,6 +270,7 @@ fn parse_args() -> Args {
             "--redstone" => a.redstone = true,
             "--fase4" => a.phase4 = true,
             "--shot-loading" => a.shot_loading = true,
+            "--no-hud" => a.no_hud = true,
             "--rain" => a.rain = true,
             "--find" => a.find = it.next(),
             "--storm" => a.storm = true,
@@ -290,6 +297,7 @@ fn parse_args() -> Args {
             "--open" => a.open = it.next(),
             "--shader" => a.shader = it.next(),
             "--lod" => a.lod = it.next().and_then(|s| s.parse().ok()),
+            "--parallax" => a.parallax = it.next().and_then(|s| s.parse().ok()),
             "--help" | "-h" => {
                 println!(
                     "mine-clone [--world NAME] [--seed N] [--render-distance N] [--size WxH]\n\
@@ -298,7 +306,7 @@ fn parse_args() -> Args {
                      Benchmark: mine-clone --bench [seconds] [--world NAME] (report in bench/)\n\
                      Testing: [--screenshot out.png] [--pos x,y,z] [--look yaw,pitch] [--time ticks] [--fly] [--demo] [--inventory] [--pause] [--debug]\n\
                      \x20        [--survival] [--kit] [--open table|furnace|chest] [--mobs] [--perf] [--prone] [--camera N]\n\
-                     \x20        [--shader NAME|off] [--shaders-menu] [--lod BLOCKS]"
+                     \x20        [--shader NAME|off] [--shaders-menu] [--lod BLOCKS] [--parallax 0-3]"
                 );
                 std::process::exit(0);
             }
@@ -526,6 +534,8 @@ pub(crate) enum Screen {
     Packs,
     /// Moving the keyboard keys (keybinds.rs).
     Keys,
+    /// Voice chat options (voice.rs).
+    Voice,
     /// Shader packs and their options.
     Shaders,
     /// Writing on a sign.
@@ -554,6 +564,8 @@ enum ShaderRow {
     Taa,
     Clouds,
     Emissive,
+    /// Block depth (parallax occlusion mapping).
+    Parallax,
 }
 
 struct Toast {
@@ -636,6 +648,8 @@ struct Game {
     progress: progress::Progress,
     raid: raids::Raid,
     villages: villages::Villages,
+    /// Wagons and carts on the roads and parked (ambience, not saved).
+    wagons: wagons::Wagons,
     map: explore::MapCache,
     /// Saved tame animals not back in the world yet.
     pets_waiting: Vec<pets::PetSave>,
@@ -789,6 +803,7 @@ struct Game {
     grabbed: bool,
     /// Multiplayer: hosting, or a guest in someone else's world.
     net: multiplayer::Net,
+    voice: voice::VoiceState,
 }
 
 fn level_path_hint(base: &Path, name: &str) -> PathBuf {
@@ -808,6 +823,9 @@ impl Game {
         }
         if let Some(l) = args.lod {
             settings.lod_distance = l.max(0);
+        }
+        if let Some(p) = args.parallax {
+            settings.parallax = p.min(3);
         }
         if let Some(sh) = &args.shader {
             settings.shader_pack = if sh == "off" { String::new() } else { sh.clone() };
@@ -977,6 +995,7 @@ impl Game {
         if args.rain || args.storm {
             weather_save = weather::WeatherSave { raining: true, thunder: args.storm, timer: 600.0 };
         }
+        let no_hud = args.no_hud;
         let mut game = Game {
             window: headless::Gpu::new(window),
             renderer: headless::Gpu::new(renderer),
@@ -1036,6 +1055,7 @@ impl Game {
             progress: progress::Progress::new(),
             raid: raids::Raid::default(),
             villages: villages::Villages::default(),
+            wagons: wagons::Wagons::default(),
             map: explore::MapCache::default(),
             pets_waiting: pets::load(&save.dir),
             signs: signs::load(&save.dir),
@@ -1119,7 +1139,7 @@ impl Game {
             show_perf,
             perf: monitor::FpsStats::new(),
             sysmon: monitor::SysMonitor::new(),
-            hide_hud: false,
+            hide_hud: no_hud,
             toast: None,
             packs,
             textures_name,
@@ -1141,6 +1161,7 @@ impl Game {
             screenshot_request: false,
             grabbed: false,
             net: Default::default(),
+            voice: Default::default(),
         };
         game.apply_shader();
         if start_dim != voxel::worldgen::Dim::Overworld {
@@ -1215,6 +1236,7 @@ impl Game {
         match std::env::var("MC_SCREEN").as_deref() {
             Ok("options") => game.set_screen(Screen::Options),
             Ok("keys") => game.set_screen(Screen::Keys),
+            Ok("voice") => game.set_screen(Screen::Voice),
             _ => {}
         }
         game
@@ -1278,6 +1300,24 @@ impl Game {
             (Some(p), None) => p.def.name.clone(),
             (None, None) => "Desligado".to_string(),
         }
+    }
+
+    /// Block depth for the terrain shader (`Globals::pom`). Off on the "Rápido" quality. A shader
+    /// pack can scale it with an option named "profundidade" (1 = as chosen in the menu).
+    fn parallax_uniform(&self) -> [f32; 4] {
+        let depth = settings::PARALLAX_LEVELS[self.settings.parallax.min(3) as usize].1;
+        if depth <= 0.0 || self.settings.shader_quality == ShaderQuality::Fast {
+            return [0.0; 4];
+        }
+        let scale = self
+            .active_shader()
+            .and_then(|p| {
+                let i = p.def.options.iter().take(shaderpack::MAX_OPTIONS).position(|o| o.name() == "profundidade")?;
+                Some(p.values(self.settings.shader_options.get(&p.id))[i])
+            })
+            .unwrap_or(1.0);
+        // Steps grow with the depth; the cracks' own shadows come with the sun shadows.
+        [depth * scale.max(0.0), 10.0 + depth * 60.0, 20.0, (self.settings.shadows > 0) as u8 as f32]
     }
 
     /// Terrain shader extras switched on by the built-in "Realçado" pack.
@@ -1467,6 +1507,9 @@ impl Game {
         if self.net_key(code, pressed) {
             return;
         }
+        if !repeat && self.voice_key(code) {
+            return;
+        }
         if self.screen == Screen::CreateWorld && code != KeyCode::Escape {
             self.form_key(code);
             return;
@@ -1492,7 +1535,7 @@ impl Game {
                     self.extras.book = None;
                     self.set_screen(Screen::Playing);
                 }
-                Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs | Screen::Keys => self.menu_back(),
+                Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice => self.menu_back(),
                 Screen::Loading | Screen::Dead | Screen::Title => {}
             },
             KeyCode::KeyE => match self.screen {
@@ -1654,6 +1697,7 @@ impl Game {
             self.plugins_tick(dt);
         }
         self.net_update(dt);
+        self.voice_update(dt);
         // A guest in the host's dimension gets the world's own changes from the host.
         let sim = self.net_simulates();
         if self.world_open && self.screen != Screen::Loading {
@@ -1693,6 +1737,7 @@ impl Game {
             self.update_fishing(dt);
             self.update_carts(dt);
             self.update_boats(dt);
+            self.update_wagons(dt);
             if sim {
                 self.update_redstone(dt);
                 self.update_random_ticks(dt);
@@ -1918,7 +1963,7 @@ impl Game {
 
         // Singleplayer: the pause menu (and the option screens opened from it) stop the world.
         // With friends in it, it keeps going.
-        let paused = self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Options | Screen::Controls | Screen::Packs | Screen::Keys | Screen::Shaders);
+        let paused = self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Options | Screen::Controls | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders);
         if !paused && self.net.rules.daylight_cycle {
             self.time_of_day = (self.time_of_day + dt * 20.0) % 24000.0;
         }
@@ -1957,7 +2002,7 @@ impl Game {
             }
             self.update_mods(if self.args.screenshot.is_some() { 0.0 } else { dt });
         }
-        let menus_stop = !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Keys | Screen::Shaders);
+        let menus_stop = !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders);
         if self.world_open && sim && self.screen != Screen::Loading && !menus_stop {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let daylight = self.tr_daylight((a.sin() * 2.2 + 0.45).clamp(0.0, 1.0));
@@ -2511,6 +2556,15 @@ impl Game {
             (format!("Suavização TAA: {}{}", onoff(self.settings.taa), if cur.is_none() { " (com shader)" } else { "" }), ShaderRow::Taa, false),
             (format!("Nuvens: {}", if !self.settings.show_clouds { "Não" } else if self.settings.layered_clouds { "Em camadas" } else { "Simples" }), ShaderRow::Clouds, false),
             (format!("Minérios brilhantes: {}", onoff(self.settings.emissive_textures)), ShaderRow::Emissive, false),
+            (
+                format!(
+                    "Profundidade: {}{}",
+                    settings::PARALLAX_LEVELS[self.settings.parallax.min(3) as usize].0,
+                    if self.settings.parallax > 0 && self.settings.shader_quality == ShaderQuality::Fast { " (só Bonito)" } else { "" }
+                ),
+                ShaderRow::Parallax,
+                false,
+            ),
             (mark(cur.is_none(), "Desligado"), ShaderRow::Pack(None), false),
         ];
         for (i, p) in self.shader_packs.iter().enumerate() {
@@ -2542,7 +2596,7 @@ impl Game {
         let left: Vec<usize> = (0..rows.len()).filter(|&i| !rows[i].2).collect();
         let right: Vec<usize> = (0..rows.len()).filter(|&i| rows[i].2).collect();
         // The first rows (settings) always show; the pack list scrolls with the wheel.
-        let fixed = 10.min(left.len());
+        let fixed = 11.min(left.len());
         let scroll_max = left.len().saturating_sub(fits);
         self.shader_scroll = self.shader_scroll.min(scroll_max);
         let mut hit = None;
@@ -2631,6 +2685,7 @@ impl Game {
                 };
             }
             ShaderRow::Emissive => self.settings.emissive_textures = !self.settings.emissive_textures,
+            ShaderRow::Parallax => self.settings.parallax = (self.settings.parallax.min(3) + 1) % 4,
             ShaderRow::Lod => {
                 let d = &lod::DISTANCES;
                 let cur = d.iter().position(|&x| x >= self.settings.lod_distance).unwrap_or(0);
@@ -3318,6 +3373,17 @@ impl Game {
                 self.world.set_block(q + IVec3::Y * 2, g(ores[(i + 3) as usize]));
             }
         }
+        // MC_POM=1: a wall of rough blocks right in front, for the block depth option.
+        if std::env::var("MC_POM").is_ok() {
+            let wall = ["cobblestone", "stone_bricks", "bricks", "mossy_cobblestone", "deepslate_tiles", "oak_log", "andesite"];
+            for i in -3..=3 {
+                let q = p + dir * 2 + side * i;
+                let ground = self.world.surface_y(q.x, q.z).unwrap_or(p.y - 1);
+                for h in 0..3 {
+                    self.world.set_block(IVec3::new(q.x, ground + 1 + h, q.z), g(wall[(i + 3) as usize]));
+                }
+            }
+        }
     }
 
     /// Raindrops splashing on the ground and on water around the player.
@@ -3576,7 +3642,7 @@ impl Game {
             let wave = 0.85 + 0.15 * (self.now as f32 * 4.0).sin();
             self.ui.rect(0.0, 0.0, w, h, [110, 30, 170, (haze * wave * 170.0) as u8]);
         }
-        let menu_screen = self.is_title_screen() || matches!(self.screen, Screen::Options | Screen::Packs | Screen::Keys);
+        let menu_screen = self.is_title_screen() || matches!(self.screen, Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice);
         if !self.hide_hud && !matches!(self.screen, Screen::Paused | Screen::Dead | Screen::Shaders) && !menu_screen {
             // Crosshair.
             if self.screen == Screen::Playing {
@@ -3718,6 +3784,7 @@ impl Game {
         }
 
         self.draw_net_overlay(w, h);
+        self.draw_voice_overlay();
         match self.screen {
             Screen::Paused => {
                 self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 140]);
@@ -3791,7 +3858,7 @@ impl Game {
             Screen::Sign if self.cmdblocks.edit.is_some() => self.draw_cmdblock_editor(w, h),
             Screen::Sign => self.draw_sign_editor(w, h),
             Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer => self.draw_title_menus(w, h, mouse),
-            Screen::Options | Screen::Packs | Screen::Keys => {
+            Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice => {
                 if self.world_open {
                     self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 150]);
                 } else {
@@ -3802,6 +3869,8 @@ impl Game {
                     self.draw_options(w, h, mouse);
                 } else if self.screen == Screen::Keys {
                     self.draw_keys(w, h, mouse);
+                } else if self.screen == Screen::Voice {
+                    self.draw_voice_options(w, h, mouse);
                 } else {
                     self.draw_packs(w, h, mouse);
                 }
@@ -4109,7 +4178,7 @@ impl Game {
                         }
                         Screen::Shaders => self.set_screen(Screen::Paused),
                         Screen::Dead | Screen::Title => {}
-                        Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs | Screen::Keys => self.menu_back(),
+                        Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice => self.menu_back(),
                         _ => self.set_screen(Screen::Playing),
                     }
                 }
@@ -4286,6 +4355,7 @@ impl Game {
             weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else if end { 2.0 } else { self.mod_dim_uniform() }, self.night_vision()],
             dyn_lights: self.dynamic_lights(eye, block),
             extra: [self.settings.layered_clouds as u8 as f32, self.settings.emissive_textures as u8 as f32, 0.0, self.season_uniform()],
+            pom: self.parallax_uniform(),
             ..Default::default()
         };
         // Shadows and reflections (scenefx.rs); the renderer fills in the rest of the globals.
@@ -4412,6 +4482,7 @@ impl Game {
         }
         items.extend(self.cart_instances(block));
         items.extend(self.boat_instances(block));
+        items.extend(self.wagon_instances(block, rd + 16.0));
         items.extend(self.aircraft_instances(block));
         // The player figure in the inventory, in 3D, turning its head toward the mouse.
         let mut figure_backdrop = None;

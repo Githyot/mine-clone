@@ -274,7 +274,7 @@ fn readme() -> String {
          \x20   ],\n\
          )\n\n\
          Até {max} opções. No shader, opt(0) é a primeira, opt(1) a segunda, e assim por diante.\n\
-         Opções Bool valem 1.0 (sim) ou 0.0 (não). Os valores escolhidos ficam em settings.ron.\n\n\
+         Opções Bool valem 1.0 (sim) ou 0.0 (não). Os valores escolhidos ficam em settings.ron.\n         Uma opção Float chamada \"profundidade\" multiplica a profundidade nos blocos\n         (Esc > Shaders > Profundidade): 1.0 = como no menu, 2.0 = o dobro, 0.0 = sem.\n\n\
          post.wgsl\n\
          ---------\n\
          O jogo desenha o mundo (céu, terreno, mobs, nuvens, água) numa textura, roda o seu\n\

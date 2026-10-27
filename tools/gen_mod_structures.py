@@ -194,13 +194,16 @@ def to_layers(c):
     return [(ch, n) for n, ch in pal.items()], layers
 
 
-def struct(name, biomes, canvas, spacing, chance, loot=(), sink=0, foundation=None, place=None, rough=None, mobs=()):
+def struct(name, biomes, canvas, spacing, chance, loot=(), sink=0, foundation=None, place=None, rough=None, mobs=(), props=()):
+    """`props` are things the game places that are not blocks: (kind, (x, y, z), facing in
+    degrees, 0 = +Z / south, 90 = +X / east), e.g. a parked wagon (crates/game/src/wagons.rs)."""
     canvas.trim_top()
     palette, layers = to_layers(canvas)
     return {
         "name": name, "biomes": list(biomes), "spacing": spacing, "chance": chance, "sink": sink,
         "foundation": foundation, "palette": palette, "layers": layers, "loot": list(loot),
         "place": place, "rough": rough, "mobs": list(mobs), "size": (canvas.w, canvas.h, canvas.d),
+        "props": list(props),
     }
 
 
@@ -738,6 +741,7 @@ def village(name, biomes, st, seed, C=9, mobs=None, spacing=36, chance=0.5, roug
         # Face the main roads where we can.
         f = rng.choice([E if i < 2 else W, S if j < 2 else N])
         if what == "well":
+            plaza = (x0, z0)
             c.box(x0, 0, z0, x1, 0, z1, st["plaza"])
             well(c, x0 + C // 2, z0 + C // 2, st)
             for (x, z) in ((x0, z0), (x1, z0), (x0, z1), (x1, z1)):
@@ -819,7 +823,13 @@ def village(name, biomes, st, seed, C=9, mobs=None, spacing=36, chance=0.5, roug
                     ("emerald", 1, 4, 0.45), ("iron_ingot", 1, 3, 0.4), ("wheat_seeds", 2, 8, 0.6), ("leather", 1, 3, 0.3),
                     ("iron_hoe", 1, 1, 0.15), ("cooked_porkchop", 1, 3, 0.3)]
     mobs = mobs or [("npc_farmer", 2), ("npc_guard", 1), ("npc_merchant", 1)]
-    return struct(name, biomes, c, spacing, chance, loot=loot, sink=1, foundation=st["fill"], rough=rough, mobs=mobs)
+    # A farm cart left on the square, and the four ends of the main roads, where travelling
+    # wagons come in and drive through (crates/game/src/wagons.rs).
+    mid = road[0] + 1.5
+    props = [("hay_cart", (plaza[0] + 1.4, 1.0, plaza[1] + 3.0), 0.0),
+             ("road", (0.5, 1.0, mid), 90.0), ("road", (size - 0.5, 1.0, mid), 270.0),
+             ("road", (mid, 1.0, 0.5), 0.0), ("road", (mid, 1.0, size - 0.5), 180.0)]
+    return struct(name, biomes, c, spacing, chance, loot=loot, sink=1, foundation=st["fill"], rough=rough, mobs=mobs, props=props)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -908,6 +918,8 @@ def ron(structs):
             out.append(f'        rough: {s["rough"]},')
         if s["mobs"]:
             out.append("        mobs: [" + ", ".join(f'("{m}", {k})' for m, k in s["mobs"]) + "],")
+        if s.get("props"):
+            out.append("        props: [" + ", ".join(f'(kind: "{k}", at: ({x:.1f}, {y:.1f}, {z:.1f}), yaw: {a:.1f})' for k, (x, y, z), a in s["props"]) + "],")
         out.append("        palette: [" + ", ".join(f"('{k}', \"{v}\")" for k, v in s["palette"]) + "],")
         out.append("        layers: [")
         for layer in s["layers"]:
@@ -2739,22 +2751,10 @@ def trader_camp():
     rng = random.Random(47)
     c = Canvas(17, 8, 15)
     patch(c, rng, ["rocky_dirt", "gravel", "dirt", "rocky_dirt"], clear=7)
-    # Wagon.
-    c.box(2, 2, 2, 8, 2, 5, "oak_planks")
-    for (x, z) in ((3, 1), (7, 1), (3, 6), (7, 6)):
-        c.set(x, 1, z, "dark_oak_log")
-    c.set(2, 3, 2, "oak_fence")
-    for x in range(2, 9):
-        c.set(x, 3, 2, "white_wool")
-        c.set(x, 3, 5, "white_wool")
-        c.set(x, 4, 2, "white_wool")
-        c.set(x, 4, 5, "white_wool")
-        c.set(x, 5, 3, "white_wool")
-        c.set(x, 5, 4, "white_wool")
-    c.set(4, 3, 3, "chest")
-    c.set(6, 3, 4, "hay_block")
-    c.line(9, 2, 3, 12, 1, 3, "oak_fence")
-    c.line(9, 2, 4, 12, 1, 4, "oak_fence")
+    # The wagon itself is a real one the game parks here (props below); its goods sit beside it.
+    c.set(3, 1, 7, "chest")
+    c.set(6, 1, 7, "hay_block")
+    c.set(7, 1, 7, "oak_planks")
     # Stalls.
     for (x0, z0, col) in ((2, 9, "yellow_wool"), (8, 9, "lime_wool"), (12, 3, "light_blue_wool")):
         for (dx, dz) in ((0, 0), (3, 0), (0, 2), (3, 2)):
@@ -2771,7 +2771,8 @@ def trader_camp():
     c.set(13, 1, 9, "oak_planks")
     return struct("acampamento_de_mercador", ["Savanna", "Plains", "Desert", "Birch Forest"], c, 14, 0.4,
                   loot=small(("emerald", 2, 6, 0.7), ("apple", 2, 5, 0.5), ("lute", 1, 1, 0.1), ("leather_backpack", 1, 1, 0.1)),
-                  sink=1, foundation="dirt", mobs=[("goblin_trader", 1), ("npc_merchant", 1)])
+                  sink=1, foundation="dirt", mobs=[("goblin_trader", 1), ("npc_merchant", 1)],
+                  props=[("covered_wagon", (5.5, 1.0, 4.0), 90.0)])
 
 
 @group("voyager")
@@ -3209,30 +3210,15 @@ def broken_wagon():
     for x in range(0, 13):
         c.set(x, 0, 5, "gravel")
         c.set(x, 0, 6, "dirt")
-    c.box(3, 2, 3, 8, 2, 7, "oak_planks")
-    c.set(3, 2, 7, "oak_slab")
-    c.set(8, 2, 3, AIR)
-    for (x, z) in ((4, 2), (7, 2), (4, 8)):
-        c.set(x, 1, z, "dark_oak_log")
-    c.set(7, 1, 9, "dark_oak_log")
-    c.set(8, 1, 9, "dark_oak_log")
-    for x in (3, 8):
-        c.set(x, 3, 3, "oak_fence")
-        c.set(x, 3, 7, "oak_fence")
-    for x in range(3, 9):
-        c.set(x, 4, 3, "white_wool")
-        if x < 6:
-            c.set(x, 4, 7, "white_wool")
-        if x < 7:
-            c.set(x, 5, 5, "white_wool")
-    c.set(5, 3, 5, "chest")
-    c.set(6, 3, 4, "hay_block")
-    c.set(10, 1, 3, "pumpkin")
+    # A real wagon lies broken by the road (props below): a wheel off, tipped on its side.
+    c.set(9, 1, 2, "chest")
+    c.set(10, 1, 8, "pumpkin")
     c.set(11, 1, 7, "melon")
-    c.set(10, 1, 8, "hay_block")
-    c.line(9, 2, 4, 12, 1, 4, "oak_fence")
+    c.set(10, 1, 9, "hay_block")
+    c.set(2, 1, 8, "oak_slab")
     return struct("carroca_quebrada", ["Plains", "Savanna", "Forest", "Birch Forest"], c, 12, 0.35,
-                  loot=small(("bread", 2, 6, 0.6), ("wheat", 2, 8, 0.5), ("emerald", 1, 2, 0.3), ("leather_backpack", 1, 1, 0.05)), sink=1, foundation="dirt")
+                  loot=small(("bread", 2, 6, 0.6), ("wheat", 2, 8, 0.5), ("emerald", 1, 2, 0.3), ("leather_backpack", 1, 1, 0.05)), sink=1, foundation="dirt",
+                  props=[("broken_wagon", (6.0, 1.0, 3.2), 80.0)])
 
 
 NETHER_LOOT = [("gold_ingot", 2, 6, 0.6), ("gold_nugget", 4, 12, 0.6), ("quartz", 3, 9, 0.6), ("blaze_rod", 1, 2, 0.3),

@@ -94,6 +94,11 @@ impl Remote {
         let p = Vec3::from(state.pos);
         Remote { name, shown: p, shown_yaw: state.yaw, state, anim: player_model::Animator::default() }
     }
+
+    /// How open their mouth is while they talk (voice.rs).
+    pub(crate) fn set_talk(&mut self, open: f32) {
+        self.anim.talk = open;
+    }
 }
 
 struct ChatLine {
@@ -174,6 +179,8 @@ struct GuestInfo {
     view: i32,
     /// Containers as last sent to (or heard from) this guest.
     containers: HashMap<IVec3, u64>,
+    /// Voice chat: the group it listens to (0 = none) and whether its voice is on.
+    voice: (u8, bool),
 }
 
 /// A dimension the host is not in, kept on disk for guests who are.
@@ -367,6 +374,10 @@ impl Game {
             swing: self.anim.swing,
             held: name(&self.held_stack()),
             armor: std::array::from_fn(|i| name(&self.surv.armor[i])),
+            chest: match self.surv.open {
+                Open::Chest(p) if self.screen == Screen::Inventory => Some(p.to_array()),
+                _ => None,
+            },
         }
     }
 
@@ -617,6 +628,45 @@ impl Game {
         self.send_chat(line);
     }
 
+    /// Voice chat: tell the network who hears whom. The host keeps the table (its own place
+    /// and each guest's, from where they stand and what they chose); a guest tells the host
+    /// what it chose whenever that changes.
+    pub(crate) fn voice_routes(&mut self) {
+        let vs = &self.settings.voice;
+        let on = vs.mode != crate::voice::VoiceMode::Off && self.world_open && !self.net.server;
+        let group = if vs.mode == crate::voice::VoiceMode::Group { vs.group } else { 0 };
+        match &self.net.mode {
+            Mode::Host(h) => {
+                let me = net::Listener { dim: self.dim.as_u8(), pos: self.body.eye().to_array(), group, on };
+                h.host.set_voice_listener(net::HOST_CONN, (on && self.audio.is_some()).then_some(me));
+                for (id, g) in &h.guests {
+                    let l = g.state.as_ref().filter(|_| g.welcomed && g.voice.1).map(|s| net::Listener { dim: s.dim, pos: [s.pos[0], s.pos[1] + 1.6, s.pos[2]], group: g.voice.0, on: true });
+                    h.host.set_voice_listener(*id, l);
+                }
+            }
+            Mode::Guest(g) if g.joined => {
+                if self.voice.told != Some((group, on)) {
+                    g.guest.send(&ToHost::VoiceSet { group, on });
+                    self.voice.told = Some((group, on));
+                }
+            }
+            _ => self.voice.told = None,
+        }
+    }
+
+    pub(crate) fn net_guest_joined(&self) -> bool {
+        matches!(&self.net.mode, Mode::Guest(g) if g.joined)
+    }
+
+    /// Where our voice goes and others' comes from, in the game we are in.
+    pub(crate) fn net_voice_link(&self) -> Option<(net::VoiceOut, crossbeam_channel::Receiver<Vec<u8>>)> {
+        match &self.net.mode {
+            Mode::Host(h) => Some((h.host.voice_out(), h.host.voice_in())),
+            Mode::Guest(g) if g.joined => Some((g.guest.voice_out(), g.guest.voice_in())),
+            _ => None,
+        }
+    }
+
     /// Our own player id in the game we are in.
     pub(crate) fn net_my_id(&self) -> u32 {
         match &self.net.mode {
@@ -804,7 +854,7 @@ impl Game {
                     log::info!("guest {id} connected from {addr}");
                     self.host()
                         .guests
-                        .insert(id, GuestInfo { name: String::new(), welcomed: false, state: None, sent: HashSet::new(), view: 8, containers: HashMap::new() });
+                        .insert(id, GuestInfo { name: String::new(), welcomed: false, state: None, sent: HashSet::new(), view: 8, containers: HashMap::new(), voice: (0, false) });
                 }
                 HostEvent::Left(id, why) => {
                     if let Some(g) = self.host().guests.remove(&id) {
@@ -1031,6 +1081,11 @@ impl Game {
                 let _ = std::fs::create_dir_all(&dir);
                 if let Err(e) = std::fs::write(dir.join(format!("{name}.ron")), data) {
                     log::error!("could not keep {name}'s things: {e}");
+                }
+            }
+            ToHost::VoiceSet { group, on } => {
+                if let Some(g) = self.host().guests.get_mut(&id) {
+                    g.voice = (group.min(9), on);
                 }
             }
         }
