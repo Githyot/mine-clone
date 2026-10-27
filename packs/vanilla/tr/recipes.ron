@@ -183,6 +183,8 @@
         (pattern: ["BKB", "P P"], key: {'B': "bone", 'K': "book", 'P': "oak_planks"}, result: "bewitching_table"),
         (pattern: ["SCS", "GGG"], key: {'S': "fallen_star", 'C': "clock", 'G': "gold_ingot"}, result: "enchanted_sundial"),
         (pattern: [" I ", " I ", " S "], key: {'I': "radiant_ingot", 'S': "stick"}, result: "radiant_blade"),
+        (pattern: ["GBG", "SDS", "SSS"], key: {'G': "gold_ingot", 'B': "book", 'D': "diamond", 'S': "stone_bricks"}, result: "research_altar"),
+        (pattern: ["GSG", "SDS", "SSS"], key: {'G': "gold_ingot", 'S': "stone_bricks", 'D': "fallen_star"}, result: "power_stone"),
     ],
     shapeless: [
         (ingredients: ["lens", "lens", "lens", "lens", "lens", "lens", "spider_eye"], result: "eye_lure"),

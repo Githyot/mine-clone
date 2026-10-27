@@ -62,6 +62,15 @@ struct Saved {
     /// Heart lanterns, candles, banners placed (tr_comfort.rs).
     #[serde(default)]
     comfort: Vec<((i32, i32, i32), u8)>,
+    /// Journey research (tr_journey.rs).
+    #[serde(default)]
+    journey: bool,
+    #[serde(default)]
+    research: Vec<(String, u32)>,
+    #[serde(default)]
+    journey_god: bool,
+    #[serde(default)]
+    journey_spawn: usize,
 }
 
 #[derive(Default)]
@@ -81,6 +90,7 @@ pub struct Tr {
     pub(crate) dungeon: crate::tr_dungeon::Dungeon,
     pub(crate) comfort: crate::tr_comfort::Comfort,
     pub(crate) minis: crate::tr_minis::Minis,
+    pub(crate) journey: crate::tr_journey::Journey,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -111,6 +121,10 @@ impl Tr {
             tr.style.dyes[k] = *d;
         }
         tr.style.boxes = s.music_boxes.into_iter().map(|((x, y, z), t)| (glam::IVec3::new(x, y, z), t)).collect();
+        tr.journey.on = s.journey;
+        tr.journey.research = s.research.into_iter().collect();
+        tr.journey.god = s.journey_god;
+        tr.journey.spawn = s.journey_spawn;
         tr.comfort.placed = s.comfort.into_iter().map(|((x, y, z), k)| (glam::IVec3::new(x, y, z), k)).collect();
         tr.town.animals = s.animals.into_iter().map(|(k, (x, y, z))| (k, Vec3::new(x, y, z))).collect();
         tr
@@ -136,6 +150,10 @@ impl Tr {
             music_boxes: self.style.boxes.iter().map(|(p, t)| ((p.x, p.y, p.z), t.clone())).collect(),
             animals: self.town.animals.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
             comfort: self.comfort.placed.iter().map(|(p, k)| ((p.x, p.y, p.z), *k)).collect(),
+            journey: self.journey.on,
+            research: self.journey.research.iter().map(|(k, v)| (k.clone(), *v)).collect(),
+            journey_god: self.journey.god,
+            journey_spawn: self.journey.spawn,
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
@@ -165,6 +183,7 @@ impl Game {
         self.update_tr_dungeon(dt);
         self.update_tr_comfort(dt);
         self.update_tr_minis(dt);
+        self.update_tr_journey();
     }
 
     /// Right click with an item of this file; true when it did something.

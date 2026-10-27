@@ -729,6 +729,16 @@ ESPADAS DO FIM, SENTINELAS, GLADIADOR E MONTARIAS (lado Terraria)
     cenoura dourada + pé de coelho), Sela de Tartaruga (rápida na água) e Chave do Disco
     (do Disco Voador: voa sem limite, Espaço sobe).
 
+MODO JORNADA (lado Terraria)
+  Altar da Pesquisa (ouro, livro, diamante, tijolos de pedra): na primeira vez ele pergunta
+    se o mundo vira Mundo Jornada (para sempre). Depois, clique com uma pilha na mão para
+    pesquisar: 1 ferramenta ou armadura, 10 poções, 50 de qualquer outra coisa. Item
+    pesquisado: agache (Shift) e clique para ganhar uma pilha cheia, quantas vezes quiser.
+    Com a mão vazia mostra quantos itens você já pesquisou.
+  Pedra dos Poderes (só no Mundo Jornada): agachado escolhe o poder, clique usa: amanhecer,
+    meio-dia, anoitecer, meia-noite, congelar o tempo, chuva, invencível e quantidade de
+    monstros (normal, poucos, nenhum, muitos).
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

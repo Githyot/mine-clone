@@ -4654,6 +4654,62 @@ SHAPELESS_L14 = [
 ]
 
 
+# ==============================================================================================
+# Lote 15 (second round): Journey research. The research altar takes items to research them
+# (and gives copies of what is researched); the stone of powers sets the time, the rain,
+# invincibility and how many monsters come
+# ==============================================================================================
+
+def block_defs_l15():
+    return [
+        '(name: "research_altar", display_name: Some("Altar da Pesquisa"), light: 9, hardness: 4.0, tool: Some(Pickaxe), textures: (top: Some("research_altar_top"), side: Some("research_altar_side"), bottom: Some("research_altar_bottom")))',
+        '(name: "power_stone", display_name: Some("Pedra dos Poderes"), light: 11, hardness: 4.0, tool: Some(Pickaxe), textures: (top: Some("power_stone_top"), side: Some("power_stone_side"), bottom: Some("research_altar_bottom")))',
+    ]
+
+
+def blocks_l15():
+    stone = pal("#2a2a34", "#44445a", "#64648a", "#8a8ab4", "#c0c0e8")
+    gold = pal("#5a3a08", "#a07c16", "#d4aa18", "#f4ca28", "#fff0a0")
+    sky = pal("#0a2a4a", "#1a4a8a", "#3a8ad4", "#8ad0ff", "#ffffff")
+
+    def altar_top(x, y):
+        d = ((x - 7.5) ** 2 + (y - 7.5) ** 2) ** 0.5
+        return 0.95 if d < 2.2 else (0.55 if abs(d - 5) < 0.7 else (0.15 if min(x, y, 15 - x, 15 - y) == 0 else 0.35))
+
+    def altar_side(x, y):
+        rim = y in (0, 1, 14, 15)
+        rune = 4 <= y <= 11 and (x + y) % 6 == 0 and 2 < x < 13
+        return 0.85 if rune else (0.6 if rim else 0.35 + 0.1 * ((x * 3 + y) % 5 == 0))
+
+    out = {}
+    top = block_noise(180, altar_top, stone)
+    for y in range(N):
+        for x in range(N):
+            if ((x - 7.5) ** 2 + (y - 7.5) ** 2) ** 0.5 < 2.2:
+                top[y, x, :3] = gold[3]
+    out["research_altar_top"] = top
+    out["research_altar_side"] = block_noise(181, altar_side, stone)
+    out["research_altar_bottom"] = block_noise(182, lambda x, y: 0.4, stone)
+
+    def power_top(x, y):
+        dx, dy = abs(x - 7.5), abs(y - 7.5)
+        return 0.95 - 0.08 * (dx + dy) if dx + dy < 6 else 0.2
+
+    out["power_stone_top"] = block_noise(183, power_top, sky)
+    ps = block_noise(184, altar_side, stone)
+    for y in range(4, 12):
+        for x in range(6, 10):
+            ps[y, x, :3] = sky[3 if 6 <= y <= 9 else 2]
+    out["power_stone_side"] = ps
+    return out
+
+
+SHAPED_L15 = [
+    (["GBG", "SDS", "SSS"], {"G": "gold_ingot", "B": "book", "D": "diamond", "S": "stone_bricks"}, "research_altar", 1),
+    (["GSG", "SDS", "SSS"], {"G": "gold_ingot", "S": "stone_bricks", "D": "fallen_star"}, "power_stone", 1),
+]
+
+
 def write_skins(skins):
     parsed, layers = g.parse_mobs(str(OUT / "mobs.ron"))
     assert set(parsed) == set(skins), sorted(set(parsed) ^ set(skins))
@@ -4671,9 +4727,9 @@ def write_skins(skins):
 
 def main():
     items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8() + items_l9() + items_l10() + items_l11() + items_l12() + items_comfort() + items_l13() + items_l14()
-    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7 + BLOCKS_L9 + block_defs_l10() + BLOCKS_L11 + block_defs_l12() + block_defs_comfort() + block_defs_l13()
+    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7 + BLOCKS_L9 + block_defs_l10() + BLOCKS_L11 + block_defs_l12() + block_defs_comfort() + block_defs_l13() + block_defs_l15()
     mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6() + mobs_l7() + mobs_l8() + mobs_l13() + mobs_l14()
-    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9 + SHAPED_L10 + SHAPED_L11 + SHAPED_L12 + SHAPED_COMFORT + SHAPED_L13 + SHAPED_L14, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9 + SHAPELESS_L10 + SHAPELESS_L11 + SHAPELESS_L12 + SHAPELESS_COMFORT + SHAPELESS_L13 + SHAPELESS_L14, SMELTING_L2 + SMELTING_L3)
+    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9 + SHAPED_L10 + SHAPED_L11 + SHAPED_L12 + SHAPED_COMFORT + SHAPED_L13 + SHAPED_L14 + SHAPED_L15, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9 + SHAPELESS_L10 + SHAPELESS_L11 + SHAPELESS_L12 + SHAPELESS_COMFORT + SHAPELESS_L13 + SHAPELESS_L14, SMELTING_L2 + SMELTING_L3)
     structures_l3()
     skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6(), **skins_l7(), **skins_l8(), **skins_l13(), **skins_l14()})
     pics = []
@@ -4681,7 +4737,7 @@ def main():
         im = gt.to_image(img)
         im.save(os.path.join(gi.ITEM_DIR, name + ".png"))
         pics.append(im)
-    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7(), **blocks_l9(), **blocks_l10(), **blocks_l11(), **blocks_l12(), **blocks_comfort(), **blocks_l13()}
+    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7(), **blocks_l9(), **blocks_l10(), **blocks_l11(), **blocks_l12(), **blocks_comfort(), **blocks_l13(), **blocks_l15()}
     for name, img in all_blocks.items():
         im = gt.to_image(img)
         im.save(os.path.join(gi.BLOCK_DIR, name + ".png"))

@@ -1010,6 +1010,7 @@ impl Game {
                     "locked_chest" => return self.use_locked_chest(hit.block),
                     "safe" => return self.open_bank(1),
                     n if crate::tr_comfort::is_station(n) => return self.use_comfort_station(n),
+                    n if crate::tr_journey::is_block(n) => return self.use_journey_block(n),
                     n if n.starts_with("pylon_") => {
                         let kind = n.trim_start_matches("pylon_").to_string();
                         return self.use_pylon(hit.block, &kind);

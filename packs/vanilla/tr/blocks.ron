@@ -118,4 +118,6 @@
     (name: "trophy_obsidilith", display_name: Some("Troféu: Obsidilito"), shape: Banner, solid: false, transparency: Cutout, hardness: 1.0, tool: Some(Axe), textures: (all: Some("trophy_obsidilith"))),
     (name: "trophy_void_blossom", display_name: Some("Troféu: Flor do Vazio"), shape: Banner, solid: false, transparency: Cutout, hardness: 1.0, tool: Some(Axe), textures: (all: Some("trophy_void_blossom"))),
     (name: "trophy_void_guardian", display_name: Some("Troféu: Guardião do Vazio"), shape: Banner, solid: false, transparency: Cutout, hardness: 1.0, tool: Some(Axe), textures: (all: Some("trophy_void_guardian"))),
+    (name: "research_altar", display_name: Some("Altar da Pesquisa"), light: 9, hardness: 4.0, tool: Some(Pickaxe), textures: (top: Some("research_altar_top"), side: Some("research_altar_side"), bottom: Some("research_altar_bottom"))),
+    (name: "power_stone", display_name: Some("Pedra dos Poderes"), light: 11, hardness: 4.0, tool: Some(Pickaxe), textures: (top: Some("power_stone_top"), side: Some("power_stone_side"), bottom: Some("research_altar_bottom"))),
 ])

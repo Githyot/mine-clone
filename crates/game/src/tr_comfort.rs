@@ -112,7 +112,7 @@ impl Game {
         if self.has_effect(CALM) {
             mult *= 0.4;
         }
-        self.mobs.spawn_mult = mult;
+        self.mobs.spawn_mult = mult * self.t5.tr.journey.spawn_factor();
     }
 
     /// The buffs' share of the stats (called from `compute_stats`).
