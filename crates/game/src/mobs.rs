@@ -27,6 +27,8 @@ pub struct Mobs {
     /// Multiplayer: the other players in this dimension (where, creative), so monsters hunt
     /// them too and mobs spawn around them.
     pub others: Vec<(Vec3, bool)>,
+    /// It is raining in this dimension: mobs under open sky are wet and don't burn.
+    pub raining: bool,
 }
 
 /// What happened to the player this tick.
@@ -94,7 +96,7 @@ impl Mobs {
     }
 
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, arrows: Vec::new(), ground: Vec::new(), others: Vec::new() }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false }
     }
 
     fn next_rand(&mut self) -> u64 {
@@ -285,6 +287,7 @@ impl Mobs {
                     (tp, tc, who) = (p, c, Some(k));
                 }
             }
+            m.rained_on = self.raining && sky >= 14;
             m.tick(def, world, tp, tc, sky, day, dt, &mut events);
             for e in &events {
                 match *e {
