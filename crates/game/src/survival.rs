@@ -510,6 +510,9 @@ pub(crate) enum Slot {
     Offhand,
     /// Worn accessories (Etapa 5).
     Acc(usize),
+    /// Lote 11: armour worn for looks, and dyes (vanity.rs).
+    Vanity(usize),
+    Dye(usize),
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1997,7 +2000,7 @@ impl Game {
         // Right-drag (like Mouse Tweaks): one item into each slot the mouse passes over.
         if self.rdown && !self.rclicked && open != Open::Shop {
             if let (Some(slot), Some(c)) = (hovered, self.surv.cursor) {
-                let fresh = self.surv.drag_last != Some(slot) && !matches!(slot, Slot::CraftOut | Slot::Armor(_) | Slot::Acc(_)) && !(slot == Slot::Cont(2) && matches!(open, Open::Furnace(_))) && !self.is_station_output(slot);
+                let fresh = self.surv.drag_last != Some(slot) && !matches!(slot, Slot::CraftOut | Slot::Armor(_) | Slot::Acc(_) | Slot::Vanity(_) | Slot::Dye(_)) && !(slot == Slot::Cont(2) && matches!(open, Open::Furnace(_))) && !self.is_station_output(slot);
                 let fits = match self.slot_get(slot) {
                     None => true,
                     Some(st) => st.stacks_with(&c) && st.count < self.items.get(st.item).max_stack,
@@ -2110,6 +2113,8 @@ impl Game {
             Slot::Armor(i) => self.surv.armor[i],
             Slot::Offhand => self.surv.offhand,
             Slot::Acc(i) => self.t5.acc[i],
+            Slot::Vanity(i) => self.t5.look.vanity[i],
+            Slot::Dye(i) => self.t5.look.dyes[i],
             Slot::Cont(i) => match self.open_container_inv() {
                 Some(inv) => inv.slots.get(i).copied().flatten(),
                 None => None,
@@ -2125,6 +2130,8 @@ impl Game {
             Slot::Armor(i) => self.surv.armor[i] = v,
             Slot::Offhand => self.surv.offhand = v,
             Slot::Acc(i) => self.t5.acc[i] = v,
+            Slot::Vanity(i) => self.t5.look.vanity[i] = v,
+            Slot::Dye(i) => self.t5.look.dyes[i] = v,
             Slot::Cont(i) => {
                 if let Some(inv) = self.open_container_inv_mut() {
                     if i < inv.slots.len() {
@@ -2194,6 +2201,11 @@ impl Game {
         }
         if let (Slot::Acc(_), Some(c)) = (slot, self.surv.cursor) {
             if !crate::accessories::is_accessory(&self.items.get(c.item).name) {
+                return;
+            }
+        }
+        if let (Slot::Vanity(_) | Slot::Dye(_), Some(c)) = (slot, self.surv.cursor) {
+            if !self.visual_fits(slot, &self.items.get(c.item).name.clone()) {
                 return;
             }
         }
@@ -2316,7 +2328,7 @@ impl Game {
     pub(crate) fn wheel_move(&mut self, up: bool) -> bool {
         let Some(slot) = self.surv.hover_slot else { return false };
         let Some(st) = self.slot_get(slot) else { return false };
-        if self.surv.cursor.is_some() || matches!(slot, Slot::CraftOut | Slot::Armor(_) | Slot::Acc(_)) || self.surv.open == Open::Shop || self.is_station_output(slot) {
+        if self.surv.cursor.is_some() || matches!(slot, Slot::CraftOut | Slot::Armor(_) | Slot::Acc(_) | Slot::Vanity(_) | Slot::Dye(_)) || self.surv.open == Open::Shop || self.is_station_output(slot) {
             return false;
         }
         let container = matches!(self.surv.open, Open::Chest(_) | Open::Furnace(_) | Open::Station(_));
@@ -2632,18 +2644,8 @@ impl Game {
 
     /// The armour the player wears, drawn over the player model with the same bones.
     pub(crate) fn armor_instances(&self, bones: &crate::entity::Bones) -> Vec<(usize, crate::entity::Bones)> {
-        let mut out = Vec::new();
-        for piece in 0..4 {
-            let Some(st) = self.surv.armor[piece] else { continue };
-            if let Some(mesh) = self.entities.armor_mesh(&self.items.get(st.item).name, piece) {
-                out.push((mesh, *bones));
-                // Smithing trims show as a coloured pattern over the piece.
-                if let Some(t) = crate::smithing::trim_of(&st).and_then(|(_, m)| self.entities.trim_mesh(m, piece)) {
-                    out.push((t, *bones));
-                }
-            }
-        }
-        out
+        // Vanity, dyes and wings decide what shows (vanity.rs).
+        self.look_instances(bones)
     }
 
     /// The held item in the right hand of the player model, for the views from outside: the
@@ -2739,6 +2741,9 @@ impl Game {
             if (m.on_fire > 0.0 || glows) && m.alive() {
                 found.push((m.body.pos.distance(eye), m.body.pos + Vec3::Y * 0.8, if glows { 0.7 } else { 0.85 }));
             }
+        }
+        for (p, l) in self.companion_lights() {
+            found.push((p.distance(eye), p, l));
         }
         found.retain(|f| f.0 < 48.0);
         found.sort_by(|a, b| a.0.total_cmp(&b.0));

@@ -284,6 +284,11 @@ pub struct Mob {
     rng: Rng,
     /// Unique for the life of the program: how multiplayer names this mob.
     pub net_id: u32,
+    /// Drawn this much bigger than its kind (a giant bee to ride, a little fox pet).
+    pub size: f32,
+    /// Summoned by an item (pets and Terraria mounts): nothing can hurt or hit it, it hunts
+    /// nothing and the game moves it.
+    pub ghost: bool,
 }
 
 static NEXT_NET_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
@@ -345,6 +350,8 @@ impl Mob {
             fire_tick: 0.0,
             rng,
             net_id: NEXT_NET_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            size: 1.0,
+            ghost: false,
         }
     }
 
@@ -354,7 +361,7 @@ impl Mob {
 
     /// Returns true if the mob died from this hit.
     pub fn hurt(&mut self, damage: f32, from: Vec3) -> bool {
-        if !self.alive() {
+        if !self.alive() || self.ghost {
             return false;
         }
         self.health -= damage * (1.0 + self.vuln);
@@ -408,6 +415,12 @@ impl Mob {
             self.dead_age += dt;
             // Keep falling while the death animation plays.
             self.body.step(world, &Input::default(), dt);
+            return;
+        }
+        if self.ghost {
+            // The game moves summoned pets and mounts itself.
+            self.on_fire = 0.0;
+            self.debuffs.clear();
             return;
         }
         let to_player = player - self.body.pos;

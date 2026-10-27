@@ -27,7 +27,7 @@ pub fn describe(name: &str) -> Option<String> {
 /// Movement state the accessories need from frame to frame.
 #[derive(Default)]
 pub struct Moves {
-    wing_t: f32,
+    pub(crate) wing_t: f32,
     jumped_twice: bool,
     space_was: bool,
     was_ground: bool,
@@ -59,7 +59,7 @@ impl Game {
 
     /// Falls don't hurt (horseshoe, angel wings, flying on feather wings).
     pub(crate) fn no_fall_damage(&self) -> bool {
-        self.t5.rpg.stats.no_fall || self.wears("feather_wings") && self.t5.moves.flying
+        self.t5.rpg.stats.no_fall || self.worn_wings().is_some() && self.t5.moves.flying
     }
 
     pub(crate) fn no_knockback(&self) -> bool {
@@ -88,7 +88,9 @@ impl Game {
             return true;
         }
         let n = self.acc_slots();
-        let i = self.t5.acc[..n].iter().position(|a| a.is_none()).unwrap_or(0);
+        // One pair of wings at a time: new wings take the place of the old.
+        let wing_slot = crate::wings::wing_of(&name).and_then(|_| self.t5.acc[..n].iter().position(|a| a.is_some_and(|a| crate::wings::wing_of(&self.items.get(a.item).name).is_some())));
+        let i = wing_slot.unwrap_or_else(|| self.t5.acc[..n].iter().position(|a| a.is_none()).unwrap_or(0));
         self.surv.inv.slots[sel] = self.t5.acc[i].take();
         self.t5.acc[i] = Some(st);
         self.sfx(Sfx::Place(crate::audio::Material::Cloth));
@@ -129,14 +131,8 @@ impl Game {
         let ground = self.body.on_ground || self.body.in_water;
         if ground {
             self.t5.moves.jumped_twice = false;
-            self.t5.moves.wing_t = if self.wears("angel_wings") {
-                3.2
-            } else if self.wears("feather_wings") {
-                1.6
-            } else {
-                // Steam boots: a short lift, no glide.
-                0.9
-            };
+            // Each pair flies for its own time; steam boots give a short lift, no glide.
+            self.t5.moves.wing_t = self.worn_wings().map_or(0.9, |k| crate::wings::WINGS[k].flight);
             self.t5.moves.flying = false;
             self.t5.moves.balloon_done = false;
         }
@@ -150,7 +146,8 @@ impl Game {
         let glow = self.glow_layer();
         let hooked = self.t5.hook.attached();
         if !ground && !hooked && self.seat.is_none() && self.riding.is_none() {
-            let wings = self.wears("angel_wings") || self.wears("feather_wings");
+            let worn = self.worn_wings();
+            let wings = worn.is_some();
             let steam = !wings && self.wears("steam_boots");
             if pressed && self.wears("cloud_bottle") && !self.t5.moves.jumped_twice {
                 // A puff of cloud and a second jump.
@@ -171,18 +168,23 @@ impl Game {
                 if self.surv.rng.f32() < dt * 25.0 {
                     self.particles.glow(self.body.pos, Vec3::new(0.0, -2.0, 0.0), glow, [1.1, 1.1, 1.1], 0.1, 0.4);
                 }
-            } else if space && wings {
+            } else if let (true, Some(k)) = (space, worn) {
+                let def = &crate::wings::WINGS[k];
                 if self.t5.moves.wing_t > 0.0 {
                     self.t5.moves.wing_t -= dt;
-                    self.body.vel.y = (self.body.vel.y + 45.0 * dt).min(7.0);
+                    self.body.vel.y = (self.body.vel.y + 45.0 * dt).min(def.lift);
                     self.t5.moves.flying = true;
+                    // Faster through the air than on foot.
+                    let base = self.body.speed_override.unwrap_or(WALK_SPEED);
+                    self.body.speed_override = Some(base * def.speed);
                 } else if self.body.vel.y < -2.5 {
                     // Out of flight time: glide down.
                     self.body.vel.y = -2.5;
                 }
                 self.fall_peak = self.body.pos.y;
                 if self.surv.rng.f32() < dt * 20.0 {
-                    let tint = if self.wears("angel_wings") { [1.5, 1.4, 0.8] } else { [1.2, 1.2, 1.2] };
+                    let c = crate::wings::WINGS[k].colors[2];
+                    let tint = [c[0] as f32 / 200.0, c[1] as f32 / 200.0, c[2] as f32 / 200.0];
                     self.particles.glow(self.body.pos + Vec3::Y * 1.2, Vec3::new(0.0, -1.5, 0.0), glow, tint, 0.08, 0.5);
                 }
             }
@@ -245,7 +247,11 @@ impl Game {
             let tw = self.ui.text_width("C: status", self.ui.scale);
             self.ui.text(px - 4.0 * s - tw, py + ph - 10.0 * s, "C: status", [230, 230, 230, 255]);
         }
-        (0..n).map(|i| (Slot::Acc(i), px + 1.0 * s, py + (12.0 + i as f32 * 18.0) * s)).collect()
+        let mut slots: Vec<(Slot, f32, f32)> = (0..n).map(|i| (Slot::Acc(i), px + 1.0 * s, py + (12.0 + i as f32 * 18.0) * s)).collect();
+        if !self.t5.rpg.sheet {
+            slots.extend(self.visual_slots(px - 2.0 * s, py));
+        }
+        slots
     }
 
     pub(crate) fn draw_accessory_hud(&mut self, _w: f32, h: f32) {
@@ -255,16 +261,15 @@ impl Game {
         let s = self.ui.scale;
         // The depth meter and the other info accessories draw in rpg.rs.
         if self.t5.moves.flying && self.t5.moves.wing_t > 0.0 {
-            let max = if self.wears("angel_wings") {
-                3.2
-            } else if self.wears("feather_wings") {
-                1.6
-            } else {
-                0.9
-            };
+            let max = self.worn_wings().map_or(0.9, |k| crate::wings::WINGS[k].flight);
             let k = (self.t5.moves.wing_t / max).clamp(0.0, 1.0);
             self.ui.rect(4.0 * s, h - 34.0 * s, 40.0 * s, 3.0 * s, [30, 30, 30, 200]);
             self.ui.rect(4.0 * s, h - 34.0 * s, 40.0 * s * k, 3.0 * s, [240, 230, 160, 230]);
+        }
+        // A flying mount's flight left.
+        if let Some(k) = self.mount_flight_left() {
+            self.ui.rect(4.0 * s, h - 34.0 * s, 40.0 * s, 3.0 * s, [30, 30, 30, 200]);
+            self.ui.rect(4.0 * s, h - 34.0 * s, 40.0 * s * k, 3.0 * s, [250, 210, 90, 230]);
         }
     }
 }
