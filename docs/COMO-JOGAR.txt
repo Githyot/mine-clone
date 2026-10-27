@@ -64,6 +64,8 @@ COMANDOS (chat: T, depois /; funcionam também jogando sozinho)
 CONTROLES
   W A S D         andar
   Espaço          pular (aperte 2 vezes rápido para voar / parar de voar)
+  W + Espaço      contra uma borda de até 2 blocos (parede, prateleira): agarra a beirada e
+                  sobe puxando o corpo com as mãos. Cercas e muros não dá para escalar.
   Shift           agachar (a câmera abaixa e você não cai da beirada) / descer voando
   Ctrl ou W 2x    correr (a visão abre um pouco)
   Z               deitar / levantar (deitado você rasteja e passa por buracos de 1 bloco)
