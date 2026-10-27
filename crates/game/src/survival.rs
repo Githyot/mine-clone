@@ -1003,6 +1003,10 @@ impl Game {
                         return true;
                     }
                     "reforge_table" => return self.t5_use_block("reforge_table"),
+                    n if n.starts_with("pylon_") => {
+                        let kind = n.trim_start_matches("pylon_").to_string();
+                        return self.use_pylon(hit.block, &kind);
+                    }
                     _ => {}
                 }
             }
@@ -1129,6 +1133,7 @@ impl Game {
             self.after_place(pos);
             let placed = self.world.block_or_air(pos);
             self.extras_after_place(pos, placed);
+            self.tr_after_place(pos);
             if trees::is_sapling(&self.reg.get(block).name) {
                 let t = 60.0 + self.surv.rng.f32() * 120.0;
                 self.surv.saplings.push((pos, t));

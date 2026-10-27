@@ -130,4 +130,9 @@
     (name: "frost_wings", display_name: Some("Asas de Gelo"), max_stack: Some(1)),
     (name: "flame_wings", display_name: Some("Asas de Chama"), max_stack: Some(1)),
     (name: "bee_wings", display_name: Some("Asas de Abelha"), max_stack: Some(1)),
+    (name: "confetti", display_name: Some("Confete")),
+    (name: "party_kit", display_name: Some("Kit de Festa")),
+    (name: "cat_license", display_name: Some("Licença de Gato"), max_stack: Some(1)),
+    (name: "dog_license", display_name: Some("Licença de Cachorro"), max_stack: Some(1)),
+    (name: "bunny_license", display_name: Some("Licença de Coelho"), max_stack: Some(1)),
 ])

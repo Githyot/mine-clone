@@ -31,6 +31,11 @@ struct Saved {
     /// The pet and light pet out (tr_pets.rs).
     #[serde(default)]
     pets: Vec<String>,
+    /// Pylons and town animals (tr_town.rs).
+    #[serde(default)]
+    pylons: Vec<(String, (i32, i32, i32))>,
+    #[serde(default)]
+    animals: Vec<(String, (f32, f32, f32))>,
 }
 
 #[derive(Default)]
@@ -40,6 +45,7 @@ pub struct Tr {
     pub(crate) lands: crate::tr_world::Lands,
     pub(crate) wep: crate::tr_weapons::Weapons,
     pub(crate) pets: crate::tr_pets::Pets,
+    pub(crate) town: crate::tr_town::TownLife,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -56,6 +62,8 @@ impl Tr {
         tr.lands.prism_done = s.prism_done.into_iter().collect();
         tr.lands.orbs = s.orbs;
         tr.pets.out = s.pets;
+        tr.town.pylons = s.pylons.into_iter().map(|(k, (x, y, z))| (k, glam::IVec3::new(x, y, z))).collect();
+        tr.town.animals = s.animals.into_iter().map(|(k, (x, y, z))| (k, Vec3::new(x, y, z))).collect();
         tr
     }
 
@@ -67,6 +75,8 @@ impl Tr {
             prism_done: self.lands.prism_done.iter().copied().collect(),
             orbs: self.lands.orbs,
             pets: self.pets.out.clone(),
+            pylons: self.town.pylons.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
+            animals: self.town.animals.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
@@ -86,6 +96,7 @@ impl Game {
         self.update_lands(dt);
         self.update_tr_weapons(dt, use_held);
         self.update_tr_pets(dt);
+        self.update_tr_town(dt);
     }
 
     /// Right click with an item of this file; true when it did something.
@@ -94,6 +105,9 @@ impl Game {
             return Some(r);
         }
         if let Some(r) = self.tr_pet_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.tr_town_use(name) {
             return Some(r);
         }
         match name {
@@ -110,6 +124,7 @@ impl Game {
         match name {
             "ruin_orb" | "blight_heart" => return self.orb_broken(p, name == "ruin_orb"),
             "ruin_altar" | "blight_altar" => return self.altar_broken(p, name == "ruin_altar"),
+            n if n.starts_with("pylon_") => return self.tr_pylon_broken(p),
             _ => {}
         }
         if name == "hive_larva" && self.mobs.list.iter().all(|m| !(m.alive() && self.mobs.reg.defs[m.def].boss)) {
@@ -333,6 +348,7 @@ impl Game {
             }
             "weapons" => self.test_tr_weapons(),
             "pets" | "mounts" | "harpies" | "wings" => self.test_tr_pets(scene),
+            "town" | "townshop" => self.test_tr_town(scene),
             s if self.test_tr_event(s) => {}
             _ => log::warn!("unknown MC_TR scene {scene}"),
         }

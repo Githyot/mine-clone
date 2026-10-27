@@ -21,4 +21,10 @@
     (name: "blight_altar", display_name: Some("Altar da Chaga"), light: 4, hardness: 40.0, tool: Some(Pickaxe), tier: 5, textures: (top: Some("blight_altar_top"), side: Some("blight_altar_side"), bottom: Some("blight_altar_side")), drops: Some([])),
     (name: "sky_brick", display_name: Some("Tijolo Celeste"), light: 2, hardness: 2.0, tool: Some(Pickaxe)),
     (name: "cloud_block", display_name: Some("Nuvem"), hardness: 0.3),
+    (name: "pylon_forest", display_name: Some("Pilone da Floresta"), light: 12, hardness: 1.5, tool: Some(Pickaxe)),
+    (name: "pylon_desert", display_name: Some("Pilone do Deserto"), light: 12, hardness: 1.5, tool: Some(Pickaxe)),
+    (name: "pylon_snow", display_name: Some("Pilone da Neve"), light: 12, hardness: 1.5, tool: Some(Pickaxe)),
+    (name: "pylon_jungle", display_name: Some("Pilone da Selva"), light: 12, hardness: 1.5, tool: Some(Pickaxe)),
+    (name: "pylon_ocean", display_name: Some("Pilone do Oceano"), light: 12, hardness: 1.5, tool: Some(Pickaxe)),
+    (name: "pylon_cave", display_name: Some("Pilone da Caverna"), light: 12, hardness: 1.5, tool: Some(Pickaxe)),
 ])

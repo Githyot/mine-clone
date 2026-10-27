@@ -2297,6 +2297,166 @@ def as_int(f):
     return h
 
 
+# ==============================================================================================
+# Lote 6: the town grows: more town folk, the peddler, the party, pylons and town animals
+# ==============================================================================================
+
+PERSON_PARTS = """[
+            (size: (8, 8, 8), origin: (-4, 24, -4), uv: (0, 0), anim: Head, pivot: (0, 24, 0)),
+            (size: (8, 12, 4), origin: (-4, 12, -2), uv: (16, 16)),
+            (size: (4, 12, 4), origin: (-8, 12, -2), uv: (40, 16), anim: Arm(0), pivot: (-6, 22, 0)),
+            (size: (4, 12, 4), origin: (4, 12, -2), uv: (32, 48), anim: Arm(1), pivot: (6, 22, 0)),
+            (size: (4, 12, 4), origin: (-4, 0, -2), uv: (0, 16), anim: Leg(0), pivot: (-2, 12, 0)),
+            (size: (4, 12, 4), origin: (0, 0, -2), uv: (16, 48), anim: Leg(1), pivot: (2, 12, 0)),
+        ]"""
+PERSON_LAYERS = "[(part: 0, inflate: 0.5), (part: 1, inflate: 0.3), (part: 2, inflate: 0.3), (part: 3, inflate: 0.3), (part: 4, inflate: 0.3), (part: 5, inflate: 0.3)]"
+
+SKIN_LIGHT = pal("#c49070", "#d4a080", "#e0b090", "#eac0a0", "#f2d0b4")
+SKIN_TAN = pal("#a8694a", "#b97a58", "#c78a65", "#d29a74", "#dca984")
+SKIN_DARK = pal("#4a2a1a", "#5a3422", "#6a3e2a", "#7a4a32", "#8a563a")
+SKIN_DEEP = pal("#3a2014", "#46281a", "#523020", "#5e3826", "#6a402c")
+SKIN_METAL = pal("#5a606c", "#6e7682", "#8a92a0", "#a4acb8", "#c0c8d4")
+
+# name, display, skin, hair, tunic, trousers, leather, iris
+TOWN_L6 = [
+    ("npc_dryad", "Druida", SKIN_LIGHT, pal("#2a5a1a", "#3a7a22", "#4a9a2a", "#5aba34", "#7ad44a"), pal("#3a6a1e", "#4a8226", "#5a9a2e", "#6ab236", "#7aca40"), pal("#2a4a14", "#345a1a", "#3e6a20", "#487a26"), pal("#5a3a1a", "#6a4420", "#7a4e26", "#8a582c"), (90, 200, 90)),
+    ("npc_demolitionist", "Demolidor", SKIN_TAN, pal("#6a6a6a", "#7a7a7a", "#8a8a8a", "#9a9a9a", "#aaaaaa"), pal("#5a4a1a", "#6a5820", "#7a6626", "#8a742c", "#9a8232"), pal("#3a2a1a", "#463220", "#523a26", "#5e422c"), pal("#2a2a2a", "#363636", "#424242", "#4e4e4e"), (60, 60, 60)),
+    ("npc_arms_dealer", "Armeira", SKIN_DARK, pal("#141414", "#1c1c1c", "#242424", "#2c2c2c", "#343434"), pal("#2a2e36", "#343a44", "#3e4652", "#485260", "#525e6e"), pal("#1e1e24", "#26262e", "#2e2e38", "#363642"), pal("#5a3a1a", "#6a4420", "#7a4e26", "#8a582c"), (120, 80, 40)),
+    ("npc_painter", "Pintor", SKIN_LIGHT, pal("#5a3a1a", "#6a4420", "#7a4e26", "#8a582c", "#9a6232"), pal("#c8c0b0", "#d4ccbc", "#e0d8c8", "#ece4d4", "#f8f0e0"), pal("#3a4a6a", "#44547a", "#4e5e8a", "#58689a"), pal("#a03030", "#b83a3a", "#d04444", "#e84e4e"), (70, 110, 170)),
+    ("npc_dye_trader", "Tintureira", SKIN_DEEP, pal("#4a1a5a", "#5a226e", "#6a2a82", "#7a3296", "#8a3aaa"), pal("#a03a10", "#b84a14", "#d05a18", "#e86a1c", "#f87a24"), pal("#2a5a5a", "#326a6a", "#3a7a7a", "#428a8a"), pal("#c49a10", "#d4aa18", "#e4ba20", "#f4ca28"), (200, 120, 40)),
+    ("npc_stylist", "Barbeira", SKIN_TAN, pal("#c43a6a", "#d44a7a", "#e45a8a", "#f06a9a", "#fa7aaa"), pal("#2a2a3a", "#343446", "#3e3e52", "#48485e", "#52526a"), pal("#1a1a24", "#22222e", "#2a2a38", "#323242"), pal("#c8c8d0", "#d4d4dc", "#e0e0e8", "#ececf4"), (150, 60, 120)),
+    ("npc_angler", "Pescador", SKIN_LIGHT, pal("#c49a3a", "#d4aa4a", "#e4ba5a", "#f0ca6a", "#f8da7a"), pal("#c4a020", "#d4b02a", "#e4c034", "#f0d03e", "#f8e048"), pal("#2a4a6a", "#325478", "#3a5e86", "#426894"), pal("#5a3a1a", "#6a4420", "#7a4e26", "#8a582c"), (60, 140, 200)),
+    ("npc_tailor", "Alfaiate", SKIN_TAN, pal("#8a8a8a", "#9a9a9a", "#aaaaaa", "#bababa", "#cacaca"), pal("#5a1a1a", "#6e2222", "#822a2a", "#963232", "#aa3a3a"), pal("#1e1a26", "#262030", "#2e263a", "#362c44"), pal("#c49a10", "#d4aa18", "#e4ba20", "#f4ca28"), (90, 70, 50)),
+    ("npc_party_girl", "Festeira", SKIN_LIGHT, pal("#e04a9a", "#ec5aaa", "#f46aba", "#fa7aca", "#ff8ada"), pal("#3ab4e0", "#4ac4ec", "#5ad4f4", "#6ae0fa", "#7aecff"), pal("#c4308a", "#d43a9a", "#e444aa", "#f04eba"), pal("#f0d020", "#f8e030", "#fff040", "#fff860"), (230, 90, 170)),
+    ("npc_witch_doctor", "Curandeiro da Selva", SKIN_DEEP, pal("#1a1410", "#241c16", "#2e241c", "#382c22", "#423428"), pal("#3a5a1a", "#466a20", "#527a26", "#5e8a2c", "#6a9a32"), pal("#5a3a1a", "#6a4420", "#7a4e26", "#8a582c"), pal("#c4a060", "#d4b070", "#e4c080", "#f0d090"), (230, 200, 60)),
+    ("npc_pirate", "Pirata", SKIN_TAN, pal("#1a1410", "#241c16", "#2e241c", "#382c22", "#423428"), pal("#8a1a1a", "#a02020", "#b82828", "#cc3030", "#e03838"), pal("#1a1a24", "#22222e", "#2a2a38", "#323242"), pal("#c49a10", "#d4aa18", "#e4ba20", "#f4ca28"), (60, 40, 30)),
+    ("npc_steampunker", "Engenheira a Vapor", SKIN_LIGHT, pal("#c46a1a", "#d47a22", "#e48a2a", "#f09a34", "#f8aa3e"), pal("#5a3a1a", "#6a4420", "#7a4e26", "#8a582c", "#9a6232"), pal("#3a2a1a", "#463220", "#523a26", "#5e422c"), pal("#b8862a", "#c89434", "#d8a23e", "#e8b048"), (140, 90, 40)),
+    ("npc_cyborg", "Ciborgue", SKIN_METAL, pal("#2a2e36", "#343a44", "#3e4652", "#485260", "#525e6e"), pal("#3a3e48", "#4c515c", "#646a78", "#7e8492", "#9aa0ae"), pal("#2a2c32", "#383b42", "#484c54", "#5a5e68"), pal("#c41420", "#e02028", "#f03a3a", "#ff5a4a"), (255, 60, 50)),
+    ("npc_zoologist", "Zoóloga", SKIN_DARK, pal("#c47a2a", "#d48a34", "#e49a3e", "#f0aa4a", "#f8ba56"), pal("#7a6a3a", "#8a7a44", "#9a8a4e", "#aa9a58", "#baaa62"), pal("#5a4a2a", "#665432", "#725e3a", "#7e6842"), pal("#5a3a1a", "#6a4420", "#7a4e26", "#8a582c"), (90, 150, 60)),
+    ("npc_princess", "Princesa", SKIN_LIGHT, pal("#e4c040", "#ecca50", "#f4d460", "#f8de70", "#fce880"), pal("#e07aaa", "#ec8aba", "#f49aca", "#faaad8", "#ffbae4"), pal("#c46a9a", "#d07aaa", "#dc8aba", "#e89aca"), pal("#e4c040", "#ecca50", "#f4d460", "#f8de70"), (100, 160, 230)),
+    ("npc_peddler", "Mascate", SKIN_TAN, pal("#5a5a5a", "#6a6a6a", "#7a7a7a", "#8a8a8a", "#9a9a9a"), pal("#4a2a5a", "#56326a", "#623a7a", "#6e428a", "#7a4a9a"), pal("#3a2a1a", "#463220", "#523a26", "#5e422c"), pal("#c49a10", "#d4aa18", "#e4ba20", "#f4ca28"), (120, 90, 160)),
+]
+
+
+def mobs_l6():
+    out = ["    // Lote 6: town folk who move in when their wish is met, and the peddler who visits."]
+    for name, display, *_ in TOWN_L6:
+        out.append(f"""    (
+        name: "{name}", display_name: "{display}", kind: Passive, health: 40, speed: 2.0,
+        xp: 0,
+        width: 0.6, height: 1.95, spawn: Never, attack: 0, town: true,
+        parts: {PERSON_PARTS},
+        layers: {PERSON_LAYERS},
+    ),""")
+    return out
+
+
+def skins_l6():
+    out = {}
+    for name, _, skin, hair, tunic, trouser, leather, iris in TOWN_L6:
+        colours = dict(PSKIN=skin, PHAIR=hair, PTUNIC=tunic, PTROUSER=trouser, PLEATHER=leather, PIRIS=iris)
+        out[name] = (g.ROLES["player"], g.townsfolk(name, g.PAINTERS["player"], colours), g.townsfolk(name, g.OVERLAYS["player"], colours))
+    return out
+
+
+PYLONS_L6 = [
+    ("forest", "Floresta", pal("#0e3a14", "#1e6a26", "#3aa040", "#7ad46a", "#d0ffc0")),
+    ("desert", "Deserto", pal("#5a3a08", "#a0700e", "#e0aa20", "#f8d860", "#fff4c0")),
+    ("snow", "Neve", pal("#2a4a6a", "#4a7aa0", "#7aaed4", "#b4daf4", "#ffffff")),
+    ("jungle", "Selva", pal("#2a3a08", "#4a6a0e", "#7aa018", "#b4d440", "#ecff9a")),
+    ("ocean", "Oceano", pal("#0a2a4a", "#14508a", "#2080c4", "#5ab4f0", "#d0f0ff")),
+    ("cave", "Caverna", pal("#2a1a3a", "#4a2e6a", "#7a4aa0", "#b080d4", "#f0d8ff")),
+]
+BLOCKS_L6 = [
+    f'(name: "pylon_{k}", display_name: Some("Pilone da {d}" ), light: 12, hardness: 1.5, tool: Some(Pickaxe))'.replace("da Oceano", "do Oceano").replace("da Deserto", "do Deserto").replace(" )", ")")
+    for k, d, _ in PYLONS_L6
+]
+
+
+def blocks_l6():
+    out = {}
+    for k, (key, _, p) in enumerate(PYLONS_L6):
+        def crystal(x, y):
+            frame = x in (0, 15) or y in (0, 15)
+            dx, dy = abs(x - 7.5), abs(y - 7.5)
+            gem = dx * 1.6 + dy < 8.5
+            if frame:
+                return 0.3
+            if gem:
+                return 0.95 - (dx + dy) * 0.05 + (0.15 if (x + y) % 5 == 0 else 0)
+            return 0.15
+        out[f"pylon_{key}"] = block_noise(60 + k, crystal, p)
+    return out
+
+
+CONFETTI = [
+    "................",
+    "..1.....4.......",
+    ".......a....2...",
+    "....3........b..",
+    "..a.....1.......",
+    "......4.....3...",
+    ".2...........a..",
+    "......bbbbb.....",
+    ".....b55555b....",
+    "....b5444445b...",
+    "....b4333334b...",
+    "....b3222223b...",
+    "....b2111112b...",
+    ".....b11111b....",
+    "......bbbbb.....",
+    "................",
+]
+PARTY_KIT = [
+    "................",
+    ".......aa.......",
+    "......a55a......",
+    "......a54a......",
+    ".......aa.......",
+    ".......b........",
+    "....11111111....",
+    "....12222221....",
+    "....12333321....",
+    "....bbbbbbbb....",
+    "....12333321....",
+    "....12233221....",
+    "....12222221....",
+    "....11111111....",
+    "................",
+    "................",
+]
+LICENSE = [
+    "................",
+    "................",
+    "..111111111111..",
+    "..155555555551..",
+    "..154444444451..",
+    "..154aaa444451..",
+    "..154aba444451..",
+    "..154aaa444451..",
+    "..154444333451..",
+    "..154444444451..",
+    "..154333333451..",
+    "..155555555551..",
+    "..111111111111..",
+    "................",
+    "................",
+    "................",
+]
+PAPER = pal("#6a5a3a", "#a89470", "#d8c8a0", "#ece0c0", "#f8f0dc")
+
+
+def items_l6():
+    stack1 = "max_stack: Some(1)"
+    return [
+        ("confetti", "Confete", icon2(CONFETTI, pal("#c43a6a", "#e4c040", "#3ab4e0", "#7ad46a", "#f8f0dc"), pal("#c43a6a", "#3ab4e0")), ""),
+        ("party_kit", "Kit de Festa", icon2(PARTY_KIT, pal("#8a1a5a", "#c43a8a", "#f07ab4", "#ffffff", "#ffffff"), pal("#c49a10", "#3ab4e0", "#f8e048", "#e04a4a", "#ffffff")), ""),
+        ("cat_license", "Licença de Gato", icon2(LICENSE, PAPER, pal("#3a2a1a", "#c47a2a")), stack1),
+        ("dog_license", "Licença de Cachorro", icon2(LICENSE, PAPER, pal("#3a2a1a", "#8a5a3a")), stack1),
+        ("bunny_license", "Licença de Coelho", icon2(LICENSE, PAPER, pal("#3a2a1a", "#e8e0d8")), stack1),
+    ]
+
+
 def write_skins(skins):
     parsed, layers = g.parse_mobs(str(OUT / "mobs.ron"))
     assert set(parsed) == set(skins), sorted(set(parsed) ^ set(skins))
@@ -2313,18 +2473,18 @@ def write_skins(skins):
 
 
 def main():
-    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5()
-    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3
-    mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5()
+    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6()
+    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6
+    mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6()
     write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5, SMELTING_L2 + SMELTING_L3)
     structures_l3()
-    skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5()})
+    skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6()})
     pics = []
     for name, _, img, _ in items:
         im = gt.to_image(img)
         im.save(os.path.join(gi.ITEM_DIR, name + ".png"))
         pics.append(im)
-    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3()}
+    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6()}
     for name, img in all_blocks.items():
         im = gt.to_image(img)
         im.save(os.path.join(gi.BLOCK_DIR, name + ".png"))

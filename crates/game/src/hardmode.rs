@@ -364,7 +364,7 @@ impl Game {
             "npc_tinkerer" => self.t5.hard.goblins_beaten,
             "npc_mechanic" => self.t5.hard.mechanic_freed,
             "npc_sorceress" => self.t5.hard.on,
-            _ => false,
+            _ => self.tr_npc_wish(name),
         }
     }
 }

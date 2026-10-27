@@ -569,6 +569,25 @@ ASAS, MONTARIAS E MASCOTES (lado Terraria, lote 5)
     (Alma da Noite + caco sombrio + pó de pedra luminosa + frasco).
   Dá para ter um mascote e um mascote de luz ao mesmo tempo.
 
+VILA: MORADORES, FELICIDADE, PILONES, MASCATE E FESTA (lado Terraria, lote 6)
+  Moradores novos (cada um precisa de uma casa livre):
+    Druida (depois do 1º chefe), Demolidor (carregue bombas ou TNT), Armeira (carregue arma
+    de fogo ou balas), Pescador (carregue um peixe), Barbeira (linha + 3 moradores),
+    Tintureira (carregue um corante), Pintor (6 moradores), Alfaiate (depois do Rei dos
+    Ossos), Curandeiro da Selva (depois da Rainha da Colmeia), Zoóloga (carregue uma guia),
+    Festeira (9 moradores), Pirata (modo difícil + 7 moradores), Engenheira a Vapor (depois
+    de um chefe mecânico), Ciborgue (depois da Rainha das Vinhas), Princesa (14 moradores).
+  Felicidade: ao conversar, o morador diz como se sente. Cada um gosta de um tipo de lugar
+    (floresta, deserto, neve, selva, mar ou caverna), gosta de certos vizinhos e não
+    suporta outros, e não gosta de muita gente perto. Morador feliz vende mais barato.
+  Pilones: um morador feliz vende o pilone do lugar onde mora. Coloque o pilone no lugar
+    certo, com 2 moradores por perto, e clique com o direito para ir ao próximo pilone.
+  Mascate: em algumas manhãs ele visita a vila com 6 itens raros e vai embora ao anoitecer.
+  Festa: em alguns dias a Festeira faz uma festa (ou use um Kit de Festa). Tem confete e os
+    preços caem. Confete também pode ser jogado com o botão direito.
+  Bichos da vila: a Zoóloga vende Licença de Gato, de Cachorro e de Coelho. O bicho mora na
+    casa mais perto.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)
