@@ -194,9 +194,16 @@ impl Game {
             self.t5.glyphs.cd = 1.0;
             return;
         };
+        if self.has_effect(crate::effects::SILENCED) {
+            self.t5.glyphs.cd = 0.5;
+            return;
+        }
         let (power, mana_k, speed_k) = self.caster_mods();
         let aug = augments(&spell);
-        let c = cost(&spell) * mana_k;
+        let c = cost(&spell) * mana_k * self.t5.rpg.stats.mana_cost;
+        if self.survival && self.magic.mana < c && self.wears("mana_blossom") {
+            self.quick_mana();
+        }
         if self.survival && self.magic.mana < c {
             self.t5.glyphs.cd = 0.2;
             return;

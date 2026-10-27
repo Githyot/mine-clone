@@ -42,6 +42,8 @@ impl Default for Bones {
         let mut m = [Mat4::IDENTITY.to_cols_array_2d(); MAX_PARTS];
         // The last slot carries the eyelids (see `add_eyelids`): folded to a point = eyes open.
         m[EYELID_PART] = [[0.0; 4]; 4];
+        // And the one before it the player's mouth (see `add_mouth`): folded = closed.
+        m[MOUTH_PART] = [[0.0; 4]; 4];
         Bones { m, light: [1.0, 0.0, 0.0, 0.0] }
     }
 }
@@ -54,6 +56,8 @@ fn eyes_shut_test() -> bool {
 
 /// Part slot of the eyelid quads, for models with fewer parts than that.
 const EYELID_PART: usize = MAX_PARTS - 1;
+/// Part slot of the player's mouth (players have six parts; mobs never get a mouth here).
+pub(crate) const MOUTH_PART: usize = MAX_PARTS - 2;
 
 struct MobMesh {
     vbuf: wgpu::Buffer,
@@ -295,6 +299,7 @@ fn build_mesh(def: &MobDef, skin: &Skin, layer: u32) -> (Vec<EntityVertex>, Vec<
         }
     }
     add_eyelids(&mut mb, def, skin);
+    add_mouth(&mut mb, def);
     for l in &def.layers {
         let p = &def.parts[l.part];
         let inflate = l.inflate.max(0.1);
@@ -411,6 +416,30 @@ fn add_eyelids(mb: &mut MeshBuilder, def: &MobDef, skin: &Skin) {
         let c = corner + su * i as f32 + sv * j as f32 + f.n * 0.04;
         mb.quad([c, c + su, c + su + sv, c + sv], [uv; 4], f.n, f.shade, EYELID_PART as u32);
     }
+}
+
+/// The player's mouth, for voice chat: a dark slit on the face (rows 6..7, columns 2..6 of
+/// the head's front), coloured with the skin's own lip pixel in deep shadow. It rides on its
+/// own part slot; `player_model` opens it by stretching that slot downward from its top edge
+/// with the voice, and folds it away while silent.
+fn add_mouth(mb: &mut MeshBuilder, def: &MobDef) {
+    if def.name != "player" || def.parts.len() > MOUTH_PART || def.parts.is_empty() {
+        return;
+    }
+    let p = &def.parts[0];
+    let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32);
+    let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32);
+    let tex = (p.size.0 as i32, p.size.1 as i32, p.size.2 as i32);
+    let f = &faces(origin, size, p.uv, tex)[0];
+    let (rx, ry, rw, rh) = f.rect;
+    if rw < 6 || rh < 8 {
+        return;
+    }
+    let (su, sv) = (f.u / rw as f32, f.v / rh as f32);
+    let uv = [(rx + rw / 2) as f32 + 0.5, (ry + rh - 2) as f32 + 0.5];
+    let uv = [uv[0] / SKIN_W as f32, uv[1] / SKIN_H as f32];
+    let c = f.corner + su * (rw as f32 / 2.0 - 2.0) + sv * (rh as f32 - 2.0) + f.n * 0.06;
+    mb.quad([c, c + su * 4.0, c + su * 4.0 + sv, c + sv], [uv; 4], f.n, 0.26, MOUTH_PART as u32);
 }
 
 /// A painting: a canvas one pixel thick, picture on the front, wood everywhere else.
@@ -812,6 +841,7 @@ impl EntityRenderer {
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&r.sampler) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&view) },
             ],
         });
         let inst_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

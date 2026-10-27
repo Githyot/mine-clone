@@ -74,7 +74,7 @@ impl Game {
             "night" => self.is_night() && self.dim == Dim::Overworld,
             "nether" => self.dim == Dim::Nether,
             "hard_night" => self.t5.hard.on && self.is_night() && self.dim == Dim::Overworld,
-            "jungle" => self.t5.hard.on && self.dim == Dim::Overworld && self.world.gen.biome_at(self.body.pos.x as i32, self.body.pos.z as i32) == Biome::Jungle,
+            "jungle" => self.t5.hard.on && self.dim == Dim::Overworld && self.world.gen.base_biome_at(self.body.pos.x as i32, self.body.pos.z as i32) == Biome::Jungle,
             _ => self.boss.defeated.iter().any(|b| b == "vine_queen"),
         };
         if !ok {

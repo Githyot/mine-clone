@@ -40,6 +40,9 @@ cargo run --release -p game
   vignette, distance haze, waving plants, rippling water) and "Suave", plus your own WGSL
   post-processing packs in `shaderpacks/` (see the generated `LEIA-ME.txt` and
   `shaderpacks-examples/sepia`).
+- Block depth (Esc > Shaders > Profundidade): parallax occlusion mapping with heights read from
+  each texture, walked texel by texel so pixel art gets crisp carved columns; near the camera
+  and on the "Bonito" quality only.
 - Distant terrain (LOD): a low-detail heightmap from the world generator drawn 256–1024
   blocks past the render distance, built on worker threads.
 - Debug screen (F3), screenshots (F2), crash log, settings file.

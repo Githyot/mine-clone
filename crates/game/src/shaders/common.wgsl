@@ -32,6 +32,9 @@ struct Globals {
     extra: vec4<f32>,
     // x, y: screen size; z: near plane; w: far plane.
     screen: vec4<f32>,
+    // Block depth (parallax occlusion mapping): x depth in blocks (0 = off), y most steps,
+    // z distance where it has faded out, w self-shadows 0/1.
+    pom: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;

@@ -145,7 +145,7 @@ impl NetherEnd {
 }
 
 impl Game {
-    fn ne_mob_at(&self, p: Vec3, friendly_only: bool) -> Option<usize> {
+    pub(crate) fn ne_mob_at(&self, p: Vec3, friendly_only: bool) -> Option<usize> {
         self.mobs.list.iter().position(|m| {
             if !m.alive() {
                 return false;

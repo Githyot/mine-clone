@@ -22,10 +22,11 @@ pub enum Wood {
     DarkOak,
     Cherry,
     Mangrove,
+    PaleOak,
 }
 
 impl Wood {
-    pub const ALL: [Wood; 8] = [Wood::Oak, Wood::Birch, Wood::Spruce, Wood::Jungle, Wood::Acacia, Wood::DarkOak, Wood::Cherry, Wood::Mangrove];
+    pub const ALL: [Wood; 9] = [Wood::Oak, Wood::Birch, Wood::Spruce, Wood::Jungle, Wood::Acacia, Wood::DarkOak, Wood::Cherry, Wood::Mangrove, Wood::PaleOak];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -37,6 +38,7 @@ impl Wood {
             Wood::DarkOak => "dark_oak",
             Wood::Cherry => "cherry",
             Wood::Mangrove => "mangrove",
+            Wood::PaleOak => "pale_oak",
         }
     }
 
@@ -73,6 +75,8 @@ pub enum TreeKind {
     Acacia,
     /// A 2×2 trunk under a broad, dense canopy.
     DarkOak,
+    /// The dark oak's shape in pale grey wood (the pale garden).
+    PaleOak,
     /// A puffy pink crown with a few hanging leaves.
     Cherry,
     /// A wide, low oak dripping with vines; it can stand in shallow water.
@@ -96,6 +100,7 @@ impl TreeKind {
             "jungle" => TreeKind::Jungle,
             "acacia" => TreeKind::Acacia,
             "dark_oak" => TreeKind::DarkOak,
+            "pale_oak" => TreeKind::PaleOak,
             "cherry" => TreeKind::Cherry,
             _ => return None,
         })
@@ -107,13 +112,13 @@ impl TreeKind {
         match self {
             TreeKind::Round(_) | TreeKind::Spruce | TreeKind::Jungle | TreeKind::Bush(_) => 2,
             TreeKind::SwampOak | TreeKind::Mangrove => 3,
-            TreeKind::Acacia | TreeKind::DarkOak | TreeKind::Cherry => 4,
+            TreeKind::Acacia | TreeKind::DarkOak | TreeKind::PaleOak | TreeKind::Cherry => 4,
             TreeKind::MegaJungle => 5,
         }
     }
 
     pub fn wide_trunk(self) -> bool {
-        matches!(self, TreeKind::MegaJungle | TreeKind::DarkOak)
+        matches!(self, TreeKind::MegaJungle | TreeKind::DarkOak | TreeKind::PaleOak)
     }
 
     /// Free blocks needed straight above a sapling.
@@ -122,7 +127,7 @@ impl TreeKind {
             TreeKind::Bush(_) => 2,
             TreeKind::Acacia => 5,
             TreeKind::Round(_) | TreeKind::Cherry => 6,
-            TreeKind::SwampOak | TreeKind::Jungle | TreeKind::DarkOak => 7,
+            TreeKind::SwampOak | TreeKind::Jungle | TreeKind::DarkOak | TreeKind::PaleOak => 7,
             TreeKind::Mangrove => 9,
             TreeKind::Spruce => 8,
             TreeKind::MegaJungle => 12,
@@ -133,8 +138,8 @@ impl TreeKind {
 /// Block ids trees are made of, resolved once.
 #[derive(Clone)]
 pub struct TreeBlocks {
-    logs: [BlockId; 8],
-    leaves: [BlockId; 8],
+    logs: [BlockId; 9],
+    leaves: [BlockId; 9],
     vine: BlockId,
     roots: BlockId,
     propagule: BlockId,
@@ -142,6 +147,8 @@ pub struct TreeBlocks {
     grass: BlockId,
     snow_grass: BlockId,
     water: BlockId,
+    /// Now and then in a pale oak's trunk.
+    heart: BlockId,
 }
 
 impl TreeBlocks {
@@ -150,6 +157,7 @@ impl TreeBlocks {
         TreeBlocks {
             logs: Wood::ALL.map(|w| g(&format!("{}_log", w.name()))),
             leaves: Wood::ALL.map(|w| g(&format!("{}_leaves", w.name()))),
+            heart: g("creaking_heart"),
             vine: g("vine"),
             roots: g("mangrove_roots"),
             propagule: g("mangrove_propagule"),
@@ -169,6 +177,10 @@ impl TreeBlocks {
     }
 
     /// Whether this wood's blocks exist (a pack may lack them).
+    pub fn is_leaves(&self, id: BlockId) -> bool {
+        id != AIR && self.leaves.contains(&id)
+    }
+
     pub fn has(&self, w: Wood) -> bool {
         self.log(w) != AIR && self.leaves(w) != AIR && (w != Wood::Mangrove || self.roots != AIR)
     }
@@ -187,7 +199,8 @@ pub fn grow<W: TreeSpace>(kind: TreeKind, b: &TreeBlocks, w: &mut W, rng: &mut R
         TreeKind::Jungle => t.jungle(rng, x, y, z),
         TreeKind::MegaJungle => t.mega_jungle(rng, x, y, z),
         TreeKind::Acacia => t.acacia(rng, x, y, z),
-        TreeKind::DarkOak => t.dark_oak(rng, x, y, z),
+        TreeKind::DarkOak => t.dark_oak(rng, x, y, z, Wood::DarkOak),
+        TreeKind::PaleOak => t.dark_oak(rng, x, y, z, Wood::PaleOak),
         TreeKind::Cherry => t.cherry(rng, x, y, z),
         TreeKind::SwampOak => t.swamp_oak(rng, x, y, z),
         TreeKind::Mangrove => t.mangrove(rng, x, y, z),
@@ -416,8 +429,8 @@ impl<W: TreeSpace> Tree<'_, W> {
         self.root(x, y, z, log);
     }
 
-    fn dark_oak(&mut self, rng: &mut Rng, x: i32, y: i32, z: i32) {
-        let (log, leaves) = (self.b.log(Wood::DarkOak), self.b.leaves(Wood::DarkOak));
+    fn dark_oak(&mut self, rng: &mut Rng, x: i32, y: i32, z: i32, wood: Wood) {
+        let (log, leaves) = (self.b.log(wood), self.b.leaves(wood));
         let h = rng.range(6, 8);
         let top = y + h;
         if top + 2 > TOP {
@@ -439,6 +452,12 @@ impl<W: TreeSpace> Tree<'_, W> {
                 self.log(x + ox, ly, z + oz, log);
             }
             self.root(x + ox, y, z + oz, log);
+        }
+        if wood == Wood::PaleOak && self.b.heart != AIR && rng.chance(0.12) {
+            let (ox, oz) = [(0, 0), (1, 0), (0, 1), (1, 1)][rng.below(4) as usize];
+            if self.w.get(x + ox, y + 2, z + oz) == log {
+                self.w.set(x + ox, y + 2, z + oz, self.b.heart);
+            }
         }
     }
 

@@ -1,0 +1,15 @@
+(
+    day: 0,
+    sensors: [],
+    dwellers: [],
+    aircraft: [],
+    world_tier: 0,
+    tier_unlocked: 0,
+    gem_health: 0.0,
+    rig: (
+        hook: None,
+        line: None,
+        bait: None,
+    ),
+    spellbooks: [],
+)

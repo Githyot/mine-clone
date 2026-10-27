@@ -107,7 +107,9 @@ impl Game {
         self.riding = None;
         self.seat = None;
         self.tnt.clear();
-        self.renderer.clear_chunks();
+        if let Some(r) = self.renderer.get_mut() {
+            r.clear_chunks();
+        }
         self.world_name = name.to_string();
         self.seed = seed;
         let (sx, sy, sz) = gen.find_spawn();
@@ -126,7 +128,7 @@ impl Game {
         self.mobs.list.clear();
         self.target = None;
         // What belongs to the world itself: life and mana crystals, bosses beaten, town folk.
-        self.max_health = level.as_ref().map(|l| l.max_health.clamp(20.0, 40.0)).unwrap_or(20.0);
+        self.max_health = level.as_ref().map(|l| l.max_health.clamp(20.0, 50.0)).unwrap_or(20.0);
         self.magic.max_mana = level.as_ref().map(|l| l.max_mana).unwrap_or(20.0);
         self.boss = crate::bosses::BossState::new(level.as_ref().map(|l| l.bosses.clone()).unwrap_or_default());
         self.town = crate::npcs::Town::new(level.as_ref().map(|l| l.npcs.iter().map(|(n, h)| crate::npcs::NpcSave { name: n.clone(), home: *h }).collect()).unwrap_or_default());
@@ -154,6 +156,7 @@ impl Game {
         self.paintings = paintings::load(&save.dir, &self.painting_defs);
         self.surv = crate::survival::Survival::load(&save.dir, &self.items);
         self.prog = crate::progression::Prog::load(&save.dir);
+        self.extras.load(&save.dir, &crate::level_path_hint(&self.base, &self.world_name));
         let dim = level.as_ref().map(|l| voxel::worldgen::Dim::from_u8(l.dim)).unwrap_or_default();
         if dim != voxel::worldgen::Dim::Overworld {
             self.load_dim(dim, false);
@@ -188,7 +191,7 @@ impl Game {
 
     pub(crate) fn is_title_screen(&self) -> bool {
         matches!(self.screen, Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer)
-            || (!self.world_open && matches!(self.screen, Screen::Options | Screen::Packs))
+            || (!self.world_open && matches!(self.screen, Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice))
     }
 
     fn click_sound(&mut self) {
@@ -430,6 +433,14 @@ impl Game {
             return;
         }
         self.creative_type(text);
+        if self.screen == Screen::Sign && self.extras.book.is_some() {
+            self.book_type(text);
+            return;
+        }
+        if self.screen == Screen::Sign && self.cmdblocks.edit.is_some() {
+            self.cmdblock_type(text);
+            return;
+        }
         if self.screen == Screen::Sign {
             self.naming_type(text);
             self.sign_type(text);
@@ -482,7 +493,12 @@ impl Game {
             format!("Construções: {}", if st.sparse_structures { "Espaçadas" } else { "Normais" }),
             format!("Resolução das texturas: {}x", st.texture_resolution),
             format!("Animações da interface: {}", onoff(st.ui_animations)),
+            format!("Legendas: {}", onoff(st.subtitles)),
+            format!("Reduzir movimento: {}", onoff(st.reduce_motion)),
+            format!("Idioma: {}", crate::lang::language_name(&st.language)),
+            "Teclas...".to_string(),
             "Controle...".to_string(),
+            "Chat de voz...".to_string(),
             "Pacotes de textura...".to_string(),
         ]
     }
@@ -563,10 +579,23 @@ impl Game {
                 self.reload_textures();
             }
             16 => st.ui_animations = !st.ui_animations,
-            17 => {
+            17 => st.subtitles = !st.subtitles,
+            18 => st.reduce_motion = !st.reduce_motion,
+            19 => {
+                let all = crate::lang::languages(&self.base);
+                let k = all.iter().position(|c| *c == st.language).map(|k| (k + 1) % all.len()).unwrap_or(0);
+                st.language = all[k].clone();
+                self.apply_language();
+            }
+            20 => {
+                self.key_rebinding = None;
+                self.set_screen(Screen::Keys);
+            }
+            21 => {
                 self.options_back = self.screen;
                 self.set_screen(Screen::Controls);
             }
+            22 => self.set_screen(Screen::Voice),
             _ => {
                 self.packs = textures::list_resource_packs(&self.base.join("resourcepacks"));
                 self.set_screen(Screen::Packs);
@@ -621,7 +650,8 @@ impl Game {
         let to = match self.screen {
             Screen::Worlds | Screen::Multiplayer => Screen::Title,
             Screen::CreateWorld => Screen::Worlds,
-            Screen::Options | Screen::Packs => {
+            Screen::Voice => Screen::Options,
+            Screen::Options | Screen::Packs | Screen::Keys => {
                 if self.world_open {
                     Screen::Paused
                 } else {

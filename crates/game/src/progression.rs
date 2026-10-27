@@ -287,12 +287,14 @@ impl crate::Game {
         self.update_deepdark(dt);
         self.update_archaeology(dt, use_held);
         self.update_advancements(dt);
+        self.update_extras(dt, use_held);
     }
 
     /// Mobs that died this tick: statistics, advancements, extra drops (spider eyes...).
     pub(crate) fn fase6_mob_deaths(&mut self, deaths: &[(usize, Vec3)]) {
         for &(def, pos) in deaths {
             let name = self.mobs.reg.defs[def].name.clone();
+            self.extras_mob_drop(&name, pos);
             self.prog.stats.add("mobs_killed", 1);
             self.prog.stats.add(&format!("killed:{name}"), 1);
             self.prog.event(Event::Killed(name.clone()));
@@ -395,6 +397,7 @@ impl crate::Game {
     /// Food with effects: golden apples, spider eyes, pufferfish, rotten flesh.
     pub(crate) fn fase6_ate(&mut self, name: &str) {
         use crate::effects::*;
+        self.extras_ate(name);
         self.prog.stats.add("foods_eaten_total", 1);
         let key = format!("ate:{name}");
         if self.prog.stats.get(&key) == 0 {

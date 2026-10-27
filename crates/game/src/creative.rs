@@ -110,7 +110,7 @@ impl Game {
         if name.ends_with("_spawn_egg") {
             return Some(Tab::Eggs);
         }
-        if name == "fishing_bobber" || name.starts_with("gear_") && it.tool.is_some() && !name.ends_with("_stick_string") {
+        if name == "fishing_bobber" || name.starts_with("minion_") || name.starts_with("gear_") && it.tool.is_some() && !name.ends_with("_stick_string") {
             return None;
         }
         if name == "flint_and_steel" || name == "minecart" || name.ends_with("_backpack") {

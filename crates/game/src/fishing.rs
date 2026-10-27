@@ -88,7 +88,7 @@ impl Game {
 
     fn catch_fish(&mut self, at: Vec3) {
         let roll = self.surv.rng.f32();
-        let biome = self.world.gen.biome_at(at.x.floor() as i32, at.z.floor() as i32).name();
+        let biome = self.world.gen.base_biome_at(at.x.floor() as i32, at.z.floor() as i32).name();
         let more = crate::mods::aquaculture::MORE_FISH.iter().filter(|f| f.0.contains(&biome)).map(|f| (f.1, f.2));
         let fish: Vec<(&'static str, u32)> = FISH.iter().copied().chain(LOCAL_FISH.iter().filter(|f| f.0.contains(&biome)).map(|f| (f.1, f.2))).chain(more).map(|(n, w)| (n, self.rod_fish_weight(n, w))).collect();
         let junk: Vec<(&'static str, u32)> = JUNK.iter().chain(crate::mods::aquaculture::MORE_JUNK).copied().collect();
@@ -187,7 +187,7 @@ impl Game {
         let layer = (self.item_base + l) as f32;
         let lp = self.bobber_pos()?.floor().as_ivec3();
         let light = self.world.light(lp);
-        Some(GpuItem { pos: [p.x, p.y + 0.05, p.z, 0.3], info: [-self.yaw, 1.0, (light >> 4) as f32 / 15.0, (light & 15) as f32 / 15.0], layers: [layer; 4], rot: [0.0, 0.0, 0.0, 0.0] })
+        Some(GpuItem { pos: [p.x, p.y + 0.05, p.z, 0.3], info: [-self.yaw, 1.0, (light >> 4) as f32 / 15.0, (light & 15) as f32 / 15.0], layers: [layer; 4], rot: [0.0, 0.0, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() })
     }
 
     /// The fishing line from the rod tip to the float, sagging a little.

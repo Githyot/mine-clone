@@ -1,0 +1,18 @@
+(
+    effects: [],
+    absorb: 0.0,
+    stats: {
+        "dim:0": 1,
+        "biome:0": 1,
+        "biome:20": 1,
+    },
+    earned: [],
+    ench_seed: 20973,
+    beacons: [],
+    brews: [],
+    death: None,
+    vaults_opened: [],
+    frost: [],
+    eggs: [],
+    warning: 0,
+)

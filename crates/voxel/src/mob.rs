@@ -258,6 +258,10 @@ pub struct Mob {
     /// Seconds left burning (fire spells) and slowed (frost spells).
     pub on_fire: f32,
     pub chill: f32,
+    /// Lasting harm the game put on it (Terraria-style debuffs: poison, frostburn, ichor...):
+    /// effect id and seconds left. The game ticks them; `vuln` is how much more a hit hurts.
+    pub debuffs: Vec<(u8, f32)>,
+    pub vuln: f32,
     /// Where a town NPC lives; it wanders near here.
     pub home: Option<Vec3>,
     /// Wears a saddle (horses and the like), and has the player on its back.
@@ -324,6 +328,8 @@ impl Mob {
             fed: 20.0 + rng.f32() * 40.0,
             on_fire: 0.0,
             chill: 0.0,
+            debuffs: Vec::new(),
+            vuln: 0.0,
             home: None,
             saddled: false,
             ridden: false,
@@ -348,7 +354,7 @@ impl Mob {
         if !self.alive() {
             return false;
         }
-        self.health -= damage;
+        self.health -= damage * (1.0 + self.vuln);
         self.hurt_age = 0.0;
         let dir = self.body.pos - from;
         self.body.knockback(dir, 6.0);

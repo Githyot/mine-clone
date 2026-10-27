@@ -2,7 +2,7 @@
 //! layers of characters in `structures.ron`, placed by the generator on a coarse grid of
 //! regions so each chunk can work out on its own which pieces of which buildings cross it.
 
-use glam::{IVec2, IVec3};
+use glam::{IVec2, IVec3, Vec3};
 use serde::Deserialize;
 
 use crate::block::{BlockId, BlockRegistry, Shape};
@@ -79,6 +79,31 @@ pub struct StructureDef {
     /// Mobs that live inside, spawned once when the player first comes near: (name, count).
     #[serde(default)]
     pub mobs: Vec<(String, u8)>,
+    /// Things set in the building that are not blocks (a parked wagon), placed by the game.
+    #[serde(default)]
+    pub props: Vec<PropDef>,
+}
+
+/// Something in a structure that is not a block: what it is (the game knows the kinds), where
+/// in the plan (blocks from the plan's corner, layer 0 at the bottom, before turning) and
+/// which way it faces (degrees; 0 faces +Z, 90 faces +X).
+#[derive(Deserialize, Clone, Debug)]
+pub struct PropDef {
+    pub kind: String,
+    pub at: (f32, f32, f32),
+    #[serde(default)]
+    pub yaw: f32,
+}
+
+/// A prop of a building in the world.
+#[derive(Clone, Debug)]
+pub struct Prop {
+    pub kind: String,
+    pub pos: Vec3,
+    /// Facing, as an entity's yaw (atan2 of x over z).
+    pub yaw: f32,
+    /// Which building and which of its props: the same for the same thing every time.
+    pub key: (IVec3, usize),
 }
 
 #[derive(Deserialize)]
@@ -162,7 +187,10 @@ impl Structures {
                 *t = (0..reg.blocks.len())
                     .map(|i| {
                         let b = &reg.blocks[i];
-                        if k == 0 || !matches!(b.shape, Shape::Stairs | Shape::Roof | Shape::Door | Shape::Trapdoor) {
+                        // Blocks facing one of four ways turn with the structure (an Oriented
+                        // block facing up or down stays as it is).
+                        let turns = matches!(b.shape, Shape::Stairs | Shape::Roof | Shape::Door | Shape::Trapdoor) || b.shape == Shape::Oriented && b.variant & 7 < 4;
+                        if k == 0 || !turns {
                             return i as BlockId;
                         }
                         let v = (b.variant & !3) | ((b.variant & 3) + k as u8) & 3;
@@ -345,7 +373,7 @@ impl Generator {
         let oz = rz * r + rng.range(0, (r - f.y).max(1));
         let (cx, cz) = (ox + f.x / 2, oz + f.y / 2);
         let biome = self.biome_at(cx, cz);
-        if !s.def.biomes.iter().any(|b| b == biome.name()) {
+        if !s.def.biomes.iter().any(|b| b == biome.name() || b == biome.base().name()) {
             return None;
         }
         if let Place::Sky(h) = s.def.place {
@@ -478,6 +506,41 @@ impl Generator {
                 }
             }
         }
+    }
+
+    /// The props (parked wagons and the like) of the buildings within `range` blocks of (x, z).
+    pub fn props_near(&self, x: i32, z: i32, range: i32) -> Vec<Prop> {
+        let structs = self.structures();
+        let mut out = Vec::new();
+        for (si, s) in structs.list.iter().enumerate() {
+            if s.def.props.is_empty() || s.def.piece_only {
+                continue;
+            }
+            let r = s.def.spacing.max(2) * 16 * self.spread / 100;
+            for rz in (z - range).div_euclid(r)..=(z + range).div_euclid(r) {
+                for rx in (x - range).div_euclid(r)..=(x + range).div_euclid(r) {
+                    let Some(p) = self.try_place(si, s, rx, rz, r) else { continue };
+                    for (k, d) in s.def.props.iter().enumerate() {
+                        // Turn the plan point and the facing the way the building was turned:
+                        // each quarter turn maps (u, v) on a w by d plan to (d - v, u).
+                        let (mut u, mut v) = (d.at.0, d.at.2);
+                        let (mut fx, mut fz) = (d.yaw.to_radians().sin(), d.yaw.to_radians().cos());
+                        let (mut w, mut dd) = (s.size.x as f32, s.size.z as f32);
+                        for _ in 0..p.turns {
+                            (u, v) = (dd - v, u);
+                            (fx, fz) = (-fz, fx);
+                            (w, dd) = (dd, w);
+                        }
+                        let _ = w;
+                        let pos = Vec3::new(p.origin.x as f32 + u, p.origin.y as f32 + d.at.1, p.origin.z as f32 + v);
+                        if (pos.x - x as f32).abs() <= range as f32 && (pos.z - z as f32).abs() <= range as f32 {
+                            out.push(Prop { kind: d.kind.clone(), pos, yaw: fx.atan2(fz), key: (p.origin, k) });
+                        }
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// The nearest building called `name` within `regions` tries of (x, z): its lowest corner and

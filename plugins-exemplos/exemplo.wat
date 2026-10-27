@@ -1,0 +1,101 @@
+;; Plugin de exemplo do Mine Clone (WebAssembly em texto).
+;; Para usar: copie este arquivo para a pasta plugins/ ao lado do jogo (arquivos .wat ou .wasm).
+;; A lista do que o jogo oferece está no topo de crates/game/src/plugins.rs.
+(module
+  (import "jogo" "say" (func $say (param i32 i32)))
+  (import "jogo" "player" (func $player (param i32) (result f32)))
+  (import "jogo" "time" (func $time (result f32)))
+  (import "jogo" "give" (func $give (param i32 i32 i32) (result i32)))
+  (import "jogo" "block_id" (func $block_id (param i32 i32) (result i32)))
+  (import "jogo" "block_at" (func $block_at (param i32 i32 i32) (result i32)))
+  (import "jogo" "set_block" (func $set_block (param i32 i32 i32 i32) (result i32)))
+  (import "jogo" "add_command" (func $add_command (param i32 i32)))
+  (import "jogo" "random" (func $random (result f32)))
+  (memory (export "memory") 1)
+  (global $last_time (mut f32) (f32.const -1))
+  (data (i32.const 1024) "/sorte")
+  (data (i32.const 1031) "/torre")
+  (data (i32.const 1038) "Plugin exemplo: use /sorte e /torre")
+  (data (i32.const 1074) "apple")
+  (data (i32.const 1080) "diamond")
+  (data (i32.const 1088) "emerald")
+  (data (i32.const 1096) "bread")
+  (data (i32.const 1102) "Sorte pequena: uma maca.")
+  (data (i32.const 1127) "Sorte boa: um pao.")
+  (data (i32.const 1146) "Sorte grande: uma esmeralda!")
+  (data (i32.const 1175) "Sorte rara: um diamante!")
+  (data (i32.const 1200) "cobblestone")
+  (data (i32.const 1212) "torch")
+  (data (i32.const 1218) "Uma torre surgiu na sua frente.")
+  (data (i32.const 1250) "diamond_ore")
+  (data (i32.const 1262) "deepslate_diamond_ore")
+  (data (i32.const 1284) "Diamante! Boa!")
+  (data (i32.const 1299) "Bom dia! (plugin exemplo)")
+
+  ;; Where the game writes the command line for us.
+  (func (export "buffer") (result i32) (i32.const 8192))
+
+  (func (export "init")
+    (call $add_command (i32.const 1024) (i32.const 6))
+    (call $add_command (i32.const 1031) (i32.const 6))
+    (call $say (i32.const 1038) (i32.const 35)))
+
+  ;; Does the text at $p (length $n) start with the bytes at $q (length $m)?
+  (func $starts (param $p i32) (param $n i32) (param $q i32) (param $m i32) (result i32)
+    (local $i i32)
+    (if (i32.lt_s (local.get $n) (local.get $m)) (then (return (i32.const 0))))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_s (local.get $i) (local.get $m)))
+        (if (i32.ne (i32.load8_u (i32.add (local.get $p) (local.get $i)))
+                    (i32.load8_u (i32.add (local.get $q) (local.get $i))))
+          (then (return (i32.const 0))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (i32.const 1))
+
+  (func (export "command") (param $p i32) (param $n i32) (result i32)
+    (local $r f32) (local $x i32) (local $y i32) (local $z i32) (local $i i32) (local $cobble i32)
+    (if (call $starts (local.get $p) (local.get $n) (i32.const 1024) (i32.const 6))
+      (then
+        (local.set $r (call $random))
+        (if (f32.lt (local.get $r) (f32.const 0.05))
+          (then (drop (call $give (i32.const 1080) (i32.const 7) (i32.const 1))) (call $say (i32.const 1175) (i32.const 24)) (return (i32.const 1))))
+        (if (f32.lt (local.get $r) (f32.const 0.2))
+          (then (drop (call $give (i32.const 1088) (i32.const 7) (i32.const 1))) (call $say (i32.const 1146) (i32.const 28)) (return (i32.const 1))))
+        (if (f32.lt (local.get $r) (f32.const 0.6))
+          (then (drop (call $give (i32.const 1096) (i32.const 5) (i32.const 1))) (call $say (i32.const 1127) (i32.const 18)) (return (i32.const 1))))
+        (drop (call $give (i32.const 1074) (i32.const 5) (i32.const 1)))
+        (call $say (i32.const 1102) (i32.const 24))
+        (return (i32.const 1))))
+    (if (call $starts (local.get $p) (local.get $n) (i32.const 1031) (i32.const 6))
+      (then
+        (local.set $x (i32.add (i32.trunc_f32_s (f32.floor (call $player (i32.const 0)))) (i32.const 2)))
+        (local.set $y (i32.trunc_f32_s (f32.floor (call $player (i32.const 1)))))
+        (local.set $z (i32.trunc_f32_s (f32.floor (call $player (i32.const 2)))))
+        (local.set $cobble (call $block_id (i32.const 1200) (i32.const 11)))
+        (block $done
+          (loop $up
+            (br_if $done (i32.ge_s (local.get $i) (i32.const 5)))
+            (drop (call $set_block (local.get $x) (i32.add (local.get $y) (local.get $i)) (local.get $z) (local.get $cobble)))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $up)))
+        (drop (call $set_block (local.get $x) (i32.add (local.get $y) (i32.const 5)) (local.get $z) (call $block_id (i32.const 1212) (i32.const 5))))
+        (call $say (i32.const 1218) (i32.const 31))
+        (return (i32.const 1))))
+    (i32.const 0))
+
+  (func (export "block_broken") (param $x i32) (param $y i32) (param $z i32) (param $b i32)
+    (if (i32.or (i32.eq (local.get $b) (call $block_id (i32.const 1250) (i32.const 11)))
+                (i32.eq (local.get $b) (call $block_id (i32.const 1262) (i32.const 21))))
+      (then (call $say (i32.const 1284) (i32.const 14)))))
+
+  ;; A new day: the clock went round past dawn.
+  (func (export "tick") (param $dt f32)
+    (local $t f32)
+    (local.set $t (call $time))
+    (if (i32.and (f32.ge (global.get $last_time) (f32.const 0))
+                 (f32.lt (local.get $t) (global.get $last_time)))
+      (then (call $say (i32.const 1299) (i32.const 25))))
+    (global.set $last_time (local.get $t)))
+)
