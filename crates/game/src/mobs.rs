@@ -243,16 +243,16 @@ impl Mobs {
             }
             let uw = Layer::at(p.y) == Layer::Underworld;
             let names: &[(&str, u32)] = if uw {
-                &[("fire_imp", 6), ("magma_cube", 5), ("wither_skeleton", 3), ("blaze", 3), ("ember_wraith", 3), ("ash_skeleton", 4)]
+                &[("fire_imp", 6), ("magma_cube", 5), ("wither_skeleton", 3), ("blaze", 3), ("ember_wraith", 3), ("ash_skeleton", 4), ("jelly_lava", 4)]
             } else {
                 match world.gen.ubiome_at(p.x, p.y, p.z) {
-                    UBiome::Ice => &[("frost_archer", 5), ("skeleton", 4), ("zombie", 2)],
+                    UBiome::Ice => &[("frost_archer", 5), ("skeleton", 4), ("zombie", 2), ("jelly_ice", 3)],
                     UBiome::Desert => &[("mummy", 6), ("spider", 3), ("skeleton", 2)],
-                    UBiome::Jungle => &[("ooze", 5), ("cave_spider", 3), ("zombie", 3)],
+                    UBiome::Jungle => &[("ooze", 5), ("cave_spider", 3), ("zombie", 3), ("hive_drone", 2)],
                     UBiome::Spider => &[("cave_spider", 7), ("spider", 5)],
                     UBiome::Mushroom => &[("ooze", 3), ("zombie", 2)],
-                    _ if Layer::at(p.y) == Layer::Caverns => &[("skeleton", 5), ("zombie", 4), ("stalker", 3), ("spider", 3), ("wither_skeleton", 1), ("ooze", 2)],
-                    _ => &[("zombie", 5), ("skeleton", 5), ("spider", 3), ("stalker", 2), ("cave_spider", 1)],
+                    _ if Layer::at(p.y) == Layer::Caverns => &[("skeleton", 5), ("zombie", 4), ("stalker", 3), ("spider", 3), ("wither_skeleton", 1), ("ooze", 2), ("jelly_red", 3), ("jelly_pink", 1)],
+                    _ => &[("zombie", 5), ("skeleton", 5), ("spider", 3), ("stalker", 2), ("cave_spider", 1), ("jelly_blue", 2), ("jelly_red", 1)],
                 }
             };
             let total: u32 = names.iter().map(|n| n.1).sum();

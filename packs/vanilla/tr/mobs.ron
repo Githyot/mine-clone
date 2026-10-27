@@ -1,0 +1,169 @@
+// The rest of the Terraria side (plan/terraria-completo.md). Written by tools/gen_tr.py.
+(mobs: [
+    (
+        name: "jelly_green", display_name: "Geleia Verde", kind: Hostile, health: 14, speed: 2.2, attack: 2,
+        drops: [(item: "gel", min: 1, max: 3)], xp: 2,
+        width: 1.20, height: 0.99, spawn: Grass, weight: 4, group: (1, 2), biomes: ["Plains", "Forest", "Meadow", "Birch Forest", "Flower Forest"], hops: true, scale: 1.6,
+        parts: [
+            (size: (12, 10, 12), origin: (-6, 0, -6), uv: (0, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5)],
+    ),
+    (
+        name: "jelly_blue", display_name: "Geleia Azul", kind: Hostile, health: 20, speed: 2.4, attack: 3,
+        drops: [(item: "gel", min: 1, max: 3)], xp: 3,
+        width: 1.35, height: 1.12, spawn: Grass, weight: 3, group: (1, 2), hops: true, scale: 1.8,
+        parts: [
+            (size: (12, 10, 12), origin: (-6, 0, -6), uv: (0, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5)],
+    ),
+    (
+        name: "jelly_red", display_name: "Geleia Vermelha", kind: Hostile, health: 30, speed: 2.6, attack: 4,
+        drops: [(item: "gel", min: 2, max: 4)], xp: 5,
+        width: 1.35, height: 1.12, spawn: Never, hops: true, scale: 1.8,
+        parts: [
+            (size: (12, 10, 12), origin: (-6, 0, -6), uv: (0, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5)],
+    ),
+    (
+        name: "jelly_ice", display_name: "Geleia de Gelo", kind: Hostile, health: 34, speed: 2.4, attack: 4,
+        drops: [(item: "gel", min: 1, max: 3), (item: "snowball", min: 0, max: 2)], xp: 5,
+        width: 1.35, height: 1.12, spawn: Dark, weight: 4, biomes: ["Snowy Plains", "Ice Spikes", "Snowy Taiga", "Snowy Peaks", "Snowy Slopes", "Grove"], hops: true, scale: 1.8,
+        parts: [
+            (size: (12, 10, 12), origin: (-6, 0, -6), uv: (0, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5)],
+    ),
+    (
+        name: "jelly_lava", display_name: "Geleia de Lava", kind: Hostile, health: 50, speed: 2.8, attack: 6,
+        drops: [(item: "gel", min: 2, max: 4), (item: "magma_cream", chance: 0.3)], xp: 8,
+        width: 1.35, height: 1.12, spawn: Never, hops: true, scale: 1.8,
+        parts: [
+            (size: (12, 10, 12), origin: (-6, 0, -6), uv: (0, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5)],
+    ),
+    (
+        name: "jelly_pink", display_name: "Geleia Rosa", kind: Hostile, health: 60, speed: 2.8, attack: 5,
+        drops: [(item: "gel", min: 5, max: 9)], xp: 10,
+        width: 0.75, height: 0.62, spawn: Grass, weight: 1, group: (1, 1), hops: true, scale: 1.0,
+        parts: [
+            (size: (12, 10, 12), origin: (-6, 0, -6), uv: (0, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5)],
+    ),
+    (
+        name: "jelly_spiked", display_name: "Geleia Espinhosa", kind: Hostile, health: 24, speed: 2.8, attack: 4,
+        drops: [(item: "gel", min: 1, max: 2)], xp: 3,
+        width: 1.20, height: 0.99, spawn: Never, hops: true, scale: 1.6,
+        parts: [
+            (size: (12, 10, 12), origin: (-6, 0, -6), uv: (0, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5)],
+    ),
+    // The Jelly King: a huge hopping jelly with a gold crown. Sheds jellies as it is hurt.
+    (
+        name: "king_jelly", display_name: "Rei Geleia", kind: Hostile, health: 420, speed: 2.0, attack: 6,
+        drops: [(item: "gel", min: 20, max: 40), (item: "jelly_hook", chance: 0.5), (item: "jelly_staff", chance: 0.5), (item: "royal_gel"), (item: "lesser_healing_potion", min: 3, max: 6)], xp: 90,
+        width: 3.2, height: 2.6, spawn: Never, hops: true, scale: 4.5, boss: true,
+        parts: [
+            (size: (12, 10, 12), origin: (-6, 0, -6), uv: (0, 0)),
+            (size: (8, 3, 8), origin: (-4, 10, -4), uv: (0, 24)),
+        ],
+        layers: [(part: 0, inflate: 0.6), (part: 1, inflate: 0.4)],
+    ),
+    // The Great Eye: hovers, stares, dashes; at half health it opens a mouth of teeth.
+    (
+        name: "great_eye", display_name: "Grande Olho", kind: Hostile, health: 560, speed: 0.1, attack: 7,
+        drops: [(item: "lens", min: 4, max: 8), (item: "watcher_shield"), (item: "emerald", min: 3, max: 6), (item: "life_crystal", chance: 0.3)], xp: 110,
+        width: 2.2, height: 2.2, spawn: Never, scale: 2.4, boss: true, flies: true,
+        parts: [
+            (size: (16, 16, 16), origin: (-8, 0, -8), uv: (0, 0), anim: Head, pivot: (0, 8, 0)),
+            (size: (2, 2, 8), origin: (-5, 7, -16), uv: (0, 32), anim: Head, pivot: (0, 8, 0)),
+            (size: (2, 2, 8), origin: (3, 9, -16), uv: (0, 32), anim: Head, pivot: (0, 8, 0)),
+            (size: (2, 2, 8), origin: (-1, 3, -16), uv: (0, 32), anim: Head, pivot: (0, 8, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5)],
+    ),
+    (
+        name: "servant_eye", display_name: "Olho Servo", kind: Hostile, health: 10, speed: 0.1, attack: 3,
+        drops: [(item: "lens", chance: 0.15)], xp: 2,
+        width: 0.5, height: 0.5, spawn: Never, scale: 0.5, flies: true,
+        parts: [
+            (size: (16, 16, 16), origin: (-8, 0, -8), uv: (0, 0), anim: Head, pivot: (0, 8, 0)),
+            (size: (2, 2, 8), origin: (-5, 7, -16), uv: (0, 32), anim: Head, pivot: (0, 8, 0)),
+            (size: (2, 2, 8), origin: (3, 9, -16), uv: (0, 32), anim: Head, pivot: (0, 8, 0)),
+            (size: (2, 2, 8), origin: (-1, 3, -16), uv: (0, 32), anim: Head, pivot: (0, 8, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.5)],
+    ),
+    // The Blight Mind: a floating brain guarded by its creepers; when they are gone it hunts you.
+    (
+        name: "blight_mind", display_name: "Mente da Chaga", kind: Hostile, health: 600, speed: 0.1, attack: 6,
+        drops: [(item: "blight_tissue", min: 10, max: 20), (item: "mind_ward"), (item: "emerald", min: 3, max: 6)], xp: 120,
+        width: 2.2, height: 2.2, spawn: Never, scale: 2.4, boss: true, flies: true,
+        parts: [
+            (size: (14, 10, 12), origin: (-7, 8, -6), uv: (0, 0), anim: Head, pivot: (0, 8, 0)),
+            (size: (6, 8, 6), origin: (-3, 0, -3), uv: (0, 24), anim: Head, pivot: (0, 8, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.6)],
+    ),
+    (
+        name: "blight_creeper", display_name: "Rastejante da Chaga", kind: Hostile, health: 26, speed: 0.1, attack: 4,
+        drops: [(item: "blight_tissue", chance: 0.25)], xp: 3,
+        width: 0.7, height: 0.7, spawn: Never, scale: 1.0, flies: true,
+        parts: [
+            (size: (8, 8, 8), origin: (-4, 0, -4), uv: (0, 0), anim: Head, pivot: (0, 4, 0)),
+            (size: (2, 2, 6), origin: (-1, 3, -10), uv: (0, 16), anim: Head, pivot: (0, 4, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.4)],
+    ),
+    // The Hive Queen: woken from her larva deep in the jungle; charges, stings, calls her drones.
+    (
+        name: "hive_queen", display_name: "Rainha da Colmeia", kind: Hostile, health: 680, speed: 0.1, attack: 7,
+        drops: [(item: "beeswax", min: 10, max: 17), (item: "hive_staff", chance: 0.4), (item: "hive_blade", chance: 0.4), (item: "hive_pack"), (item: "honeycomb", min: 10, max: 20)], xp: 140,
+        width: 2.6, height: 2.0, spawn: Never, scale: 2.6, boss: true, flies: true,
+        parts: [
+            (size: (10, 10, 14), origin: (-5, 4, -14), uv: (0, 0)),
+            (size: (8, 8, 8), origin: (-4, 6, 0), uv: (0, 24)),
+            (size: (6, 6, 5), origin: (-3, 7, 8), uv: (32, 24), anim: Head, pivot: (0, 10, 8)),
+            (size: (12, 1, 8), origin: (-14, 14, -2), uv: (0, 40), anim: Wing(0), pivot: (-3, 14, 2)),
+            (size: (12, 1, 8), origin: (2, 14, -2), uv: (0, 40), anim: Wing(1), pivot: (3, 14, 2)),
+            (size: (2, 2, 4), origin: (-1, 7, -18), uv: (40, 40)),
+        ],
+        layers: [(part: 0, inflate: 0.5), (part: 1, inflate: 0.5)],
+    ),
+    (
+        name: "hive_drone", display_name: "Zangão", kind: Hostile, health: 12, speed: 0.1, attack: 3,
+        drops: [(item: "honeycomb", chance: 0.1)], xp: 2,
+        width: 0.6, height: 0.5, spawn: Never, scale: 0.6, flies: true,
+        parts: [
+            (size: (10, 10, 14), origin: (-5, 4, -14), uv: (0, 0)),
+            (size: (8, 8, 8), origin: (-4, 6, 0), uv: (0, 24)),
+            (size: (6, 6, 5), origin: (-3, 7, 8), uv: (32, 24), anim: Head, pivot: (0, 10, 8)),
+            (size: (12, 1, 8), origin: (-14, 14, -2), uv: (0, 40), anim: Wing(0), pivot: (-3, 14, 2)),
+            (size: (12, 1, 8), origin: (2, 14, -2), uv: (0, 40), anim: Wing(1), pivot: (3, 14, 2)),
+            (size: (2, 2, 4), origin: (-1, 7, -18), uv: (40, 40)),
+        ],
+        layers: [],
+    ),
+    // The Frost Colossus: a one-eyed giant of the snow, with antlers. Ice spikes, frost nova, roars.
+    (
+        name: "frost_colossus", display_name: "Colosso do Gelo", kind: Hostile, health: 760, speed: 1.6, attack: 8,
+        drops: [(item: "frost_shard", min: 6, max: 12), (item: "colossus_staff", chance: 0.4), (item: "fur_cloak"), (item: "packed_ice", min: 5, max: 10)], xp: 150,
+        width: 2.4, height: 5.6, spawn: Never, scale: 2.2, boss: true,
+        parts: [
+            (size: (12, 14, 8), origin: (-6, 14, -4), uv: (0, 0)),
+            (size: (10, 8, 8), origin: (-5, 28, -3), uv: (0, 22), anim: Head, pivot: (0, 28, 0)),
+            (size: (2, 8, 2), origin: (-7, 35, 0), uv: (36, 22), anim: Head, pivot: (0, 28, 0)),
+            (size: (2, 8, 2), origin: (5, 35, 0), uv: (36, 22), anim: Head, pivot: (0, 28, 0)),
+            (size: (4, 16, 4), origin: (-10, 12, -2), uv: (44, 22), anim: Arm(0), pivot: (-8, 26, 0)),
+            (size: (4, 16, 4), origin: (6, 12, -2), uv: (44, 22), anim: Arm(1), pivot: (8, 26, 0)),
+            (size: (5, 14, 5), origin: (-6, 0, -2), uv: (0, 40), anim: Leg(0), pivot: (-3, 14, 0)),
+            (size: (5, 14, 5), origin: (1, 0, -2), uv: (0, 40), anim: Leg(1), pivot: (3, 14, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.7), (part: 1, inflate: 0.5), (part: 4, inflate: 0.4), (part: 6, inflate: 0.4)],
+    ),
+])

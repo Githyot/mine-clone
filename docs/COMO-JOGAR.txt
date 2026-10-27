@@ -479,6 +479,23 @@ O MUNDO PROFUNDO E O SUBMUNDO
     vira chão (Shift afunda). Escudo de investida: dois toques em A ou D derrubam monstros.
     Equipamento de escalada: sobe paredes, desliza com Shift e salta da parede com Espaço.
 
+CHEFES DO COMEÇO (lado Terraria, lote 1)
+  Rei Geleia: Coroa Gelatinosa (gel em volta de uma barra de ouro), na superfície. Pula em
+    cima de você, solta geleias quando apanha. Cai: gel, Gel Real (geleias não atacam mais),
+    Gancho Gelatinoso, Cajado Gelatinoso (invoca uma geleinha).
+  Grande Olho: Olho Suspeito (6 lentes + olho de aranha), à noite. Com 15 corações ele pode
+    vir sozinho. Chama olhos servos e investe; na metade gira e fica furioso.
+    Cai: lentes, Escudo do Vigia (dois toques em A ou D = investida).
+  Mente da Chaga: Espinha da Chaga, abaixo da altura 0. Os rastejantes a protegem: mate-os
+    antes. Depois ela some e reaparece perto de você. Cai: Tecido da Chaga, Guarda da Mente.
+  Rainha da Colmeia: quebre a Larva Real dentro de uma colmeia gigante (embaixo da selva) ou
+    use o Favo Real na selva. Pica, investe e chama zangões. Cai: Cajado da Colmeia,
+    Lâmina da Colmeia, Mochila da Colmeia (abelhas picam quem te machuca), cera.
+  Colosso do Gelo: Chifre Gelado, na neve. Linhas de espinhos de gelo e, furioso, um rugido
+    que escurece e deixa lento. Cai: Cajado do Colosso, Manto de Pelo (imune a frio).
+  Geleias: verde, azul, vermelha (cavernas), de gelo, de lava (Submundo), rosa (rara).
+    Gel + graveto = 3 tochas.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

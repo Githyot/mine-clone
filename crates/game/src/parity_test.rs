@@ -650,6 +650,7 @@ impl Report {
 fn parity_with_vanilla() {
     let (reg, items, recipes) = crate::game_data(embedded::BLOCKS_RON, embedded::ITEMS_RON, embedded::RECIPES_RON).unwrap();
     let mobs_text = crate::terraria::with_extra(&crate::merge_list(embedded::MOBS_RON, embedded::FASE6_MOBS_RON), embedded::T5_MOBS_RON);
+    let mobs_text = crate::terraria::with_extra(&mobs_text, embedded::TR_MOBS_RON);
     let mob_reg = voxel::mob::MobRegistry::from_ron_many(&[&mobs_text, embedded::MODS_MOBS_RON, embedded::MODS_DIMS_MOBS_RON]).unwrap();
     let mut r = Report { fails: vec![], kept: vec![], missing: vec![], checked: 0 };
 

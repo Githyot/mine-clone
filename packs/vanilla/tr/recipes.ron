@@ -1,0 +1,17 @@
+// The rest of the Terraria side (plan/terraria-completo.md). Written by tools/gen_tr.py.
+(
+    shaped: [
+        (pattern: ["GGG", "GCG", "GGG"], key: {'G': "gel", 'C': "gold_ingot"}, result: "jelly_crown"),
+        (pattern: ["G", "S"], key: {'G': "gel", 'S': "stick"}, result: "torch", count: 3),
+        (pattern: ["GGG", "GSG", "GGG"], key: {'G': "gel", 'S': "slime_ball"}, result: "jelly_staff"),
+    ],
+    shapeless: [
+        (ingredients: ["lens", "lens", "lens", "lens", "lens", "lens", "spider_eye"], result: "eye_lure"),
+        (ingredients: ["rotten_flesh", "rotten_flesh", "rotten_flesh", "bone", "bone", "bone", "redstone", "redstone"], result: "blight_spine"),
+        (ingredients: ["honeycomb", "honeycomb", "honeycomb", "honeycomb", "honeycomb", "hive_block", "gold_nugget"], result: "royal_comb"),
+        (ingredients: ["packed_ice", "packed_ice", "packed_ice", "lens", "bone", "bone", "leather"], result: "frost_horn"),
+        (ingredients: ["honeycomb", "honeycomb", "honeycomb", "honeycomb"], result: "hive_block", count: 2),
+        (ingredients: ["beeswax", "beeswax", "string"], result: "candle", count: 2),
+        (ingredients: ["gel", "gel", "gel", "lens"], result: "jelly_hook"),
+    ],
+)

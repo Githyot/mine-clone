@@ -57,6 +57,8 @@ mod rpg;
 mod accessories;
 mod affixes;
 mod boss_ai;
+mod tr;
+mod tr_bosses;
 mod glyphs;
 mod hardmode;
 mod hook;
@@ -352,16 +354,20 @@ fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) 
     let b0 = terraria::with_extra(&merge_list(blocks[0], &fase6_text(None, "blocks.ron")), embedded::T5_BLOCKS_RON);
     // The deep world's blocks and items (worldgen/deep.rs).
     let b0 = terraria::with_extra(&b0, embedded::DEEP_BLOCKS_RON);
+    // The rest of the Terraria side (tr.rs).
+    let b0 = terraria::with_extra(&b0, embedded::TR_BLOCKS_RON);
     let i0 = terraria::with_extra(&merge_list(items[0], &fase6_text(None, "items.ron")), embedded::T5_ITEMS_RON);
     // The stats content (rpg.rs) after the Terraria side's own items.
     let i0 = terraria::with_extra(&i0, embedded::RPG_ITEMS_RON);
     let i0 = terraria::with_extra(&i0, embedded::DEEP_ITEMS_RON);
+    let i0 = terraria::with_extra(&i0, embedded::TR_ITEMS_RON);
     let reg = BlockRegistry::from_ron_many(&[b0.as_str(), blocks[1]])?;
     let items = ItemRegistry::from_ron_many(&[i0.as_str(), items[1]], &reg)?;
     let mut recipes = Recipes::from_ron_many(&recipes, &items)?;
     terraria::add_recipes(&mut recipes, embedded::T5_RECIPES_RON, &items)?;
     terraria::add_recipes(&mut recipes, embedded::RPG_RECIPES_RON, &items)?;
     terraria::add_recipes(&mut recipes, embedded::DEEP_RECIPES_RON, &items)?;
+    terraria::add_recipes(&mut recipes, embedded::TR_RECIPES_RON, &items)?;
     let extra = fase6_text(None, "recipes.ron");
     if !extra.trim().is_empty() {
         let more = Recipes::from_ron(&extra, &items)?;
@@ -858,6 +864,7 @@ impl Game {
         // Mobs: a mobs.ron on disk wins, like blocks.
         let [mobs_text, mods_mobs] = read_pack_pair(&base, "mobs.ron", embedded::MOBS_RON, embedded::MODS_MOBS_RON);
         let mobs_text = terraria::with_extra(&merge_list(&mobs_text, &fase6_text(Some(&base), "mobs.ron")), embedded::T5_MOBS_RON);
+        let mobs_text = terraria::with_extra(&mobs_text, embedded::TR_MOBS_RON);
         let [_, dims_mobs] = read_pack_pair(&base, "dims_mobs.ron", "", embedded::MODS_DIMS_MOBS_RON);
         let mob_reg = voxel::mob::MobRegistry::from_ron_many(&[&mobs_text, &mods_mobs, &dims_mobs]).unwrap_or_else(|e| {
             log::error!("{e}; using built-in mobs");
@@ -1868,6 +1875,10 @@ impl Game {
                     // Test hook: an Etapa 5 scene (terraria.rs, test_t5).
                     self.test_t5(&scene);
                 }
+                if let Ok(scene) = std::env::var("MC_TR") {
+                    // Test hook: the rest of the Terraria side (tr.rs, test_tr).
+                    self.test_tr(&scene);
+                }
                 if let Ok(scene) = std::env::var("MC_RPG") {
                     // Test hook: stats, minions, debuffs (rpg.rs, test_rpg).
                     self.test_rpg(&scene);
@@ -2673,7 +2684,7 @@ impl Game {
         // Monsters and blasts hit harder on harder difficulties.
         let amount = if from.is_some() && !pvp { amount * [0.0, 0.5, 1.0, 1.5][self.settings.difficulty.min(3) as usize] } else { amount };
         // Dodged (mirror charm, the radiant set): nothing at all.
-        if self.rpg_dodge(from) {
+        if self.rpg_dodge(from) || self.tr_ignores_hit(from) {
             self.prog.next_kind = Default::default();
             return;
         }

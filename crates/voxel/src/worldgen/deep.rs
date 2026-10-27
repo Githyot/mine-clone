@@ -216,6 +216,9 @@ pub(super) struct DeepPalette {
     infernal_bricks: BlockId,
     soul_lantern: BlockId,
     iron_bars: BlockId,
+    hive: BlockId,
+    larva: BlockId,
+    honey: BlockId,
 }
 
 impl DeepPalette {
@@ -311,6 +314,9 @@ impl DeepPalette {
             infernal_bricks: g("infernal_bricks"),
             soul_lantern: g("soul_lantern"),
             iron_bars: g("iron_bars"),
+            hive: if g("hive_block") == AIR { g("honeycomb_block") } else { g("hive_block") },
+            larva: g("hive_larva"),
+            honey: if g("hive_honey") == AIR { g("honeycomb_block") } else { g("hive_honey") },
         }
     }
 
@@ -404,6 +410,8 @@ pub enum DeepKind {
     RuinedHouse,
     /// A ruined tower of the Underworld.
     RuinedTower,
+    /// A giant bees' hive in the underground jungle, with the royal larva at its heart.
+    Hive,
 }
 
 impl DeepKind {
@@ -415,6 +423,7 @@ impl DeepKind {
             DeepKind::Vault => "cofre_dourado",
             DeepKind::RuinedHouse => "casa_em_ruinas",
             DeepKind::RuinedTower => "torre_em_ruinas",
+            DeepKind::Hive => "colmeia_gigante",
         }
     }
 }
@@ -1132,6 +1141,17 @@ impl Generator {
             let y = r.range(-580, -380);
             out.push(DeepPlan { kind: DeepKind::Vault, origin: IVec3::new(x0 + r.range(4, 32), y, z0 + r.range(4, 32)), size: IVec3::new(9, 6, 9), seed: r.next_u64() });
         }
+        // A giant hive, only under the jungle.
+        // (its own random stream, so the other buildings stay where they were before hives).
+        let mut rh = Rng::for_pos(self.seed, cx, cz, 0x41BE);
+        if chance(&mut rh, 0.3) {
+            let (wx, wz) = (x0 + rh.range(14, CELL - 14), z0 + rh.range(14, CELL - 14));
+            let y = rh.range(-300, -50);
+            if surface_kind(self.column(wx, wz).biome) == SurfaceKind::Jungle {
+                let size = IVec3::new(rh.range(20, 26), rh.range(14, 18), rh.range(20, 26));
+                out.push(DeepPlan { kind: DeepKind::Hive, origin: IVec3::new(wx, y, wz) - size / 2, size, seed: rh.next_u64() });
+            }
+        }
         // The Underworld's ruins stand on its floor (never in the lava sea).
         if chance(&mut r, 0.5) {
             let tower = r.chance(0.35);
@@ -1187,6 +1207,7 @@ impl Generator {
             DeepKind::Vault => vec![o + IVec3::new(2, 1, 4), o + IVec3::new(6, 1, 4)],
             DeepKind::RuinedHouse => vec![o + IVec3::new(2, 1, 2), o + IVec3::new(s.x - 3, 5, s.z - 3)],
             DeepKind::RuinedTower => vec![o + IVec3::new(4, 1, 4), o + IVec3::new(4, s.y - 5, 4)],
+            DeepKind::Hive => Vec::new(),
         }
     }
 
@@ -1333,6 +1354,43 @@ impl Generator {
                 d.fill(v(1, 0, 1), v(s.x - 2, 0, s.z - 2), p.gold_block);
                 d.set(o.x + s.x / 2, o.y + s.y - 2, o.z + s.z / 2, p.lantern);
             }
+            DeepKind::Hive => {
+                // An egg of hive wall, hollow, its floor a pool of honeycomb, the larva in the middle.
+                let c = (o + s / 2).as_vec3();
+                let half = s.as_vec3() / 2.0;
+                for y in 0..s.y {
+                    for z in 0..s.z {
+                        for x in 0..s.x {
+                            let q = o + IVec3::new(x, y, z);
+                            let e = (q.as_vec3() + 0.5 - c) / half;
+                            let r2 = e.length_squared();
+                            if r2 > 1.0 {
+                                continue;
+                            }
+                            let shell = r2 > 0.62 + 0.08 * cell_rand(plan.seed, q.x, q.y, q.z, 3);
+                            let id = if shell {
+                                p.hive
+                            } else if e.y < -0.55 {
+                                p.honey
+                            } else {
+                                AIR
+                            };
+                            d.set(q.x, q.y, q.z, id);
+                        }
+                    }
+                }
+                // Hive pillars from floor to ceiling, and the larva on a mound.
+                for k in 0..4 {
+                    let a = k as f32 * 1.57 + r.f32();
+                    let (px, pz) = (c.x + a.cos() * half.x * 0.45, c.z + a.sin() * half.z * 0.45);
+                    for y in 0..s.y {
+                        d.set(px as i32, o.y + y, pz as i32, p.hive);
+                    }
+                }
+                let base = IVec3::new(c.x as i32, o.y + (s.y as f32 * 0.22) as i32, c.z as i32);
+                d.fill(base - IVec3::new(1, 1, 1), base + IVec3::new(1, 0, 1), p.hive);
+                d.set(base.x, base.y + 1, base.z, p.or(p.larva, p.honeycomb));
+            }
             DeepKind::RuinedHouse | DeepKind::RuinedTower => {
                 let wall = |r: &mut Rng| if r.chance(0.7) { p.or(p.obsidian_bricks, p.obsidian) } else { p.or(p.infernal_bricks, p.obsidian) };
                 // Foundation down to the ash.
@@ -1467,6 +1525,8 @@ pub(super) fn deep_loot() -> Vec<Vec<LootDef>> {
             l("enchanted_book", 1, 2, 0.5),
             l("ancestral_heart", 1, 1, 0.08),
         ],
+        // Hive (no chests).
+        vec![],
     ]
 }
 
@@ -1476,7 +1536,7 @@ mod tests {
     use crate::chunk::SECTIONS;
 
     fn registry() -> BlockRegistry {
-        BlockRegistry::from_ron_many(&[include_str!("../../../../packs/vanilla/blocks.ron"), include_str!("../../../../packs/vanilla/fase6/blocks.ron"), include_str!("../../../../packs/vanilla/mods/blocks.ron"), include_str!("../../../../packs/vanilla/deep/blocks.ron")]).unwrap()
+        BlockRegistry::from_ron_many(&[include_str!("../../../../packs/vanilla/blocks.ron"), include_str!("../../../../packs/vanilla/fase6/blocks.ron"), include_str!("../../../../packs/vanilla/mods/blocks.ron"), include_str!("../../../../packs/vanilla/deep/blocks.ron"), include_str!("../../../../packs/vanilla/tr/blocks.ron")]).unwrap()
     }
 
     #[test]

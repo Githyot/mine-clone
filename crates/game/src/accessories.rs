@@ -305,7 +305,7 @@ impl Game {
         }
         self.t5.moves.a_was = a;
         self.t5.moves.d_was = d;
-        let shield = self.wears("charge_shield");
+        let shield = self.wears("charge_shield") || self.wears("watcher_shield");
         if dash != 0.0 && self.t5.moves.dash_cd <= 0.0 && (shield || self.wears("wind_cape") || self.wears("shadow_gear")) {
             self.t5.moves.dash_cd = 1.0;
             let right = Vec3::new(self.yaw.cos(), 0.0, -self.yaw.sin());

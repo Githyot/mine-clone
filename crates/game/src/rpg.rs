@@ -195,6 +195,12 @@ pub const ACCESSORIES: &[AccDef] = &[
     acc("comet_boots", "Foguetes mais longos e corrida rápida", &[M::Move(0.4), M::Immune(&[CHILLED])]),
     acc("water_walking_boots", "Anda sobre a água (Shift para afundar)", &[]),
     acc("charge_shield", "Dois toques em A ou D: investida que derruba monstros", &[M::Def(2.0), M::NoKnock]),
+    // The early bosses of tr_bosses.rs.
+    acc("royal_gel", "As geleias não atacam você", &[]),
+    acc("watcher_shield", "Dois toques em A ou D: investida que derruba monstros", &[M::Def(2.0)]),
+    acc("mind_ward", "Quando você se machuca, confunde os monstros por perto", &[M::Dodge(0.05)]),
+    acc("hive_pack", "Quando você se machuca, solta abelhas que picam", &[]),
+    acc("fur_cloak", "", &[M::Def(2.0), M::Immune(&[CHILLED, FROZEN, FROSTBURN])]),
     acc("climbing_gear", "Escala paredes, desliza com Shift e salta da parede com Espaço", &[M::NoFall]),
     // Handy.
     acc("magnet_ring", "", &[M::Pickup(3.0)]),
@@ -273,6 +279,7 @@ pub const MINIONS: &[MinionDef] = &[
     MinionDef { staff: "wasp_staff", sprite: "minion_wasp", name: "Vespa", damage: 3.0, ranged: false, cooldown: 0.5, inflict: POISON, size: 0.45, tint: [1.5, 1.2, 0.3] },
     MinionDef { staff: "imp_staff", sprite: "minion_imp", name: "Diabrete", damage: 6.0, ranged: true, cooldown: 1.2, inflict: MOB_BURN, size: 0.6, tint: [1.6, 0.5, 0.15] },
     MinionDef { staff: "blade_staff", sprite: "minion_blade", name: "Lâmina Voadora", damage: 9.0, ranged: false, cooldown: 0.4, inflict: 0, size: 0.6, tint: [0.9, 0.9, 1.4] },
+    MinionDef { staff: "jelly_staff", sprite: "minion_jelly", name: "Geleinha", damage: 5.0, ranged: false, cooldown: 0.6, inflict: 0, size: 0.5, tint: [0.6, 0.9, 1.5] },
     MinionDef { staff: "star_dragon_staff", sprite: "minion_dragon", name: "Dragão Estelar", damage: 16.0, ranged: false, cooldown: 0.35, inflict: CURSED_FLAMES, size: 1.0, tint: [0.4, 1.4, 1.4] },
 ];
 
@@ -317,6 +324,14 @@ const MOB_DEBUFFS: &[(&str, u8, f32, f32)] = &[
     ("void_walker", CONFUSED, 0.15, 3.0),
     ("deep_watcher", SILENCED, 0.2, 4.0),
     ("stalker", BLEEDING, 0.25, 6.0),
+    ("jelly_ice", CHILLED, 0.4, 4.0),
+    ("jelly_lava", MOB_BURN, 0.4, 4.0),
+    ("great_eye", BLEEDING, 0.2, 5.0),
+    ("blight_mind", CONFUSED, 0.25, 2.0),
+    ("blight_creeper", ICHOR, 0.2, 5.0),
+    ("hive_queen", POISON, 0.4, 5.0),
+    ("hive_drone", POISON, 0.3, 4.0),
+    ("frost_colossus", FROSTBURN, 0.4, 4.0),
 ];
 
 /// Rare drops (Terraria's idea of accessories from monsters): (mob, item, chance).
@@ -349,6 +364,10 @@ const DROPS: &[(&str, &str, f32)] = &[
     ("wither_skeleton", "warding_eye", 0.03),
     ("polar_bear", "pocket_clock", 0.03),
     ("bee", "honey_locket", 0.02),
+    ("hive_drone", "honey_locket", 0.02),
+    ("jelly_blue", "lucky_horseshoe", 0.005),
+    ("jelly_ice", "rime_stone", 0.02),
+    ("servant_eye", "dark_lenses", 0.02),
     ("lich", "holy_pendant", 0.15),
     ("stalker", "mirror_charm", 0.05),
     ("forest_guardian", "totem_necklace", 0.5),
@@ -1050,6 +1069,7 @@ impl Game {
     /// After the player was hurt: thorns, arcane cuffs, panic charm, honey locket, star veil.
     pub(crate) fn rpg_after_hurt(&mut self, amount: f32, from: Option<Vec3>) {
         let Some(f) = from else { return };
+        self.tr_after_hurt(amount, f);
         let thorns = self.t5.rpg.stats.thorns;
         if thorns > 0.0 {
             if let Some(k) = self.nearest_hostile(f, 3.0) {
