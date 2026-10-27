@@ -254,7 +254,7 @@ impl Mobs {
                 .list
                 .iter()
                 .enumerate()
-                .filter(|(_, o)| o.alive() && def.prey.iter().any(|p| *p == self.reg.defs[o.def].name))
+                .filter(|(_, o)| o.alive() && !o.ghost && def.prey.iter().any(|p| *p == self.reg.defs[o.def].name))
                 .map(|(j, o)| (j, (o.body.pos - m.body.pos).length()))
                 .filter(|&(_, d)| d < 12.0)
                 .min_by(|a, b| a.1.total_cmp(&b.1))
@@ -364,7 +364,7 @@ impl Mobs {
     pub fn pick(&self, origin: Vec3, dir: Vec3, max: f32) -> Option<(usize, f32)> {
         let mut best: Option<(usize, f32)> = None;
         for (i, m) in self.list.iter().enumerate() {
-            if !m.alive() {
+            if !m.alive() || m.ghost {
                 continue;
             }
             let (lo, hi) = m.body.aabb();
@@ -419,4 +419,12 @@ pub fn caster_school(name: &str) -> Option<u8> {
         "necromancer" => Some(3),
         _ => None,
     }
+}
+
+/// Every creature of the game, as the game loads them (for tests elsewhere).
+#[cfg(test)]
+pub fn registry_for_tests() -> voxel::mob::MobRegistry {
+    use crate::embedded;
+    let text = crate::terraria::with_extra(&crate::merge_list(embedded::MOBS_RON, embedded::FASE6_MOBS_RON), embedded::T5_MOBS_RON);
+    voxel::mob::MobRegistry::from_ron_many(&[&text, embedded::MODS_MOBS_RON, embedded::MODS_DIMS_MOBS_RON]).unwrap()
 }

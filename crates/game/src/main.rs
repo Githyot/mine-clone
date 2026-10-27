@@ -4,6 +4,10 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod ambient;
+mod companions;
+mod sentries;
+mod vanity;
+mod wings;
 mod keybinds;
 mod lang;
 mod subtitles;
@@ -363,11 +367,13 @@ fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) 
     let i0 = terraria::with_extra(&merge_list(items[0], &fase6_text(None, "items.ron")), embedded::T5_ITEMS_RON);
     // The stats content (rpg.rs) after the Terraria side's own items.
     let i0 = terraria::with_extra(&i0, embedded::RPG_ITEMS_RON);
+    let i0 = terraria::with_extra(&i0, embedded::LOTE11_ITEMS_RON);
     let reg = BlockRegistry::from_ron_many(&[b0.as_str(), blocks[1]])?;
     let items = ItemRegistry::from_ron_many(&[i0.as_str(), items[1]], &reg)?;
     let mut recipes = Recipes::from_ron_many(&recipes, &items)?;
     terraria::add_recipes(&mut recipes, embedded::T5_RECIPES_RON, &items)?;
     terraria::add_recipes(&mut recipes, embedded::RPG_RECIPES_RON, &items)?;
+    terraria::add_recipes(&mut recipes, embedded::LOTE11_RECIPES_RON, &items)?;
     let extra = fase6_text(None, "recipes.ron");
     if !extra.trim().is_empty() {
         let more = Recipes::from_ron(&extra, &items)?;
@@ -1925,6 +1931,10 @@ impl Game {
                     // Test hook: stats, minions, debuffs (rpg.rs, test_rpg).
                     self.test_rpg(&scene);
                 }
+                if let Ok(scene) = std::env::var("MC_LOTE11") {
+                    // Test hook: wings, mounts, pets, vanity, sentries (companions.rs).
+                    self.test_lote11(&scene);
+                }
                 self.mods_test_hooks();
                 if let Some(m) = self.args.mouse {
                     self.mouse_pos = m;
@@ -2135,6 +2145,7 @@ impl Game {
                 && !self.ride_step(wish, input.sneak)
                 && !self.pilot_step(wish, input.sneak, dt)
                 && !self.boat_step(wish, input.sneak, dt)
+                && !self.companion_mount_step(wish, input.jump, input.sneak, dt)
                 && !self.mount_step(wish, input.jump, input.sneak, dt)
                 && !self.strider_step(wish, input.sneak, dt)
                 && !self.elytra_step(input.jump, dt)
@@ -2718,7 +2729,7 @@ impl Game {
             sprinting: self.sprinting,
             burning,
             hurt: self.survival && self.hurt_age < 0.3,
-            sitting: self.riding.is_some() || self.seat.is_some() || self.mods.aircraft.pilot.is_some(),
+            sitting: self.riding.is_some() || self.seat.is_some() || self.mods.aircraft.pilot.is_some() || self.t5.comp.mount.is_some(),
             holding: self.held_stack().is_some(),
             mantle: self.body.mantle.map_or(0.0, |m| m.progress().max(1e-3)),
             ledge: self.body.mantle.map_or(0.0, |m| m.ledge - self.body.pos.y),
@@ -4584,6 +4595,7 @@ impl Game {
         drops.extend(held_third);
         drops.extend(mob_items);
         drops.extend(self.minion_instances(block));
+        drops.extend(self.sentry_instances(block));
         drops.extend(net_held);
         if let (Some(k), Some(h)) = (self.args.mine, self.target) {
             let id = self.world.block_or_air(h.block);

@@ -35,6 +35,9 @@ pub struct Bones {
     pub m: [[[f32; 4]; 4]; MAX_PARTS],
     /// sky light, block light, hurt flash, swell
     pub light: [f32; 4],
+    /// A dye over the model (Lote 11): colour, and the mode in w (0 none, 1 dyed, 2 dyed and
+    /// glowing, 3 glowing only).
+    pub tint: [f32; 4],
 }
 
 impl Default for Bones {
@@ -44,7 +47,7 @@ impl Default for Bones {
         m[EYELID_PART] = [[0.0; 4]; 4];
         // And the one before it the player's mouth (see `add_mouth`): folded = closed.
         m[MOUTH_PART] = [[0.0; 4]; 4];
-        Bones { m, light: [1.0, 0.0, 0.0, 0.0] }
+        Bones { m, light: [1.0, 0.0, 0.0, 0.0], tint: [1.0, 1.0, 1.0, 0.0] }
     }
 }
 
@@ -82,6 +85,8 @@ pub struct EntityRenderer {
     armor_meshes: Option<usize>,
     /// First armour trim mesh (trim material * 4 + piece), drawn just over the armour.
     trim_meshes: Option<usize>,
+    /// One mesh per pair of wings (wings.rs), both wings in it.
+    wing_meshes: usize,
     /// First musical instrument mesh (instruments.rs order).
     instrument_meshes: usize,
     /// (mesh, first instance, count) for this frame.
@@ -461,7 +466,7 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
 }
 
 /// Armour materials, by the item-name prefix, with their colour.
-pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 34] = [
+pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 38] = [
     ("leather", [134, 82, 46]),
     ("chainmail", [150, 150, 156]),
     ("iron", [206, 206, 206]),
@@ -499,6 +504,11 @@ pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 34] = [
     ("bloodmage", [130, 18, 30]),
     ("cultist", [18, 110, 116]),
     ("archevoker", [140, 120, 72]),
+    // Vanity outfits (Lote 11, vanity.rs): cloth, no armour points.
+    ("tuxedo", [44, 44, 54]),
+    ("pirate", [150, 40, 34]),
+    ("explorer", [168, 132, 84]),
+    ("royal", [112, 60, 168]),
 ];
 
 /// The boxes of one armour piece (helmet, chestplate, leggings, boots) on the player model:
@@ -753,6 +763,19 @@ fn armor_mesh_over(def: &MobDef, piece: usize, layer: u32, over: f32) -> (Vec<En
     (mb.verts, mb.indices)
 }
 
+/// Both wings of a pair: the same thin box on the two wing bones, hanging from the shoulder
+/// blade and reaching out along +X (the left bone mirrors it).
+fn wing_mesh(layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
+    let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
+    let (w, h) = crate::wings::WING_SIZE;
+    for part in [crate::wings::WING_R, crate::wings::WING_L] {
+        for f in faces(Vec3::new(0.0, -h + 6.0, -0.5), Vec3::new(w, h, 1.0), (0, 0), (w as i32, h as i32, 1)).iter() {
+            mb.face(f, part as u32);
+        }
+    }
+    (mb.verts, mb.indices)
+}
+
 /// A musical instrument (instruments.rs): its boxes, each face painted with its material's
 /// swatch, the grain running along the longer side.
 fn instrument_mesh(i: usize, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
@@ -801,11 +824,15 @@ impl EntityRenderer {
         let player = reg.id("player").map(|i| &reg.defs[i]);
         let armor_layer0 = skins.len();
         if let Some(pd) = player {
-            skins.extend(ARMOR_MATERIALS.iter().map(|(n, c)| armor_skin(pd, *c, *n == "chainmail", *n == "leather", scale)));
+            skins.extend(ARMOR_MATERIALS.iter().map(|(n, c)| armor_skin(pd, *c, *n == "chainmail", *n == "leather" || crate::vanity::OUTFITS.contains(n), scale)));
         }
         let trim_layer0 = skins.len();
         if let Some(pd) = player {
             skins.extend(crate::smithing::MATERIALS.iter().map(|m| trim_skin(pd, m.2).rescaled(scale)));
+        }
+        let wing_layer0 = skins.len();
+        for w in crate::wings::WINGS {
+            skins.push(Skin { pixels: crate::wings::paint(w, SKIN_DETAIL), scale: SKIN_DETAIL }.rescaled(scale));
         }
         let instrument_layer = skins.len();
         skins.push(Skin { pixels: crate::instruments::paint_skin(SKIN_DETAIL), scale: SKIN_DETAIL }.rescaled(scale));
@@ -953,9 +980,18 @@ impl EntityRenderer {
                 indices: idx.len() as u32,
             });
         }
+        let wing_meshes = meshes.len();
+        for k in 0..crate::wings::WINGS.len() {
+            let (v, idx) = wing_mesh((wing_layer0 + k) as u32);
+            meshes.push(MobMesh {
+                vbuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("wing verts"), contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX }),
+                ibuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("wing idx"), contents: bytemuck::cast_slice(&idx), usage: wgpu::BufferUsages::INDEX }),
+                indices: idx.len() as u32,
+            });
+        }
         let particles = crate::particles::ParticleGpu::new(r);
         let items = crate::item_render::ItemGpu::new(r);
-        EntityRenderer { particles, items, pipelines, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, armor_meshes, trim_meshes, instrument_meshes, draws: Vec::new(), instance_count: 0 }
+        EntityRenderer { particles, items, pipelines, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, armor_meshes, trim_meshes, wing_meshes, instrument_meshes, draws: Vec::new(), instance_count: 0 }
     }
 
     /// Mesh index of an armour piece (0 helmet .. 3 boots) for the item named `item`.
@@ -968,6 +1004,11 @@ impl EntityRenderer {
     /// Mesh index of the trim over an armour piece, by trim material.
     pub fn trim_mesh(&self, material: usize, piece: usize) -> Option<usize> {
         Some(self.trim_meshes? + material * 4 + piece.min(3))
+    }
+
+    /// Mesh index of wings `k` (wings.rs).
+    pub fn wing_mesh(&self, k: usize) -> Option<usize> {
+        (k < crate::wings::WINGS.len()).then_some(self.wing_meshes + k)
     }
 
     /// Mesh index of musical instrument `i`.
@@ -1058,7 +1099,7 @@ pub fn bones_for(mob: &Mob, def: &MobDef, cam_block: IVec3, sky: f32, blk: f32) 
         let t = (mob.dead_age / DEATH_TIME).clamp(0.0, 1.0);
         model = model * Mat4::from_translation(Vec3::new(0.0, -t * 0.4, 0.0)) * Mat4::from_rotation_z(t * std::f32::consts::FRAC_PI_2);
     }
-    let scale = def.scale / 16.0 * (1.0 + swell * 0.3);
+    let scale = def.scale * mob.size / 16.0 * (1.0 + swell * 0.3);
     model = model * Mat4::from_scale(Vec3::splat(scale));
     // Asleep: legs folded flat, the body resting on the ground.
     let leg_h = def.parts.iter().filter(|p| matches!(p.anim, Anim::Leg(_))).map(|p| p.size.1 as f32).fold(0.0, f32::max);
