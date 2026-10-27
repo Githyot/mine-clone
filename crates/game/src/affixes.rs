@@ -157,9 +157,6 @@ impl Game {
         const GOOD: [u8; 4] = [120, 220, 120, 255];
         const BAD: [u8; 4] = [230, 100, 90, 255];
         let name = &self.items.get(st.item).name;
-        if let Some(d) = crate::accessories::describe(name) {
-            out.push((d.to_string(), [170, 200, 255, 255]));
-        }
         if let Some(d) = crate::magic::describe(name) {
             out.push((d, [170, 200, 255, 255]));
         }

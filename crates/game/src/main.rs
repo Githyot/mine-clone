@@ -52,6 +52,7 @@ mod villages;
 mod explore;
 mod signs;
 mod terraria;
+mod rpg;
 mod accessories;
 mod affixes;
 mod boss_ai;
@@ -349,10 +350,13 @@ fn game_data(blocks: &str, items: &str, recipes: &str) -> Result<(BlockRegistry,
 fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
     let b0 = terraria::with_extra(&merge_list(blocks[0], &fase6_text(None, "blocks.ron")), embedded::T5_BLOCKS_RON);
     let i0 = terraria::with_extra(&merge_list(items[0], &fase6_text(None, "items.ron")), embedded::T5_ITEMS_RON);
+    // The stats content (rpg.rs) after the Terraria side's own items.
+    let i0 = terraria::with_extra(&i0, embedded::RPG_ITEMS_RON);
     let reg = BlockRegistry::from_ron_many(&[b0.as_str(), blocks[1]])?;
     let items = ItemRegistry::from_ron_many(&[i0.as_str(), items[1]], &reg)?;
     let mut recipes = Recipes::from_ron_many(&recipes, &items)?;
     terraria::add_recipes(&mut recipes, embedded::T5_RECIPES_RON, &items)?;
+    terraria::add_recipes(&mut recipes, embedded::RPG_RECIPES_RON, &items)?;
     let extra = fase6_text(None, "recipes.ron");
     if !extra.trim().is_empty() {
         let more = Recipes::from_ron(&extra, &items)?;
@@ -885,7 +889,7 @@ impl Game {
             bosses_beaten = l.bosses.clone();
             town_npcs = l.npcs.iter().map(|(n, h)| npcs::NpcSave { name: n.clone(), home: *h }).collect();
             survival = l.survival || args.survival;
-            max_health = l.max_health.clamp(20.0, 40.0);
+            max_health = l.max_health.clamp(20.0, 50.0);
             health = if l.health > 0.0 { l.health.min(max_health) } else { max_health };
             body.pos = Vec3::from(l.player_pos);
             body.flying = l.flying;
@@ -1483,6 +1487,15 @@ impl Game {
             KeyCode::F2 => self.screenshot_request = true,
             KeyCode::F5 => self.camera_mode = (self.camera_mode + 1) % 3,
             KeyCode::KeyZ if self.screen == Screen::Playing => self.prone = !self.prone,
+            // Terraria-style quick keys (rpg.rs): heal, mana, buffs, and the stats sheet.
+            KeyCode::KeyH if self.screen == Screen::Playing => self.quick_heal(),
+            KeyCode::KeyN if self.screen == Screen::Playing => {
+                if !self.quick_mana() {
+                    self.toast("Nenhuma poção de mana ou mana já cheia", 1.5);
+                }
+            }
+            KeyCode::KeyB if self.screen == Screen::Playing => self.quick_buff(),
+            KeyCode::KeyC if matches!(self.screen, Screen::Playing | Screen::Inventory) => self.t5.rpg.sheet = !self.t5.rpg.sheet,
             KeyCode::KeyR if self.screen == Screen::Inventory && self.survival => self.surv.want_recipe = true,
             KeyCode::KeyU if self.screen == Screen::Inventory && self.survival => {
                 self.surv.want_recipe = true;
@@ -1843,6 +1856,10 @@ impl Game {
                     // Test hook: an Etapa 5 scene (terraria.rs, test_t5).
                     self.test_t5(&scene);
                 }
+                if let Ok(scene) = std::env::var("MC_RPG") {
+                    // Test hook: stats, minions, debuffs (rpg.rs, test_rpg).
+                    self.test_rpg(&scene);
+                }
                 self.mods_test_hooks();
                 if let Some(m) = self.args.mouse {
                     self.mouse_pos = m;
@@ -1918,6 +1935,7 @@ impl Game {
             let out = self.mobs.update(&self.world, self.body.pos, creative, daylight, mdt);
             for (dmg, from) in out.damage {
                 self.mob_hit_effects(from);
+                self.rpg_mob_hit(from);
                 self.damage(dmg, from);
             }
             self.net_remote_hits(&out.remote_hits);
@@ -1936,7 +1954,8 @@ impl Game {
             if out.arrow_hits > 0 {
                 self.sfx(Sfx::Hit(Material::Wood));
             }
-            for &(def, _) in &out.deaths {
+            for &(def, pos) in &out.deaths {
+                self.rpg_drops(def, pos);
                 let d = &self.mobs.reg.defs[def];
                 if d.boss {
                     let (n, dn) = (d.name.clone(), d.display_name.clone());
@@ -2005,6 +2024,7 @@ impl Game {
         if playing && self.pads.pad.connected {
             wish += fwd * self.pads.pad.ly + right * self.pads.pad.lx;
         }
+        let wish = self.rpg_wish(wish);
         let held = |a: Action| playing && self.pad_held.contains(&a);
         // Lying down: the box drops to 0.6 high so the player fits through one-block gaps. Getting
         // up waits until there is room, so a tunnel keeps you crawling.
@@ -2201,7 +2221,7 @@ impl Game {
                     let charge = if self.survival { self.attack_charge() } else { 1.0 };
                     let base = if self.survival { self.surv_attack_damage() } else { 4.0 };
                     // Falling onto a mob with a ready weapon is a critical hit.
-                    let crit = (self.body.vel.y < -0.5 && !self.body.on_ground && !self.body.in_water && charge > 0.9) || (charge > 0.9 && self.surv.rng.f32() < self.held_crit());
+                    let crit = (self.body.vel.y < -0.5 && !self.body.on_ground && !self.body.in_water && charge > 0.9) || (charge > 0.9 && self.surv.rng.f32() < self.held_crit() + self.t5.rpg.stats.crit[rpg::MELEE]);
                     let dmg = if crit { base * 1.5 } else { base };
                     self.prog.was_full = charge > 0.9;
                     let dmg = if self.survival { self.weapon_melee_bonus(i, dmg) } else { dmg };
@@ -2413,7 +2433,7 @@ impl Game {
     /// 4.5 blocks in survival, 5 in creative.
     pub(crate) fn reach(&self) -> f32 {
         if self.survival {
-            4.5
+            4.5 + self.t5.rpg.stats.reach
         } else {
             5.0
         }
@@ -2634,12 +2654,17 @@ impl Game {
     /// Hurt the player (survival only). `from` pushes the player away.
     fn damage(&mut self, amount: f32, from: Option<Vec3>) {
         let pvp = std::mem::take(&mut self.net.pvp_incoming);
-        if !self.survival || self.net.server || self.screen == Screen::Dead || self.hurt_age < 0.5 || amount <= 0.0 {
+        if !self.survival || self.net.server || self.screen == Screen::Dead || self.hurt_age < 0.5 + self.t5.rpg.stats.iframes || amount <= 0.0 {
             self.prog.next_kind = Default::default();
             return;
         }
         // Monsters and blasts hit harder on harder difficulties.
         let amount = if from.is_some() && !pvp { amount * [0.0, 0.5, 1.0, 1.5][self.settings.difficulty.min(3) as usize] } else { amount };
+        // Dodged (mirror charm, the radiant set): nothing at all.
+        if self.rpg_dodge(from) {
+            self.prog.next_kind = Default::default();
+            return;
+        }
         // A shield up and facing the hit takes it all.
         let amount = self.shield_block(amount, from);
         if amount <= 0.0 {
@@ -2660,6 +2685,7 @@ impl Game {
         if let Some(f) = from.filter(|_| !self.no_knockback()) {
             self.body.knockback(self.body.pos - f, 5.0);
         }
+        self.rpg_after_hurt(amount, from);
         self.sfx(Sfx::Hurt);
         self.pads.rumble(0.9, 0.6, 0.25);
         if self.health <= 0.0 && self.use_totem() {
@@ -2695,7 +2721,7 @@ impl Game {
         // Breath under water.
         if self.body.head_in_water && !self.has_effect(effects::WATER_BREATHING) && !self.has_effect(effects::CONDUIT_POWER) {
             // Respiration: each level makes a breath last that much longer.
-            self.air -= dt / (1.0 + self.armor_ench(enchanting::RESPIRATION) as f32);
+            self.air -= dt / (1.0 + self.armor_ench(enchanting::RESPIRATION) as f32) / self.t5.rpg.stats.breath;
             if self.air < -1.0 {
                 self.air = 0.0;
                 self.prog.next_kind = progression::DamageKind::Drown;
@@ -3533,6 +3559,7 @@ impl Game {
             }
             self.draw_effect_overlays(w, h);
             self.draw_mob_health_bars(w, h);
+            self.draw_hunter_marks(w, h);
             self.draw_sign_texts(w, h);
             self.draw_mob_names(w, h);
             if self.screen == Screen::Playing {
@@ -4416,6 +4443,7 @@ impl Game {
         }
         drops.extend(held_third);
         drops.extend(mob_items);
+        drops.extend(self.minion_instances(block));
         drops.extend(net_held);
         if let (Some(k), Some(h)) = (self.args.mine, self.target) {
             let id = self.world.block_or_air(h.block);
