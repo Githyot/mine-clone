@@ -119,12 +119,41 @@ const fn acc(name: &'static str, desc: &'static str, mods: &'static [M]) -> AccD
 pub const ACCESSORIES: &[AccDef] = &[
     acc("running_boots", "", &[M::Move(0.3)]),
     acc("frost_spark_boots", "", &[M::Move(0.5), M::Immune(&[CHILLED, FROZEN])]),
+    acc("terraspark_boots", "Corre muito, anda sobre a água e a lava não queima", &[M::Move(0.5), M::Immune(&[CHILLED, FROZEN]), M::Lava, M::Fire]),
+    acc("bastion_shield", "Da masmorra: não é empurrado e +2 de defesa", &[M::NoKnock, M::Def(2.0)]),
+    // Only in treasure bags (Especialista and Mestre, tr_modes.rs).
+    acc("jelly_heart", "Das sacolas: pulos mais altos e vida que volta", &[M::Jump(0.2), M::Regen(0.2)]),
+    acc("eye_of_the_watcher", "Das sacolas: mais críticos e mostra criaturas perto", &[M::Crit(ALL_CLASSES, 0.05), M::Info(INFO_RADAR)]),
+    acc("mind_veil", "Das sacolas: às vezes desvia de um golpe", &[M::Dodge(0.08)]),
+    acc("hive_heart", "Das sacolas: um lacaio a mais", &[M::Minions(1)]),
+    acc("frost_core", "Das sacolas: o frio não te prende", &[M::Immune(&[CHILLED, FROZEN]), M::Def(2.0)]),
+    acc("worm_scarf", "Das sacolas: menos dano recebido", &[M::Endure(0.12)]),
+    acc("bone_glove", "Das sacolas: corpo a corpo mais forte e rápido", &[M::Dmg(MELEE, 0.08), M::MeleeSpeed(0.08)]),
+    acc("breaker_heart", "Das sacolas: defesa e vida que volta", &[M::Def(3.0), M::Regen(0.3)]),
+    acc("mech_core", "Das sacolas: todo dano um pouco maior", &[M::Dmg(ALL_CLASSES, 0.06)]),
+    acc("vine_seed", "Das sacolas: a vida volta bem mais depressa", &[M::Regen(0.5)]),
+    acc("gel_crown", "Das sacolas: pulos altos e sem dano de queda", &[M::Jump(0.25), M::NoFall]),
+    acc("sun_core", "Das sacolas: muita defesa", &[M::Def(4.0)]),
+    acc("tide_scale", "Das sacolas: nada rápido e respira mais", &[M::Swim(0.5)]),
+    acc("prism_heart", "Das sacolas: mais rápido e mais críticos", &[M::Move(0.1), M::Crit(ALL_CLASSES, 0.05)]),
+    acc("prophet_eye", "Das sacolas: mais mana e magias mais baratas", &[M::Mana(4.0), M::ManaCost(0.1)]),
+    acc("herald_sigil", "Das sacolas: todo dano e defesa maiores", &[M::Dmg(ALL_CLASSES, 0.1), M::Def(4.0)]),
+    acc("bundle_of_balloons", "Três pulos a mais no ar e pulos mais altos", &[M::Jump(0.3)]),
     acc("cloud_bottle", "Um segundo pulo no ar", &[]),
     acc("lucky_horseshoe", "", &[M::NoFall]),
     acc("wind_cape", "Toque duas vezes A ou D para avançar", &[]),
     acc("shiny_balloon", "", &[M::Jump(0.3)]),
     acc("feather_wings", "Segure Espaço no ar para voar um pouco e planar", &[]),
     acc("angel_wings", "Voa mais tempo e plana", &[M::NoFall]),
+    acc("crystal_wings", "Asas: voam 3 s e planam", &[M::NoFall, M::Move(0.1)]),
+    acc("tide_wings", "Asas: voam 3,2 s e planam", &[M::NoFall, M::Move(0.1), M::Dmg(MELEE, 0.05)]),
+    acc("empress_wings", "Asas: voam 3,6 s e planam", &[M::NoFall, M::Move(0.12), M::Dmg(ALL_CLASSES, 0.05)]),
+    acc("fairy_wings", "Asas: voam 2,4 s e planam", &[M::NoFall, M::Move(0.05)]),
+    acc("demon_wings", "Asas: voam 2,4 s e planam", &[M::NoFall, M::Dmg(ALL_CLASSES, 0.03)]),
+    acc("leaf_wings", "Asas: voam 2,6 s e planam", &[M::NoFall, M::Move(0.05)]),
+    acc("frost_wings", "Asas: voam 2,6 s e planam", &[M::NoFall, M::Move(0.05)]),
+    acc("flame_wings", "Asas: voam 2,8 s e planam", &[M::NoFall, M::Move(0.08)]),
+    acc("bee_wings", "Asas: voam 2,2 s e planam", &[M::NoFall, M::Move(0.05)]),
     acc("mana_ring", "", &[M::ManaRegen(2.0)]),
     acc("star_amulet", "", &[M::Mana(10.0)]),
     acc("warrior_emblem", "", &[M::Dmg(MELEE, 0.15)]),
@@ -186,6 +215,23 @@ pub const ACCESSORIES: &[AccDef] = &[
     acc("magma_boots", "", &[M::Lava, M::Fire]),
     acc("steam_boots", "Segure Espaço no ar para subir por um instante", &[]),
     acc("shadow_gear", "Avança com dois toques em A ou D e escala paredes", &[M::Dodge(0.1)]),
+    // From the deep world (accessories.rs): the jumps stack, one of each per jump.
+    acc("leap_boots", "Um pulo a mais no ar", &[M::Move(0.15), M::Jump(0.15)]),
+    acc("blizzard_bottle", "Um pulo a mais no ar, bem alto", &[]),
+    acc("star_band", "Mais mana", &[M::Mana(4.0)]),
+    acc("sandstorm_bottle", "Um pulo a mais que continua subindo enquanto segura Espaço", &[]),
+    acc("cloud_balloon", "Um pulo a mais no ar e pulos mais altos", &[M::Jump(0.3), M::NoFall]),
+    acc("rocket_boots", "Segure Espaço no ar para subir com foguetes", &[M::Move(0.1)]),
+    acc("comet_boots", "Foguetes mais longos e corrida rápida", &[M::Move(0.4), M::Immune(&[CHILLED])]),
+    acc("water_walking_boots", "Anda sobre a água (Shift para afundar)", &[]),
+    acc("charge_shield", "Dois toques em A ou D: investida que derruba monstros", &[M::Def(2.0), M::NoKnock]),
+    // The early bosses of tr_bosses.rs.
+    acc("royal_gel", "As geleias não atacam você", &[]),
+    acc("watcher_shield", "Dois toques em A ou D: investida que derruba monstros", &[M::Def(2.0)]),
+    acc("mind_ward", "Quando você se machuca, confunde os monstros por perto", &[M::Dodge(0.05)]),
+    acc("hive_pack", "Quando você se machuca, solta abelhas que picam", &[]),
+    acc("fur_cloak", "", &[M::Def(2.0), M::Immune(&[CHILLED, FROZEN, FROSTBURN])]),
+    acc("climbing_gear", "Escala paredes, desliza com Shift e salta da parede com Espaço", &[M::NoFall]),
     // Handy.
     acc("magnet_ring", "", &[M::Pickup(3.0)]),
     acc("lucky_coin", "Monstros às vezes deixam uma esmeralda", &[M::Luck(1.0)]),
@@ -229,6 +275,23 @@ pub const SETS: &[SetDef] = &[
     set("titanium", "", &[M::Endure(0.12), M::Dmg(ALL_CLASSES, 0.05)]),
     set("radiant", "Esquiva um golpe a cada 30 s", &[M::Dmg(ALL_CLASSES, 0.08)]),
     set("verdite", "Um cristal de folha atira nos monstros por perto", &[M::Dmg(ALL_CLASSES, 0.05)]),
+    set("magmarite", "Fogo e lava não queimam", &[M::Fire, M::Lava, M::Dmg(MELEE, 0.12), M::Def(2.0)]),
+    set("umbral", "", &[M::MeleeSpeed(0.15), M::Move(0.08)]),
+    set("sanguinite", "", &[M::Regen(0.5), M::Def(1.0)]),
+    set("hive", "", &[M::Minions(1), M::Dmg(SUMMON, 0.1)]),
+    set("jungle", "", &[M::Mana(4.0), M::ManaCost(0.16)]),
+    set("fossil", "", &[M::Dmg(RANGED, 0.1), M::Crit(RANGED, 0.05)]),
+    set("necro", "", &[M::Dmg(RANGED, 0.1), M::Crit(RANGED, 0.05)]),
+    set("ninja", "", &[M::Move(0.2), M::Crit(ALL_CLASSES, 0.04)]),
+    set("meteor", "O Disparador de Meteoro não gasta mana", &[M::Dmg(MAGIC, 0.09), M::Def(1.0)]),
+    set("spectral", "Golpes mágicos curam um pouco", &[M::Dmg(MAGIC, 0.2), M::Mana(6.0), M::Regen(0.4)]),
+    set("sporite", "", &[M::Dmg(RANGED, 0.2), M::Crit(RANGED, 0.1)]),
+    set("beetle", "", &[M::Dmg(MELEE, 0.15), M::MeleeSpeed(0.15), M::Def(4.0)]),
+    set("turtle", "", &[M::Endure(0.15), M::Def(5.0)]),
+    set("solar", "", &[M::Dmg(MELEE, 0.25), M::Crit(MELEE, 0.15), M::Move(0.1), M::Def(3.0)]),
+    set("vortex", "", &[M::Dmg(RANGED, 0.25), M::Crit(RANGED, 0.15), M::Move(0.1)]),
+    set("nebula", "", &[M::Dmg(MAGIC, 0.25), M::Mana(10.0), M::ManaCost(0.15), M::Move(0.1)]),
+    set("stardust", "", &[M::Dmg(SUMMON, 0.25), M::Minions(2), M::Move(0.1)]),
     set("lumite", "", &[M::Dmg(ALL_CLASSES, 0.1), M::Crit(ALL_CLASSES, 0.1), M::Minions(1), M::Move(0.1)]),
 ];
 
@@ -262,6 +325,7 @@ pub const MINIONS: &[MinionDef] = &[
     MinionDef { staff: "wasp_staff", sprite: "minion_wasp", name: "Vespa", damage: 3.0, ranged: false, cooldown: 0.5, inflict: POISON, size: 0.45, tint: [1.5, 1.2, 0.3] },
     MinionDef { staff: "imp_staff", sprite: "minion_imp", name: "Diabrete", damage: 6.0, ranged: true, cooldown: 1.2, inflict: MOB_BURN, size: 0.6, tint: [1.6, 0.5, 0.15] },
     MinionDef { staff: "blade_staff", sprite: "minion_blade", name: "Lâmina Voadora", damage: 9.0, ranged: false, cooldown: 0.4, inflict: 0, size: 0.6, tint: [0.9, 0.9, 1.4] },
+    MinionDef { staff: "jelly_staff", sprite: "minion_jelly", name: "Geleinha", damage: 5.0, ranged: false, cooldown: 0.6, inflict: 0, size: 0.5, tint: [0.6, 0.9, 1.5] },
     MinionDef { staff: "star_dragon_staff", sprite: "minion_dragon", name: "Dragão Estelar", damage: 16.0, ranged: false, cooldown: 0.35, inflict: CURSED_FLAMES, size: 1.0, tint: [0.4, 1.4, 1.4] },
 ];
 
@@ -306,6 +370,14 @@ const MOB_DEBUFFS: &[(&str, u8, f32, f32)] = &[
     ("void_walker", CONFUSED, 0.15, 3.0),
     ("deep_watcher", SILENCED, 0.2, 4.0),
     ("stalker", BLEEDING, 0.25, 6.0),
+    ("jelly_ice", CHILLED, 0.4, 4.0),
+    ("jelly_lava", MOB_BURN, 0.4, 4.0),
+    ("great_eye", BLEEDING, 0.2, 5.0),
+    ("blight_mind", CONFUSED, 0.25, 2.0),
+    ("blight_creeper", ICHOR, 0.2, 5.0),
+    ("hive_queen", POISON, 0.4, 5.0),
+    ("hive_drone", POISON, 0.3, 4.0),
+    ("frost_colossus", FROSTBURN, 0.4, 4.0),
 ];
 
 /// Rare drops (Terraria's idea of accessories from monsters): (mob, item, chance).
@@ -338,6 +410,10 @@ const DROPS: &[(&str, &str, f32)] = &[
     ("wither_skeleton", "warding_eye", 0.03),
     ("polar_bear", "pocket_clock", 0.03),
     ("bee", "honey_locket", 0.02),
+    ("hive_drone", "honey_locket", 0.02),
+    ("jelly_blue", "lucky_horseshoe", 0.005),
+    ("jelly_ice", "rime_stone", 0.02),
+    ("servant_eye", "dark_lenses", 0.02),
     ("lich", "holy_pendant", 0.15),
     ("stalker", "mirror_charm", 0.05),
     ("forest_guardian", "totem_necklace", 0.5),
@@ -638,6 +714,19 @@ impl Game {
                 s.defense += a.armor as f32;
                 s.move_speed *= a.move_speed;
             }
+        }
+        // Info items in the backpack and the Shimmer's upgrades (tr_utility.rs).
+        s.info |= self.t5.tr.util.inv_info;
+        let perma = self.t5.tr.util.perma;
+        if perma & crate::tr_utility::PERMA_VITAL != 0 {
+            s.regen += 0.25;
+        }
+        if perma & crate::tr_utility::PERMA_ARCANE != 0 {
+            s.apply(&M::Mana(4.0));
+            s.apply(&M::ManaRegen(1.0));
+        }
+        if perma & crate::tr_utility::PERMA_AEGIS != 0 {
+            s.defense += 4.0;
         }
         s.set = self.full_set();
         if let Some(i) = s.set {
@@ -1039,6 +1128,7 @@ impl Game {
     /// After the player was hurt: thorns, arcane cuffs, panic charm, honey locket, star veil.
     pub(crate) fn rpg_after_hurt(&mut self, amount: f32, from: Option<Vec3>) {
         let Some(f) = from else { return };
+        self.tr_after_hurt(amount, f);
         let thorns = self.t5.rpg.stats.thorns;
         if thorns > 0.0 {
             if let Some(k) = self.nearest_hostile(f, 3.0) {
@@ -1603,6 +1693,10 @@ impl Game {
         if info & INFO_DEPTH != 0 {
             let depth = 64.0 - p.y;
             lines.push(if depth > 0.0 { format!("Profundidade: {:.0} abaixo do mar", depth) } else { format!("Altura: {:.0} acima do mar", -depth) });
+            // The layer, and the underground biome once below the surface (deep.rs).
+            let layer = self.layer();
+            let ub = self.ubiome();
+            lines.push(if p.y < 0.0 && ub != voxel::worldgen::deep::UBiome::Plain { format!("{} · {}", layer.name(), ub.name()) } else { layer.name().to_string() });
         }
         if info & INFO_COORDS != 0 {
             lines.push(format!("Posição: {:.0}, {:.0}", p.x, p.z));
@@ -1773,6 +1867,22 @@ const SET_NAMES: &[(&str, &str)] = &[
     ("radiant", "Radiante"),
     ("verdite", "Verdita"),
     ("lumite", "Lumita"),
+    ("meteor", "Meteoro"),
+    ("umbral", "Sombraço"),
+    ("sanguinite", "Sanguinita"),
+    ("hive", "Abelha"),
+    ("jungle", "Selva"),
+    ("fossil", "Fóssil"),
+    ("necro", "Necro"),
+    ("ninja", "Ninja"),
+    ("spectral", "Espectral"),
+    ("sporite", "Esporita"),
+    ("beetle", "Escamada"),
+    ("turtle", "Tartaruga"),
+    ("solar", "Solar"),
+    ("vortex", "Vórtice"),
+    ("nebula", "Nebulosa"),
+    ("stardust", "Pó Estelar"),
 ];
 
 /// Ores from least to most valuable, for the ore finder (by part of the block name).

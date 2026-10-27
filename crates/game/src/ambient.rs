@@ -163,6 +163,19 @@ impl Game {
                     Dim::End if roll < 0.04 => {
                         self.particles.glow(at, Vec3::new(0.0, 0.1, 0.0), glow, [0.55, 0.35, 0.8], 0.035, 3.5);
                     }
+                    Dim::Overworld if p.y < -608 && roll < 0.06 => {
+                        // The Underworld: ash drifting down and embers rising off the lava.
+                        if roll < 0.02 {
+                            self.particles.glow(at, Vec3::new(0.0, 0.4, 0.0), glow, [1.4, 0.55, 0.2], 0.03, 2.5);
+                        } else {
+                            let (layer, _) = self.block_look(self.reg.id_or_air("ash_block"));
+                            self.particles.mote(at, layer, [0.55, 0.5, 0.5], 0.03, 0.3, 5.0);
+                        }
+                    }
+                    Dim::Overworld if p.y < -16 && roll < 0.04 && self.world.gen.ubiome_at(p.x, p.y, p.z) == voxel::worldgen::deep::UBiome::Mushroom => {
+                        // Glowing spores in the mushroom caves.
+                        self.particles.glow(at, Vec3::new(0.0, 0.08, 0.0), glow, [0.35, 0.8, 1.3], 0.03, 4.0);
+                    }
                     Dim::Overworld if roll < 0.02 && (self.world.light(p) >> 4) == 0 && p.y < 60 => {
                         // Cave dust, only where no sky reaches.
                         let stone = self.reg.id_or_air("stone");

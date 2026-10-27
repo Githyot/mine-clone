@@ -578,7 +578,7 @@ impl Generator {
                 return Some(&s.def.loot);
             }
         }
-        None
+        self.deep_chest(p)
     }
 }
 

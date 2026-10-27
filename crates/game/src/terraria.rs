@@ -87,6 +87,8 @@ pub struct Terraria {
     /// Damage a ward spell still soaks up, and for how long.
     pub ward: f32,
     pub ward_t: f32,
+    /// The rest of the Terraria side (tr.rs), saved in tr.ron.
+    pub tr: crate::tr::Tr,
     /// Spirits from the spirit staff, circling the player.
     pub spirits: Vec<crate::magic::Spirit>,
     /// Vortexes of the void book, pulling mobs in.
@@ -97,7 +99,7 @@ pub struct Terraria {
 
 impl Terraria {
     pub fn load(dir: &Path, items: &ItemRegistry) -> Terraria {
-        let mut t = Terraria { loaded: true, ..Default::default() };
+        let mut t = Terraria { loaded: true, tr: crate::tr::Tr::load(dir, items), ..Default::default() };
         let Some(s) = std::fs::read_to_string(dir.join("terraria.ron")).ok().and_then(|x| ron::from_str::<Saved>(&x).ok()) else {
             return t;
         };
@@ -130,6 +132,7 @@ impl Terraria {
     }
 
     pub fn save(&self, dir: &Path, items: &ItemRegistry) {
+        self.tr.save(dir, items);
         let s = Saved {
             acc: self.acc.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect(),
             learned: self.glyphs.learned.iter().cloned().collect(),
@@ -182,6 +185,7 @@ impl Game {
         self.update_spell_extras(dt);
         self.update_fight(dt);
         self.update_hardmode(dt);
+        self.update_tr(dt, use_held);
     }
 
     /// Right click with an item of the Terraria side; true when it did something.
@@ -204,6 +208,9 @@ impl Game {
         }
         if name.starts_with("glyph_") {
             return self.learn_glyph(name);
+        }
+        if let Some(r) = self.tr_use(name) {
+            return r;
         }
         if let Some(r) = self.t5_summon(name) {
             return r;
@@ -259,6 +266,7 @@ impl Game {
             self.ui.rect(0.0, 0.0, w, h, [120, 0, 0, 38]);
         }
         self.draw_event_bar(w);
+        self.draw_tr_hud(w, h);
         self.draw_accessory_hud(w, h);
         self.draw_info_hud(h);
         if self.t5.rpg.sheet && self.screen == crate::Screen::Playing {

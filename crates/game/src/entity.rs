@@ -459,7 +459,7 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
 }
 
 /// Armour materials, by the item-name prefix, with their colour.
-pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 34] = [
+pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 74] = [
     ("leather", [134, 82, 46]),
     ("chainmail", [150, 150, 156]),
     ("iron", [206, 206, 206]),
@@ -482,6 +482,25 @@ pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 34] = [
     ("radiant", [240, 214, 110]),
     ("verdite", [96, 206, 70]),
     ("lumite", [120, 236, 220]),
+    // The meteor set (gen_tr.py, lote 2).
+    ("meteor", [168, 86, 44]),
+    // Lote 3: the evil lands' metals and the early sets.
+    ("umbral", [90, 58, 132]),
+    ("sanguinite", [138, 28, 34]),
+    ("hive", [212, 154, 30]),
+    ("jungle", [62, 140, 52]),
+    ("fossil", [200, 186, 150]),
+    ("necro", [176, 172, 156]),
+    ("ninja", [36, 36, 46]),
+    // Lote 7: the end-game sets.
+    ("spectral", [74, 138, 196]),
+    ("sporite", [42, 80, 176]),
+    ("beetle", [90, 42, 106]),
+    ("turtle", [106, 128, 32]),
+    ("solar", [224, 90, 16]),
+    ("vortex", [24, 136, 122]),
+    ("nebula", [122, 42, 160]),
+    ("stardust", [42, 128, 196]),
     // The mod pack's dimensions (tools/moddata/aether.py, otherside.py).
     ("zanite", [128, 72, 200]),
     ("gravitite", [200, 74, 180]),
@@ -497,6 +516,32 @@ pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 34] = [
     ("bloodmage", [130, 18, 30]),
     ("cultist", [18, 110, 116]),
     ("archevoker", [140, 120, 72]),
+    // Vanity clothes, worn over the armour (tr_style.rs).
+    ("vanity_pirate", [154, 42, 34]),
+    ("vanity_wizard", [74, 42, 138]),
+    ("vanity_tuxedo", [36, 36, 44]),
+    ("vanity_explorer", [128, 100, 52]),
+    ("vanity_sailor", [42, 78, 168]),
+    ("vanity_ranger", [46, 106, 46]),
+    ("vanity_royal", [196, 148, 24]),
+    ("vanity_shadow", [42, 34, 56]),
+    // Armour dyed in the dye vat (tr_style.rs): it takes the dye's colour.
+    ("dye_white", [233, 236, 236]),
+    ("dye_orange", [240, 118, 19]),
+    ("dye_magenta", [189, 68, 179]),
+    ("dye_light_blue", [58, 175, 217]),
+    ("dye_yellow", [248, 198, 39]),
+    ("dye_lime", [112, 185, 25]),
+    ("dye_pink", [237, 141, 172]),
+    ("dye_gray", [62, 68, 71]),
+    ("dye_light_gray", [142, 142, 134]),
+    ("dye_cyan", [21, 137, 145]),
+    ("dye_purple", [121, 42, 172]),
+    ("dye_blue", [53, 57, 157]),
+    ("dye_brown", [114, 71, 40]),
+    ("dye_green", [84, 109, 27]),
+    ("dye_red", [160, 39, 34]),
+    ("dye_black", [20, 21, 25]),
 ];
 
 /// The boxes of one armour piece (helmet, chestplate, leggings, boots) on the player model:

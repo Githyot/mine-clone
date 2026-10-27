@@ -176,6 +176,11 @@ impl Game {
         if self.mod_portal_step(dt) {
             return;
         }
+        if self.dim != Dim::End && self.body.pos.y < voxel::chunk::MIN_Y as f32 - 24.0 && self.survival {
+            // Under the bottom of the world.
+            self.damage(4.0 * dt * 10.0, None);
+            return;
+        }
         if self.dim == Dim::End && self.body.pos.y < -24.0 {
             // Fell off into the void.
             if self.survival {

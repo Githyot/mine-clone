@@ -1,0 +1,14 @@
+// The deep world (crates/voxel/src/worldgen/deep.rs): the Underworld and the underground biomes.
+(blocks: [
+    (name: "ash_block", display_name: Some("Bloco de Cinzas"), hardness: 0.6, tool: Some(Shovel)),
+    (name: "ash_grass", display_name: Some("Grama de Cinzas"), hardness: 0.6, tool: Some(Shovel), textures: (top: Some("ash_grass_top"), side: Some("ash_grass_side"), bottom: Some("ash_block")), drops: Some([(item: "ash_block")])),
+    (name: "ember_bloom", display_name: Some("Flor-de-brasa"), shape: Cross, transparency: Cutout, solid: false, light: 9, hardness: 0.0),
+    (name: "cinder_log", display_name: Some("Tronco Carbonizado"), hardness: 2.0, tool: Some(Axe), textures: (side: Some("cinder_log"), top: Some("cinder_log_top"))),
+    (name: "ember_leaves", display_name: Some("Folhas de Brasa"), transparency: Cutout, light: 6, hardness: 0.2, drops: Some([(item: "stick", min: 1, max: 2, chance: 0.05)])),
+    (name: "magmarite_ore", display_name: Some("Minério de Magmarita"), light: 7, hardness: 6.0, tool: Some(Pickaxe), tier: 4, xp: (2, 5)),
+    (name: "obsidian_bricks", display_name: Some("Tijolos de Obsidiana"), hardness: 25.0, tool: Some(Pickaxe), tier: 4),
+    (name: "infernal_bricks", display_name: Some("Tijolos de Magmarita"), light: 4, hardness: 8.0, tool: Some(Pickaxe), tier: 4),
+    (name: "glow_moss", display_name: Some("Musgo Brilhante"), light: 5, hardness: 0.5, tool: Some(Shovel), textures: (top: Some("glow_moss_top"), side: Some("glow_moss_side"), bottom: Some("mud")), drops: Some([(item: "mud")])),
+    (name: "glow_mushroom", display_name: Some("Cogumelo Brilhante"), shape: Cross, transparency: Cutout, solid: false, light: 11, hardness: 0.0),
+    (name: "glow_mushroom_block", display_name: Some("Chapéu de Cogumelo Brilhante"), light: 13, hardness: 0.2, tool: Some(Axe), drops: Some([(item: "glow_mushroom", min: 0, max: 2)])),
+])
