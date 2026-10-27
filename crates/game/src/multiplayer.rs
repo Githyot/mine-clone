@@ -1853,6 +1853,7 @@ impl Game {
                     hurt: s.has(flags::HURT),
                     sitting: s.has(flags::SITTING),
                     holding: !s.held.is_empty(),
+                    ..Default::default()
                 };
                 (pose, s.swing, s.armor.clone(), s.held.clone())
             };
