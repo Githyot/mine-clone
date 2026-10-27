@@ -63,10 +63,42 @@ ROLES = {
     "spider": ["head", "neck", "abdomen", "leg", "leg", "leg", "leg",
                "leg", "leg", "leg", "leg"],
     "player": ["head", "body", "arm", "arm", "leg", "leg"],
+    "deer": ["body", "neck", "head", "ear", "ear", "antler", "antler", "tine", "tine",
+             "tail", "leg", "leg", "leg", "leg"],
+    "fox": ["body", "head", "snout", "ear", "ear", "tail", "leg", "leg", "leg", "leg"],
+    "rabbit": ["body", "head", "ear", "ear", "tail", "foreleg", "foreleg", "hindleg", "hindleg"],
+    "bear": ["body", "head", "snout", "ear", "ear", "hump", "leg", "leg", "leg", "leg"],
+    "duck": ["body", "head", "bill", "tail", "wing", "wing", "leg", "leg"],
+    "forest_guardian": ["head", "body", "arm", "arm", "leg", "leg", "branch", "branch"],
+    "horse": ["body", "neck", "head", "ear", "ear", "mane", "tail", "leg", "leg", "leg", "leg"],
+    "ooze": ["body"],
+    "turtle": ["shell", "body", "head", "leg", "leg", "leg", "leg"],
+    "nightwing": ["body", "head", "wing", "wing", "tail"],
+    "deep_watcher": ["body", "eye", "spike", "spike", "spike", "spike", "tail"],
+    "bee": ["body", "stinger", "wing", "wing"],
+    "squid": ["body", "tentacle", "tentacle", "tentacle", "tentacle", "tentacle", "tentacle", "tentacle", "tentacle"],
+    "dolphin": ["body", "head", "beak", "fin", "tail", "fin", "fin"],
+    "axolotl": ["body", "head", "tail", "leg", "leg", "leg", "leg", "gills"],
+    "npc_guide": ["head", "body", "arm", "arm", "leg", "leg"],
+    "npc_merchant": ["head", "body", "arm", "arm", "leg", "leg"],
+    "npc_nurse": ["head", "body", "arm", "arm", "leg", "leg"],
+    "npc_wizard": ["head", "body", "arm", "arm", "leg", "leg"],
+    "npc_smith": ["head", "body", "arm", "arm", "leg", "leg"],
+    "npc_farmer": ["head", "body", "arm", "arm", "leg", "leg"],
+    "npc_guard": ["head", "body", "arm", "arm", "leg", "leg"],
 }
 
 # (size, origin, uv) per part, mirroring mobs.ron.
 HARDCODED = {
+    "horse": [((10, 10, 22), (-5, 11, -11), (0, 0)), ((4, 12, 6), (-2, 17, 8), (0, 32)), ((6, 6, 10), (-3, 25, 9), (20, 32)), ((2, 3, 1), (-3, 31, 10), (52, 32)), ((2, 3, 1), (1, 31, 10), (52, 32)), ((2, 12, 4), (-1, 19, 5), (52, 36)), ((3, 10, 3), (-1, 8, -13), (0, 50)), ((3, 11, 3), (-4, 0, -9), (12, 50)), ((3, 11, 3), (1, 0, -9), (12, 50)), ((3, 11, 3), (-4, 0, 6), (12, 50)), ((3, 11, 3), (1, 0, 6), (12, 50))],
+    "ooze": [((8, 8, 8), (-4, 0, -4), (0, 0))],
+    "bee": [((7, 7, 10), (-3, 2, -5), (0, 0)), ((1, 1, 2), (0, 4, -7), (36, 0)), ((6, 1, 5), (-6, 9, -2), (0, 18)), ((6, 1, 5), (0, 9, -2), (0, 18))],
+    "squid": [((12, 16, 12), (-6, 8, -6), (0, 0)), ((2, 10, 2), (3, -2, -1), (48, 0)), ((2, 10, 2), (2, -2, 2), (48, 0)), ((2, 10, 2), (-1, -2, 3), (48, 0)), ((2, 10, 2), (-4, -2, 2), (48, 0)), ((2, 10, 2), (-5, -2, -1), (48, 0)), ((2, 10, 2), (-4, -2, -4), (48, 0)), ((2, 10, 2), (-1, -2, -5), (48, 0)), ((2, 10, 2), (2, -2, -4), (48, 0))],
+    "dolphin": [((8, 7, 16), (-4, 0, -8), (0, 0)), ((6, 5, 6), (-3, 1, 8), (0, 24)), ((2, 2, 4), (-1, 1, 14), (26, 24)), ((1, 4, 5), (0, 7, -2), (40, 24)), ((8, 1, 5), (-4, 2, -13), (0, 36)), ((5, 1, 3), (-9, 1, 2), (28, 36)), ((5, 1, 3), (4, 1, 2), (28, 36))],
+    "axolotl": [((8, 4, 10), (-4, 1, -5), (0, 0)), ((8, 5, 5), (-4, 1, 5), (0, 16)), ((2, 4, 8), (-1, 1, -13), (28, 16)), ((3, 1, 2), (-6, 0, 2), (0, 28)), ((3, 1, 2), (3, 0, 2), (0, 28)), ((3, 1, 2), (-6, 0, -4), (0, 28)), ((3, 1, 2), (3, 0, -4), (0, 28)), ((10, 3, 1), (-5, 5, 8), (20, 28))],
+    "nightwing": [((6, 3, 10), (-3, 4, -5), (0, 0)), ((6, 3, 4), (-3, 4, 5), (0, 14)), ((12, 1, 8), (-15, 6, -4), (0, 22)), ((12, 1, 8), (3, 6, -4), (0, 22)), ((3, 2, 6), (-1, 4, -11), (40, 0))],
+    "deep_watcher": [((12, 12, 12), (-6, 2, -6), (0, 0)), ((4, 4, 1), (-2, 6, 6), (48, 0)), ((1, 8, 1), (-7, 10, -7), (48, 8)), ((1, 8, 1), (6, 10, -7), (48, 8)), ((1, 8, 1), (-7, 10, 6), (48, 8)), ((1, 8, 1), (6, 10, 6), (48, 8)), ((4, 4, 8), (-2, 6, -14), (0, 26))],
+    "turtle": [((12, 4, 14), (-6, 4, -7), (0, 0)), ((10, 3, 12), (-5, 1, -6), (0, 18)), ((4, 4, 5), (-2, 2, 6), (0, 34)), ((3, 2, 3), (-6, 0, -6), (20, 34)), ((3, 2, 3), (3, 0, -6), (20, 34)), ((3, 2, 3), (-6, 0, 3), (20, 34)), ((3, 2, 3), (3, 0, 3), (20, 34))],
     "pig": [((10, 8, 16), (-5, 6, -8), (0, 0)), ((8, 8, 8), (-4, 8, 7), (0, 24)),
             ((4, 3, 1), (-2, 9, 15), (32, 24)), ((4, 6, 4), (-5, 0, -7), (0, 40)),
             ((4, 6, 4), (1, 0, -7), (0, 40)), ((4, 6, 4), (-5, 0, 3), (0, 40)),
@@ -99,11 +131,45 @@ HARDCODED = {
     "player": [((8, 8, 8), (-4, 24, -4), (0, 0)), ((8, 12, 4), (-4, 12, -2), (16, 16)),
                ((4, 12, 4), (-8, 12, -2), (40, 16)), ((4, 12, 4), (4, 12, -2), (32, 48)),
                ((4, 12, 4), (-4, 0, -2), (0, 16)), ((4, 12, 4), (0, 0, -2), (16, 48))],
+    "deer": [((8, 8, 14), (-4, 12, -7), (0, 0)), ((4, 8, 4), (-2, 17, 4), (44, 0)),
+             ((6, 5, 7), (-3, 23, 4), (0, 22)), ((3, 2, 1), (-6, 26, 5), (26, 22)),
+             ((3, 2, 1), (3, 26, 5), (26, 22)), ((1, 6, 1), (-3, 28, 5), (34, 22)),
+             ((1, 6, 1), (2, 28, 5), (34, 22)), ((3, 1, 1), (-6, 31, 5), (38, 22)),
+             ((3, 1, 1), (3, 31, 5), (38, 22)), ((2, 4, 1), (-1, 15, -8), (46, 22)),
+             ((2, 12, 2), (-4, 0, -6), (0, 34)), ((2, 12, 2), (2, 0, -6), (0, 34)),
+             ((2, 12, 2), (-4, 0, 4), (0, 34)), ((2, 12, 2), (2, 0, 4), (0, 34))],
+    "fox": [((6, 6, 10), (-3, 5, -5), (0, 0)), ((6, 5, 5), (-3, 7, 4), (32, 0)),
+            ((2, 2, 3), (-1, 7, 9), (54, 0)), ((2, 2, 1), (-3, 12, 6), (54, 5)),
+            ((2, 2, 1), (1, 12, 6), (54, 5)), ((4, 4, 9), (-2, 4, -13), (0, 16)),
+            ((2, 5, 2), (-3, 0, -4), (26, 16)), ((2, 5, 2), (1, 0, -4), (26, 16)),
+            ((2, 5, 2), (-3, 0, 2), (26, 16)), ((2, 5, 2), (1, 0, 2), (26, 16))],
+    "rabbit": [((4, 4, 6), (-2, 2, -3), (0, 0)), ((4, 4, 4), (-2, 5, 2), (20, 0)),
+               ((1, 4, 1), (-2, 9, 3), (36, 0)), ((1, 4, 1), (1, 9, 3), (36, 0)),
+               ((2, 2, 1), (-1, 3, -4), (40, 0)), ((1, 2, 1), (-2, 0, 1), (46, 0)),
+               ((1, 2, 1), (1, 0, 1), (46, 0)), ((2, 2, 4), (-2, 0, -3), (0, 10)),
+               ((2, 2, 4), (0, 0, -3), (0, 10))],
+    "bear": [((12, 11, 20), (-6, 10, -10), (0, 0)), ((8, 8, 7), (-4, 14, 9), (0, 31)),
+             ((4, 3, 3), (-2, 14, 16), (30, 31)), ((2, 2, 1), (-4, 22, 12), (44, 31)),
+             ((2, 2, 1), (2, 22, 12), (44, 31)), ((10, 3, 7), (-5, 21, 2), (16, 46)),
+             ((4, 10, 4), (-6, 0, -9), (0, 46)), ((4, 10, 4), (2, 0, -9), (0, 46)),
+             ((4, 10, 4), (-6, 0, 5), (0, 46)), ((4, 10, 4), (2, 0, 5), (0, 46))],
+    "duck": [((6, 5, 9), (-3, 3, -5), (0, 0)), ((4, 5, 4), (-2, 7, 2), (30, 0)),
+             ((4, 1, 3), (-2, 8, 6), (46, 0)), ((4, 2, 2), (-2, 7, -7), (46, 4)),
+             ((1, 4, 7), (-4, 3, -4), (0, 14)), ((1, 4, 7), (3, 3, -4), (0, 14)),
+             ((1, 3, 1), (-2, 0, 0), (16, 14)), ((1, 3, 1), (1, 0, 0), (16, 14))],
+    "forest_guardian": [((10, 10, 8), (-5, 26, -4), (0, 0)), ((12, 14, 6), (-6, 12, -3), (0, 18)),
+                        ((4, 16, 4), (-10, 10, -2), (36, 0)), ((4, 16, 4), (6, 10, -2), (36, 0)),
+                        ((5, 12, 4), (-6, 0, -2), (36, 20)), ((5, 12, 4), (1, 0, -2), (36, 20)),
+                        ((2, 6, 2), (-6, 34, -1), (54, 0)), ((2, 6, 2), (4, 34, -1), (54, 0))],
 }
+# Town NPCs share the player's model.
+for _n in ("npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", "npc_guard", "npc_farmer"):
+    HARDCODED[_n] = HARDCODED["player"]
 
 
 # `layers` per mob as (part index, inflate), mirroring mobs.ron (checked).
 HARDCODED_LAYERS = {
+    "horse": [], "ooze": [], "turtle": [], "bee": [], "squid": [], "nightwing": [], "deep_watcher": [], "dolphin": [], "axolotl": [],
     "pig": [(0, 0.5), (1, 0.5)],
     "cow": [(0, 0.6), (1, 0.5)],
     "sheep": [(0, 1.5), (1, 1.0), (2, 0.6), (3, 0.6), (4, 0.6), (5, 0.6)],
@@ -113,7 +179,15 @@ HARDCODED_LAYERS = {
     "stalker": [(0, 0.8), (1, 0.8)],
     "spider": [(1, 0.6), (2, 0.7)],
     "player": [(0, 0.5), (1, 0.3), (2, 0.3), (3, 0.3), (4, 0.3), (5, 0.3)],
+    "deer": [(0, 0.4), (1, 0.4)],
+    "fox": [(0, 0.4), (5, 0.6)],
+    "rabbit": [(0, 0.3), (4, 0.4)],
+    "bear": [(0, 0.7), (1, 0.5), (5, 0.7), (6, 0.4)],
+    "duck": [(0, 0.3), (4, 0.3), (5, 0.3)],
+    "forest_guardian": [(0, 0.8), (1, 0.6), (2, 0.5), (3, 0.5)],
 }
+for _n in ("npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", "npc_guard", "npc_farmer"):
+    HARDCODED_LAYERS[_n] = HARDCODED_LAYERS["player"]
 
 
 # --------------------------------------------------------------------------
@@ -989,12 +1063,779 @@ def paint_player(c):
     return col
 
 
+# ---- deer ------------------------------------------------------------------
+DEER = pal("#5e3e22", "#6e4a2a", "#7f5733", "#8f643b", "#9e7244", "#ad8150")
+DEER_PALE = pal("#b8a482", "#ccb994", "#ddcca8", "#ece0c2")
+DEER_DARK = pal("#2a1c14", "#3a2a1e")
+ANTLER = pal("#7a6a50", "#9a8a6a", "#b8aa88", "#d6caa6")
+NOSE = (20, 16, 16)
+EYE_HI = (200, 190, 170)
+
+
+def deer_coat(c, bias=0.0):
+    n = fbm(c.seed, c.gx, c.gy * 1.4, c.gz, 4.0)
+    return pick(DEER, 0.15 + 0.6 * n + 0.3 * (c.jit - 0.5) + bias)
+
+
+def paint_deer(c):
+    if c.role == "body":
+        if c.face == "bottom":
+            return pick(DEER_PALE, 0.2 + 0.6 * c.jit)
+        if c.face == "top":
+            # darker stripe down the spine
+            return deer_coat(c, -0.25 if 3 <= c.i <= 4 else 0.0)
+        if c.face in ("left", "right") and c.j >= c.fh - 2:
+            return pick(DEER_PALE, 0.1 + 0.5 * c.jit) if c.j == c.fh - 1 else deer_coat(c, 0.25)
+        if c.face == "back":
+            # pale rump patch around the tail
+            if 1 <= c.i <= 6 and 1 <= c.j <= 5 and not (c.i in (1, 6) and c.j in (1, 5)):
+                return pick(DEER_PALE, 0.4 + 0.6 * c.jit)
+        if c.face == "front" and c.j >= 4:
+            return pick(DEER_PALE, 0.1 + 0.5 * c.jit)  # chest
+        return deer_coat(c)
+    if c.role == "neck":
+        if c.face == "front" or (c.face in ("left", "right") and c.z > c.d - 1):
+            return pick(DEER_PALE, 0.1 + 0.6 * c.jit)  # throat
+        return deer_coat(c, 0.05)
+    if c.role == "head":
+        if c.face == "front":
+            # muzzle end: black nose, pale lips and chin
+            if c.j in (1, 2) and 2 <= c.i <= 3:
+                return NOSE
+            if c.j == 1 and c.i in (1, 4):
+                return DEER_DARK[1]
+            if c.j >= 3:
+                return pick(DEER_PALE, 0.4 + 0.5 * c.jit) if c.j == 4 else pick(DEER_PALE, 0.1 + 0.4 * c.jit)
+            return deer_coat(c, 0.1)
+        if c.face in ("left", "right"):
+            front = c.z > c.d - 3  # the narrow muzzle
+            if c.j == 1 and 3.0 < c.z < 4.0:
+                return (14, 10, 8)  # eye
+            if c.j == 1 and 2.0 < c.z < 3.0:
+                return DEER_DARK[1]  # eye line
+            if c.j == 0 and 3.0 < c.z < 4.0:
+                return EYE_HI if c.jit > 0.6 else deer_coat(c, 0.2)
+            if c.j >= 3 and front:
+                return pick(DEER_PALE, 0.2 + 0.5 * c.jit)
+            if c.j >= 4:
+                return pick(DEER_PALE, 0.1 + 0.4 * c.jit)
+            return deer_coat(c, 0.1 if front else 0.0)
+        if c.face == "bottom":
+            return pick(DEER_PALE, 0.2 + 0.5 * c.jit)
+        if c.face == "top" and c.z > c.d - 3:
+            return deer_coat(c, -0.15)
+        return deer_coat(c)
+    if c.role == "ear":
+        if c.face == "front":
+            return pick(DEER_PALE, 0.0 + 0.3 * c.jit)  # inner ear
+        return deer_coat(c, -0.1)
+    if c.role in ("antler", "tine"):
+        if c.face == "top" or (c.role == "antler" and c.j == 0):
+            return ANTLER[3]
+        if c.role == "antler" and c.j >= c.fh - 1:
+            return ANTLER[0]
+        return pick(ANTLER, 0.3 + 0.6 * c.jit)
+    if c.role == "tail":
+        if c.face in ("back", "bottom") or (c.face in SIDES and c.j >= 2):
+            return pick(DEER_PALE, 0.5 + 0.5 * c.jit)  # white flag underneath
+        return deer_coat(c, -0.1)
+    # legs: same look on all four, pale inside, dark hooves
+    lc = SimpleNamespace(**vars(c))
+    lc.gx, lc.gy, lc.gz = c.x + 30, c.y, c.z + 30
+    if c.face == "bottom" or (c.face in SIDES and c.j >= c.fh - 1):
+        return pick(DEER_DARK, c.jit)
+    if c.face in SIDES and c.j == c.fh - 2:
+        return pick(DEER_PALE, 0.0 + 0.3 * c.jit)
+    if c.face in SIDES and c.j >= 6:
+        return deer_coat(lc, 0.2)
+    return deer_coat(lc)
+
+
+# ---- fox -------------------------------------------------------------------
+FOX = pal("#963e16", "#ac4a1a", "#c0561e", "#d06424", "#e0742e", "#ea8638")
+FOX_WHITE = pal("#cfc6b6", "#e0d8ca", "#ece6dc", "#f6f2ea")
+FOX_BLACK = pal("#1e1612", "#2a1e18", "#38281e")
+FOX_EYE = (196, 132, 30)
+
+
+def fox_coat(c, bias=0.0):
+    n = fbm(c.seed, c.gx, c.gy, c.gz, 3.5)
+    return pick(FOX, 0.2 + 0.6 * n + 0.3 * (c.jit - 0.5) + bias)
+
+
+def paint_fox(c):
+    if c.role == "body":
+        if c.face == "bottom":
+            return pick(FOX_WHITE, 0.2 + 0.6 * c.jit)
+        if c.face == "front":
+            return pick(FOX_WHITE, 0.3 + 0.6 * c.jit) if c.j >= 2 else fox_coat(c)
+        if c.face in ("left", "right") and c.j == c.fh - 1 and c.z > 5:
+            return pick(FOX_WHITE, 0.1 + 0.4 * c.jit)
+        if c.face == "top":
+            return fox_coat(c, -0.15 if 2 <= c.i <= 3 else 0.0)
+        return fox_coat(c)
+    if c.role == "head":
+        if c.face == "front":
+            if c.j == 1 and c.i in (1, 4):
+                return (16, 12, 10)  # pupils
+            if c.j == 1 and c.i in (0, 5):
+                return FOX_EYE
+            if c.j == 0 and c.i in (1, 4):
+                return FOX[0]  # brow
+            if c.j >= 3 and (c.i <= 1 or c.i >= 4):
+                return pick(FOX_WHITE, 0.3 + 0.6 * c.jit)  # cheeks
+            if c.j >= 3:
+                return pick(FOX_WHITE, 0.1 + 0.4 * c.jit)
+            return fox_coat(c, 0.1)
+        if c.face in ("left", "right"):
+            if c.j >= 3 and c.z > 1:
+                return pick(FOX_WHITE, 0.2 + 0.6 * c.jit)
+            return fox_coat(c)
+        if c.face == "bottom":
+            return pick(FOX_WHITE, 0.2 + 0.5 * c.jit)
+        return fox_coat(c)
+    if c.role == "snout":
+        if c.face == "front":
+            if c.j == 0:
+                return FOX_BLACK[0]  # nose
+            return pick(FOX_WHITE, 0.3 + 0.5 * c.jit)
+        if c.face == "top":
+            return FOX_BLACK[1] if c.j == c.fh - 1 else fox_coat(c, 0.15)
+        if c.face == "bottom" or (c.face in SIDES and c.j == 1):
+            return pick(FOX_WHITE, 0.2 + 0.6 * c.jit)
+        return fox_coat(c, 0.15)
+    if c.role == "ear":
+        if c.j == 0 or c.face == "top":
+            return FOX_BLACK[1]  # black tips
+        if c.face == "front":
+            return FOX_BLACK[2] if c.jit < 0.5 else FOX_WHITE[0]
+        return fox_coat(c, -0.1)
+    if c.role == "tail":
+        if c.z < 2.5:
+            return pick(FOX_WHITE, 0.4 + 0.6 * c.jit)  # white tip
+        if c.z < 3.5 and c.jit > 0.5:
+            return pick(FOX_WHITE, 0.2)
+        if c.face == "bottom":
+            return fox_coat(c, -0.15)
+        return fox_coat(c)
+    # legs: black stockings
+    if c.face == "top":
+        return fox_coat(c)
+    if c.face == "bottom" or c.j >= 2:
+        return pick(FOX_BLACK, 0.2 + 0.7 * c.jit)
+    return fox_coat(c, -0.1)
+
+
+# ---- rabbit ----------------------------------------------------------------
+RABBIT = pal("#5a4836", "#6a5640", "#7c6650", "#8c765e", "#9c866c", "#ab967c")
+RABBIT_PALE = pal("#c4b8a4", "#d6ccba", "#e6ded0", "#f2ece2")
+RABBIT_PINK = pal("#b07a74", "#c88e86", "#dca49a")
+
+
+def rabbit_coat(c, bias=0.0):
+    n = fbm(c.seed, c.gx * 1.5, c.gy * 1.5, c.gz * 1.5, 3.0)
+    return pick(RABBIT, 0.2 + 0.6 * n + 0.3 * (c.jit - 0.5) + bias)
+
+
+def paint_rabbit(c):
+    if c.role == "body":
+        if c.face == "bottom":
+            return pick(RABBIT_PALE, 0.2 + 0.6 * c.jit)
+        if c.face == "front" and c.j >= 1:
+            return pick(RABBIT_PALE, 0.1 + 0.5 * c.jit)
+        if c.face in ("left", "right") and c.j == c.fh - 1:
+            return rabbit_coat(c, 0.3)
+        return rabbit_coat(c)
+    if c.role == "head":
+        if c.face == "front":
+            if c.j == 2 and c.i in (1, 2):
+                return RABBIT_PINK[1]  # nose
+            if c.j == 3 and c.i in (1, 2):
+                return RABBIT_PALE[2]
+            if c.j == 3:
+                return RABBIT_PALE[1]
+            return rabbit_coat(c, 0.15)
+        if c.face in ("left", "right"):
+            if c.j == 1 and 2.0 < c.z < 3.0:
+                return (12, 8, 8)  # eye
+            if c.j == 0 and 2.0 < c.z < 3.0:
+                return (180, 170, 160)
+            if c.j == 3:
+                return pick(RABBIT_PALE, 0.1 + 0.4 * c.jit)
+            return rabbit_coat(c, 0.05)
+        if c.face == "bottom":
+            return pick(RABBIT_PALE, 0.3 + 0.5 * c.jit)
+        return rabbit_coat(c)
+    if c.role == "ear":
+        if c.face == "front" and c.j >= 1:
+            return RABBIT_PINK[1] if c.j < 3 else RABBIT_PINK[0]  # inside of the ear
+        if c.j == 0 or c.face == "top":
+            return RABBIT[1]
+        return rabbit_coat(c, -0.05)
+    if c.role == "tail":
+        return pick(RABBIT_PALE, 0.5 + 0.5 * c.jit)
+    if c.role == "foreleg":
+        if c.face == "bottom" or c.j == c.fh - 1:
+            return pick(RABBIT_PALE, 0.2 + 0.5 * c.jit)
+        return rabbit_coat(c, 0.1)
+    # hind legs: big pale feet
+    if c.face in ("bottom", "front") or (c.face in SIDES and c.j == c.fh - 1):
+        return pick(RABBIT_PALE, 0.1 + 0.6 * c.jit)
+    return rabbit_coat(c)
+
+
+# ---- bear ------------------------------------------------------------------
+BEAR = pal("#2e1c12", "#3a2416", "#4a2e1c", "#5a3824", "#6a442c", "#7a5034")
+BEAR_MUZZLE = pal("#6e5238", "#8a6a48", "#a07e58", "#b48e66")
+BEAR_CLAW = (206, 196, 172)
+
+
+def bear_coat(c, bias=0.0):
+    n = fbm(c.seed, c.gx, c.gy, c.gz, 5.0)
+    streak = hash01(c.seed + 3, c.px, c.py // 2)
+    return pick(BEAR, 0.2 + 0.55 * n + 0.25 * (c.jit - 0.5) + 0.15 * (streak - 0.5) + bias)
+
+
+def paint_bear(c):
+    if c.role in ("body", "hump"):
+        if c.face == "bottom":
+            return bear_coat(c, -0.25)
+        if c.face == "top":
+            return bear_coat(c, 0.1)
+        return bear_coat(c)
+    if c.role == "head":
+        if c.face == "front":
+            if c.j == 2 and c.i in (1, 6):
+                return (10, 8, 8)  # small eyes
+            if c.j == 1 and c.i in (1, 6):
+                return BEAR[0]
+            if c.j >= 4 and 1 <= c.i <= 6:
+                return pick(BEAR_MUZZLE, 0.1 + 0.5 * c.jit)  # around the snout
+            return bear_coat(c, 0.1)
+        if c.face == "bottom":
+            return bear_coat(c, -0.2)
+        return bear_coat(c, 0.05)
+    if c.role == "snout":
+        if c.face == "front":
+            if c.j == 0 and 1 <= c.i <= 2:
+                return (16, 12, 12)  # nose
+            if c.j == 0:
+                return (40, 30, 26)
+            if c.j == 2 and 1 <= c.i <= 2:
+                return BEAR_MUZZLE[0]
+            return pick(BEAR_MUZZLE, 0.3 + 0.6 * c.jit)
+        if c.face == "top" and c.j == c.fh - 1 and 1 <= c.i <= 2:
+            return (24, 18, 16)
+        return pick(BEAR_MUZZLE, 0.2 + 0.6 * c.jit)
+    if c.role == "ear":
+        if c.face == "front":
+            return BEAR_MUZZLE[0]
+        return bear_coat(c, -0.1)
+    # legs: same on all four, darker paws with claws in front
+    lc = SimpleNamespace(**vars(c))
+    lc.gx, lc.gy, lc.gz = c.x + 40, c.y, c.z + 40
+    if c.face == "front" and c.j == c.fh - 1:
+        return BEAR_CLAW if c.i % 2 == 0 else BEAR[0]
+    if c.face == "bottom" or (c.face in SIDES and c.j >= c.fh - 2):
+        return pick(BEAR, 0.0 + 0.25 * c.jit)
+    return bear_coat(lc, -0.05)
+
+
+# ---- duck ------------------------------------------------------------------
+DUCK_GRAY = pal("#7a7872", "#8e8c86", "#a2a09a", "#b6b4ae", "#c8c6c0")
+DUCK_BACK = pal("#4a4034", "#5a4e40", "#6a5c4c")
+DUCK_CHEST = pal("#5a301e", "#6e3c26", "#80482e", "#905636")
+DUCK_GREEN = pal("#163a22", "#1e4a2c", "#24603a", "#2e7a48", "#3a9058")
+DUCK_BILL = pal("#b08a18", "#c8a020", "#e0b830", "#f0d050")
+DUCK_FOOT = pal("#b86418", "#d07a20", "#e8902a")
+SPECULUM = pal("#22388a", "#2c4aa8", "#3a62c8")
+WHITE = pal("#d8d6d0", "#eceae4", "#f8f6f2")
+
+
+def paint_duck(c):
+    t = 0.2 + 0.6 * c.jit
+    if c.role == "body":
+        if c.face == "front":
+            return pick(DUCK_CHEST, t)  # chestnut breast
+        if c.face == "top":
+            return pick(DUCK_BACK, t) if c.z < c.d - 2 else pick(DUCK_CHEST, t)
+        if c.face == "bottom":
+            return pick(DUCK_GRAY, 0.5 + 0.4 * c.jit)
+        if c.face in ("left", "right"):
+            if c.z > c.d - 2.5 and c.j <= 3:
+                return pick(DUCK_CHEST, t)
+            if c.j == 0:
+                return pick(DUCK_BACK, t)
+            # fine wavy barring on the flanks
+            return pick(DUCK_GRAY, t + (0.15 if (c.j + int(c.z)) % 3 == 0 else 0.0))
+        if c.face == "back":
+            return pick(DUCK_BACK, t) if c.j <= 1 else pick(WHITE, t)
+        return pick(DUCK_GRAY, t)
+    if c.role == "head":
+        # glossy green head, white collar on the bottom row
+        if c.j == c.fh - 1 and c.face in SIDES:
+            return pick(WHITE, t) if c.face != "front" else pick(DUCK_CHEST, t)
+        if c.face == "bottom":
+            return pick(DUCK_CHEST, t)
+        if c.face in ("left", "right") and c.j == 1 and 2.0 < c.z < 3.0:
+            return (10, 10, 8)  # eye
+        sheen = 0.25 if (c.face == "top" or c.j == 0) else 0.0
+        return pick(DUCK_GREEN, 0.15 + 0.6 * c.jit + sheen)
+    if c.role == "bill":
+        if c.face == "front" and c.i in (1, 2):
+            return DUCK_BILL[0]
+        if c.face == "top" and c.j == c.fh - 1 and c.i in (1, 2):
+            return (40, 34, 20)  # nail at the tip
+        if c.face == "bottom":
+            return DUCK_BILL[1]
+        return pick(DUCK_BILL, 0.4 + 0.6 * c.jit)
+    if c.role == "tail":
+        if c.face == "top" or (c.face == "back" and c.j == 0):
+            return (24, 22, 20)  # black curl
+        return pick(WHITE, t)
+    if c.role == "wing":
+        if c.face in ("left", "right"):
+            # brown-gray with the blue patch near the rear, edged in white
+            rear = c.z < 3.0
+            if rear and c.j == 1:
+                return WHITE[2]
+            if rear and c.j == 2:
+                return pick(SPECULUM, 0.3 + 0.7 * c.jit)
+            if rear and c.j == 3:
+                return WHITE[1]
+            return pick(DUCK_BACK, t + 0.2) if c.j == 0 else pick(DUCK_GRAY, t - 0.2)
+        return pick(DUCK_BACK, t)
+    # legs
+    if c.face == "bottom" or c.j == c.fh - 1:
+        return DUCK_FOOT[0]
+    return pick(DUCK_FOOT, 0.3 + 0.6 * c.jit)
+
+
+# ---- forest guardian (boss) ------------------------------------------------
+GBARK = pal("#2a1c10", "#3a2816", "#4c341c", "#5e4224", "#70522e")
+GLEAF = pal("#1c3a12", "#28501a", "#356a22", "#44822c", "#5a9a3a")
+GLOW = (120, 255, 140)
+GLOW_DIM = (40, 160, 70)
+
+
+def gbark(c, bias=0.0):
+    n = fbm(c.seed + 7, c.gx, c.gy * 0.5, c.gz, 2.6, 3)
+    # vertical grooves in the bark
+    groove = (int(c.gx + c.gz * 0.7) % 3 == 0) and c.face in SIDES
+    t = 0.2 + 0.65 * n + 0.25 * (c.jit - 0.5) + bias - (0.25 if groove else 0.0)
+    return pick(GBARK, t)
+
+
+def paint_forest_guardian(c):
+    if c.role == "head":
+        if c.face == "front":
+            # two glowing eyes deep under a heavy brow, a hollow knot for a mouth
+            if (c.i, c.j) in {(2, 4), (3, 4), (6, 4), (7, 4)}:
+                return GLOW if c.i in (3, 6) else GLOW_DIM
+            if (c.i, c.j) in {(2, 5), (3, 5), (6, 5), (7, 5)}:
+                return GLOW_DIM
+            if c.j == 3 and 1 <= c.i <= 8:
+                return GBARK[0]  # brow shadow
+            if 3 <= c.i <= 6 and 7 <= c.j <= 8:
+                return (14, 10, 6) if 4 <= c.i <= 5 else GBARK[0]
+        return gbark(c, 0.05)
+    if c.role == "body":
+        if c.face == "front" and 4 <= c.i <= 7 and 4 <= c.j <= 7:
+            # a green heart-light showing through a crack in the chest
+            core = (c.i in (5, 6) and c.j in (5, 6))
+            return GLOW if core else GLOW_DIM if c.jit > 0.4 else GBARK[0]
+        return gbark(c)
+    if c.role == "arm":
+        if c.j >= c.fh - 3 and c.face in SIDES:
+            return pick(GBARK, 0.1 + 0.3 * c.jit)  # gnarled fingers
+        return gbark(c, 0.05)
+    if c.role == "leg":
+        if c.face == "bottom" or (c.face in SIDES and c.j >= c.fh - 2):
+            return pick(ROOT_C, c.jit)
+        return gbark(c, -0.05)
+    # branches on the head: bark with a leaf at the tip
+    if c.face == "top" or (c.face in SIDES and c.j == 0):
+        return pick(GLEAF, 0.4 + 0.5 * c.jit)
+    return gbark(c, 0.1)
+
+
+def overlay_forest_guardian(c):
+    if c.face == "bottom":
+        return None
+    if c.role == "head":
+        if c.face == "front":
+            return pick(GLEAF, 0.3 + 0.6 * c.jit) if c.j == 0 and c.jit > 0.3 else None
+        if c.face == "top" or c.j <= 2 + int(c.jit * 3):
+            return pick(GLEAF, 0.2 + 0.7 * c.jit) if c.jit > 0.15 else None  # leafy crown
+        return None
+    if c.role == "body":
+        if c.face == "top" or (c.j <= 2 and c.jit > 0.3):
+            return pick(MOSS, 0.2 + 0.7 * c.jit)  # moss on the shoulders
+        if clustered(c, 71, 2.0, 0.62) and c.jit > 0.35:
+            return pick(MOSS, 0.3 + 0.6 * c.jit)
+        return None
+    if c.role == "arm":
+        if c.face == "top" or (c.j <= 3 and c.jit > 0.35):
+            return pick(MOSS, 0.2 + 0.7 * c.jit)
+        return None
+    return None
+
+
+# ---- town NPCs: the player's painter in each one's own colours --------------
+TOWNSFOLK = {
+    "npc_guide": dict(PHAIR=pal("#2a1a0e", "#3a2412", "#4c3018", "#5e3c1e", "#6e4824"),
+                      PTUNIC=pal("#1c2e4a", "#243a5c", "#2e486e", "#385680", "#426490"),
+                      PTROUSER=pal("#6a5a3a", "#7a6844", "#8a764e", "#988458")),
+    "npc_merchant": dict(PHAIR=pal("#5a5a5a", "#6e6e6e", "#828282", "#969696", "#aaaaaa"),
+                         PTUNIC=pal("#4a2c10", "#5c3816", "#6e441c", "#805022", "#925c28"),
+                         PTROUSER=pal("#2a3a20", "#344628", "#3e5230", "#485e38"),
+                         PSKIN=pal("#c08a66", "#cc9874", "#d6a582", "#e0b290", "#e8bf9e")),
+    "npc_nurse": dict(PHAIR=pal("#8a3a1a", "#a04622", "#b6542a", "#c86234", "#d6703e"),
+                      PTUNIC=pal("#c8c8c8", "#d6d6d6", "#e2e2e2", "#ececec", "#f6f6f6"),
+                      PTROUSER=pal("#b8b8c0", "#c6c6ce", "#d2d2da", "#dedee6"),
+                      PLEATHER=pal("#8a1a1a", "#a02222", "#b42a2a", "#c83434"),
+                      PSKIN=pal("#d0a080", "#daac8c", "#e4b898", "#ecc4a4", "#f2d0b2")),
+    "npc_wizard": dict(PHAIR=pal("#b8b8b8", "#c8c8c8", "#d8d8d8", "#e6e6e6", "#f4f4f4"),
+                       PTUNIC=pal("#2a1448", "#341a5a", "#40206c", "#4c287e", "#5a3090"),
+                       PTROUSER=pal("#2a1448", "#341a5a", "#40206c", "#4c287e"),
+                       PLEATHER=pal("#8a6a10", "#a07c16", "#b88e1c", "#cca024"),
+                       PIRIS=(70, 60, 140)),
+    "npc_smith": dict(PHAIR=pal("#141010", "#1e1814", "#282018", "#32281e", "#3c3024"),
+                      PTUNIC=pal("#2a2a2c", "#343436", "#3e3e40", "#48484a", "#525254"),
+                      PTROUSER=pal("#3a2a1a", "#463220", "#523a26", "#5e442c"),
+                      PSKIN=pal("#7a4a30", "#8a563a", "#9a6244", "#a86e4e", "#b47a58")),
+    "npc_farmer": dict(PHAIR=pal("#6a4a1e", "#7c5824", "#8e662a", "#a07430", "#b28236"),
+                       PTUNIC=pal("#3e5a2a", "#4a6a32", "#567a3a", "#628a42", "#6e9a4a"),
+                       PTROUSER=pal("#2e3a5a", "#364468", "#3e4e76", "#465884"),
+                       PLEATHER=pal("#5a3a1a", "#6c4620", "#7e5226", "#905e2c"),
+                       PSKIN=pal("#b07a56", "#bc8662", "#c8926e", "#d49e7a", "#dea986")),
+    "npc_guard": dict(PHAIR=pal("#2a1a0e", "#3a2412", "#4c3018", "#5e3c1e", "#6e4824"),
+                      PTUNIC=pal("#5a5e66", "#6c7078", "#80848c", "#9498a0", "#a8acb4"),
+                      PTROUSER=pal("#1e2a48", "#263456", "#2e3e64", "#384872"),
+                      PLEATHER=pal("#5a3a1a", "#6c4620", "#7e5226", "#905e2c")),
+}
+
+
+HORSE = pal("#4a2c16", "#5a361c", "#6a4022", "#7a4a2a", "#8a5632", "#9a623a")
+HORSE_MANE = pal("#1a120c", "#241810", "#2e2016", "#38281c")
+HORSE_HOOF = pal("#1e1814", "#2a221c", "#36302a")
+OOZE = pal("#3a8a2a", "#4aa034", "#5ab43e", "#6ac84a", "#7ad858")
+OOZE_DARK = pal("#1a4a12", "#24601a")
+TURTLE_SHELL = pal("#1e3a14", "#2a4e1c", "#3a6426", "#4a7a30")
+NIGHTWING = pal("#1a2232", "#222c40", "#2a364e", "#34405c")
+NIGHTWING_WING = pal("#141a26", "#1c2434", "#242e42")
+WATCHER = pal("#2a5a52", "#326a60", "#3c7a6e", "#468a7c", "#529a8a")
+WATCHER_SPIKE = pal("#a05a20", "#c07028", "#d88a34")
+WATCHER_EYE = pal("#e8e0c0", "#f0ead0")
+SQUID = pal("#1a2a4a", "#24365c", "#2e426e", "#3a5080", "#465e92")
+DOLPHIN = pal("#5a6a7a", "#6a7a8a", "#7a8a9a", "#8a9aaa", "#9aaaba")
+DOLPHIN_DARK = pal("#3a4654", "#465464", "#526274")
+AXOLOTL = pal("#c87a8a", "#d68a9a", "#e29aaa", "#eeaaba", "#f6bac8")
+AXOLOTL_GILLS = pal("#8a2a4a", "#a03458", "#b44066")
+BEE_YELLOW = pal("#c08a10", "#d49c18", "#e4ae24", "#f0c034")
+BEE_BLACK = pal("#1a140c", "#241c12", "#2e2418")
+BEE_WING = pal("#c8d8e0", "#d8e4ea", "#e6eef2")
+
+
+def paint_bee(c):
+    """Yellow and black bands round the body, pale wings, a dark sting and two big eyes."""
+    if c.role == "wing":
+        return pick(BEE_WING, c.jit)
+    if c.role == "stinger":
+        return BEE_BLACK[0]
+    if c.face == "front" and c.j in (2, 3) and c.i in (1, c.fw - 2):
+        return (12, 10, 8)
+    band = int(c.gz + 20) // 2 % 2 == 0 and c.face != "front"
+    t = 0.3 + 0.5 * c.jit
+    return pick(BEE_BLACK if band else BEE_YELLOW, t)
+
+
+TURTLE_SKIN = pal("#4a7a3a", "#5a8e48", "#6aa058", "#7ab268")
+
+
+def simple_painter(roles, eyes="head"):
+    """A plain painter: each role takes a palette (by global name, so recolours work), with
+    a little noise, darker undersides and two eyes on the front of the head."""
+    def paint(c):
+        g = globals()
+        palette = g[roles.get(c.role, roles["*"])]
+        n = fbm(c.seed, c.gx, c.gy, c.gz, 4.0)
+        t = 0.2 + 0.6 * n + 0.25 * (c.jit - 0.5)
+        if c.face == "bottom":
+            t -= 0.25
+        elif c.face == "top":
+            t += 0.1
+        col = pick(palette, t)
+        if c.role == eyes and c.face == "front":
+            ey = max(1, c.fh // 3)
+            if c.j == ey and c.i in (1, c.fw - 2):
+                return (16, 12, 10)
+            if c.j == ey and c.i in (2, c.fw - 3) and c.fw >= 6:
+                return (220, 214, 200)
+        return col
+    return paint
+
+
+def townsfolk(name, base, colours=None):
+    colours = colours or TOWNSFOLK[name]
+
+    def paint(c):
+        g = globals()
+        saved = {k: g[k] for k in colours}
+        g.update(colours)
+        try:
+            return base(c)
+        finally:
+            g.update(saved)
+    return paint
+
+
+# Recoloured copies of another mob's model and painter: name -> (base, palette overrides).
+RECOLORED = {
+    "goblin_trader": ("player", dict(
+        PSKIN=pal("#4e6e2a", "#5c7e32", "#6a8e3a", "#789e44", "#86ac4e"),
+        PHAIR=pal("#1a1410", "#241c16", "#2e241c", "#382c22", "#423428"),
+        PTUNIC=pal("#5a2a14", "#6c341a", "#7e3e20", "#904826", "#a2522c"),
+        PTROUSER=pal("#2e2a22", "#38342a", "#423e32", "#4c483a"),
+        PLEATHER=pal("#8a6a10", "#a07c16", "#b88e1c", "#cca024"),
+        PIRIS=(200, 150, 30))),
+    "mutant_zombie": ("zombie", dict(
+        ZSKIN=pal("#2e4430", "#3a5438", "#466444", "#52724e", "#5e7e58"),
+        ZSHIRT=pal("#2a1a14", "#36221a", "#422a20", "#4e3226"),
+        ZPANTS=pal("#141420", "#1c1c2c", "#242438", "#2c2c44"))),
+    "mutant_skeleton": ("skeleton", dict(BONE=pal("#5e5444", "#7a6e58", "#94876c", "#ab9e80", "#bdb192"))),
+    "polar_bear": ("bear", dict(
+        BEAR=pal("#b8b4a8", "#c8c4b8", "#d6d2c8", "#e2dfd6", "#ecead2", "#f6f4ec"),
+        BEAR_MUZZLE=pal("#a8a498", "#bab6aa", "#ccc8bc", "#dcd8cc"))),
+    "penguin": ("duck", dict(
+        DUCK_GRAY=pal("#16181e", "#1e2028", "#262a32", "#2e323c", "#363a46"),
+        DUCK_BACK=pal("#101216", "#16181e", "#1e2026"),
+        DUCK_CHEST=pal("#d8d6d0", "#e4e2dc", "#eeece6", "#f8f6f2"),
+        DUCK_GREEN=pal("#0e1014", "#14161c", "#1a1d24", "#20242c", "#262a34"),
+        DUCK_BILL=pal("#b85a14", "#d06c1a", "#e07e22", "#f0902c"),
+        SPECULUM=pal("#16181e", "#1e2028", "#262a32"))),
+    "boar": ("pig", dict(
+        PIG=pal("#3a2a1e", "#4a3626", "#5a422e", "#6a4e36", "#7a5a40"),
+        PIG_SNOUT=pal("#6a4a3a", "#7a5848", "#8a6656", "#9a7464"),
+        PIG_HOOF=pal("#1a1210", "#2a1e18"))),
+    "squirrel": ("fox", dict(
+        FOX=pal("#6a3a1e", "#7c4624", "#8e522a", "#a05e32", "#b06a3a", "#be7844"),
+        FOX_WHITE=pal("#bcae98", "#ccc0aa", "#dcd2c0", "#e8e0d2"),
+        FOX_BLACK=pal("#2a1a12", "#36241a", "#422e20"))),
+    "swamp_witch": ("player", dict(
+        PSKIN=pal("#7a8a5a", "#869664", "#92a26e", "#9eae7a", "#aaba86"),
+        PHAIR=pal("#0e0c12", "#16121c", "#1e1826", "#261e30", "#2e243a"),
+        PTUNIC=pal("#2a1436", "#341a44", "#3e2052", "#482660", "#522c6e"),
+        PTROUSER=pal("#1e1a14", "#28221a", "#322a20", "#3c3226"),
+        PLEATHER=pal("#3a5a1a", "#466c20", "#527e26", "#5e902c"),
+        PIRIS=(160, 220, 60))),
+    # Naturalist animals.
+    "lion": ("bear", dict(
+        BEAR=pal("#7a5a2a", "#8e6a32", "#a27c3c", "#b48e48", "#c4a056", "#d2b064"),
+        BEAR_MUZZLE=pal("#b49a6e", "#c4aa7e", "#d2ba8e", "#e0caa0"))),
+    "rhino": ("cow", dict(
+        COW_BROWN=pal("#5a5a5e", "#68686c", "#76767a", "#848488"),
+        COW_WHITE=pal("#6e6e72", "#7c7c80", "#8a8a8e", "#98989c"),
+        COW_MUZZLE=pal("#5e5a58", "#6c6866", "#7a7674"),
+        COW_HORN=pal("#a8a090", "#c4bca8", "#dcd4c0"))),
+    "elephant": ("cow", dict(
+        COW_BROWN=pal("#6a6466", "#787274", "#868082", "#948e90"),
+        COW_WHITE=pal("#7a7476", "#888284", "#969092", "#a49ea0"),
+        COW_MUZZLE=pal("#6e6668", "#7c7476", "#8a8284"),
+        COW_HORN=pal("#d8d2c0", "#e6e0d0", "#f2eee2"))),
+    "zebra": ("deer", dict(
+        DEER=pal("#1a1a1c", "#d4d2cc", "#24242a", "#e0ded8", "#2e2e34", "#eceae4"),
+        DEER_PALE=pal("#d8d6d0", "#e4e2dc", "#eeece6", "#f8f6f2"),
+        DEER_DARK=pal("#101012", "#1a1a1e"))),
+    "hippo": ("pig", dict(
+        PIG=pal("#5a4a56", "#6a5866", "#7a6676", "#8a7486", "#9a8296"),
+        PIG_SNOUT=pal("#a07a84", "#b08a94", "#c09aa4", "#d0aab4"),
+        PIG_HOOF=pal("#2a2028", "#3a2e38"))),
+    "cardinal": ("duck", dict(
+        DUCK_GRAY=pal("#8a1414", "#a01a1a", "#b42222", "#c82a2a", "#d83434"),
+        DUCK_BACK=pal("#701010", "#861616", "#9a1c1c"),
+        DUCK_CHEST=pal("#b42222", "#c42a2a", "#d43434", "#e03e3e"),
+        DUCK_GREEN=pal("#1a1012", "#241418", "#2e1a1e", "#381e24", "#422228"),
+        DUCK_BILL=pal("#b85a14", "#d06c1a", "#e07e22", "#f0902c"),
+        SPECULUM=pal("#8a1414", "#a01a1a", "#b42222"))),
+    "bluejay": ("duck", dict(
+        DUCK_GRAY=pal("#1e3a7a", "#24468e", "#2c54a2", "#3462b4", "#3e70c4"),
+        DUCK_BACK=pal("#182e64", "#1e3a78", "#24468c"),
+        DUCK_CHEST=pal("#c8ccd4", "#d6d9e0", "#e2e5ea", "#eef0f4"),
+        DUCK_GREEN=pal("#2a4a96", "#3256a8", "#3a62b8", "#446ec6", "#4e7ad2"),
+        DUCK_BILL=pal("#1a1a1e", "#242428", "#2e2e32", "#38383c"),
+        SPECULUM=pal("#101012", "#e8e8ec", "#101012"))),
+    # Bosses of Mass Destruction ideas.
+    "lich": ("skeleton", dict(BONE=pal("#5a7a9a", "#7898b6", "#98b6d0", "#b8d2e6", "#dceefa"))),
+    "obsidilith": ("forest_guardian", dict(
+        GBARK=pal("#08060c", "#100c16", "#181220", "#20182a", "#281e34"),
+        GLEAF=pal("#2a1240", "#3a1858", "#4a2070", "#5c2a88", "#6e34a0"),
+        MOSS=pal("#140e1c", "#1c1426", "#241a30", "#2c203a", "#342644", "#3c2c4e"),
+        ROOT_C=pal("#4a2070", "#5c2a88", "#6e34a0"),
+        GLOW=(200, 90, 255),
+        GLOW_DIM=(110, 40, 160))),
+    "void_blossom": ("forest_guardian", dict(
+        GBARK=pal("#1a1424", "#241c30", "#2e243c", "#382c48", "#423454"),
+        GLEAF=pal("#8a2a5a", "#a2346c", "#ba407e", "#d04e92", "#e462a6"),
+        MOSS=pal("#1e3a1e", "#264826", "#2e562e", "#386636", "#42743e", "#4c8448"),
+        ROOT_C=pal("#3a5a2a", "#4a6c34", "#5a7e3e"),
+        GLOW=(255, 120, 200),
+        GLOW_DIM=(160, 60, 120))),
+    # Illager Invasion ideas: grey skin, heavy brows, dark coats.
+    "marauder": ("player", dict(
+        PSKIN=pal("#5e6266", "#6a6e72", "#767a7e", "#82868a", "#8e9296"),
+        PHAIR=pal("#141414", "#1c1c1c", "#242424", "#2c2c2c", "#343434"),
+        PTUNIC=pal("#2a2a30", "#34343a", "#3e3e46", "#484852", "#52525e"),
+        PTROUSER=pal("#1e1e24", "#26262e", "#2e2e38", "#363642"),
+        PLEATHER=pal("#4a2e1a", "#5a3820", "#6a4226", "#7a4c2c"),
+        PIRIS=(40, 40, 40))),
+    "invoker": ("player", dict(
+        PSKIN=pal("#5e6266", "#6a6e72", "#767a7e", "#82868a", "#8e9296"),
+        PHAIR=pal("#141414", "#1c1c1c", "#242424", "#2c2c2c", "#343434"),
+        PTUNIC=pal("#3a1a4a", "#46205a", "#52266a", "#5e2e7a", "#6a368a"),
+        PTROUSER=pal("#2a1436", "#341a44", "#3e2052", "#482660"),
+        PLEATHER=pal("#8a6a10", "#a07c16", "#b88e1c", "#cca024"),
+        PIRIS=(120, 60, 180))),
+    "brute": ("player", dict(
+        PSKIN=pal("#5e6266", "#6a6e72", "#767a7e", "#82868a", "#8e9296"),
+        PHAIR=pal("#141414", "#1c1c1c", "#242424", "#2c2c2c", "#343434"),
+        PTUNIC=pal("#4a1a14", "#5a2018", "#6a261c", "#7a2c20", "#8a3224"),
+        PTROUSER=pal("#2a2420", "#342c26", "#3e342c", "#483c32"),
+        PLEATHER=pal("#2a2a2a", "#3a3a3a", "#4a4a4a", "#5a5a5a"),
+        PIRIS=(40, 40, 40))),
+    # Nether creatures.
+    "nether_zombie": ("zombie", dict(
+        ZSKIN=pal("#8a4a4a", "#9c5a56", "#ae6a62", "#be7a6e", "#cc8a7c"),
+        ZSHIRT=pal("#6a5010", "#806216", "#96741c", "#ac8824"),
+        ZPANTS=pal("#2a1414", "#381c1a", "#462420", "#542c26"))),
+    "ash_skeleton": ("skeleton", dict(BONE=pal("#26242a", "#323036", "#3e3c42", "#4a484e", "#58565c"))),
+    "ember_wraith": ("skeleton", dict(BONE=pal("#8a5a10", "#b07818", "#d09a22", "#e8bc3a", "#fcdc6a"))),
+    "fire_imp": ("skeleton", dict(BONE=pal("#7a1e0c", "#9a2c10", "#ba4414", "#d8641c", "#ee8a2a"))),
+    "crimson_boar": ("pig", dict(
+        PIG=pal("#4a1018", "#5e1620", "#721c28", "#862430", "#982c38"),
+        PIG_SNOUT=pal("#8a3a3a", "#9c4848", "#ae5656", "#c06464"),
+        PIG_HOOF=pal("#1a0a0a", "#2a1210"))),
+    # End creatures.
+    "void_walker_desert": ("skeleton", dict(BONE=pal("#4a3a22", "#5e4a2c", "#725a36", "#866a40", "#9a7a4a"))),
+    "void_walker_snowy": ("skeleton", dict(BONE=pal("#5a6878", "#6e7e90", "#8496a8", "#9aaec0", "#b4c6d6"))),
+    "void_walker_swamp": ("skeleton", dict(BONE=pal("#1a2614", "#22301a", "#2a3a20", "#344628", "#3e5230"))),
+    "void_walker_savanna": ("skeleton", dict(BONE=pal("#3a2a14", "#4a3418", "#5a3e1c", "#6a4a22", "#7a5628"))),
+    "void_walker_crimson": ("skeleton", dict(BONE=pal("#2a0a10", "#3a0e16", "#4a121c", "#5a1822", "#6a1e28"))),
+    "void_walker_soul": ("skeleton", dict(BONE=pal("#0e1a20", "#14262e", "#1a323c", "#20404a", "#2a5260"))),
+    "void_walker": ("skeleton", dict(BONE=pal("#0c0a10", "#141018", "#1c1622", "#241c2c", "#2e2436"))),
+    "void_guardian": ("forest_guardian", dict(
+        GBARK=pal("#120e18", "#1c1624", "#261e30", "#30263c", "#3a2e48"),
+        GLEAF=pal("#4a2a5e", "#603878", "#784a92", "#9260ac", "#ac7ac6"),
+        MOSS=pal("#2a1a36", "#382446", "#463058", "#563c6a", "#664a7c", "#78589a"),
+        ROOT_C=pal("#bdb889", "#cdc898", "#dbd6a6"),
+        GLOW=(230, 140, 255),
+        GLOW_DIM=(140, 60, 180))),
+    # Vanilla animals and monsters (our own names for the monsters).
+    "donkey": ("horse", dict(HORSE=pal("#5a5450", "#686260", "#76706c", "#847e7a", "#928c88", "#a09a96"),
+                             HORSE_MANE=pal("#2a2420", "#36302a", "#423a34", "#4e463e"))),
+    "llama": ("horse", dict(HORSE=pal("#b4a080", "#c4b090", "#d2c0a0", "#ded0b2", "#e8dcc2", "#f0e6d0"),
+                            HORSE_MANE=pal("#a08a6a", "#b09a7a", "#c0aa8a", "#ceba9a"))),
+    "camel": ("cow", dict(
+        COW_BROWN=pal("#9a7440", "#aa824a", "#ba9256", "#c8a062"),
+        COW_WHITE=pal("#b08a52", "#be985e", "#cca66a", "#d8b476"),
+        COW_MUZZLE=pal("#8a6a40", "#9a784a", "#aa8654"),
+        COW_HORN=pal("#9a7440", "#aa824a", "#ba9256"))),
+    "wolf": ("fox", dict(
+        FOX=pal("#5a5650", "#6a665e", "#7a766e", "#8a867e", "#9a968e", "#aaa69e"),
+        FOX_WHITE=pal("#bcb8b0", "#ccc8c0", "#dcd8d0", "#e8e4dc"),
+        FOX_BLACK=pal("#1e1c1a", "#2a2826", "#363432"))),
+    "cat": ("fox", dict(
+        FOX=pal("#2a2622", "#36302a", "#423a32", "#4e463c", "#5a5046", "#665a50"),
+        FOX_WHITE=pal("#d0ccc4", "#dcd8d0", "#e8e4dc", "#f2eee8"),
+        FOX_BLACK=pal("#141210", "#1e1a18", "#282420"))),
+    "goat": ("deer", dict(
+        DEER=pal("#b8b2a6", "#c6c0b4", "#d2ccc0", "#dcd8cc", "#e6e2d8", "#eeeae2"),
+        DEER_PALE=pal("#d8d4cc", "#e2ded6", "#eae6e0", "#f4f0ea"),
+        DEER_DARK=pal("#5a5650", "#6a665e"),
+        ANTLER=pal("#5a5246", "#6e6656", "#827a68", "#968e7a"))),
+    "panda": ("bear", dict(
+        BEAR=pal("#c8c4bc", "#d4d0c8", "#dedad2", "#e6e2dc", "#eeeae4", "#f6f4ee"),
+        BEAR_MUZZLE=pal("#1a1816", "#24221e", "#2e2c28", "#383632"))),
+    "parrot": ("duck", dict(
+        DUCK_GRAY=pal("#a01414", "#b81c1c", "#cc2626", "#dc3030", "#e83c3c"),
+        DUCK_BACK=pal("#1a5a9a", "#226ab0", "#2a7ac4"),
+        DUCK_CHEST=pal("#d0a020", "#e0b02a", "#ecc036", "#f6d044"),
+        DUCK_GREEN=pal("#a01414", "#b81c1c", "#cc2626", "#dc3030", "#e83c3c"),
+        DUCK_BILL=pal("#2a2a2e", "#36363a", "#424246", "#4e4e52"),
+        SPECULUM=pal("#1a8a3a", "#22a046", "#2ab452"))),
+    "frog": ("rabbit", dict(
+        RABBIT=pal("#3a5a1a", "#466a20", "#527a28", "#5e8a30", "#6a9a3a", "#76aa44"),
+        RABBIT_PALE=pal("#a8b878", "#b8c888", "#c8d898", "#d8e6aa"),
+        RABBIT_PINK=pal("#2a3a14", "#36481a", "#425620"))),
+    "mummy": ("zombie", dict(
+        ZSKIN=pal("#8a7450", "#9a845c", "#aa9468", "#b8a274", "#c6b080"),
+        ZSHIRT=pal("#b0a488", "#c0b498", "#cec4a8", "#dad2b8"),
+        ZPANTS=pal("#9a8e72", "#aa9e82", "#b8ae92", "#c6bca2"))),
+    "sunken": ("zombie", dict(
+        ZSKIN=pal("#2a5a5a", "#326a68", "#3a7a76", "#448a84", "#4e9a92"),
+        ZSHIRT=pal("#2a3a5a", "#32466a", "#3a527a", "#445e8a"),
+        ZPANTS=pal("#1a2a3a", "#223446", "#2a3e52", "#32485e"))),
+    "frost_archer": ("skeleton", dict(BONE=pal("#7a9aa8", "#98b6c2", "#b4ced8", "#cce2ea", "#e2f2f8"))),
+    # Village settlers: plain folk in work clothes (our own look, not vanilla villagers).
+    "settler_farmer": ("player", dict(
+        PHAIR=pal("#8a6a2a", "#9c7a32", "#ae8a3a", "#c09a44", "#d0a84e"),
+        PTUNIC=pal("#7a6a3a", "#8a7844", "#9a864e", "#aa9458", "#b8a262"),
+        PTROUSER=pal("#3a3020", "#463a28", "#524430", "#5e4e38"),
+        PSKIN=pal("#b07a56", "#bc8662", "#c8926e", "#d49e7a", "#dea986"))),
+    "settler_smith": ("player", dict(
+        PHAIR=pal("#1a1612", "#24201a", "#2e2a22", "#38342a", "#423e32"),
+        PTUNIC=pal("#3a2010", "#4a2a16", "#5a341c", "#6a3e22", "#7a4828"),
+        PTROUSER=pal("#2a2a2a", "#343434", "#3e3e3e", "#484848"),
+        PSKIN=pal("#8a5a3a", "#9a6644", "#aa724e", "#b87e58", "#c48a62"))),
+    "settler_librarian": ("player", dict(
+        PHAIR=pal("#9a9a9a", "#aaaaaa", "#bababa", "#cacaca", "#dadada"),
+        PTUNIC=pal("#6a1a1a", "#7c2222", "#8e2a2a", "#a03434", "#b23e3e"),
+        PTROUSER=pal("#2a2a3a", "#343446", "#3e3e52", "#48485e"),
+        PSKIN=pal("#d0a080", "#daac8c", "#e4b898", "#ecc4a4", "#f2d0b2"))),
+    "settler_shepherd": ("player", dict(
+        PHAIR=pal("#4a2a14", "#5a341a", "#6a3e20", "#7a4826", "#8a522c"),
+        PTUNIC=pal("#b0a890", "#beb69e", "#ccc4ac", "#dad2ba", "#e6dec6"),
+        PTROUSER=pal("#4a3a2a", "#584632", "#66523a", "#745e42"),
+        PSKIN=pal("#c08a66", "#cc9874", "#d6a582", "#e0b290", "#e8bf9e"))),
+    "sentinel": ("player", dict(
+        PHAIR=pal("#4a4a46", "#5a5a56", "#6a6a66", "#7a7a76", "#8a8a86"),
+        PTUNIC=pal("#6a6a66", "#7a7a76", "#8a8a86", "#9a9a96", "#aaaaa6"),
+        PTROUSER=pal("#5a5a56", "#6a6a66", "#7a7a76", "#8a8a86"),
+        PLEATHER=pal("#3a5a2a", "#466a32", "#527a3a", "#5e8a42"),
+        PSKIN=pal("#7e7e7a", "#8e8e8a", "#9e9e9a", "#aeaeaa", "#bebeba"),
+        PIRIS=(140, 40, 30))),
+}
+RECOLORED["wolf_tame"] = RECOLORED["wolf"]
+RECOLORED["cat_tame"] = RECOLORED["cat"]
+for _n, (_b, _) in RECOLORED.items():
+    ROLES[_n] = ROLES[_b]
+    HARDCODED[_n] = HARDCODED[_b]
+
+for _n, (_b, _) in RECOLORED.items():
+    HARDCODED_LAYERS[_n] = HARDCODED_LAYERS[_b]
+
+
 PAINTERS = {
     "pig": paint_pig, "cow": paint_cow, "sheep": paint_sheep,
     "chicken": paint_chicken, "zombie": paint_zombie,
     "skeleton": paint_skeleton, "stalker": paint_stalker, "spider": paint_spider,
     "player": paint_player,
+    "deer": paint_deer, "fox": paint_fox, "rabbit": paint_rabbit, "bear": paint_bear,
+    "duck": paint_duck, "forest_guardian": paint_forest_guardian,
+    "horse": simple_painter({"*": "HORSE", "mane": "HORSE_MANE", "tail": "HORSE_MANE"}),
+    "ooze": simple_painter({"*": "OOZE"}, eyes="body"),
+    "turtle": simple_painter({"*": "TURTLE_SKIN", "shell": "TURTLE_SHELL"}),
+    "bee": paint_bee,
+    "nightwing": simple_painter({"*": "NIGHTWING", "wing": "NIGHTWING_WING"}),
+    "deep_watcher": simple_painter({"*": "WATCHER", "spike": "WATCHER_SPIKE", "eye": "WATCHER_EYE", "tail": "WATCHER"}, eyes="none"),
+    "squid": simple_painter({"*": "SQUID"}, eyes="body"),
+    "dolphin": simple_painter({"*": "DOLPHIN", "fin": "DOLPHIN_DARK", "tail": "DOLPHIN_DARK"}),
+    "axolotl": simple_painter({"*": "AXOLOTL", "gills": "AXOLOTL_GILLS"}),
 }
+for _n in TOWNSFOLK:
+    PAINTERS[_n] = townsfolk(_n, paint_player)
+for _n, (_b, _c) in RECOLORED.items():
+    PAINTERS[_n] = townsfolk(_n, PAINTERS[_b], _c)
 
 
 # --------------------------------------------------------------------------
@@ -1237,12 +2078,110 @@ def overlay_player(c):
     return None
 
 
+def overlay_deer(c):
+    if c.face == "bottom":
+        return None
+    if c.role == "neck":
+        # a shaggy ruff under the throat
+        if c.face == "front" and c.j >= 3 and c.jit > 0.3:
+            return pick(DEER_PALE, 0.3 + 0.5 * c.jit)
+        if c.face in ("left", "right") and c.j >= 4 and c.z > 2 and c.jit > 0.5:
+            return deer_coat(c, 0.1)
+        return None
+    # body: sparse fur along the spine and over the shoulders
+    if c.face == "top" and 2 <= c.i <= 5 and c.jit > 0.45:
+        return deer_coat(c, -0.2)
+    if c.face in ("left", "right") and c.j <= 1 and c.jit > 0.7:
+        return deer_coat(c, -0.1)
+    if c.face == "front" and c.j >= 3 and c.jit > 0.4:
+        return pick(DEER_PALE, 0.4 + 0.5 * c.jit)
+    return None
+
+
+def overlay_fox(c):
+    if c.role == "tail":
+        if c.jit < 0.3:
+            return None
+        if c.z < 2.5:
+            return pick(FOX_WHITE, 0.5 + 0.5 * c.jit)
+        return fox_coat(c, 0.1)
+    if c.face == "bottom":
+        return None
+    # white bib on the chest, a few tufts on the back
+    if c.face == "front" and c.j >= 1 and c.jit > 0.25:
+        return pick(FOX_WHITE, 0.4 + 0.6 * c.jit)
+    if c.face == "top" and clustered(c, 101, 2.5, 0.6) and c.jit > 0.4:
+        return fox_coat(c, 0.15)
+    return None
+
+
+def overlay_rabbit(c):
+    if c.role == "tail":
+        if c.jit < 0.15:
+            return None
+        return pick(RABBIT_PALE, 0.6 + 0.4 * c.jit)
+    if c.face == "bottom":
+        return None
+    if clustered(c, 111, 2.0, 0.55) and c.jit > 0.45:
+        return rabbit_coat(c, 0.1)
+    return None
+
+
+def overlay_bear(c):
+    if c.face == "bottom":
+        return None
+    if c.role == "head":
+        # fur on the crown and cheeks, the face stays clear
+        if c.face == "front":
+            if c.i in (0, 7) and c.j >= 2 and c.jit > 0.3:
+                return bear_coat(c, -0.05)
+            return None
+        if c.face == "top" and c.jit > 0.35:
+            return bear_coat(c, 0.05)
+        if c.face in ("left", "right") and c.jit > 0.5:
+            return bear_coat(c)
+        return None
+    if c.role == "leg":
+        if c.face == "top" or c.j > 4:
+            return None
+        return bear_coat(c, -0.05) if c.jit > 0.35 else None
+    # body and hump: thick shaggy coat
+    if c.jit < 0.28:
+        return None
+    if c.role == "body" and c.face == "front" and 2 <= c.i <= 9 and c.j <= 7:
+        return None  # where the head sits
+    tip = hash01(c.seed + 121, c.px, c.py)
+    return bear_coat(c, 0.15 if tip > 0.85 else -0.05)
+
+
+def overlay_duck(c):
+    if c.role == "wing":
+        if c.face in ("left", "right") and (c.j == c.fh - 1 or c.z < 1.5) and c.jit > 0.3:
+            return pick(DUCK_BACK, 0.3 + 0.6 * c.jit)  # primary feather tips
+        return None
+    if c.face in ("bottom", "top", "front"):
+        return None
+    if c.face == "back" and c.j >= 2 and c.jit > 0.4:
+        return pick(WHITE, 0.3 + 0.6 * c.jit)
+    if c.face in ("left", "right") and c.j >= 2 and (c.i + c.j) % 2 == 0 and c.jit > 0.4:
+        return pick(DUCK_GRAY, 0.3 + 0.6 * c.jit)
+    return None
+
+
 OVERLAYS = {
     "pig": overlay_pig, "cow": overlay_cow, "sheep": overlay_sheep,
     "chicken": overlay_chicken, "zombie": overlay_zombie,
     "skeleton": overlay_skeleton, "stalker": overlay_stalker, "spider": overlay_spider,
     "player": overlay_player,
+    "deer": overlay_deer, "fox": overlay_fox, "rabbit": overlay_rabbit, "bear": overlay_bear,
+    "duck": overlay_duck, "forest_guardian": overlay_forest_guardian,
+    "horse": lambda c: None, "ooze": lambda c: None, "turtle": lambda c: None,
+    "bee": lambda c: None, "nightwing": lambda c: None, "deep_watcher": lambda c: None, "squid": lambda c: None, "dolphin": lambda c: None, "axolotl": lambda c: None,
 }
+for _n in TOWNSFOLK:
+    OVERLAYS[_n] = townsfolk(_n, overlay_player)
+for _n, (_b, _c) in RECOLORED.items():
+    OVERLAYS[_n] = townsfolk(_n, OVERLAYS[_b], _c)
 
 
 # --------------------------------------------------------------------------
@@ -1315,6 +2254,12 @@ def checker(size, cell=8):
 
 def main():
     parsed, parsed_layers = parse_mobs(MOBS_RON)
+    # Models painted by their own scripts (tools/gen_minecart.py, tools/gen_boat.py, tools/gen_windmill_sails.py,
+    # tools/gen_nether_end_skins.py).
+    from gen_nether_end_skins import NAMES as NETHER_END
+    for other in ("minecart", "boat", "windmill_sails") + tuple(NETHER_END):
+        parsed.pop(other, None)
+        parsed_layers.pop(other, None)
     assert set(parsed) == set(ROLES), f"mob list differs: {sorted(parsed)}"
     for name, parts in parsed.items():
         assert parts == HARDCODED[name], f"{name}: parts in mobs.ron changed"
@@ -1324,7 +2269,11 @@ def main():
             assert 0 <= idx < len(parts), (name, idx)
     os.makedirs(OUT_DIR, exist_ok=True)
     order = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "stalker", "spider",
-             "player"]
+             "player", "deer", "fox", "rabbit", "bear", "duck", "forest_guardian",
+             "npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith",
+             "goblin_trader", "mutant_zombie", "npc_guard", "settler_farmer", "settler_smith", "settler_librarian", "settler_shepherd", "sentinel", "polar_bear", "penguin", "boar", "squirrel", "mutant_skeleton",
+             "nether_zombie", "ash_skeleton", "fire_imp", "crimson_boar", "void_walker", "void_guardian", "npc_farmer", "swamp_witch", "lion", "rhino", "elephant", "zebra", "hippo", "cardinal", "bluejay", "lich", "obsidilith", "void_blossom", "marauder", "invoker", "brute", "ember_wraith", "void_walker_desert", "void_walker_snowy", "void_walker_swamp", "void_walker_savanna", "void_walker_crimson", "void_walker_soul",
+             "horse", "donkey", "llama", "camel", "wolf", "cat", "goat", "panda", "parrot", "frog", "turtle", "bee", "squid", "dolphin", "axolotl", "nightwing", "deep_watcher", "ooze", "mummy", "sunken", "frost_archer", "wolf_tame", "cat_tame"]
     scale, gap = 4, 8
     cols = 5
     rows = (len(order) + cols - 1) // cols

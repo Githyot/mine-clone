@@ -11,6 +11,7 @@ use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::post::{PostFx, PostUniform, HDR};
+use crate::scenefx::{SceneFx, SHADOW_FORMAT};
 use crate::settings::ShaderQuality;
 use crate::shaderpack::ShaderPack;
 use crate::textures::{mip_chain, TextureSet};
@@ -34,6 +35,26 @@ pub struct Globals {
     /// x: plant waving strength (1 = classic), y: rippling water 0/1, z: light source glow
     /// (HDR only), w: unused.
     pub effects: [f32; 4],
+    /// Light carried in the hand: xyz relative to the camera's block, w: level 0..1.
+    pub hand_light: [f32; 4],
+    /// x: rain 0..1, y: lightning flash 0..1.
+    pub weather: [f32; 4],
+    /// Moving lights (LambDynamicLights idea): torches lying on the ground, burning mobs.
+    /// xyz relative to the camera's block, w: level 0..1 (0 = unused).
+    pub dyn_lights: [[f32; 4]; 8],
+    /// Position relative to the camera's block → shadow map clip space (set by the renderer).
+    pub shadow_mat: [[f32; 4]; 4],
+    /// x: shadow strength (0 = off), y: one shadow texel in clip units, z: 1 = soft (4 taps),
+    /// w: shadow distance in blocks.
+    pub shadow: [f32; 4],
+    /// x: cloud style (0 one layer, 1 layered), y: emissive textures 0/1, z: water reflection
+    /// steps (0 = off), w: unused.
+    pub extra: [f32; 4],
+    /// x, y: screen size in pixels; z: near plane; w: far plane (set by the renderer).
+    pub screen: [f32; 4],
+    /// Block depth (parallax occlusion mapping): x depth in blocks (0 = off), y most steps
+    /// per pixel, z distance in blocks where it has faded out, w self-shadows 0/1.
+    pub pom: [f32; 4],
 }
 
 #[repr(C)]
@@ -45,6 +66,8 @@ pub struct LineVertex {
 
 struct GpuSection {
     section: usize,
+    /// Face-to-face visibility through the section (see `voxel::mesh::section_visibility`).
+    vis: u64,
     solid: Option<(wgpu::Buffer, u32)>,
     translucent: Option<(wgpu::Buffer, u32)>,
 }
@@ -76,6 +99,7 @@ struct ScenePipes {
     cloud: wgpu::RenderPipeline,
     line: wgpu::RenderPipeline,
     lod: wgpu::RenderPipeline,
+    rain: wgpu::RenderPipeline,
 }
 
 pub struct Renderer {
@@ -91,6 +115,8 @@ pub struct Renderer {
     pub tex_layout: wgpu::BindGroupLayout,
     tex_bg: wgpu::BindGroup,
     block_view: wgpu::TextureView,
+    /// Texture layers past `LAYERS_PER_ARRAY` (GPUs take at most 2048 per array).
+    block_view2: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
     pipes: [ScenePipes; 2],
     pub post: PostFx,
@@ -105,17 +131,36 @@ pub struct Renderer {
     inst_buf: wgpu::Buffer,
     inst_cap: usize,
     line_buf: wgpu::Buffer,
+    rain_buf: wgpu::Buffer,
+    rain_count: u32,
+    /// More lines to draw this frame (the fishing line), relative to the camera's block.
+    pub extra_lines: Vec<LineVertex>,
     ui_buf: wgpu::Buffer,
     ui_cap: usize,
     chunks: HashMap<ChunkPos, Vec<GpuSection>>,
     pub texture_size: u32,
     pub vram_bytes: u64,
     copy_src_ok: bool,
+    /// Skip sections the camera can't see through caves and solid rock.
+    pub cave_cull: bool,
+    /// Shadows, water reflections, TAA jitter.
+    pub fx: SceneFx,
+    shadow_pipe: wgpu::RenderPipeline,
+    /// The depth texture was recreated since the effects last bound it.
+    depth_changed: bool,
 }
 
+/// Layers in one texture array (the most GPUs allow); later layers go in a second array. The
+/// shaders that read item sprites pick the array with the same number.
+pub const LAYERS_PER_ARRAY: usize = 2048;
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 /// Near clipping plane (blocks).
 const NEAR: f32 = 0.05;
+
+/// Most rain columns drawn (a circle of radius 10 has about 320).
+const RAIN_MAX: usize = 512;
+/// Line vertices per frame (the selection box takes 24).
+const LINE_MAX: usize = 128;
 
 fn shader(device: &wgpu::Device, name: &str, src: &str) -> wgpu::ShaderModule {
     let full = format!("{}\n{}", include_str!("shaders/common.wgsl"), src);
@@ -213,6 +258,16 @@ impl Renderer {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -221,23 +276,37 @@ impl Renderer {
             address_mode_v: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            // Blend between mip levels: with 64x textures the switch from one level to the next
+            // would otherwise show as a line on the ground.
+            mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let (block_view, texture_size) = Self::upload_blocks(&device, &queue, textures);
-        let tex_bg = Self::make_tex_bg(&device, &tex_layout, &block_view, &sampler);
+        let ([block_view, block_view2], texture_size) = Self::upload_blocks(&device, &queue, textures);
+        let tex_bg = Self::make_tex_bg(&device, &tex_layout, &block_view, &block_view2, &sampler);
 
         let terrain = shader(&device, "terrain", include_str!("shaders/terrain.wgsl"));
         let sky = shader(&device, "sky", include_str!("shaders/sky.wgsl"));
         let lines = shader(&device, "lines", include_str!("shaders/lines.wgsl"));
         let lod = shader(&device, "lod", include_str!("shaders/lod.wgsl"));
+        let rain = shader(&device, "rain", include_str!("shaders/rain.wgsl"));
+        let rain_layout = [wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<crate::weather::RainColumn>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4],
+        }];
         let ui = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("ui"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/ui.wgsl").into()),
         });
 
+        let fx = SceneFx::new(&device);
         let terrain_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("terrain"),
+            bind_group_layouts: &[&globals_layout, &tex_layout, &fx.layout],
+            push_constant_ranges: &[],
+        });
+        let shadow_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("shadow"),
             bind_group_layouts: &[&globals_layout, &tex_layout],
             push_constant_ranges: &[],
         });
@@ -335,8 +404,27 @@ impl Renderer {
             cloud: make("clouds", f, &globals_only, &sky, "vs_sky", "fs_clouds", &[], blend_alpha, None, depth_state(false, C::Less), T::TriangleList),
             line: make("lines", f, &globals_only, &lines, "vs_lines", "fs_lines", &line_layout, blend_alpha, None, depth_state(false, C::LessEqual), T::LineList),
             lod: make("lod", f, &globals_only, &lod, "vs_lod", "fs_lod", &lod_layout, None, None, depth_state(true, C::Less), T::TriangleList),
+            rain: make("rain", f, &globals_only, &rain, "vs_rain", "fs_rain", &rain_layout, blend_alpha, None, depth_state(false, C::Less), T::TriangleList),
         };
         let pipes = [scene_pipes(format), scene_pipes(HDR)];
+        // Depth only, seen from the sun; a slope bias keeps lit faces from shadowing themselves.
+        let shadow_pipe = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("shadow map"),
+            layout: Some(&shadow_layout),
+            vertex: wgpu::VertexState { module: &terrain, entry_point: Some("vs_shadow"), buffers: &vbufs, compilation_options: Default::default() },
+            fragment: Some(wgpu::FragmentState { module: &terrain, entry_point: Some("fs_shadow"), targets: &[], compilation_options: Default::default() }),
+            primitive: wgpu::PrimitiveState { topology: T::TriangleList, cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: SHADOW_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: C::Less,
+                stencil: Default::default(),
+                bias: wgpu::DepthBiasState { constant: 2, slope_scale: 2.0, clamp: 0.0 },
+            }),
+            multisample: Default::default(),
+            multiview: None,
+            cache: None,
+        });
         let post = PostFx::new(&device, format);
 
         // UI
@@ -380,6 +468,26 @@ impl Renderer {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let font_tex = device.create_texture_with_data(
@@ -398,7 +506,8 @@ impl Renderer {
             &font.pixels,
         );
         let font_view = font_tex.create_view(&Default::default());
-        let ui_tex_bg = Self::make_ui_bg(&device, &ui_tex_layout, &font_view, &block_view, &sampler);
+        let gui_view = Self::upload_gui(&device, &queue, &textures.gui);
+        let ui_tex_bg = Self::make_ui_bg(&device, &ui_tex_layout, &font_view, &block_view, &block_view2, &gui_view, &sampler);
         let ui_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("ui"),
             bind_group_layouts: &[&globals_layout, &ui_tex_layout],
@@ -421,9 +530,15 @@ impl Renderer {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let rain_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("rain"),
+            size: RAIN_MAX as u64 * std::mem::size_of::<crate::weather::RainColumn>() as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let line_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("lines"),
-            size: 64 * std::mem::size_of::<LineVertex>() as u64,
+            size: LINE_MAX as u64 * std::mem::size_of::<LineVertex>() as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -448,6 +563,7 @@ impl Renderer {
             tex_layout,
             tex_bg,
             block_view,
+            block_view2,
             sampler,
             pipes,
             post,
@@ -462,12 +578,19 @@ impl Renderer {
             inst_buf,
             inst_cap,
             line_buf,
+            rain_buf,
+            rain_count: 0,
+            extra_lines: Vec::new(),
             ui_buf,
             ui_cap,
             chunks: HashMap::new(),
             texture_size,
             vram_bytes: 0,
             copy_src_ok,
+            cave_cull: true,
+            fx,
+            shadow_pipe,
+            depth_changed: true,
         }
     }
 
@@ -511,6 +634,7 @@ impl Renderer {
             fog_color: [g.fog_color[0], g.fog_color[1], g.fog_color[2], g.fog[2]],
             params: [g.cam_pos[3], NEAR, cam.far, 0.0],
             options: [[0.0; 4]; 2],
+            ..Default::default()
         }
     }
 
@@ -522,13 +646,14 @@ impl Renderer {
         })
     }
 
-    fn make_tex_bg(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, view: &wgpu::TextureView, sampler: &wgpu::Sampler) -> wgpu::BindGroup {
+    pub fn make_tex_bg(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, view: &wgpu::TextureView, view2: &wgpu::TextureView, sampler: &wgpu::Sampler) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("blocks"),
             layout,
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(view2) },
             ],
         })
     }
@@ -538,6 +663,8 @@ impl Renderer {
         layout: &wgpu::BindGroupLayout,
         font: &wgpu::TextureView,
         blocks: &wgpu::TextureView,
+        blocks2: &wgpu::TextureView,
+        gui: &wgpu::TextureView,
         sampler: &wgpu::Sampler,
     ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -547,49 +674,81 @@ impl Renderer {
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(font) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(blocks) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(sampler) },
+                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(gui) },
+                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(blocks2) },
             ],
         })
     }
 
-    fn upload_blocks(device: &wgpu::Device, queue: &wgpu::Queue, t: &TextureSet) -> (wgpu::TextureView, u32) {
-        let layers = t.layers.len().max(1) as u32;
+    /// The packs' interface art (a single transparent pixel when there is none).
+    fn upload_gui(device: &wgpu::Device, queue: &wgpu::Queue, g: &crate::textures::GuiAtlas) -> wgpu::TextureView {
+        let (w, h, px) = if g.pixels.is_empty() { (1, 1, vec![0u8; 4]) } else { (g.width, g.height, g.pixels.clone()) };
+        let tex = device.create_texture_with_data(
+            queue,
+            &wgpu::TextureDescriptor {
+                label: Some("gui"),
+                size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            },
+            wgpu::util::TextureDataOrder::LayerMajor,
+            &px,
+        );
+        tex.create_view(&Default::default())
+    }
+
+    /// The texture layers go into two arrays: the first `LAYERS_PER_ARRAY` (every block texture
+    /// is among them, so the terrain only ever reads the first) and the rest (item sprites, cracks).
+    fn upload_blocks(device: &wgpu::Device, queue: &wgpu::Queue, t: &TextureSet) -> ([wgpu::TextureView; 2], u32) {
         let levels = t.size.trailing_zeros() + 1;
-        let tex = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("block textures"),
-            size: wgpu::Extent3d { width: t.size, height: t.size, depth_or_array_layers: layers },
-            mip_level_count: levels,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        for (layer, pixels) in t.layers.iter().enumerate() {
-            for (level, data) in mip_chain(pixels, t.size, levels).iter().enumerate() {
-                let s = (t.size >> level).max(1);
-                queue.write_texture(
-                    wgpu::TexelCopyTextureInfo {
-                        texture: &tex,
-                        mip_level: level as u32,
-                        origin: wgpu::Origin3d { x: 0, y: 0, z: layer as u32 },
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    data,
-                    wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(4 * s), rows_per_image: Some(s) },
-                    wgpu::Extent3d { width: s, height: s, depth_or_array_layers: 1 },
-                );
+        let split = t.layers.len().min(LAYERS_PER_ARRAY);
+        let make = |layers: &[Vec<u8>], label: &str| {
+            let n = layers.len().max(1) as u32;
+            let tex = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: wgpu::Extent3d { width: t.size, height: t.size, depth_or_array_layers: n },
+                mip_level_count: levels,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            for (layer, pixels) in layers.iter().enumerate() {
+                for (level, data) in mip_chain(pixels, t.size, levels).iter().enumerate() {
+                    let s = (t.size >> level).max(1);
+                    queue.write_texture(
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &tex,
+                            mip_level: level as u32,
+                            origin: wgpu::Origin3d { x: 0, y: 0, z: layer as u32 },
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        data,
+                        wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(4 * s), rows_per_image: Some(s) },
+                        wgpu::Extent3d { width: s, height: s, depth_or_array_layers: 1 },
+                    );
+                }
             }
-        }
-        let view = tex.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
-        (view, t.size)
+            tex.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() })
+        };
+        let first = make(&t.layers[..split], "block textures");
+        let second = make(&t.layers[split..], "more textures");
+        ([first, second], t.size)
     }
 
     /// Swap in new block textures (resource pack change) without restarting.
     pub fn reload_textures(&mut self, t: &TextureSet) {
-        let (view, size) = Self::upload_blocks(&self.device, &self.queue, t);
-        self.tex_bg = Self::make_tex_bg(&self.device, &self.tex_layout, &view, &self.sampler);
-        self.ui_tex_bg = Self::make_ui_bg(&self.device, &self.ui_tex_layout, &self.font_view, &view, &self.sampler);
+        let ([view, view2], size) = Self::upload_blocks(&self.device, &self.queue, t);
+        self.tex_bg = Self::make_tex_bg(&self.device, &self.tex_layout, &view, &view2, &self.sampler);
+        let gui = Self::upload_gui(&self.device, &self.queue, &t.gui);
+        self.ui_tex_bg = Self::make_ui_bg(&self.device, &self.ui_tex_layout, &self.font_view, &view, &view2, &gui, &self.sampler);
         self.block_view = view;
+        self.block_view2 = view2;
         self.texture_size = size;
     }
 
@@ -601,6 +760,7 @@ impl Renderer {
         self.config.height = h;
         self.surface.configure(&self.device, &self.config);
         self.depth = Self::make_depth(&self.device, &self.config);
+        self.depth_changed = true;
         self.post.resize(&self.device, w, h, &self.depth);
     }
 
@@ -647,7 +807,7 @@ impl Renderer {
                         };
                         let solid = mk(&m.solid, "section solid");
                         let translucent = mk(&m.translucent, "section translucent");
-                        v.push(GpuSection { section: s, solid, translucent });
+                        v.push(GpuSection { section: s, vis: m.vis, solid, translucent });
                     }
                     self.vram_bytes += v.iter().map(section_bytes).sum::<u64>();
                     if let Some(old) = self.chunks.insert(p, v) {
@@ -658,10 +818,66 @@ impl Renderer {
         }
     }
 
+    /// Cave culling: walk from the camera's section outwards, entering a neighbour only through
+    /// faces the current section connects with open blocks and never turning back. Sections
+    /// never reached are behind rock. Returns a grid of `reach` chunks around the camera.
+    fn cave_visible(&self, cam: &Camera, reach: i32, visible: &dyn Fn(Vec3, Vec3) -> bool) -> Option<Vec<bool>> {
+        let csy = cam.block.y >> 4;
+        if !self.cave_cull || !(0..16).contains(&csy) {
+            return None;
+        }
+        let (ccx, ccz) = (cam.block.x >> 4, cam.block.z >> 4);
+        let n = 2 * reach + 1;
+        let index = |dx: i32, sy: i32, dz: i32| (((dx + reach) * n + dz + reach) * 16 + sy) as usize;
+        let mut seen = vec![false; (n * n * 16) as usize];
+        let vis_of = |dx: i32, sy: i32, dz: i32| -> u64 {
+            match self.chunks.get(&IVec2::new(ccx + dx, ccz + dz)) {
+                Some(v) => v.iter().find(|s| s.section == sy as usize).map_or(voxel::mesh::VIS_ALL, |s| s.vis),
+                None => voxel::mesh::VIS_ALL,
+            }
+        };
+        const STEP: [(i32, i32, i32); 6] = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)];
+        let mut queue = std::collections::VecDeque::new();
+        seen[index(0, csy, 0)] = true;
+        // (chunk dx, section y, chunk dz, face entered through or 6, directions taken)
+        queue.push_back((0, csy, 0, 6u8, 0u8));
+        while let Some((x, y, z, from, dirs)) = queue.pop_front() {
+            let vis = vis_of(x, y, z);
+            for (f, &(sx, sy, sz)) in STEP.iter().enumerate() {
+                if dirs & (1 << (f ^ 1)) != 0 {
+                    continue;
+                }
+                if from != 6 && vis & (1 << (from as usize * 6 + f)) == 0 {
+                    continue;
+                }
+                let (nx, ny, nz) = (x + sx, y + sy, z + sz);
+                if nx.abs() > reach || nz.abs() > reach || !(0..16).contains(&ny) || seen[index(nx, ny, nz)] {
+                    continue;
+                }
+                let o = Vec3::new(((ccx + nx) * 16 - cam.block.x) as f32, (ny * 16 - cam.block.y) as f32, ((ccz + nz) * 16 - cam.block.z) as f32);
+                if !visible(o, o + Vec3::splat(16.0)) {
+                    continue;
+                }
+                seen[index(nx, ny, nz)] = true;
+                queue.push_back((nx, ny, nz, (f ^ 1) as u8, dirs | (1 << f)));
+            }
+        }
+        Some(seen)
+    }
+
     /// Forget every chunk (another world is being opened).
     pub fn clear_chunks(&mut self) {
         self.chunks.clear();
         self.vram_bytes = 0;
+    }
+
+    /// Rain and snow columns for the next frames (empty when it's dry).
+    pub fn set_rain(&mut self, cols: &[crate::weather::RainColumn]) {
+        let n = cols.len().min(RAIN_MAX);
+        if n > 0 {
+            self.queue.write_buffer(&self.rain_buf, 0, bytemuck::cast_slice(&cols[..n]));
+        }
+        self.rain_count = n as u32;
     }
 
     pub fn chunk_count(&self) -> usize {
@@ -682,9 +898,23 @@ impl Renderer {
         capture: bool,
     ) -> (FrameInfo, Option<(u32, u32, Vec<u8>)>) {
         let aspect = self.config.width as f32 / self.config.height as f32;
+        let (sw, sh) = (self.config.width, self.config.height);
         let proj = Mat4::perspective_rh(cam.fov_y, aspect, NEAR, cam.far);
         let view = Mat4::look_to_rh(cam.frac, cam.forward, Vec3::Y);
-        let view_proj = proj * view;
+        let plain_vp = proj * view;
+        // Shader-pack-only effects: TAA jitters the projection a little every frame.
+        let hdr_on = self.post.scene_view().is_some();
+        let taa = hdr_on && self.post.taa;
+        let view_proj = self.fx.jitter(sw, sh, taa) * plain_vp;
+        let reproj = if taa { Some(self.fx.reprojection(view_proj, plain_vp, cam.block)) } else { None };
+        self.fx.prepare(&self.device, hdr_on, sw, sh, &self.depth, self.depth_changed);
+        self.depth_changed = false;
+        // Sun shadows where there is a sun (the Overworld and the Aether).
+        let sun = Vec3::new(globals.sun_dir[0], globals.sun_dir[1], globals.sun_dir[2]);
+        let smat = if globals.weather[2] <= 0.0 { self.fx.shadow_matrix(sun, cam.block, cam.frac) } else { None };
+        (globals.shadow_mat, globals.shadow) = self.fx.shadow_globals(smat);
+        globals.extra[2] = if self.fx.reflecting() { if self.fx.fancy { 40.0 } else { 20.0 } } else { 0.0 };
+        globals.screen = [sw as f32, sh as f32, NEAR, cam.far];
         let view_rot = Mat4::look_to_rh(Vec3::ZERO, cam.forward, Vec3::Y);
         globals.view_proj = view_proj.to_cols_array_2d();
         globals.inv_view_rot = (proj * view_rot).inverse().to_cols_array_2d();
@@ -710,6 +940,8 @@ impl Renderer {
         let mut solid_draws: Vec<(usize, &wgpu::Buffer, u32)> = Vec::new();
         let mut trans_draws: Vec<(f32, usize, &wgpu::Buffer, u32)> = Vec::new();
         let max_d = cam.far + 24.0;
+        let reach = (max_d / 16.0).ceil() as i32 + 1;
+        let seen = self.cave_visible(cam, reach, &visible);
         for (pos, sections) in &self.chunks {
             let cx = (pos.x * 16 - cam.block.x) as f32;
             let cz = (pos.y * 16 - cam.block.z) as f32;
@@ -722,6 +954,12 @@ impl Renderer {
                 let origin = Vec3::new(cx, (s.section as i32 * 16 - cam.block.y) as f32, cz);
                 if !visible(origin, origin + Vec3::splat(16.0)) {
                     continue;
+                }
+                if let Some(seen) = &seen {
+                    let (dx, dz) = (pos.x - (cam.block.x >> 4), pos.y - (cam.block.z >> 4));
+                    if dx.abs() <= reach && dz.abs() <= reach && !seen[(((dx + reach) * (2 * reach + 1) + dz + reach) * 16) as usize + s.section] {
+                        continue;
+                    }
                 }
                 let idx = instances.len();
                 instances.push(origin.to_array());
@@ -751,6 +989,31 @@ impl Renderer {
             lod_draws.push((instances.len(), &tile.buf, tile.quads));
             instances.push(origin.to_array());
         }
+        // Shadow casters: every section with solid blocks around the camera, seen or not.
+        let mut shadow_draws: Vec<(usize, &wgpu::Buffer, u32)> = Vec::new();
+        if smat.is_some() {
+            let reach = self.fx.shadow_radius() + 16.0;
+            for (pos, sections) in &self.chunks {
+                let cx = (pos.x * 16 - cam.block.x) as f32;
+                let cz = (pos.y * 16 - cam.block.z) as f32;
+                let dx = (cx + 8.0 - cam.frac.x).abs() - 8.0;
+                let dz = (cz + 8.0 - cam.frac.z).abs() - 8.0;
+                if dx.max(0.0).hypot(dz.max(0.0)) > reach {
+                    continue;
+                }
+                for s in sections {
+                    let y = (s.section as i32 * 16 - cam.block.y) as f32;
+                    // Far below the camera nothing it casts can reach the lit area.
+                    if y + 16.0 < -reach * 1.5 {
+                        continue;
+                    }
+                    if let Some((b, q)) = &s.solid {
+                        shadow_draws.push((instances.len(), b, *q));
+                        instances.push([cx, y, cz]);
+                    }
+                }
+            }
+        }
         lod_draws.sort_by(|a, b| Vec3::from(instances[a.0]).length_squared().total_cmp(&Vec3::from(instances[b.0]).length_squared()));
         trans_draws.sort_by(|a, b| b.0.total_cmp(&a.0));
         // Near-to-far for opaque geometry so the depth test rejects hidden pixels early.
@@ -774,18 +1037,21 @@ impl Renderer {
         }
 
         // Selection box.
-        let mut line_count = 0;
+        let mut line_verts: Vec<LineVertex> = Vec::new();
         if let Some(b) = selection {
             let o = (b - cam.block).as_vec3() - Vec3::splat(0.002);
             let s = 1.004;
             let c = [0.0, 0.0, 0.0, 0.55];
             let corners: Vec<Vec3> = (0..8).map(|i| o + Vec3::new((i & 1) as f32 * s, ((i >> 1) & 1) as f32 * s, ((i >> 2) & 1) as f32 * s)).collect();
             let edges = [(0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5, 7), (0, 4), (1, 5), (2, 6), (3, 7)];
-            let verts: Vec<LineVertex> =
-                edges.iter().flat_map(|&(a, b)| [LineVertex { pos: corners[a].to_array(), color: c }, LineVertex { pos: corners[b].to_array(), color: c }]).collect();
-            self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&verts));
-            line_count = verts.len() as u32;
+            line_verts.extend(edges.iter().flat_map(|&(a, b)| [LineVertex { pos: corners[a].to_array(), color: c }, LineVertex { pos: corners[b].to_array(), color: c }]));
         }
+        line_verts.extend(self.extra_lines.iter().copied());
+        line_verts.truncate(LINE_MAX);
+        if !line_verts.is_empty() {
+            self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&line_verts));
+        }
+        let line_count = line_verts.len() as u32;
 
         // UI vertices.
         if ui.verts.len() > self.ui_cap {
@@ -820,6 +1086,40 @@ impl Renderer {
         let hdr_view = self.post.scene_view();
         let hdr = hdr_view.is_some();
         let pipes = &self.pipes[hdr as usize];
+        if let (Some(_), Some(sv)) = (smat, self.fx.shadow_view()) {
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("shadow map"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: sv,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_pipeline(&self.shadow_pipe);
+            pass.set_bind_group(0, &self.globals_bg, &[]);
+            pass.set_bind_group(1, &self.tex_bg, &[]);
+            pass.set_index_buffer(self.quad_ibuf.slice(..), wgpu::IndexFormat::Uint32);
+            pass.set_vertex_buffer(1, self.inst_buf.slice(..));
+            for (i, b, q) in &shadow_draws {
+                pass.set_vertex_buffer(0, b.slice(..));
+                pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
+            }
+        }
+        // With water reflections the pass is split: everything opaque first, then a copy of
+        // the picture for the water to reflect, then water, glass, rain and lines on top.
+        let split = hdr && self.fx.reflecting();
+        let late = LateDraws {
+            pipes,
+            tex_bg: &self.tex_bg,
+            quad_ibuf: &self.quad_ibuf,
+            inst_buf: &self.inst_buf,
+            trans: &trans_draws,
+            rain: (self.rain_count > 0).then_some((&self.rain_buf, self.rain_count)),
+            lines: (line_count > 0).then_some((&self.line_buf, line_count)),
+        };
         {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main"),
@@ -845,6 +1145,7 @@ impl Renderer {
 
             pass.set_pipeline(&pipes.solid);
             pass.set_bind_group(1, &self.tex_bg, &[]);
+            pass.set_bind_group(2, &self.fx.bg_solid, &[]);
             pass.set_index_buffer(self.quad_ibuf.slice(..), wgpu::IndexFormat::Uint32);
             pass.set_vertex_buffer(1, self.inst_buf.slice(..));
             for (i, b, q) in &solid_draws {
@@ -866,24 +1167,36 @@ impl Renderer {
                 pass.set_pipeline(&pipes.cloud);
                 pass.draw(0..3, 0..1);
             }
-            pass.set_pipeline(&pipes.translucent);
-            pass.set_bind_group(1, &self.tex_bg, &[]);
-            // Mobs and paintings bind their own index buffers; water needs the shared quad one back.
-            pass.set_index_buffer(self.quad_ibuf.slice(..), wgpu::IndexFormat::Uint32);
-            pass.set_vertex_buffer(1, self.inst_buf.slice(..));
-            for (_, i, b, q) in &trans_draws {
-                pass.set_vertex_buffer(0, b.slice(..));
-                pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
-                quads += *q as usize;
-            }
-            if line_count > 0 {
-                pass.set_pipeline(&pipes.line);
-                pass.set_vertex_buffer(0, self.line_buf.slice(..));
-                pass.draw(0..line_count, 0..1);
+            if !split {
+                quads += late.draw(&mut pass, &self.fx.bg_solid);
             }
         }
+        if split {
+            if let (Some(src), Some(dst)) = (self.post.scene_texture(), self.fx.copy_texture()) {
+                enc.copy_texture_to_texture(src.as_image_copy(), dst.as_image_copy(), wgpu::Extent3d { width: sw, height: sh, depth_or_array_layers: 1 });
+            }
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("water and glass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: hdr_view.unwrap_or(&view),
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                })],
+                // Read-only depth: the water shader reads it for its reflections.
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &self.depth, depth_ops: None, stencil_ops: None }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_bind_group(0, &self.globals_bg, &[]);
+            quads += late.draw(&mut pass, &self.fx.bg_trans);
+        }
         if hdr {
-            self.post.run(&self.queue, &mut enc, &view, self.post_uniform(&view_proj, globals, cam));
+            let mut u = self.post_uniform(&view_proj, globals, cam);
+            if let Some((m, valid)) = reproj {
+                u.reproj = m.to_cols_array_2d();
+                u.taa = [1.0, if valid { 1.0 } else { 0.0 }, 0.0, 0.0];
+            }
+            self.post.run(&self.queue, &mut enc, &view, u);
         }
         if !ui.verts.is_empty() {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -950,6 +1263,46 @@ impl Renderer {
         frame.present();
         let lod_quads = lod_draws.iter().map(|d| d.2 as usize).sum();
         (FrameInfo { sections_drawn: solid_draws.len() + trans_draws.len(), quads_drawn: quads, lod_drawn: lod_draws.len(), lod_quads }, shot)
+    }
+}
+
+/// What is drawn after the opaque scene: water and glass (far to near), rain, lines.
+struct LateDraws<'a> {
+    pipes: &'a ScenePipes,
+    tex_bg: &'a wgpu::BindGroup,
+    quad_ibuf: &'a wgpu::Buffer,
+    inst_buf: &'a wgpu::Buffer,
+    trans: &'a [(f32, usize, &'a wgpu::Buffer, u32)],
+    rain: Option<(&'a wgpu::Buffer, u32)>,
+    lines: Option<(&'a wgpu::Buffer, u32)>,
+}
+
+impl LateDraws<'_> {
+    /// Returns the quads drawn.
+    fn draw(&self, pass: &mut wgpu::RenderPass<'_>, fx_bg: &wgpu::BindGroup) -> usize {
+        let mut quads = 0;
+        pass.set_pipeline(&self.pipes.translucent);
+        pass.set_bind_group(1, self.tex_bg, &[]);
+        pass.set_bind_group(2, fx_bg, &[]);
+        // Mobs and paintings bind their own index buffers; water needs the shared quad one back.
+        pass.set_index_buffer(self.quad_ibuf.slice(..), wgpu::IndexFormat::Uint32);
+        pass.set_vertex_buffer(1, self.inst_buf.slice(..));
+        for (_, i, b, q) in self.trans {
+            pass.set_vertex_buffer(0, b.slice(..));
+            pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
+            quads += *q as usize;
+        }
+        if let Some((buf, n)) = self.rain {
+            pass.set_pipeline(&self.pipes.rain);
+            pass.set_vertex_buffer(0, buf.slice(..));
+            pass.draw(0..6, 0..n);
+        }
+        if let Some((buf, n)) = self.lines {
+            pass.set_pipeline(&self.pipes.line);
+            pass.set_vertex_buffer(0, buf.slice(..));
+            pass.draw(0..n, 0..1);
+        }
+        quads
     }
 }
 

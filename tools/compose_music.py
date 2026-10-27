@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
-"""Original soundtrack generator for the game (chamber style: felt piano, bowed strings, solo cello, pads, bells).
+"""Original soundtrack generator for the game, third version: an acoustic ensemble.
 
-Every chord progression, melody and counter-line is produced by the rules below from fixed seeds; nothing is
-transcribed from any existing song. The style reference is "quiet piano with warm strings", not any specific work.
+Instruments (all synthesized from physical/additive models, no samples): felt piano, prepared piano, nylon guitar,
+concert harp, low marimba, xylophone, upright bass, a string section kept in the background, frame drum, log drum
+and brushes. Version 4 (HP, 2026-10-17): the solo bowed lines, the additive clarinet/horn and the harmonium sounded
+synthetic and sat on top of the mix, so melodies and loops moved to piano, xylophone and harp. Everything stays in a low, warm register (no bells,
+no high harmonics).
 
-Usage:  python3 tools/compose_music.py [OUT_DIR] [track_id ...]
+Style references are approaches, never material: C418's quiet piano in a big room, Brian Eno's overlapping loops of
+unequal length (Music for Airports technique), Roedelius' simple warm miniatures, Jean-Michel Jarre's rolling
+arpeggios (played here on a guitar/harp), Aphex Twin's prepared piano and odd-length ostinatos, and the playful,
+slightly broken hand-percussion grooves of Clark and Mouse On Mars. Every chord progression, melody, loop and
+pattern is produced by the rules below from fixed seeds; nothing is transcribed from any existing song.
+
+Usage:  python3 tools/compose_music.py [OUT_DIR] [track_id ...] [--dump]
         OUT_DIR defaults to assets/music next to this repo. Needs numpy, scipy and ffmpeg (libvorbis).
 """
 import json
@@ -199,52 +208,190 @@ class Synth:
             out = (sig * (0.85 + 0.15 * vel) + noise) * env * vel
         return out
 
-    # -- pad -----------------------------------------------------------------------------------------------------------
-    def pad(self, midi, dur, vel, attack=2.5, release=3.0):
+
+    # -- plucked strings: nylon guitar, concert harp, upright bass (modal model, two string polarisations) -------------
+    PLUCKS = {  # pluck position, inharmonicity, base decay, partial decay, brightness, ring seconds, noise lowpass, noise
+        "guitar": (0.14, 0.00004, 0.9, 0.55, 0.80, 5.0, 2200, 0.05),
+        "harp": (0.33, 0.00002, 0.45, 0.35, 0.72, 7.0, 1600, 0.025),
+        "ubass": (0.22, 0.00008, 1.6, 0.9, 0.62, 3.0, 700, 0.08),
+    }
+
+    def pluck(self, midi, vel, dur, kind="guitar"):
+        key = ("pl", kind, midi, round(vel, 1), round(min(dur, 8.0)))
+        if key in self.piano_cache:
+            return self.piano_cache[key]
+        rng = self.rng
+        pos, B, d0, dk, bright, ring, nlp, namt = self.PLUCKS[kind]
+        f0 = float(mtof(midi))
+        n = int(ring * SR)
+        t = np.arange(n) / SR
+        kmax = int(max(1, min(40, 6500 / f0)))
+        br = bright + 0.18 * vel
+        sig = np.zeros(n)
+        norm = 0.0
+        for k in range(1, kmax + 1):
+            fk = k * f0 * np.sqrt(1 + B * k * k)
+            amp = abs(np.sin(np.pi * k * pos)) / k * br ** (k - 1)
+            if amp < 1e-4:
+                continue
+            decay = d0 + dk * k ** 1.3 + f0 / 900
+            ph = rng.uniform(0, TWO_PI)
+            sig += amp * np.exp(-t * decay) * np.sin(TWO_PI * fk * t + ph)
+            # second polarisation: a hair sharp, decays faster -> natural two-stage decay and slow beating
+            sig += 0.3 * amp * np.exp(-t * decay * 1.7) * np.sin(TWO_PI * fk * 1.0006 * t + ph + 1.1)
+            norm += amp * amp
+        sig /= np.sqrt(norm) + 1e-9
+        att = smoothstep(t / (0.0025 if kind != "harp" else 0.006))
+        damp = np.where(t < dur, 1.0, np.exp(-(t - dur) * 7.0)) if dur < ring else 1.0
+        noise = lowpass(rng.normal(0, 1, n), nlp) * np.exp(-t * 260) * namt
+        out = (sig * att * damp + noise) * vel
+        self.piano_cache[key] = out
+        return out
+
+    # -- marimba (low register, tuned bar 1 : 4 : 10 with a resonator tube) -------------------------------------------
+    def marimba(self, midi, vel):
+        key = ("ma", midi, round(vel, 1))
+        if key in self.piano_cache:
+            return self.piano_cache[key]
+        rng = self.rng
+        f0 = float(mtof(midi))
+        n = int(3.5 * SR)
+        t = np.arange(n) / SR
+        sig = np.exp(-t * (1.1 + f0 / 350)) * np.sin(TWO_PI * f0 * t)  # resonator-reinforced fundamental
+        for r, a, d in ((3.93, 0.16 * (0.4 + vel), 5 + f0 / 90), (9.8, 0.04 * vel, 12 + f0 / 45)):
+            if f0 * r < 7000:
+                sig += a * np.exp(-t * d) * np.sin(TWO_PI * f0 * r * t + rng.uniform(0, TWO_PI))
+        mallet = lowpass(rng.normal(0, 1, n), 900 + 600 * vel) * np.exp(-t * 300) * 0.06
+        out = (sig * smoothstep(t / 0.003) + mallet) * vel
+        self.piano_cache[key] = out
+        return out
+
+    # -- xylophone (rosewood bar tuned 1 : 3, yarn mallet; kept in the middle register, never shrill) ---------------
+    def xylophone(self, midi, vel):
+        key = ("xy", midi, round(vel, 1))
+        if key in self.piano_cache:
+            return self.piano_cache[key]
+        rng = self.rng
+        f0 = float(mtof(midi))
+        n = int(1.6 * SR)
+        t = np.arange(n) / SR
+        sig = np.exp(-t * (4.0 + f0 / 260)) * np.sin(TWO_PI * f0 * t)
+        for r, a, d in ((3.0, 0.22 * (0.4 + vel), 9 + f0 / 120), (6.1, 0.03 * vel, 22 + f0 / 60)):
+            if f0 * r < 4500:
+                sig += a * np.exp(-t * d) * np.sin(TWO_PI * f0 * r * t + rng.uniform(0, TWO_PI))
+        sig = lowpass(sig, 3200, 2)
+        mallet = lowpass(rng.normal(0, 1, n), 1200 + 800 * vel) * np.exp(-t * 400) * 0.05
+        out = (sig * smoothstep(t / 0.002) + mallet) * vel
+        self.piano_cache[key] = out
+        return out
+
+    # -- prepared piano: a bolt/felt between the strings gives each key its own fixed inharmonic, short, buzzy colour --
+    def prepared(self, midi, vel):
+        key = ("pp", midi, round(vel, 1))
+        if key in self.piano_cache:
+            return self.piano_cache[key]
+        rng = self.rng
+        prep = np.random.default_rng(midi * 7 + 3)  # same preparation every time this key is struck
+        f0 = float(mtof(midi))
+        n = int(3.0 * SR)
+        t = np.arange(n) / SR
+        sig = np.zeros(n)
+        norm = 0.0
+        for k in range(1, int(max(2, min(14, 5000 / f0))) + 1):
+            r = k * (1 + prep.uniform(-0.03, 0.08) * np.sqrt(k - 1 + 1e-9))
+            amp = 1 / k ** 1.1 * (0.6 + 0.8 * prep.random())
+            sig += amp * np.exp(-t * (2.5 + 1.3 * k + f0 / 220)) * np.sin(TWO_PI * f0 * r * t + rng.uniform(0, TWO_PI))
+            norm += amp * amp
+        sig /= np.sqrt(norm)
+        buzz = bandpass(rng.normal(0, 1, n), 250, 1400) * np.exp(-t * 18) * (1 + np.sin(TWO_PI * (20 + 25 * prep.random()) * t))
+        thump = lowpass(rng.normal(0, 1, n), 350) * np.exp(-t * 70)
+        out = (sig * smoothstep(t / 0.003) + buzz * 0.05 * prep.random() + thump * 0.18) * vel
+        self.piano_cache[key] = out
+        return out
+
+    # -- woodwinds and horn (additive, breath noise, gentle vibrato) --------------------------------------------------
+    WINDS = {  # odd-harmonic, rolloff, lowpass Hz, breath, vibrato cents, attack s, scoop cents
+        "clarinet": (True, 1.05, 2600, 0.020, 4, 0.07, 0),
+        "bassclar": (True, 0.95, 1700, 0.028, 3, 0.09, 0),
+        "horn": (False, 1.6, 1200, 0.006, 5, 0.16, 30),
+    }
+
+    def wind(self, midi, dur, vel, kind="clarinet", glide_from=None, swell=0.25):
+        rng = self.rng
+        odd, roll, lp, breath, vibc, att, scoop = self.WINDS[kind]
+        f0 = float(mtof(midi))
+        rel = 0.22 if kind != "horn" else 0.35
+        n = int((dur + rel * 2.5 + 0.1) * SR)
+        t = np.arange(n) / SR
+        base = np.full(n, f0)
+        if glide_from is not None:
+            fa = float(mtof(glide_from))
+            base = fa * (f0 / fa) ** smoothstep(t / 0.09)
+        if scoop:
+            base = base * 2 ** (-scoop * np.exp(-t / 0.05) / 1200)
+        vib = 2 ** (vibc * smoothstep((t - 0.4) / 0.5) * np.sin(TWO_PI * 4.8 * t + rng.uniform(0, TWO_PI)) / 1200)
+        phase = TWO_PI * np.cumsum(base * vib) / SR
+        cut = lp * (0.55 + 0.6 * vel)
+        sig = np.zeros(n)
+        norm = 0.0
+        for k in range(1, int(max(1, min(30, cut * 2 / f0))) + 1):
+            amp = 1 / k ** roll
+            if odd and k % 2 == 0:
+                amp *= 0.12 if k < 6 else 0.4
+            amp *= np.exp(-(k - 1) * (1 - vel) * 0.2)
+            sig += amp * np.sin(k * phase + rng.uniform(0, TWO_PI))
+            norm += amp * amp
+        sig = lowpass(sig / np.sqrt(norm), cut, 2)
+        env = env_asr(n, att, rel, dur, swell=swell)
+        air = bandpass(rng.normal(0, 1, n), max(f0, 120), min(3500, f0 * 6)) * breath * (1 + 2 * np.exp(-t / 0.06))
+        return (sig * (0.85 + 0.15 * vel) + air) * env * vel
+
+    # -- harmonium / reed organ: two beating reeds, bellows breathing ---------------------------------------------------
+    def reed(self, midi, dur, vel, attack=0.9, release=1.3):
         rng = self.rng
         f0 = float(mtof(midi))
         n = int((dur + release * 2.2) * SR)
         t = np.arange(n) / SR
         sig = np.zeros(n)
-        for r in (1.0, 1.004, 0.996, 2.0, 2.003, 3.0):
-            amp = {1.0: 1, 1.004: .7, .996: .7, 2.0: .25, 2.003: .2, 3.0: .07}[r]
-            sig += amp * np.sin(TWO_PI * f0 * r * t + rng.uniform(0, TWO_PI))
-        sweep = 400 + 900 * (0.5 + 0.5 * np.sin(TWO_PI * 0.07 * t + rng.uniform(0, TWO_PI)))
-        # slow filter movement by crossfading two static lowpasses
-        lo, hi = lowpass(sig, 500), lowpass(sig, 1800)
-        mixw = (sweep - 400) / 900
-        sig = lo * (1 - mixw) + hi * mixw
-        trem = 1 + 0.06 * np.sin(TWO_PI * 0.13 * t + rng.uniform(0, TWO_PI))
-        return sig * env_asr(n, attack, release, dur) * trem * vel * 0.25
+        for det in (-2.5, 2.5):
+            f = f0 * 2 ** (det / 1200)
+            norm = 0.0
+            for k in range(1, int(max(1, min(24, 2400 / f0))) + 1):
+                amp = 1 / k ** 1.4
+                sig += amp * np.sin(TWO_PI * f * k * t + rng.uniform(0, TWO_PI))
+                norm += amp * amp
+        sig = lowpass(sig / np.sqrt(norm) / 2, 1100, 2)
+        bellows = 1 + 0.06 * np.sin(TWO_PI * 0.35 * t + rng.uniform(0, TWO_PI)) + 0.03 * np.sin(TWO_PI * 0.11 * t)
+        air = lowpass(rng.normal(0, 1, n), 1200) * 0.012
+        return (sig * bellows + air) * env_asr(n, attack, release, dur, swell=0.25) * vel
 
-    # -- celesta / music box -------------------------------------------------------------------------------------------
-    def bell(self, midi, vel, music_box=False):
+    # -- hand percussion: frame drum, log drum, cajon-like low thump, soft brush ---------------------------------------
+    def drum(self, kind, vel, midi=None):
+        key = ("dr", kind, midi, round(vel, 1), int(self.rng.integers(3)))
+        if key in self.piano_cache:
+            return self.piano_cache[key]
         rng = self.rng
-        f0 = float(mtof(midi))
-        n = int(4.0 * SR)
+        n = int(1.6 * SR)
         t = np.arange(n) / SR
-        if music_box:
-            parts = [(1.0, 1.0, 1.4), (2.76, 0.25, 3.5), (5.40, 0.07, 6.0), (8.93, 0.02, 9.0)]
-        else:
-            parts = [(1.0, 1.0, 1.2), (2.0, 0.08, 3.0), (3.01, 0.25, 2.5), (5.43, 0.06, 5.0), (7.1, 0.02, 7.0)]
-        sig = np.zeros(n)
-        for r, a, d in parts:
-            if f0 * r > 15000:
-                continue
-            sig += a * np.exp(-t * d) * np.sin(TWO_PI * f0 * r * t + rng.uniform(0, TWO_PI))
-        click = lowpass(rng.normal(0, 1, n), 6000) * np.exp(-t * 400) * 0.03
-        return (sig * smoothstep(t / 0.002) + click) * vel * 0.6
-
-    # -- sub drone -----------------------------------------------------------------------------------------------------
-    def drone(self, midi, dur, vel):
-        rng = self.rng
-        f0 = float(mtof(midi))
-        n = int((dur + 6) * SR)
-        t = np.arange(n) / SR
-        lfo = 1 + 0.25 * np.sin(TWO_PI * 0.05 * t + rng.uniform(0, TWO_PI))
-        sig = np.sin(TWO_PI * f0 * t) + 0.35 * np.sin(TWO_PI * f0 * 2 * t + 0.3) * lfo + 0.15 * np.sin(TWO_PI * f0 * 3.0 * t)
-        sig += 0.05 * lowpass(rng.normal(0, 1, n), 120)  # air
-        return sig * env_asr(n, 4.0, 5.0, dur) * vel * 0.5
+        if kind == "frame":
+            f0 = float(mtof(midi if midi is not None else 36))
+            sig = np.zeros(n)
+            for r, a, d in ((1.0, 1.0, 5.0), (1.59, 0.45, 8.0), (2.14, 0.3, 11.0), (2.65, 0.15, 15.0), (3.16, 0.08, 19.0)):
+                f = f0 * r * (1 + 0.07 * np.exp(-t * 35))
+                sig += a * np.exp(-t * d) * np.sin(TWO_PI * np.cumsum(f) / SR + rng.uniform(0, TWO_PI))
+            sig += lowpass(rng.normal(0, 1, n), 700) * np.exp(-t * 80) * 0.6
+        elif kind == "log":
+            f0 = float(mtof(midi if midi is not None else 52))
+            sig = np.exp(-t * 11) * np.sin(TWO_PI * f0 * t) + 0.25 * np.exp(-t * 22) * np.sin(TWO_PI * f0 * 2.92 * t)
+            sig += lowpass(rng.normal(0, 1, n), 1300) * np.exp(-t * 220) * 0.25
+        elif kind == "low":
+            f = 52 * (1 + 0.5 * np.exp(-t * 40))
+            sig = np.exp(-t * 13) * np.sin(TWO_PI * np.cumsum(f) / SR) + lowpass(rng.normal(0, 1, n), 380) * np.exp(-t * 55) * 0.5
+        else:  # brush: a soft, mid-range swish (no hi-hat sizzle)
+            sig = bandpass(rng.normal(0, 1, n), 500, 2200) * (smoothstep(t / 0.01) * np.exp(-t * 22)) * 1.6
+        out = sig * smoothstep(t / 0.0015) * vel
+        self.piano_cache[key] = out
+        return out
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -261,7 +408,7 @@ CHORDS = {
     "madd9": [0, 3, 7, 14], "6": [0, 4, 7, 9], "m6": [0, 3, 7, 9], "sus2": [0, 2, 7], "sus4": [0, 5, 7],
     "7sus4": [0, 5, 7, 10], "m9": [0, 3, 7, 10, 14], "maj9": [0, 4, 7, 11, 14], "5": [0, 7], "mMaj7": [0, 3, 7, 11],
     "maj7#11": [0, 4, 7, 11, 18], "dim": [0, 3, 6], "m7b5": [0, 3, 6, 10], "aug": [0, 4, 8], "7": [0, 4, 7, 10],
-    "cluster": [0, 1, 7, 8], "sus2b9": [0, 1, 2, 7],
+    "cluster": [0, 1, 7, 8], "sus2b9": [0, 1, 2, 7], "m11": [0, 3, 7, 10, 17], "6/9": [0, 4, 7, 9, 14],
 }
 
 
@@ -318,7 +465,7 @@ class Score:
 class TempoMap:
     """Beats -> seconds with rubato: slow sine drift, phrase-end breathing, section factors, final ritardando."""
 
-    def __init__(self, bpm, meter, sections, rng):
+    def __init__(self, bpm, meter, sections, rng, rubato=1.0):
         self.meter = meter
         res = 16  # subdivisions per beat
         total_beats = sum(s["bars"] for s in sections) * meter
@@ -336,10 +483,10 @@ class TempoMap:
                 factor[sl] *= f
             beat0 += nb
         bars = grid / meter
-        factor *= 1 + 0.03 * np.sin(TWO_PI * bars / 6.5 + rng.uniform(0, TWO_PI))
+        factor *= 1 + 0.03 * rubato * np.sin(TWO_PI * bars / 6.5 + rng.uniform(0, TWO_PI))
         # breathe at the end of every 4-bar phrase
         phrase_pos = (bars % 4) / 4
-        factor *= 1 - 0.07 * np.exp(-((phrase_pos - 0.97) ** 2) / 0.0015)
+        factor *= 1 - 0.07 * rubato * np.exp(-((phrase_pos - 0.97) ** 2) / 0.0015)
         self.bpm = bpm * factor
         dt = 60.0 / self.bpm / res
         self.t = np.concatenate([[0.0], np.cumsum(dt[:-1])])
@@ -356,8 +503,6 @@ RHYTHM_CELLS = {
     4: [[1, 1, 2], [2, 1, 1], [1.5, .5, 2], [1, 1, 1, 1], [3, 1], [2, 2], [1, .5, .5, 2], [.5, .5, 1, 2], [1, 2, 1]],
     3: [[1, 1, 1], [2, 1], [1, 2], [1.5, 1.5], [1, .5, .5, 1], [3], [.5, .5, 1, 1]],
 }
-
-
 class Composer:
     def __init__(self, spec):
         self.spec = spec
@@ -365,7 +510,11 @@ class Composer:
         self.meter = spec.get("meter", 4)
         self.score = Score()
         self.sections = spec["form"]
-        self.tempo = TempoMap(spec["bpm"], self.meter, self.sections, self.rng)
+        self.tempo = TempoMap(spec["bpm"], self.meter, self.sections, self.rng, rubato=spec.get("rubato", 1.0))
+        self.ost_pos = 0
+        self.ost_pattern = None
+        self.loop_voices = None
+        self.groove = None
         self.motifs = {}
 
     # -- melody machinery ----------------------------------------------------------------------------------------------
@@ -522,7 +671,7 @@ class Composer:
         dur = (tm.time(b0 + meter * bars) - t0) * (1.3 if last else overlap)
         if last:
             dyn *= 0.8
-        ranges = {"bass": (31, 48), "cello": (40, 60), "viola": (52, 72), "violin2": (60, 81), "violin1": (67, 91)}
+        ranges = {"bass": (28, 45), "cello": (38, 60), "viola": (50, 69), "violin2": (57, 74), "violin1": (62, 79)}  # kept low and warm
         pans = {"bass": 0.15, "cello": 0.35, "viola": -0.1, "violin2": -0.35, "violin1": -0.5}
         voicing = {}
         for part in parts:
@@ -574,10 +723,200 @@ class Composer:
             t0 = tm.time(beat)
             dur = tm.time(beat + dur_b) - t0
             glide = prev_note if (i == 0 and rng.random() < 0.5) else None
-            self.score.add("cello", "bowed", t0 + rng.normal(0.03, 0.02), n, dyn * (1 + rng.normal(0, 0.05)), dur * 1.03,
-                           pan=0.3, part="cello", voices=1, attack=0.25 + 0.3 * rng.random(), release=0.5, swell=0.35,
-                           vib_cents=12, vib_delay=0.35, glide_from=glide, glide_time=0.12, detune_cents=3)
+            # HP: the solo bowed cello sounded synthetic; the counter line is a low piano voice now
+            self.score.add("piano", "piano", t0 + rng.normal(0.01, 0.01), n, dyn * 0.85 * (1 + rng.normal(0, 0.05)), dur * 1.1, pan=0.3)
         return prev_note
+
+
+    # -- acoustic accompaniment ----------------------------------------------------------------------------------------
+    def harp_arp(self, chord, bar, dyn, lo=45, hi=74):
+        """Rising (then partly falling) harp arpeggio through the chord, one per bar."""
+        meter, rng, tm = self.meter, self.rng, self.tempo
+        tones = chord.tones(lo, hi)
+        if not tones:
+            return
+        start = int(rng.integers(0, 2))
+        steps = meter * 2
+        seq = tones[start:start + steps - 2]
+        seq = seq + seq[-2:-4:-1]
+        for i, n in enumerate(seq[:steps]):
+            beat = bar * meter + i * (meter / steps)
+            self.score.add("harp", "harp", tm.time(beat) + rng.normal(0, 0.01), n, dyn * (0.9 if i == 0 else 0.62 + 0.1 * rng.random()),
+                           6.0, pan=np.clip(-0.5 + (n - lo) / (hi - lo), -0.6, 0.6))
+
+    def guitar(self, chord, bar, dyn, style="travis"):
+        """Fingerpicked nylon guitar: alternating thumb bass, treble notes on the off-beats (or a waltz strum)."""
+        meter, rng, tm = self.meter, self.rng, self.tempo
+        bass = chord.root
+        while bass > 52:
+            bass -= 12
+        while bass < 40:
+            bass += 12
+        fifth = chord.nearest_tone(bass + 7, prefer={chord.pc(2)})
+        trebles = chord.tones(55, 71)[-4:] or [bass + 12]
+        b0 = bar * meter
+        ev = []
+        if style == "waltz":
+            ev.append((0, bass, dyn))
+            for bt in (1, 2):
+                for j, n in enumerate(trebles[-3:]):
+                    ev.append((bt + 0.018 * j, n, dyn * 0.5))
+        else:
+            for bt in range(meter):
+                ev.append((bt, bass if bt % 2 == 0 else fifth, dyn * (0.85 if bt == 0 else 0.7)))
+                tn = trebles[(bt * 2 + 1 + bar) % len(trebles)]
+                ev.append((bt + 0.5, tn, dyn * (0.55 + 0.1 * rng.random())))
+                if bt == 0 and rng.random() < 0.5:
+                    ev.append((bt, trebles[-1], dyn * 0.55))
+        for bt, n, v in ev:
+            self.score.add("guitar", "guitar", tm.time(b0 + bt) + rng.normal(0, 0.008), n, v, 5.0, pan=np.clip((n - 55) / 30, -0.3, 0.4) - 0.1)
+
+    def ostinato(self, chord, bar, dyn, inst="marimba", length=7, lo=50, hi=74, step=0.5):
+        """A pattern of `length` steps that keeps cycling across the bar lines, so its accents drift against the meter."""
+        meter, rng, tm = self.meter, self.rng, self.tempo
+        if self.ost_pattern is None or len(self.ost_pattern) != length:
+            pat = [0]
+            for i in range(1, length):
+                pat.append(int(np.clip(pat[-1] + rng.choice([-1, 1, 1, 2, -2]), 0, 5)))
+            rests = set(rng.choice(range(2, length), size=max(0, length // 5), replace=False).tolist())
+            self.ost_pattern = [None if i in rests else p for i, p in enumerate(pat)]
+        tones = chord.tones(lo, hi)
+        if not tones:
+            return
+        for s in range(int(meter / step)):
+            idx = self.ost_pattern[self.ost_pos % length]
+            first = self.ost_pos % length == 0
+            self.ost_pos += 1
+            if idx is None:
+                continue
+            n = tones[min(idx, len(tones) - 1)]
+            beat = bar * meter + s * step
+            v = dyn * (0.85 if first else 0.55 + 0.12 * rng.random())
+            pan = 0.35 if inst != "harp" else -0.35
+            if inst == "guitar":
+                self.score.add("guitar", "guitar", tm.time(beat) + rng.normal(0, 0.006), n, v, step * 2.5 * tm.beat_len(beat), pan=pan)
+            else:
+                self.score.add({"harp": "harp", "marimba": "mallet", "xylo": "mallet", "prepared": "prepared"}[inst], inst, tm.time(beat) + rng.normal(0, 0.006),
+                               n, v, 4.0, pan=pan)
+
+    def loops(self, t0, t1, dyn):
+        """Eno-style process music: a few short phrases, each repeating on its own (non-matching) period, so the
+        combination keeps changing. Notes come from a consonant pitch set, so any overlap sounds right."""
+        spec, rng = self.spec, self.rng
+        if self.loop_voices is None:
+            pcs = [(spec["tonic"] + p) % 12 for p in spec.get("loop_pcs", [0, 2, 4, 7, 9])]
+            ranges = {"piano": (55, 74), "harp": (50, 72), "clarinet": (55, 72), "cello": (43, 60), "marimba": (48, 67),
+                      "horn": (50, 65), "reed": (50, 67), "guitar": (50, 69), "bassclar": (40, 55), "xylo": (60, 77)}
+            voices = []
+            for i, (inst, period) in enumerate(spec["loops"]):
+                lo, hi = ranges[inst]
+                pool = [n for n in range(lo, hi + 1) if n % 12 in pcs]
+                k = int(rng.integers(1, 4))
+                notes = sorted(rng.choice(pool, size=k, replace=False).tolist(), reverse=bool(rng.random() < 0.5))
+                gaps = np.cumsum([0] + [rng.choice([0.7, 1.1, 1.6, 2.2]) for _ in range(k - 1)]).tolist()
+                voices.append(dict(inst=inst, period=period, offset=rng.uniform(0, period * 0.6) + 1.5 * i, notes=notes, gaps=gaps,
+                                   pan=rng.uniform(-0.7, 0.7)))
+            self.loop_voices = voices
+        for v in self.loop_voices:
+            m = max(0, int(np.ceil((t0 - v["offset"]) / v["period"])))
+            while True:
+                ts = v["offset"] + m * v["period"]
+                if ts >= t1:
+                    break
+                for n, g in zip(v["notes"], v["gaps"]):
+                    vel = dyn * (0.75 + 0.15 * rng.random())
+                    self.play(v["inst"], ts + g + rng.normal(0, 0.02), n, vel, 2.2 + rng.random() * 1.5, None, pan=v["pan"], bus="loops")
+                m += 1
+
+    def percussion(self, bar, dyn, style):
+        meter, rng, tm = self.meter, self.rng, self.tempo
+        b0 = bar * meter
+        hits = []
+        if style == "heartbeat":
+            for bt in range(0, meter, 2):
+                hits += [(bt, "frame", 31, 1.0), (bt + 0.35, "frame", 31, 0.55)]
+        elif style == "pulse":
+            hits += [(bt, "frame", 33, 0.8 if bt == 0 else 0.5) for bt in range(meter)]
+        elif style == "waltz":
+            hits += [(0, "frame", 35, 1.0), (1, "brush", None, 0.45), (2, "brush", None, 0.5)]
+        elif style == "groove":
+            # a 2-bar base pattern on a 16th grid, lightly mutated every bar (playful, never mechanical)
+            if self.groove is None:
+                g = [(0, "low", None, 1.0), (1.5, "log", 50, 0.6), (2.75, "frame", 36, 0.7), (3.5, "log", 55, 0.5),
+                     (4.75, "low", None, 0.8), (5.5, "log", 52, 0.55), (6, "frame", 36, 0.7), (7.25, "log", 50, 0.45)]
+                g += [(x + 0.5, "brush", None, 0.3) for x in range(8) if rng.random() < 0.6]
+                self.groove = g
+            half = (bar % 2) * meter
+            for (x, k, m, v) in self.groove:
+                if half <= x < half + meter and rng.random() > 0.12:
+                    hits.append((x - half, k, m, v))
+            if rng.random() < 0.5:
+                x = float(rng.choice(np.arange(0, meter, 0.25)))
+                hits.append((x, "log", int(rng.choice([48, 50, 52, 55])), 0.35))
+            if bar % 4 == 3:
+                hits += [(meter - 0.5, "log", 55, 0.5), (meter - 0.25, "log", 52, 0.45)]
+        for bt, k, m, v in hits:
+            self.score.add("perc", "drum", tm.time(b0 + bt) + rng.normal(0, 0.006), m or 0, dyn * v * (1 + rng.normal(0, 0.06)), 1.0,
+                           pan={"log": -0.25, "brush": 0.3}.get(k, 0.05), kind=k)
+
+    def prepared_hits(self, chord, bar, dyn):
+        """Sparse syncopated prepared-piano figures in the low-middle register."""
+        meter, rng, tm = self.meter, self.rng, self.tempo
+        tones = chord.tones(40, 64)
+        for _ in range(int(rng.integers(1, 4))):
+            x = float(rng.choice(np.arange(0, meter, 0.25)))
+            n = tones[int(rng.integers(len(tones)))]
+            self.score.add("prepared", "prepared", tm.time(bar * meter + x), n, dyn * (0.5 + 0.3 * rng.random()), 1.0,
+                           pan=rng.uniform(-0.4, 0.4))
+            if rng.random() < 0.4:
+                self.score.add("prepared", "prepared", tm.time(bar * meter + x + 0.25), n - 12 if n > 52 else n + 7,
+                               dyn * 0.4, 1.0, pan=rng.uniform(-0.4, 0.4))
+
+    def play(self, inst, t0, n, vel, dur, prev_m, pan=0.0, bus=None):
+        """One melodic note on any instrument."""
+        rng, sc = self.rng, self.score
+        legato = prev_m is not None and abs(n - prev_m) <= 5 and rng.random() < 0.5
+        if inst == "piano":
+            sc.add(bus or "piano", "piano", t0 + rng.normal(0, 0.012), n, vel, dur * 1.15, pan=np.clip((n - 60) / 40, -0.4, 0.5))
+        elif inst in ("cello", "viola"):
+            sc.add(bus or "cello", "bowed", t0 + rng.normal(0.02, 0.015), n, vel, dur * 1.04, pan=0.25 if inst == "cello" else -0.25,
+                   part=inst, voices=1, attack=0.12 + 0.2 * rng.random(), release=0.45, swell=0.3, vib_cents=13, vib_delay=0.3,
+                   glide_from=prev_m if legato else None, glide_time=0.1 + 0.08 * rng.random(), detune_cents=3)
+        elif inst == "fiddle":
+            grace = n - 2 if rng.random() < 0.2 and dur >= 0.5 else None
+            sc.add(bus or "cello", "bowed", t0 + rng.normal(0.01, 0.012), n, vel, dur * 1.02, pan=-0.2, part="violin", voices=1,
+                   attack=0.05 + 0.05 * rng.random(), release=0.25, swell=0.15, vib_cents=14, vib_rate=5.8, vib_delay=0.18,
+                   glide_from=prev_m if legato else None, glide_time=0.07, grace=grace, detune_cents=4)
+        elif inst in ("clarinet", "bassclar", "horn"):
+            sc.add(bus or "winds", "wind", t0 + rng.normal(0.01, 0.01), n, vel, dur * 1.02, pan={"clarinet": -0.3, "bassclar": 0.2, "horn": 0.4}[inst],
+                   kind=inst, glide_from=prev_m if (legato and inst != "horn") else None)
+        elif inst in ("guitar", "harp"):
+            sc.add(bus or inst, inst, t0 + rng.normal(0, 0.008), n, vel, max(dur * 1.5, 1.0), pan=pan or (-0.15 if inst == "guitar" else -0.4))
+        elif inst == "marimba":
+            sc.add(bus or "mallet", "marimba", t0 + rng.normal(0, 0.008), n, vel, dur, pan=pan or 0.3)
+            if dur > 1.2:  # sustained marimba note = soft roll
+                k = int(dur / 0.11)
+                for i in range(1, k):
+                    sc.add(bus or "mallet", "marimba", t0 + i * 0.11 + rng.normal(0, 0.008), n, vel * (0.45 + 0.1 * np.sin(i / 3)), 0.3, pan=pan or 0.3)
+        elif inst == "xylo":
+            while n > 79:  # HP: nothing high-pitched
+                n -= 12
+            sc.add(bus or "mallet", "xylo", t0 + rng.normal(0, 0.006), n, vel * 0.85, dur, pan=pan or -0.25)
+            if dur > 1.0:  # long note = gentle roll
+                k = int(dur / 0.13)
+                for i in range(1, k):
+                    sc.add(bus or "mallet", "xylo", t0 + i * 0.13 + rng.normal(0, 0.01), n, vel * (0.35 + 0.08 * np.sin(i / 3)), 0.3,
+                           pan=pan or -0.25)
+        elif inst == "violin":
+            while n > 79:
+                n -= 12
+            sc.add(bus or "cello", "bowed", t0 + rng.normal(0.02, 0.015), n, vel * 0.9, dur * 1.04, pan=-0.2, part="violin", voices=1,
+                   attack=0.15 + 0.2 * rng.random(), release=0.5, swell=0.3, vib_cents=12, vib_delay=0.3,
+                   glide_from=prev_m if legato else None, glide_time=0.12, detune_cents=3)
+        elif inst == "reed":
+            sc.add(bus or "reed", "reed", t0, n, vel, dur, pan=pan)
+        elif inst == "prepared":
+            sc.add(bus or "prepared", "prepared", t0, n, vel, dur, pan=pan)
 
     # -- the piece -----------------------------------------------------------------------------------------------------
     def compose(self):
@@ -597,67 +936,47 @@ class Composer:
             chords = [Chord(key, *prog[i % len(prog)]) for i in range(nb)]
             lo, hi = sec.get("mel_range", spec["mel_range"])
             mel_inst = sec.get("melody_inst", mel_inst_default)
-            # --- drone / pad for the whole section
-            if "drone" in layers:
+            t_start, t_end = tm.time(bar * meter), tm.time((bar + nb) * meter)
+            if "drone" in layers:  # bowed open fifth: double bass + cello, sul tasto
                 root = key.tonic
-                while root > 43:
+                while root > 40:
                     root -= 12
-                t0 = tm.time(bar * meter)
-                sc.add("drone", "drone", t0 - 1.0, root, dyn * 0.9, tm.time((bar + nb) * meter) - t0 + 1.0, pan=0)
-            if "pad" in layers:
+                for part, n, v in (("bass", root, 0.9), ("cello", root + 7 + (12 if root + 7 < 38 else 0), 0.6)):
+                    sc.add("drone", "bowed", t_start - 1.0, n, dyn * v, t_end - t_start + 1.0, pan=0.1 if part == "bass" else -0.1,
+                           part=part, voices=2, attack=3.0, release=3.0, swell=0.3, vib_cents=3, vib_delay=1.5, detune_cents=4)
+            if "loops" in layers:
+                self.loops(t_start, t_end, dyn * sec.get("loop_dyn", 1.0))
+            if "reed" in layers:
                 for b in range(0, nb, 2):
                     ch = chords[b]
                     t0 = tm.time((bar + b) * meter)
                     dur = tm.time((bar + min(b + 2, nb)) * meter) - t0
-                    for i, n in enumerate(ch.tones(52 + spec.get("pad_oct", 0) * 12, 76 + spec.get("pad_oct", 0) * 12)[:4]):
-                        sc.add("pad", "pad", t0 - 0.5, n, dyn * 0.8, dur + 1.0, pan=(-0.6 + 0.4 * i))
-            # --- melody for the section (4-bar phrases)
+                    for i, n in enumerate(ch.tones(48, 67)[:4]):  # a soft rolled piano chord held with the pedal
+                        sc.add("piano", "piano", t0 + 0.07 * i + rng.normal(0, 0.01), n, dyn * (0.42 + 0.05 * (i == 0)), min(dur, 6.0),
+                               pan=(-0.3 + 0.2 * i))
+            # --- melody (4-bar phrases)
             melody = []
             if "melody" in layers:
-                motif_name = sec.get("motif", "A")
-                mot = self.motif(motif_name, bars=2, rest_prob=spec.get("rest", 0.25), leap_prob=spec.get("leap", 0.15))
+                mot = self.motif(sec.get("motif", "A"), bars=2, rest_prob=spec.get("rest", 0.25), leap_prob=spec.get("leap", 0.15))
+                notes_in = key.notes(lo, hi)
                 for p0 in range(0, nb, 4):
                     pch = chords[p0:p0 + 4]
                     var = None if (p0 // 4) % 2 == 0 else rng.choice(["transpose", "invert", "ornament"])
-                    if sec.get("octave_up"):
-                        lo2, hi2 = lo + 12, hi + 12
-                    else:
-                        lo2, hi2 = lo, hi
-                    notes_in = key.notes(lo2, hi2)
                     start = last_melody_idx if last_melody_idx is not None else len(notes_in) // 2
                     start = int(np.clip(start + int(rng.integers(-1, 2)), 2, max(2, len(notes_in) - 3)))
-                    phrase = self.realize_phrase(key, pch, bar + p0, mot, lo2, hi2, start_idx=start, variation=var, dyn=dyn)
+                    phrase = self.realize_phrase(key, pch, bar + p0, mot, lo, hi, start_idx=start, variation=var, dyn=dyn)
                     if phrase:
                         last_melody_idx = notes_in.index(phrase[-1][2]) if phrase[-1][2] in notes_in else start
                     melody += phrase
                 prev_m = None
+                dbl = sec.get("double")  # (instrument, octave shift)
                 for i, (beat, dur_b, n, vel) in enumerate(melody):
                     t0 = tm.time(beat)
                     next_beat = melody[i + 1][0] if i + 1 < len(melody) else beat + dur_b
                     dur = tm.time(min(beat + dur_b, next_beat + 0.1)) - t0
-                    if mel_inst == "piano":
-                        sc.add("piano", "piano", t0 + rng.normal(0, 0.015), n, vel, dur * 1.15, pan=np.clip((n - 60) / 40, -0.4, 0.5))
-                        if sec.get("double_violin"):
-                            sc.add("strings", "bowed", t0 + 0.03 + rng.normal(0, 0.02), n + 12, vel * 0.55, dur * 1.05,
-                                   pan=-0.4, part="violin", voices=3, attack=0.15, release=0.4, vib_cents=10, vib_delay=0.25)
-                    elif mel_inst == "cello":
-                        legato = prev_m is not None and abs(n - prev_m) <= 7 and rng.random() < 0.6
-                        sc.add("cello", "bowed", t0 + rng.normal(0.02, 0.015), n, vel, dur * 1.04, pan=0.25, part="cello",
-                               voices=1, attack=0.12 + 0.2 * rng.random(), release=0.45, swell=0.3, vib_cents=14,
-                               vib_delay=0.3, glide_from=prev_m if legato else None, glide_time=0.1 + 0.08 * rng.random(),
-                               detune_cents=3)
-                    elif mel_inst == "fiddle":
-                        grace = n - 2 if rng.random() < 0.22 and dur_b >= 1 else None
-                        slide = prev_m if (prev_m is not None and rng.random() < 0.35 and abs(n - prev_m) <= 5) else None
-                        sc.add("cello", "bowed", t0 + rng.normal(0.01, 0.012), n, vel, dur * 1.02, pan=-0.2, part="violin",
-                               voices=1, attack=0.05 + 0.05 * rng.random(), release=0.25, swell=0.15, vib_cents=16,
-                               vib_rate=6.0, vib_delay=0.18, glide_from=slide, glide_time=0.07, grace=grace, detune_cents=4)
-                    elif mel_inst == "bells":
-                        sc.add("bells", "bell", t0 + rng.normal(0, 0.02), n, vel * 0.8, dur, pan=0.4, music_box=spec.get("music_box", False))
-                    elif mel_inst == "violin":
-                        sc.add("cello", "bowed", t0 + rng.normal(0.02, 0.015), n, vel, dur * 1.04, pan=-0.3, part="violin",
-                               voices=1, attack=0.2 + 0.3 * rng.random(), release=0.5, swell=0.3, vib_cents=12, vib_delay=0.35,
-                               glide_from=prev_m if (prev_m is not None and rng.random() < 0.4) else None, detune_cents=3)
+                    self.play(mel_inst, t0, n, vel, dur, prev_m)
+                    if dbl:
+                        self.play(dbl[0], t0 + 0.02, n + 12 * dbl[1], vel * 0.55, dur, prev_m + 12 * dbl[1] if prev_m else None)
                     prev_m = n
             # --- bar by bar accompaniment
             for b in range(nb):
@@ -665,77 +984,65 @@ class Composer:
                 gb = bar + b
                 if "lh" in layers:
                     prev_voicing = self.piano_lh(ch, gb, sec.get("lh", "block"), dyn * 0.8, prev_voicing)
+                if "harp_arp" in layers and b % sec.get("harp_every", 1) == 0:
+                    self.harp_arp(ch, gb, dyn * 0.75)
+                if "guitar" in layers:
+                    self.guitar(ch, gb, dyn * 0.8, style=sec.get("guitar", "travis"))
+                if "ostinato" in layers:
+                    self.ostinato(ch, gb, dyn * 0.7, inst=sec.get("ost_inst", "marimba"), length=sec.get("ost_len", 7),
+                                  lo=sec.get("ost_lo", 50), hi=sec.get("ost_hi", 74))
+                if "perc" in layers:
+                    self.percussion(gb, dyn * sec.get("perc_dyn", 0.7), sec.get("perc", "pulse"))
+                if "prep" in layers:
+                    self.prepared_hits(ch, gb, dyn)
                 if "strings" in layers:
                     parts = sec.get("parts", ("bass", "cello", "viola", "violin2", "violin1"))
-                    if b % sec.get("string_bars", 1) == 0:
-                        sb = sec.get("string_bars", 1)
+                    sb = sec.get("string_bars", 1)
+                    if b % sb == 0:
                         nxt = self.sections[si + 1] if si + 1 < len(self.sections) else None
                         is_last = b + sb >= nb and (nxt is None or "strings" not in nxt["layers"])
                         prev_strings = self.string_chord(ch, gb, dyn * sec.get("string_dyn", 0.8), prev_strings, parts=parts,
                                                          swell=0.35 if dyn > 0.6 else 0.25, bars=sb, last=is_last)
+                if "horn" in layers and b % 2 == 0:
+                    n = ch.nearest_tone(57, prefer={ch.pc(1), ch.pc(2)})
+                    t0 = tm.time(gb * meter)
+                    sc.add("strings", "bowed", t0 + 0.05, n, dyn * 0.5, tm.time((gb + 2) * meter) - t0, pan=0.4, part="viola", voices=3,
+                           attack=0.9, release=0.8, swell=0.5, vib_cents=6)
                 if "counter" in layers:
                     bar_mel = [m for m in melody if gb * meter <= m[0] < (gb + 1) * meter]
                     cello_prev = self.cello_counterpoint(key, ch, gb, bar_mel, dyn * 0.75, cello_prev)
                 if "pizz" in layers:
                     pattern = [0, 2] if meter == 4 else [0]
                     if sec.get("pizz_busy"):
-                        pattern = [0, 1, 2, 3] if meter == 4 else [0, 1, 2]
+                        pattern = [0, 1.5, 2, 3.5] if meter == 4 else [0, 2]
                     for i, bt in enumerate(pattern):
                         n = ch.root
-                        while n > 50:
+                        while n > 45:
                             n -= 12
+                        while n < 33:
+                            n += 12
                         if i % 2 == 1:
                             n = ch.nearest_tone(n + 7, prefer={ch.pc(2), ch.pc(1)})
-                        t0 = tm.time(gb * meter + bt)
-                        sc.add("pizz", "bowed", t0 + rng.normal(0.01, 0.012), n, dyn * (0.9 if i == 0 else 0.65), 0.3,
-                               pan=0.3, part="cello", voices=1, pizz=True)
-                if "bells" in layers and "melody" in layers and mel_inst != "bells":
-                    # sparse arpeggiated bells on top, answering the melody at phrase ends
-                    if b % 4 == 3 or rng.random() < spec.get("bell_prob", 0.25):
-                        tones = ch.tones(79, 96)
-                        start_beat = gb * meter + rng.choice([0, meter / 2, meter - 1])
-                        for i in range(int(rng.integers(2, 5))):
-                            n = tones[int(rng.integers(len(tones)))] if tones else 84
-                            sc.add("bells", "bell", tm.time(start_beat + i * 0.5) + rng.normal(0, 0.02), n,
-                                   dyn * 0.5 * (1 + rng.normal(0, 0.1)), 1.0, pan=0.45 - 0.15 * i,
-                                   music_box=spec.get("music_box", False))
+                        sc.add("pizz", "ubass", tm.time(gb * meter + bt) + rng.normal(0.005, 0.008), n, dyn * (0.9 if i == 0 else 0.65), 0.8, pan=0.15)
                 if "swell" in layers and (b % 4 == 3 or (rng.random() < 0.2 and "melody" not in layers)):
-                    # reverse string swell landing on the next downbeat
+                    # bowed crescendo into the next downbeat (viola + cello, no reversed audio)
                     target = tm.time((gb + 1) * meter)
-                    sw_dur = 1.8 + 2.5 * rng.random()
+                    sw_dur = 1.8 + 2.0 * rng.random()
                     nxt = chords[(b + 1) % nb]
-                    for n in nxt.tones(55, 79)[:3]:
-                        sc.add("fx", "bowed", target - sw_dur + rng.normal(0, 0.03), n, dyn * 0.6, sw_dur, pan=rng.uniform(-0.7, 0.7),
-                               part="viola", voices=3, reverse=True, release=0.2, vib_cents=4)
-                if "harmonics" in layers and rng.random() < 0.5:
-                    tones = ch.tones(86, 100)
-                    if tones:
-                        n = tones[int(rng.integers(len(tones)))]
-                        t0 = tm.time(gb * meter + rng.choice([0, 1, 2]))
-                        sc.add("fx", "bowed", t0, n, dyn * 0.5, 2.0 + 3 * rng.random(), pan=rng.uniform(-0.8, 0.8), part="violin",
-                               harmonics=True, attack=1.2, release=1.5, swell=0.5, vib_cents=6, vib_delay=0.8)
+                    for n, part in zip(nxt.tones(48, 69)[:3], ("cello", "viola", "viola")):
+                        sc.add("fx", "bowed", target - sw_dur + rng.normal(0, 0.03), n, dyn * 0.55, sw_dur + 0.25, pan=rng.uniform(-0.6, 0.6),
+                               part=part, voices=3, attack=sw_dur * 0.95, release=0.35, vib_cents=4)
                 if "dissonance" in layers and b % 2 == 1:
                     n = ch.root + 12 + int(rng.choice([1, 6, 13]))
-                    while n > 64:
+                    while n > 60:
                         n -= 12
                     t0 = tm.time(gb * meter + 1)
                     sc.add("fx", "bowed", t0, n, dyn * 0.45, 2.5, pan=rng.uniform(-0.5, 0.5), part="cello", voices=3,
                            attack=1.5, release=1.2, swell=0.6, vib_cents=5, detune_cents=12)
-                if "bells_solo" in layers and b % 2 == 0:
-                    tones = ch.tones(72, 93)
-                    for i in range(int(rng.integers(1, 4))):
-                        n = tones[int(rng.integers(len(tones)))]
-                        sc.add("bells", "bell", tm.time(gb * meter + i * rng.choice([1, 1.5, 2])) + rng.normal(0, 0.03), n,
-                               dyn * 0.6, 1.0, pan=rng.uniform(-0.5, 0.5), music_box=spec.get("music_box", False))
             bar += nb
-        total_beats = bar * meter
-        end = tm.time(total_beats)
-        return end
+        return tm.time(bar * meter)
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-# rendering, effects, mastering
-# ----------------------------------------------------------------------------------------------------------------------
 def make_reverb_ir(seconds, rng, bright=0.5):
     n = int(seconds * SR)
     t = np.arange(n) / SR
@@ -759,6 +1066,13 @@ def make_reverb_ir(seconds, rng, bright=0.5):
     return ir
 
 
+BUSES = ("piano", "strings", "cello", "winds", "guitar", "harp", "mallet", "prepared", "reed", "perc", "pizz", "drone", "fx", "loops")
+GAINS = dict(piano=1.0, strings=0.45, cello=0.6, winds=0.55, guitar=0.75, harp=0.6, mallet=0.6, prepared=0.5, reed=0.35,
+             perc=0.6, pizz=0.8, drone=0.5, fx=0.45, loops=0.55)
+SENDS = dict(piano=0.35, strings=0.5, cello=0.4, winds=0.4, guitar=0.25, harp=0.45, mallet=0.35, prepared=0.3, reed=0.5,
+             perc=0.2, pizz=0.2, drone=0.3, fx=0.7, loops=0.65)
+
+
 def render(spec, verbose=True):
     comp = Composer(spec)
     end = comp.compose()
@@ -766,20 +1080,27 @@ def render(spec, verbose=True):
     rng = np.random.default_rng(spec["seed"] + 2)
     tail = spec.get("reverb", 4.0) + 3.0
     total = int((end + tail) * SR)
-    buses = {b: np.zeros((2, total)) for b in ("piano", "strings", "cello", "pad", "bells", "drone", "pizz", "fx")}
-    sorted_events = sorted(comp.score.events, key=lambda e: e["t"])
-    for e in sorted_events:
-        inst = e["inst"]
+    buses = {b: np.zeros((2, total)) for b in BUSES}
+    for e in sorted(comp.score.events, key=lambda e: e["t"]):
+        inst, x = e["inst"], e["extra"]
         if inst == "piano":
             s = synth.piano(e["midi"], e["vel"], e["dur"])
         elif inst == "bowed":
-            s = synth.bowed(e["midi"], e["dur"], e["vel"], **e["extra"])
-        elif inst == "pad":
-            s = synth.pad(e["midi"], e["dur"], e["vel"])
-        elif inst == "bell":
-            s = synth.bell(e["midi"], e["vel"], **e["extra"])
-        elif inst == "drone":
-            s = synth.drone(e["midi"], e["dur"], e["vel"])
+            s = synth.bowed(e["midi"], e["dur"], e["vel"], **x)
+        elif inst in ("guitar", "harp", "ubass"):
+            s = synth.pluck(e["midi"], e["vel"], e["dur"], kind=inst)
+        elif inst == "marimba":
+            s = synth.marimba(e["midi"], e["vel"])
+        elif inst == "xylo":
+            s = synth.xylophone(e["midi"], e["vel"])
+        elif inst == "prepared":
+            s = synth.prepared(e["midi"], e["vel"])
+        elif inst == "wind":
+            s = synth.wind(e["midi"], e["dur"], e["vel"], **x)
+        elif inst == "reed":
+            s = synth.reed(e["midi"], e["dur"], e["vel"])
+        elif inst == "drum":
+            s = synth.drum(x["kind"], e["vel"], e["midi"] or None)
         else:
             continue
         i0 = int(max(e["t"], 0.0) * SR)
@@ -792,67 +1113,68 @@ def render(spec, verbose=True):
         bus = buses[e["bus"]]
         bus[0, i0:i1] += seg * gl
         bus[1, i0:i1] += seg * gr
-        # stereo spread for sections: a short decorrelating delay on the opposite channel
-        if e["bus"] in ("strings", "pad"):
+        if e["bus"] in ("strings", "reed", "drone"):  # ensemble width: short decorrelating delay on the other side
             d = int(rng.uniform(0.004, 0.012) * SR)
             if i1 + d <= total:
                 bus[1 if pan < 0 else 0, i0 + d:i1 + d] += seg * 0.35 * (gr if pan < 0 else gl)
-    gains = dict(piano=0.9, strings=0.55, cello=0.6, pad=0.7, bells=0.5, drone=0.9, pizz=0.8, fx=0.5)
+    gains = dict(GAINS)
     gains.update(spec.get("gains", {}))
-    sends = dict(piano=0.35, strings=0.5, cello=0.4, pad=0.6, bells=0.6, drone=0.1, pizz=0.3, fx=0.8)
     dry = np.zeros((2, total))
     send = np.zeros((2, total))
     for name, b in buses.items():
         if not np.any(b):
             continue
         if name == "strings":
-            b = highpass(b, 60) ; b = peaking_eq(b, 350, -2.0, 1.0)
-        if name == "piano":
+            b = highpass(b, 60)
+            b = peaking_eq(b, 350, -2.0, 1.0)
+        elif name == "piano":
             b = peaking_eq(b, 250, -1.5, 0.9)
-        if name == "pad":
-            b = highpass(b, 90)
+        elif name == "guitar":  # nylon guitar body: air cavity + top plate resonances
+            b = peaking_eq(b, 105, 4.0, 2.0)
+            b = peaking_eq(b, 210, 3.0, 1.8)
+            b = peaking_eq(b, 420, 1.5, 1.5)
+            b = highpass(b, 70)
+        elif name == "harp":
+            b = peaking_eq(b, 180, 2.5, 1.2)
+        elif name == "pizz":
+            b = peaking_eq(b, 90, 3.0, 1.5)
+        elif name == "reed":
+            b = highpass(b, 110)
         dry += b * gains[name]
-        send += b * gains[name] * sends[name]
-    ir = make_reverb_ir(spec.get("reverb", 4.0), np.random.default_rng(spec["seed"] + 3), bright=spec.get("rev_bright", 0.5))
+        send += b * gains[name] * SENDS[name]
+    ir = make_reverb_ir(spec.get("reverb", 4.0), np.random.default_rng(spec["seed"] + 3), bright=spec.get("rev_bright", 0.4))
     send = highpass(send, 160)
-    send = lowpass(send, 6500)
+    send = lowpass(send, 5500)
     wet = np.stack([signal.fftconvolve(send[c], ir[c])[:total] for c in range(2)])
-    # a little cross-feed makes the room feel wider
     wet = np.stack([wet[0] * 0.85 + wet[1] * 0.15, wet[1] * 0.85 + wet[0] * 0.15])
     out = dry + wet * spec.get("wet", 0.5)
-    # master EQ
+    # master EQ: warm, never shrill (HP: no high-pitched sound)
     out = highpass(out, 28, 2)
-    out = peaking_eq(out, 240, -1.5, 0.8)
-    out = high_shelf(out, 7000, 1.0)
-    if spec.get("master_lowpass"):
-        out = lowpass(out, spec["master_lowpass"], 2)
-    # gentle stereo widening (mid/side)
+    out = peaking_eq(out, 240, -1.0, 0.8)
+    out = high_shelf(out, 5000, -2.0)
+    out = lowpass(out, spec.get("master_lowpass", 9000), 2)
     mid, side = (out[0] + out[1]) / 2, (out[0] - out[1]) / 2
-    side = highpass(side, 200) * 1.25
+    side = highpass(side, 200) * 1.2
     out = np.stack([mid + side, mid - side])
-    # fades
     fin = int(1.5 * SR)
     out[:, :fin] *= np.linspace(0, 1, fin) ** 2
     fout = int(min(7.0, tail) * SR)
     out[:, -fout:] *= np.linspace(1, 0, fout) ** 1.5
     # limiter: lookahead/hold minimum filter on the required gain, then smoothed; finally -1 dBFS peak
-    peak = np.max(np.abs(out), axis=0)
     rms = np.sqrt(np.mean(out ** 2))
-    out *= 0.16 / max(rms, 1e-9)  # loudness target before limiting (~ -16 dBFS RMS)
+    out *= 0.16 / max(rms, 1e-9)
     peak = np.max(np.abs(out), axis=0)
-    thr = 0.85
-    g = np.minimum(1.0, thr / np.maximum(peak, 1e-9))
+    g = np.minimum(1.0, 0.85 / np.maximum(peak, 1e-9))
     g = minimum_filter1d(g, size=int(0.006 * SR))
-    g = signal.lfilter([1 - 0.9995], [1, -0.9995], g)  # release smoothing
+    g = signal.lfilter([1 - 0.9995], [1, -0.9995], g)
     g = minimum_filter1d(g, size=int(0.004 * SR))
     g = lowpass(g, 400, 1)
     out *= np.minimum(g, 1.0)
-    out = np.tanh(out / 0.95) * 0.95  # soft safety
+    out = np.tanh(out / 0.95) * 0.95
     out *= (10 ** (-1 / 20)) / max(np.max(np.abs(out)), 1e-9)
     if not np.all(np.isfinite(out)):
         raise RuntimeError("non-finite samples in " + spec["id"])
     return out.astype(np.float32), total / SR, len(comp.score.events)
-
 
 def analyze(audio, name):
     mono = audio.mean(axis=0)
@@ -883,102 +1205,115 @@ def S(name, bars, dyn, layers, **kw):
 
 
 TRACKS = [
-    dict(id="first_light", title="Primeira Luz", situation="overworld", seed=1101, bpm=63, tonic=60, scale="lydian",
-         prog=[(0, "maj9"), (9, "m7"), (5, "maj7"), (7, "6")], mel_range=(67, 86), rest=0.3, reverb=4.2, wet=0.45,
-         form=[S("intro", 4, 0.4, ["lh", "pad"], lh="sparse"),
+    # quiet piano in a big room, harp and cello around it
+    dict(id="first_light", title="Primeira Luz", situation="overworld", seed=1201, bpm=63, tonic=60, scale="lydian",
+         prog=[(0, "maj9"), (9, "m7"), (5, "maj7"), (7, "6")], mel_range=(60, 79), rest=0.3, reverb=4.2, wet=0.45,
+         form=[S("intro", 4, 0.4, ["harp_arp", "reed"]),
                S("theme", 8, 0.55, ["lh", "melody", "counter"], lh="broken"),
-               S("theme2", 8, 0.65, ["lh", "melody", "counter", "strings"], lh="broken", parts=("cello", "viola", "violin2"), string_dyn=0.6),
-               S("dev", 8, 0.6, ["lh", "melody", "strings", "counter"], lh="arp", transpose=4, scale="major", motif="B",
-                 prog=[(0, "maj7"), (5, "add9"), (9, "m7"), (7, "sus4")]),
-               S("climax", 8, 0.85, ["lh", "melody", "strings", "bells", "double_violin"], lh="octaves", double_violin=True,
-                 octave_up=False, string_dyn=0.95, tempo=1.02),
-               S("outro", 6, 0.4, ["lh", "melody", "pad"], lh="sparse", rit=True, motif="A")]),
-    dict(id="moss", title="Musgo", situation="overworld", seed=2302, bpm=54, tonic=62, scale="dorian", melody_inst="cello",
-         prog=[(0, "madd9"), (10, "maj7"), (5, "m7"), (7, "7sus4")], mel_range=(48, 67), rest=0.35, leap=0.1, reverb=4.6, wet=0.5,
-         form=[S("intro", 4, 0.4, ["lh", "drone"], lh="sparse"),
-               S("theme", 8, 0.55, ["lh", "melody"], lh="sparse"),
-               S("theme2", 8, 0.6, ["lh", "melody", "strings"], lh="broken", parts=("viola", "violin2", "violin1"), string_dyn=0.55, string_bars=2),
-               S("dev", 8, 0.65, ["lh", "melody", "strings", "swell"], lh="block", transpose=0, scale="major", motif="B",
-                 prog=[(0, "add9"), (4, "min"), (9, "m7"), (5, "maj7")], parts=("bass", "viola", "violin2", "violin1"), string_dyn=0.7),
-               S("climax", 8, 0.8, ["lh", "melody", "strings"], lh="octaves", melody_inst="piano", mel_range=(67, 86), motif="A",
-                 string_dyn=0.9, parts=("bass", "cello", "viola", "violin2", "violin1")),
-               S("outro", 6, 0.4, ["lh", "melody", "pad"], lh="sparse", melody_inst="cello", rit=True)]),
-    dict(id="still_water", title="Água Parada", situation="underwater", seed=3103, bpm=48, tonic=63, scale="major",
-         prog=[(0, "maj9"), (5, "add9"), (8, "maj7"), (7, "sus2")], mel_range=(70, 88), rest=0.5, reverb=6.5, wet=0.7,
-         master_lowpass=2600, rev_bright=0.3, pad_oct=-1, music_box=True, gains=dict(bells=0.7, pad=0.9),
-         form=[S("intro", 4, 0.45, ["pad", "drone"]),
-               S("theme", 8, 0.5, ["pad", "melody", "bells_solo"], melody_inst="bells", motif="A"),
-               S("theme2", 8, 0.55, ["pad", "melody", "lh", "strings"], lh="sparse", melody_inst="piano", parts=("cello", "viola"), string_bars=2, string_dyn=0.6),
-               S("dev", 8, 0.6, ["pad", "melody", "strings", "swell", "drone"], transpose=5, scale="lydian", motif="B",
-                 prog=[(0, "maj7#11"), (7, "add9"), (2, "m9"), (5, "maj7")], melody_inst="cello", mel_range=(50, 66), parts=("viola", "violin2"), string_bars=2),
-               S("climax", 6, 0.7, ["pad", "melody", "lh", "strings", "bells"], lh="sparse", melody_inst="piano", string_bars=2,
-                 parts=("bass", "cello", "viola", "violin2", "violin1"), string_dyn=0.75),
-               S("outro", 6, 0.4, ["pad", "melody", "drone"], melody_inst="bells", rit=True)]),
-    dict(id="block_by_block", title="Bloco a Bloco", situation="creative", seed=4704, bpm=76, tonic=65, scale="major",
-         prog=[(0, "add9"), (5, "maj7"), (9, "m7"), (7, "6")], mel_range=(72, 91), rest=0.25, leap=0.2, reverb=2.8, wet=0.35,
-         gains=dict(bells=0.65, pizz=0.9),
-         form=[S("intro", 4, 0.45, ["pizz", "lh"], lh="sparse"),
-               S("theme", 12, 0.6, ["pizz", "lh", "melody"], lh="arp", melody_inst="bells"),
-               S("theme2", 8, 0.65, ["pizz", "lh", "melody", "counter", "bells"], lh="arp", melody_inst="piano"),
-               S("dev", 8, 0.6, ["pizz", "lh", "melody", "strings"], lh="broken", transpose=2, motif="B", pizz_busy=True,
-                 prog=[(0, "maj7"), (9, "m7"), (2, "m7"), (7, "sus4")], parts=("viola", "violin2"), string_dyn=0.5, melody_inst="bells"),
-               S("climax", 12, 0.8, ["pizz", "lh", "melody", "strings", "bells"], lh="arp", pizz_busy=True, double_violin=True,
-                 parts=("cello", "viola", "violin2", "violin1"), string_dyn=0.8),
-               S("outro", 4, 0.45, ["lh", "melody", "pizz"], lh="sparse", melody_inst="bells", rit=True)]),
-    dict(id="embers", title="Brasa", situation="nether", seed=5905, bpm=46, tonic=50, scale="phrygian", melody_inst="cello",
-         prog=[(0, "5"), (1, "maj7"), (0, "m7"), (10, "5")], mel_range=(43, 62), rest=0.45, reverb=5.5, wet=0.6, pad_oct=-1,
-         rev_bright=0.35, gains=dict(drone=1.1, fx=0.6),
-         form=[S("intro", 4, 0.45, ["drone", "dissonance"]),
-               S("theme", 8, 0.5, ["drone", "melody", "lh"], lh="sparse", mel_range=(43, 60)),
-               S("theme2", 8, 0.55, ["drone", "melody", "strings", "dissonance"], parts=("bass", "cello", "viola"), string_bars=2, string_dyn=0.6),
-               S("dev", 8, 0.65, ["drone", "melody", "strings", "swell", "lh"], lh="sparse", transpose=-1, scale="locrian", motif="B",
-                 prog=[(0, "m7b5"), (1, "maj7"), (6, "5"), (0, "cluster")], parts=("bass", "cello", "viola", "violin2"), string_bars=2),
-               S("climax", 8, 0.8, ["drone", "melody", "strings", "dissonance", "lh"], lh="octaves", melody_inst="piano",
-                 mel_range=(55, 74), parts=("bass", "cello", "viola", "violin2", "violin1"), string_dyn=0.9),
+               S("theme2", 8, 0.62, ["lh", "melody", "counter", "strings", "harp_arp"], lh="sparse", parts=("cello", "viola", "violin2"),
+                 string_dyn=0.55, harp_every=2),
+               S("dev", 8, 0.6, ["lh", "melody", "strings", "horn"], lh="arp", transpose=4, scale="major", motif="B", melody_inst="xylo",
+                 prog=[(0, "maj7"), (5, "add9"), (9, "m7"), (7, "sus4")], parts=("bass", "cello", "viola")),
+               S("climax", 8, 0.82, ["lh", "melody", "strings", "harp_arp", "horn"], lh="octaves", double=("piano", -1), string_dyn=0.9, tempo=1.02),
+               S("outro", 6, 0.4, ["lh", "melody", "reed"], lh="sparse", rit=True)]),
+    # Eno-style overlapping loops frame a cello song
+    dict(id="moss", title="Musgo", situation="overworld", seed=2402, bpm=54, tonic=62, scale="dorian", melody_inst="piano",
+         prog=[(0, "madd9"), (10, "maj7"), (5, "m7"), (7, "7sus4")], mel_range=(55, 74), rest=0.35, leap=0.1, reverb=4.8, wet=0.52,
+         loops=[("piano", 17.3), ("harp", 23.9), ("xylo", 29.7), ("piano", 31.1), ("harp", 37.3)], loop_pcs=[0, 3, 5, 7, 10],
+         form=[S("intro", 6, 0.45, ["loops", "drone"]),
+               S("theme", 8, 0.55, ["melody", "lh", "loops"], lh="sparse", loop_dyn=0.6),
+               S("theme2", 8, 0.6, ["melody", "lh", "strings"], lh="broken", parts=("viola", "violin2", "violin1"), string_dyn=0.5, string_bars=2),
+               S("dev", 8, 0.65, ["melody", "lh", "strings", "horn", "swell"], lh="block", scale="major", motif="B", melody_inst="xylo",
+                 mel_range=(60, 77), prog=[(0, "add9"), (4, "min"), (9, "m7"), (5, "maj7")], parts=("bass", "viola", "violin2"), string_dyn=0.65),
+               S("climax", 8, 0.8, ["melody", "lh", "strings", "counter"], lh="octaves", melody_inst="piano", mel_range=(62, 79), motif="A",
+                 string_dyn=0.85),
+               S("outro", 8, 0.42, ["loops", "drone", "reed"], rit=True)]),
+    # harp, low marimba and bowed bass under water; loops drift
+    dict(id="still_water", title="Água Parada", situation="underwater", seed=3203, bpm=48, tonic=63, scale="major",
+         prog=[(0, "maj9"), (5, "add9"), (8, "maj7"), (7, "sus2")], mel_range=(55, 74), rest=0.5, reverb=6.5, wet=0.68,
+         master_lowpass=2800, rev_bright=0.25, loops=[("harp", 19.1), ("marimba", 26.3), ("piano", 33.7), ("xylo", 41.9)],
+         loop_pcs=[0, 2, 4, 7, 9],
+         form=[S("intro", 4, 0.45, ["drone", "reed"]),
+               S("theme", 8, 0.5, ["loops", "reed"]),
+               S("theme2", 8, 0.55, ["melody", "reed", "strings", "harp_arp"], parts=("cello", "viola"), string_bars=2, string_dyn=0.55, harp_every=2),
+               S("dev", 8, 0.6, ["melody", "strings", "loops", "drone"], transpose=5, scale="lydian", motif="B", melody_inst="harp",
+                 mel_range=(50, 67), prog=[(0, "maj7#11"), (7, "add9"), (2, "m9"), (5, "maj7")], parts=("viola", "violin2"), string_bars=2, loop_dyn=0.6),
+               S("climax", 6, 0.7, ["melody", "lh", "strings", "harp_arp", "horn"], lh="sparse", string_bars=2, string_dyn=0.7),
+               S("outro", 6, 0.4, ["loops", "drone"], rit=True)]),
+    # playful: a 7-step marimba pattern drifting over 4/4, hand drums, prepared piano, clarinet tune
+    dict(id="block_by_block", title="Bloco a Bloco", situation="creative", seed=4804, bpm=80, tonic=65, scale="major", rubato=0.25,
+         prog=[(0, "add9"), (5, "maj7"), (9, "m7"), (7, "6")], mel_range=(60, 77), rest=0.25, leap=0.2, reverb=2.6, wet=0.32,
+         melody_inst="xylo",
+         form=[S("intro", 4, 0.45, ["ostinato", "perc"], perc="pulse", perc_dyn=0.4),
+               S("theme", 8, 0.6, ["ostinato", "perc", "melody", "pizz"], perc="groove"),
+               S("theme2", 8, 0.65, ["ostinato", "perc", "melody", "pizz", "prep"], perc="groove", melody_inst="piano"),
+               S("dev", 8, 0.6, ["ostinato", "melody", "reed", "pizz"], ost_inst="harp", ost_len=5, transpose=2, motif="B", melody_inst="marimba",
+                 prog=[(0, "maj7"), (9, "m7"), (2, "m7"), (7, "sus4")]),
+               S("climax", 12, 0.8, ["ostinato", "perc", "melody", "pizz", "strings", "prep"], perc="groove", pizz_busy=True,
+                 double=("piano", -1), parts=("cello", "viola", "violin2"), string_dyn=0.6, string_bars=2),
+               S("outro", 4, 0.45, ["ostinato", "melody"], melody_inst="piano", rit=True)]),
+    # nether: bowed drones, bass clarinet, heartbeat frame drum, prepared piano
+    dict(id="embers", title="Brasa", situation="nether", seed=5005, bpm=46, tonic=50, scale="phrygian", melody_inst="piano",
+         prog=[(0, "5"), (1, "maj7"), (0, "m7"), (10, "5")], mel_range=(40, 58), rest=0.45, reverb=5.5, wet=0.58, rev_bright=0.3,
+         gains=dict(drone=0.6, fx=0.55),
+         form=[S("intro", 4, 0.45, ["drone", "dissonance", "perc"], perc="heartbeat", perc_dyn=0.5),
+               S("theme", 8, 0.5, ["drone", "melody", "perc", "prep"], perc="heartbeat", perc_dyn=0.5),
+               S("theme2", 8, 0.55, ["drone", "melody", "strings", "dissonance", "perc"], melody_inst="harp", mel_range=(45, 64),
+                 perc="heartbeat", parts=("bass", "cello", "viola"), string_bars=2, string_dyn=0.6),
+               S("dev", 8, 0.65, ["drone", "melody", "strings", "swell", "prep", "perc"], transpose=-1, scale="locrian", motif="B",
+                 prog=[(0, "m7b5"), (1, "maj7"), (6, "5"), (0, "cluster")], parts=("bass", "cello", "viola"), string_bars=2, perc="heartbeat"),
+               S("climax", 8, 0.8, ["drone", "melody", "strings", "dissonance", "lh", "perc", "horn"], lh="octaves", melody_inst="piano",
+                 mel_range=(48, 67), parts=("bass", "cello", "viola", "violin2"), string_dyn=0.85, perc="heartbeat", perc_dyn=0.9),
                S("outro", 6, 0.4, ["drone", "melody", "dissonance"], rit=True)]),
-    dict(id="void", title="Vazio", situation="end", seed=7106, bpm=42, tonic=64, scale="lydaug",
-         prog=[(0, "sus2"), (2, "aug"), (-2, "sus2"), (4, "maj7#11")], mel_range=(76, 96), rest=0.6, reverb=7.5, wet=0.75,
-         pad_oct=0, music_box=True, gains=dict(fx=0.7, bells=0.6, pad=0.6),
-         form=[S("intro", 4, 0.4, ["swell", "harmonics", "drone"]),
-               S("theme", 8, 0.5, ["swell", "harmonics", "melody", "pad"], melody_inst="bells"),
-               S("theme2", 8, 0.55, ["harmonics", "melody", "lh", "swell"], lh="sparse", melody_inst="piano", mel_range=(72, 92), motif="A"),
-               S("dev", 8, 0.6, ["swell", "harmonics", "strings", "melody"], transpose=6, scale="whole", motif="B",
-                 prog=[(0, "aug"), (2, "sus2"), (4, "aug"), (-2, "sus2")], melody_inst="violin", mel_range=(72, 90), parts=("viola", "violin2"), string_bars=2),
-               S("climax", 6, 0.7, ["strings", "harmonics", "melody", "swell", "bells"], melody_inst="piano", mel_range=(72, 92),
-                 parts=("cello", "viola", "violin2", "violin1"), string_bars=2, string_dyn=0.75),
-               S("outro", 6, 0.4, ["harmonics", "swell", "melody", "drone"], melody_inst="bells", rit=True)]),
-    dict(id="beginning", title="Início", situation="title", seed=8307, bpm=60, tonic=57, scale="dorian",
-         prog=[(0, "m9"), (5, "add9"), (3, "maj7"), (10, "6")], mel_range=(64, 84), rest=0.3, leap=0.18, reverb=4.4, wet=0.5,
-         form=[S("intro", 4, 0.45, ["lh", "strings"], lh="sparse", parts=("cello", "viola"), string_dyn=0.5, string_bars=2),
-               S("theme", 8, 0.6, ["lh", "melody", "counter", "strings"], lh="block", parts=("viola", "violin2"), string_dyn=0.55),
-               S("theme2", 8, 0.7, ["lh", "melody", "strings"], lh="broken", melody_inst="violin", parts=("bass", "cello", "viola", "violin2"), string_dyn=0.75),
-               S("dev", 8, 0.65, ["lh", "melody", "strings", "counter"], lh="arp", transpose=3, scale="major", motif="B",
-                 prog=[(0, "maj7"), (9, "m7"), (5, "add9"), (7, "sus4")], parts=("cello", "viola", "violin2", "violin1"), string_dyn=0.7),
-               S("climax", 8, 0.9, ["lh", "melody", "strings", "bells"], lh="octaves", double_violin=True, string_dyn=1.0,
-                 parts=("bass", "cello", "viola", "violin2", "violin1"), tempo=1.03),
+    # the End: wide, slow, low; piano/horn/harp loops in a whole-tone haze
+    dict(id="void", title="Vazio", situation="end", seed=7206, bpm=42, tonic=52, scale="lydaug",
+         prog=[(0, "sus2"), (2, "aug"), (-2, "sus2"), (4, "maj7#11")], mel_range=(55, 74), rest=0.6, reverb=7.5, wet=0.72,
+         rev_bright=0.3, loops=[("piano", 21.7), ("xylo", 28.3), ("harp", 34.1), ("piano", 43.9)], loop_pcs=[0, 2, 4, 6, 11],
+         form=[S("intro", 6, 0.42, ["loops", "drone"]),
+               S("theme", 8, 0.5, ["loops", "reed", "melody"], loop_dyn=0.7),
+               S("theme2", 8, 0.55, ["melody", "strings", "swell", "loops"], melody_inst="xylo", parts=("cello", "viola"), string_bars=2, loop_dyn=0.5),
+               S("dev", 8, 0.6, ["melody", "strings", "swell", "horn"], transpose=6, scale="whole", motif="B", melody_inst="piano",
+                 prog=[(0, "aug"), (2, "sus2"), (4, "aug"), (-2, "sus2")], parts=("bass", "cello", "viola"), string_bars=2),
+               S("climax", 6, 0.7, ["melody", "strings", "harp_arp", "horn"], parts=("bass", "cello", "viola", "violin2"), string_bars=2, string_dyn=0.75),
+               S("outro", 6, 0.4, ["loops", "drone"], rit=True)]),
+    # title screen: warm piano, string quartet, horn
+    dict(id="beginning", title="Início", situation="title", seed=8407, bpm=60, tonic=57, scale="dorian",
+         prog=[(0, "m9"), (5, "add9"), (3, "maj7"), (10, "6")], mel_range=(62, 79), rest=0.3, leap=0.18, reverb=4.4, wet=0.5,
+         form=[S("intro", 4, 0.45, ["lh", "strings", "harp_arp"], lh="sparse", parts=("cello", "viola"), string_dyn=0.5, string_bars=2, harp_every=2),
+               S("theme", 8, 0.6, ["lh", "melody", "counter", "strings"], lh="block", parts=("viola", "violin2"), string_dyn=0.5),
+               S("theme2", 8, 0.68, ["lh", "melody", "strings", "horn"], lh="broken", melody_inst="xylo", mel_range=(60, 77),
+                 parts=("bass", "viola", "violin2"), string_dyn=0.65),
+               S("dev", 8, 0.65, ["lh", "melody", "strings", "counter", "harp_arp"], lh="arp", transpose=3, scale="major", motif="B",
+                 prog=[(0, "maj7"), (9, "m7"), (5, "add9"), (7, "sus4")], parts=("viola", "violin2", "violin1"), string_dyn=0.6, harp_every=2),
+               S("climax", 8, 0.88, ["lh", "melody", "strings", "horn"], lh="octaves", double=("piano", -1), string_dyn=0.95, tempo=1.03),
                S("outro", 6, 0.45, ["lh", "melody", "strings"], lh="sparse", parts=("cello", "viola"), string_dyn=0.5, string_bars=2, rit=True)]),
-    dict(id="wandering", title="Andarilho", situation="overworld", seed=9108, bpm=72, tonic=67, scale="mixolydian",
-         prog=[(0, "add9"), (10, "maj7"), (5, "6"), (7, "m7")], mel_range=(67, 86), rest=0.3, leap=0.18, reverb=3.6, wet=0.42,
-         form=[S("intro", 4, 0.45, ["lh"], lh="arp"),
-               S("theme", 8, 0.6, ["lh", "melody", "counter"], lh="arp"),
-               S("theme2", 8, 0.65, ["lh", "melody", "strings"], lh="arp", melody_inst="violin", parts=("cello", "viola"), string_dyn=0.6, string_bars=2),
-               S("dev", 8, 0.6, ["lh", "melody", "counter", "strings"], lh="broken", transpose=3, scale="major", motif="B",
-                 prog=[(0, "maj9"), (7, "6"), (9, "m7"), (5, "add9")], parts=("viola", "violin2"), string_dyn=0.55),
-               S("climax", 8, 0.85, ["lh", "melody", "strings", "bells", "counter"], lh="arp", double_violin=True,
-                 parts=("bass", "cello", "viola", "violin2", "violin1"), string_dyn=0.9),
-               S("outro", 6, 0.45, ["lh", "melody", "pad"], lh="sparse", rit=True)]),
-    dict(id="harvest", title="Colheita", situation="overworld", seed=1009, bpm=100, meter=3, tonic=62, scale="major",
-         melody_inst="fiddle", prog=[(0, "maj"), (7, "sus4"), (9, "m7"), (5, "6"), (0, "maj"), (2, "m7"), (7, "7"), (0, "add9")],
-         mel_range=(62, 84), rest=0.2, leap=0.2, reverb=2.6, wet=0.35, gains=dict(cello=0.7, pizz=0.85),
-         form=[S("intro", 8, 0.5, ["lh", "pizz"], lh="waltz"),
-               S("theme", 16, 0.65, ["lh", "melody", "pizz"], lh="waltz"),
-               S("theme2", 16, 0.7, ["lh", "melody", "pizz", "strings"], lh="waltz", parts=("viola", "violin2"), string_dyn=0.5, string_bars=2),
-               S("dev", 16, 0.6, ["lh", "melody", "strings", "counter"], lh="waltz", transpose=-3, scale="aeolian", motif="B",
-                 prog=[(0, "min"), (8, "maj7"), (3, "add9"), (10, "6"), (0, "madd9"), (5, "m7"), (7, "min"), (0, "min")],
-                 parts=("cello", "viola"), string_dyn=0.6, string_bars=2),
-               S("climax", 16, 0.85, ["lh", "melody", "pizz", "strings"], lh="waltz", parts=("bass", "cello", "viola", "violin2"),
-                 string_dyn=0.85, tempo=1.03),
-               S("outro", 8, 0.45, ["lh", "melody", "pizz"], lh="waltz", rit=True)]),
+    # walking: fingerpicked guitar that keeps rolling (an acoustic take on the analogue arpeggio)
+    dict(id="wandering", title="Andarilho", situation="overworld", seed=9208, bpm=72, tonic=67, scale="mixolydian", rubato=0.5,
+         prog=[(0, "add9"), (10, "maj7"), (5, "6"), (7, "m7")], mel_range=(60, 77), rest=0.3, leap=0.18, reverb=3.4, wet=0.4,
+         melody_inst="xylo",
+         form=[S("intro", 4, 0.45, ["guitar"]),
+               S("theme", 8, 0.6, ["guitar", "melody", "pizz"]),
+               S("theme2", 8, 0.65, ["guitar", "melody", "strings", "perc", "lh"], lh="sparse", melody_inst="piano", mel_range=(55, 74), parts=("cello",),
+                 string_dyn=0.6, string_bars=2, perc="pulse", perc_dyn=0.35),
+               S("dev", 8, 0.6, ["ostinato", "melody", "counter", "reed"], ost_inst="harp", ost_len=5, transpose=3, scale="major", motif="B",
+                 melody_inst="piano", prog=[(0, "maj9"), (7, "6"), (9, "m7"), (5, "add9")]),
+               S("climax", 8, 0.82, ["guitar", "melody", "strings", "pizz", "perc", "horn"], melody_inst="piano", double=("xylo", 0), perc="groove", perc_dyn=0.5,
+                 parts=("bass", "viola", "violin2"), string_dyn=0.7, string_bars=2),
+               S("outro", 6, 0.45, ["guitar", "melody"], melody_inst="piano", rit=True)]),
+    # 3/4 folk waltz: fiddle, guitar, harmonium, upright bass, frame drum
+    dict(id="harvest", title="Colheita", situation="overworld", seed=1109, bpm=100, meter=3, tonic=62, scale="major", rubato=0.5,
+         melody_inst="xylo", prog=[(0, "maj"), (7, "sus4"), (9, "m7"), (5, "6"), (0, "maj"), (2, "m7"), (7, "7"), (0, "add9")],
+         mel_range=(57, 78), rest=0.2, leap=0.2, reverb=2.6, wet=0.33, gains=dict(cello=0.7),
+         form=[S("intro", 8, 0.5, ["guitar", "pizz", "perc"], guitar="waltz", perc="waltz", perc_dyn=0.5),
+               S("theme", 16, 0.65, ["guitar", "melody", "pizz", "perc"], guitar="waltz", perc="waltz", perc_dyn=0.5),
+               S("theme2", 16, 0.7, ["guitar", "melody", "pizz", "reed", "strings"], guitar="waltz", melody_inst="piano",
+                 parts=("viola",), string_dyn=0.5, string_bars=2),
+               S("dev", 16, 0.6, ["guitar", "melody", "strings", "counter"], guitar="waltz", transpose=-3, scale="aeolian", motif="B",
+                 melody_inst="piano", mel_range=(55, 74), prog=[(0, "min"), (8, "maj7"), (3, "add9"), (10, "6"), (0, "madd9"), (5, "m7"), (7, "min"), (0, "min")],
+                 parts=("bass",), string_dyn=0.6, string_bars=2),
+               S("climax", 16, 0.85, ["guitar", "melody", "pizz", "strings", "reed", "perc"], guitar="waltz", double=("piano", -1),
+                 parts=("bass", "cello", "viola"), string_dyn=0.75, perc="waltz", tempo=1.03),
+               S("outro", 8, 0.45, ["guitar", "melody", "pizz"], guitar="waltz", rit=True)]),
 ]
 
 

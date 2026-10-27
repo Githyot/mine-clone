@@ -9,11 +9,11 @@ use std::sync::Arc;
 use std::thread;
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use glam::{IVec2, IVec3};
+use glam::{IVec2, IVec3, Vec3};
 use voxel::block::Shape;
 use voxel::chunk::{split_xz, Chunk, ChunkPos, CHUNK_HEIGHT};
 use voxel::light::compute_light;
-use voxel::mesh::{mesh_section, MeshInput, MeshTables, SectionMesh};
+use voxel::mesh::{mesh_section, MeshInput, MeshTables, SectionMesh, VIS_ALL};
 use voxel::physics::Terrain;
 use voxel::save::WorldSave;
 use voxel::worldgen::Generator;
@@ -24,7 +24,8 @@ type Neighbours = [Option<Arc<Chunk>>; 9];
 enum Job {
     Generate(ChunkPos),
     Light(ChunkPos, u32, Neighbours),
-    Mesh(ChunkPos, u32, Neighbours),
+    /// The blocks left out (a door that is swinging is drawn on its own meanwhile).
+    Mesh(ChunkPos, u32, Neighbours, Vec<IVec3>),
 }
 
 enum Done {
@@ -70,12 +71,36 @@ pub struct World {
     /// Chunk offsets sorted by distance, for loading nearest-first.
     spiral: Vec<IVec2>,
     spiral_radius: i32,
-    water: BlockId,
-    lava: BlockId,
+    /// 1 for every level of water, 2 for lava, 0 otherwise.
+    fluid: Vec<u8>,
+    /// Blocks changed since the fluids last looked (they wake the water and lava around them).
+    pub changed: Vec<IVec3>,
     solid: Vec<bool>,
     /// Collision height of each block (1.0 except slabs, beds).
     top: Vec<f32>,
+    /// Ladders and vines.
+    climb: Vec<bool>,
+    /// Blocks that stand in water (kelp): bodies swim through them.
+    wet: Vec<bool>,
     pub meshed_count: usize,
+    /// What the mesh workers draw with (shared with them; resource pack models swap inside).
+    pub tables: Arc<MeshTables>,
+    /// The dedicated server draws nothing: lit chunks count as meshed without building meshes.
+    pub headless: bool,
+    /// Multiplayer: every block change, for the network to pass on (None = not recording).
+    pub net_log: Option<Vec<(IVec3, BlockId)>>,
+    /// Multiplayer host: other players' chunks, kept loaded and lit (not meshed) around them.
+    pub extra_centers: Vec<(ChunkPos, i32)>,
+    /// Doors, trapdoors and gates that just opened or closed: (where, before, after), for
+    /// their swing (`swing.rs`).
+    pub swings: Vec<(IVec3, BlockId, BlockId)>,
+    /// Blocks the chunk meshes leave out while they are drawn moving.
+    hidden: HashSet<IVec3>,
+    /// Blocks with a turning model drawn over them (windmill sails), by block id.
+    spins: Vec<bool>,
+    /// Where those blocks are in the loaded chunks, kept up to date as chunks come and go and
+    /// blocks change, so drawing them never has to search the world.
+    pub spinners: HashMap<ChunkPos, Vec<IVec3>>,
 }
 
 impl World {
@@ -107,14 +132,18 @@ impl World {
                             let refs: [Option<&Chunk>; 9] = std::array::from_fn(|i| n[i].as_deref());
                             Done::Lit(pos, ver, compute_light(&reg, refs))
                         }
-                        Job::Mesh(pos, ver, n) => {
+                        Job::Mesh(pos, ver, n, hidden) => {
                             let refs: [Option<&Chunk>; 9] = std::array::from_fn(|i| n[i].as_deref());
-                            let input = MeshInput::new(refs);
+                            let mut input = MeshInput::new(refs);
+                            for h in hidden {
+                                input.hide(h.x - pos.x * 16, h.y, h.z - pos.y * 16);
+                            }
                             let mut v = Vec::new();
                             for s in 0..16 {
                                 if input.section_has_blocks(s) {
                                     let m = mesh_section(&tables, &input, s);
-                                    if !m.is_empty() {
+                                    // Empty but closed-off sections still matter for cave culling.
+                                    if !m.is_empty() || m.vis != VIS_ALL {
                                         v.push((s, m));
                                     }
                                 }
@@ -130,9 +159,14 @@ impl World {
         }
         let water = reg.id_or_air("water");
         let lava = reg.id_or_air("lava");
+        let fluid = reg.blocks.iter().map(|b| if b.base == water && water != AIR { 1 } else if b.base == lava && lava != AIR { 2 } else { 0 }).collect();
         let solid = reg.blocks.iter().map(|b| b.solid && b.shape != Shape::Liquid && b.shape != Shape::Invisible).collect();
         let top = reg.blocks.iter().map(|b| b.height as f32 / 16.0).collect();
+        let climb = reg.blocks.iter().map(|b| b.shape == Shape::Ladder || matches!(b.name.as_str(), "vine" | "weeping_vines" | "twisting_vines" | "scaffolding" | "cave_vines")).collect();
+        let wet = reg.blocks.iter().map(|b| b.waterlogged).collect();
+        let spins = reg.blocks.iter().map(|b| reg.blocks[b.base as usize].name == "windmill_sails").collect();
         World {
+            tables,
             reg,
             gen,
             save,
@@ -147,11 +181,47 @@ impl World {
             unsaved: HashSet::new(),
             spiral: Vec::new(),
             spiral_radius: -1,
-            water,
-            lava,
+            fluid,
+            changed: Vec::new(),
             solid,
             top,
+            climb,
+            wet,
             meshed_count: 0,
+            headless: false,
+            net_log: None,
+            extra_centers: Vec::new(),
+            swings: Vec::new(),
+            hidden: HashSet::new(),
+            spins,
+            spinners: HashMap::new(),
+        }
+    }
+
+    /// Note down the turning blocks of a chunk that just arrived.
+    fn find_spinners(&mut self, c: &Chunk) {
+        self.spinners.remove(&c.pos);
+        let spins = &self.spins;
+        if !spins.iter().any(|&b| b) {
+            return;
+        }
+        let mut found = Vec::new();
+        for (si, sec) in c.sections.iter().enumerate() {
+            if sec.is_empty() || !sec.may_contain(|b| spins[b as usize]) {
+                continue;
+            }
+            for y in si * 16..si * 16 + 16 {
+                for z in 0..16 {
+                    for x in 0..16 {
+                        if spins[c.get(x, y, z) as usize] {
+                            found.push(IVec3::new(c.pos.x * 16 + x as i32, y as i32, c.pos.y * 16 + z as i32));
+                        }
+                    }
+                }
+            }
+        }
+        if !found.is_empty() {
+            self.spinners.insert(c.pos, found);
         }
     }
 
@@ -179,6 +249,17 @@ impl World {
         })
     }
 
+    /// For the loading screen: 0 not started, 1 generating, 2 lighting or meshing, 3 ready.
+    pub fn chunk_status(&self, pos: ChunkPos) -> u8 {
+        match self.slots.get(&pos) {
+            None => 0,
+            Some(s) if s.mesh_done > 0 => 3,
+            Some(s) if s.chunk.is_some() => 2,
+            Some(s) if s.gen_pending => 1,
+            Some(_) => 0,
+        }
+    }
+
     pub fn is_meshed(&self, pos: ChunkPos) -> bool {
         self.slots.get(&pos).is_some_and(|s| s.mesh_done > 0)
     }
@@ -190,8 +271,15 @@ impl World {
             match done {
                 Done::Generated(pos, c) => {
                     if let Some(s) = self.slots.get_mut(&pos) {
-                        s.chunk = Some(Arc::new(c));
-                        s.gen_pending = false;
+                        // A chunk that came over the network meanwhile wins.
+                        if s.chunk.is_none() {
+                            let c = Arc::new(c);
+                            s.chunk = Some(c.clone());
+                            s.gen_pending = false;
+                            self.find_spinners(&c);
+                        } else {
+                            s.gen_pending = false;
+                        }
                     }
                 }
                 Done::Lit(pos, ver, light) => {
@@ -286,6 +374,38 @@ impl World {
                 }
             }
         }
+        // Other players' surroundings (multiplayer host): generated and lit, never meshed.
+        for (c, r) in self.extra_centers.clone() {
+            for k in 0..self.spiral.len() {
+                let off = self.spiral[k];
+                if off.x * off.x + off.y * off.y > lim(r + 1) {
+                    break;
+                }
+                if self.in_flight >= self.max_in_flight {
+                    break;
+                }
+                let p = c + off;
+                let slot = self.slots.entry(p).or_insert_with(|| Slot { light_ver: 1, mesh_ver: 1, ..Default::default() });
+                if slot.chunk.is_none() {
+                    if !slot.gen_pending {
+                        slot.gen_pending = true;
+                        self.in_flight += 1;
+                        let _ = self.jobs.send(Job::Generate(p));
+                    }
+                    continue;
+                }
+                if off.x * off.x + off.y * off.y <= lim(r) && slot.light_done != slot.light_ver && !slot.light_pending {
+                    if let Some(n) = self.neighbours(p) {
+                        let s = self.slots.get_mut(&p).unwrap();
+                        s.light_pending = true;
+                        s.urgent = false;
+                        self.in_flight += 1;
+                        let _ = self.jobs.send(Job::Light(p, s.light_ver, n));
+                    }
+                }
+            }
+        }
+
         // 4. Mesh chunks whose neighbours are lit (edits first, nearest first).
         for k in 0..self.spiral.len() {
             let p = center + self.spiral[k];
@@ -303,17 +423,33 @@ impl World {
             if !self.all_lit(p) {
                 continue;
             }
+            if self.headless {
+                let s = self.slots.get_mut(&p).unwrap();
+                if s.mesh_done == 0 {
+                    self.meshed_count += 1;
+                }
+                s.mesh_done = s.mesh_ver;
+                continue;
+            }
             let n = self.neighbours(p).unwrap();
             let s = self.slots.get_mut(&p).unwrap();
             s.mesh_pending = true;
             self.in_flight += 1;
-            let job = Job::Mesh(p, s.mesh_ver, n);
+            let hidden: Vec<IVec3> = self.hidden.iter().copied().filter(|h| (h.x.div_euclid(16) - p.x).abs() <= 1 && (h.z.div_euclid(16) - p.y).abs() <= 1).collect();
+            let job = Job::Mesh(p, s.mesh_ver, n, hidden);
             let _ = if urgent { self.urgent_jobs.send(job) } else { self.jobs.send(job) };
         }
 
         // 5. Unload far chunks (saving edits).
         let unload = lim(load_r + 2);
-        let far: Vec<ChunkPos> = self.slots.keys().copied().filter(|&p| r2(p) > unload).collect();
+        let extra = &self.extra_centers;
+        let near_other = |p: ChunkPos| {
+            extra.iter().any(|&(c, r)| {
+                let d = p - c;
+                d.x * d.x + d.y * d.y <= (r + 3) * (r + 3)
+            })
+        };
+        let far: Vec<ChunkPos> = self.slots.keys().copied().filter(|&p| r2(p) > unload && !near_other(p)).collect();
         for p in far {
             let s = self.slots.get(&p).unwrap();
             if s.gen_pending || s.light_pending || s.mesh_pending {
@@ -329,6 +465,25 @@ impl World {
                 self.events.push(MeshEvent::Remove(p));
             }
             self.slots.remove(&p);
+            self.spinners.remove(&p);
+        }
+    }
+
+    /// Put in a whole chunk (sent by a multiplayer host), relighting and remeshing around it.
+    pub fn replace_chunk(&mut self, chunk: Chunk) {
+        let cp = chunk.pos;
+        self.find_spinners(&chunk);
+        let slot = self.slots.entry(cp).or_insert_with(|| Slot { light_ver: 1, mesh_ver: 1, ..Default::default() });
+        slot.chunk = Some(Arc::new(chunk));
+        self.unsaved.insert(cp);
+        for i in 0..9 {
+            let n = cp + IVec2::new(i % 3 - 1, i / 3 - 1);
+            if let Some(s) = self.slots.get_mut(&n) {
+                if s.chunk.is_some() {
+                    s.light_ver += 1;
+                    s.urgent = true;
+                }
+            }
         }
     }
 
@@ -365,8 +520,28 @@ impl World {
         let Some(slot) = self.slots.get_mut(&cp) else { return false };
         let Some(c) = slot.chunk.as_mut() else { return false };
         let c = Arc::make_mut(c);
+        let was = c.get(x, p.y as usize, z);
         c.set(x, p.y as usize, z, id);
+        if self.spins[was as usize] != self.spins[id as usize] {
+            let list = self.spinners.entry(cp).or_default();
+            list.retain(|&q| q != p);
+            if self.spins[id as usize] {
+                list.push(p);
+            }
+        }
+        if was != id && self.swings.len() < 64 {
+            let (a, b) = (self.reg.get(was), self.reg.get(id));
+            if a.base == b.base && a.variant ^ b.variant == 4 && matches!(a.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate) {
+                self.swings.push((p, was, id));
+            }
+        }
         c.modified = true;
+        if let Some(log) = self.net_log.as_mut() {
+            log.push((p, id));
+        }
+        if self.changed.len() < 100_000 {
+            self.changed.push(p);
+        }
         self.unsaved.insert(cp);
         for i in 0..9 {
             let n = cp + IVec2::new(i % 3 - 1, i / 3 - 1);
@@ -380,10 +555,53 @@ impl World {
         true
     }
 
+    /// Leave a block out of the chunk meshes (or put it back), remeshing the chunks it touches.
+    pub fn set_hidden(&mut self, p: IVec3, hide: bool) {
+        let changed = if hide { self.hidden.insert(p) } else { self.hidden.remove(&p) };
+        if !changed {
+            return;
+        }
+        let mut cps = Vec::new();
+        for d in [IVec3::ZERO, IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z] {
+            let cp = split_xz(p.x + d.x, p.z + d.z).0;
+            if !cps.contains(&cp) {
+                cps.push(cp);
+            }
+        }
+        for cp in cps {
+            if let Some(s) = self.slots.get_mut(&cp) {
+                if s.mesh_done > 0 {
+                    // A mesh still in flight is thrown away when it comes back.
+                    s.mesh_ver += 1;
+                }
+            }
+        }
+    }
+
+    /// Mesh every loaded chunk again (the block models changed).
+    pub fn remesh_all(&mut self) {
+        for s in self.slots.values_mut() {
+            if s.mesh_done > 0 {
+                s.mesh_ver += 1;
+            }
+        }
+    }
+
     /// Remove a block; sand and gravel above it fall down.
     pub fn break_block(&mut self, p: IVec3) -> bool {
+        let was = self.block_or_air(p);
         if !self.set_block(p, AIR) {
             return false;
+        }
+        // A door goes as a whole.
+        let wb = self.reg.get(was);
+        let was_frame = wb.shape == Shape::Portal || wb.name == "obsidian";
+        if wb.shape == Shape::Door {
+            let other = if wb.variant & 8 != 0 { p - IVec3::Y } else { p + IVec3::Y };
+            let o = self.block_or_air(other);
+            if self.reg.get(o).base == wb.base && o != AIR {
+                self.set_block(other, AIR);
+            }
         }
         let mut y = p.y + 1;
         loop {
@@ -401,6 +619,19 @@ impl World {
             self.set_block(dest, id);
             y += 1;
         }
+        // A broken portal frame (or portal) puts the whole portal out.
+        if was_frame {
+            let mut todo: Vec<IVec3> = [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z].iter().map(|d| p + *d).collect();
+            let mut n = 0;
+            while let Some(q) = todo.pop() {
+                if self.reg.get(self.block_or_air(q)).shape != Shape::Portal || n > 512 {
+                    continue;
+                }
+                self.set_block(q, AIR);
+                n += 1;
+                todo.extend([IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z].iter().map(|d| q + *d));
+            }
+        }
         true
     }
 
@@ -415,7 +646,17 @@ impl World {
     }
 
     pub fn is_liquid(&self, id: BlockId) -> bool {
-        id != AIR && (id == self.water || id == self.lava)
+        self.fluid[id as usize] != 0
+    }
+
+    /// Stands in water (kelp): leaves water behind when broken.
+    pub fn is_wet(&self, id: BlockId) -> bool {
+        self.wet[id as usize]
+    }
+
+    /// 1 water, 2 lava, 0 anything else (any level of flow counts).
+    pub fn fluid(&self, id: BlockId) -> u8 {
+        self.fluid[id as usize]
     }
 
     pub fn save_all(&mut self) {
@@ -451,9 +692,78 @@ impl Terrain for World {
         }
     }
     fn liquid(&self, p: IVec3) -> bool {
-        self.block(p) == Some(self.water)
+        self.block(p).is_some_and(|id| self.fluid[id as usize] == 1 || self.wet[id as usize])
+    }
+    fn climbable(&self, p: IVec3) -> bool {
+        self.block(p).is_some_and(|id| self.climb[id as usize])
     }
     fn top(&self, p: IVec3) -> f32 {
         self.block(p).map(|id| self.top[id as usize]).unwrap_or(1.0)
+    }
+    fn boxes(&self, p: IVec3, out: &mut Vec<[f32; 6]>) {
+        let Some(id) = self.block(p) else {
+            out.push([0.0, 0.0, 0.0, 1.0, 1.0, 1.0]);
+            return;
+        };
+        if !self.solid[id as usize] {
+            return;
+        }
+        let b = self.reg.get(id);
+        if b.shape.is_boxes() {
+            let mut v = Vec::new();
+            voxel::shapes::boxes(b.shape, b.variant, self.connections(p, b.shape), true, &mut v);
+            out.extend(v.iter().map(|q| q.map(|c| c as f32 / 16.0)));
+        } else {
+            out.push([0.0, 0.0, 0.0, 1.0, self.top[id as usize], 1.0]);
+        }
+    }
+}
+
+impl World {
+    /// Ray against the boxes of a shaped block (stairs, slabs, doors...) at `p`: distance and
+    /// the normal of the face hit. None for other blocks or when the ray passes beside them.
+    pub fn ray_shape(&self, o: Vec3, d: Vec3, p: IVec3) -> Option<(f32, IVec3)> {
+        let id = self.block(p)?;
+        let b = self.reg.get(id);
+        if !b.shape.is_boxes() {
+            return None;
+        }
+        let mut v = Vec::new();
+        voxel::shapes::boxes(b.shape, b.variant, self.connections(p, b.shape), false, &mut v);
+        let inv = Vec3::ONE / d;
+        let mut best: Option<(f32, IVec3)> = None;
+        for q in v {
+            let lo = p.as_vec3() + Vec3::new(q[0] as f32, q[1] as f32, q[2] as f32) / 16.0;
+            let hi = p.as_vec3() + Vec3::new(q[3] as f32, q[4] as f32, q[5] as f32) / 16.0;
+            let t1 = (lo - o) * inv;
+            let t2 = (hi - o) * inv;
+            let near = t1.min(t2);
+            let tmin = near.max_element();
+            let tmax = t1.max(t2).min_element();
+            if tmax < tmin.max(0.0) || best.is_some_and(|b| b.0 <= tmin) {
+                continue;
+            }
+            let axis = if near.x >= near.y && near.x >= near.z { 0 } else if near.y >= near.z { 1 } else { 2 };
+            let mut n = IVec3::ZERO;
+            n[axis] = if d[axis] > 0.0 { -1 } else { 1 };
+            best = Some((tmin.max(0.0), n));
+        }
+        best
+    }
+
+    /// Which sides a fence, wall or pane at `p` joins (see `voxel::shapes`).
+    pub fn connections(&self, p: IVec3, shape: Shape) -> u8 {
+        use voxel::shapes::{joins, CONN_NX, CONN_NZ, CONN_PX, CONN_PZ};
+        if !matches!(shape, Shape::Fence | Shape::Wall | Shape::Pane | Shape::Table) {
+            return 0;
+        }
+        let mut c = 0;
+        for (bit, o) in [(CONN_PX, IVec3::X), (CONN_NX, -IVec3::X), (CONN_PZ, IVec3::Z), (CONN_NZ, -IVec3::Z)] {
+            let n = self.block_or_air(p + o);
+            if joins(shape, self.reg.get(n).shape, self.reg.is_opaque(n)) {
+                c |= bit;
+            }
+        }
+        c
     }
 }

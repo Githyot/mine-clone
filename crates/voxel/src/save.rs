@@ -31,6 +31,28 @@ pub struct LevelData {
     pub survival: bool,
     #[serde(default = "full_health")]
     pub health: f32,
+    /// Most health the player can have; life crystals raise it two hearts at a time.
+    #[serde(default = "full_health")]
+    pub max_health: f32,
+    /// Most mana (two per star); mana crystals raise it.
+    #[serde(default = "full_health")]
+    pub max_mana: f32,
+    /// Bosses beaten in this world (mob names).
+    #[serde(default)]
+    pub bosses: Vec<String>,
+    /// Town NPCs living here: (mob name, home position).
+    #[serde(default)]
+    pub npcs: Vec<(String, [f32; 3])>,
+    /// Weather: raining, storm, and seconds until it changes (0 = pick a fresh spell).
+    #[serde(default)]
+    pub raining: bool,
+    #[serde(default)]
+    pub thunder: bool,
+    #[serde(default)]
+    pub weather_timer: f32,
+    /// Dimension the player is in (0 Overworld, 1 Nether).
+    #[serde(default)]
+    pub dim: u8,
 }
 
 fn full_health() -> f32 {

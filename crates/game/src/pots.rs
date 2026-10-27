@@ -1,0 +1,206 @@
+//! Botany pots (Botany Pots idea): a seed, root or sapling set into a pot keeps growing on its
+//! own, and every so often its harvest drops into the hopper or chest under the pot.
+
+use glam::{IVec3, Vec3};
+use voxel::item::ItemStack;
+use voxel::{BlockId, BlockRegistry, AIR};
+
+use crate::audio::{Material, Sfx};
+use crate::survival::Container;
+use crate::Game;
+
+#[derive(Clone, Copy)]
+enum Yield {
+    /// The drops of this ripe crop block.
+    Crop(BlockId),
+    /// A tree: its log, now and then a sapling (and apples on oaks).
+    Tree(&'static str),
+}
+
+pub struct Pots {
+    empty: BlockId,
+    /// What each block id yields, when it's a planted pot.
+    yields: Vec<Option<Yield>>,
+    /// Planted pot for each block a held item would place (crop first stage or sapling).
+    planted: Vec<BlockId>,
+}
+
+const TREES: [&str; 8] = ["oak", "birch", "spruce", "jungle", "acacia", "dark_oak", "cherry", "mangrove"];
+
+impl Pots {
+    pub fn new(reg: &BlockRegistry) -> Pots {
+        let n = reg.len();
+        let mut p = Pots { empty: reg.id_or_air("botany_pot"), yields: vec![None; n], planted: vec![AIR; n] };
+        for (kind, stages) in [("wheat", 8), ("carrots", 4), ("potatoes", 4), ("beetroots", 4)] {
+            let (Some(pot), Some(seed), Some(ripe)) = (reg.id(&format!("botany_pot_{kind}")), reg.id(&format!("{kind}_stage0")), reg.id(&format!("{kind}_stage{}", stages - 1))) else { continue };
+            p.yields[pot as usize] = Some(Yield::Crop(ripe));
+            p.planted[seed as usize] = pot;
+        }
+        for t in TREES {
+            let (Some(pot), Some(sapling)) = (reg.id(&format!("botany_pot_{t}")), reg.id(&voxel::trees::sapling_of(t))) else { continue };
+            p.yields[pot as usize] = Some(Yield::Tree(t));
+            p.planted[sapling as usize] = pot;
+        }
+        for f in ["poppy", "dandelion"] {
+            if let (Some(pot), Some(flower)) = (reg.id(&format!("potted_{f}")), reg.id(f)) {
+                p.planted[flower as usize] = pot;
+            }
+        }
+        p
+    }
+
+    pub fn is_planted(&self, id: BlockId) -> bool {
+        self.yields.get(id as usize).is_some_and(|y| y.is_some())
+    }
+}
+
+impl Game {
+    /// Right-click an empty pot with something that grows: plant it.
+    pub(crate) fn pot_plant(&mut self, places: Option<BlockId>) -> bool {
+        let (Some(hit), Some(b)) = (self.target, places) else { return false };
+        if self.pots.empty == AIR || self.world.block_or_air(hit.block) != self.pots.empty {
+            return false;
+        }
+        let pot = self.pots.planted.get(b as usize).copied().unwrap_or(AIR);
+        if pot == AIR {
+            return false;
+        }
+        self.world.set_block(hit.block, pot);
+        if self.survival {
+            let sel = self.selected;
+            self.surv.inv.take(sel, 1);
+        }
+        self.anim.start_swing();
+        self.sfx(Sfx::Place(Material::Grass));
+        if self.world.block_or_air(hit.block - IVec3::Y) == AIR || !self.surv.containers.contains_key(&(hit.block - IVec3::Y)) {
+            self.toast("Ponha um funil ou baú embaixo do vaso para receber a colheita", 4.0);
+        }
+        true
+    }
+
+    /// A random tick on a planted pot: sometimes a harvest, into the container below.
+    pub(crate) fn pot_tick(&mut self, p: IVec3, id: BlockId, r: u32) {
+        let Some(y) = self.pots.yields[id as usize] else { return };
+        if r % 3 != 0 || !matches!(self.surv.containers.get(&(p - IVec3::Y)), Some(Container::Chest(_))) {
+            return;
+        }
+        let rng = &mut self.surv.rng;
+        let drops: Vec<ItemStack> = match y {
+            Yield::Crop(ripe) => self.items.drops(&self.reg, ripe, None, rng),
+            Yield::Tree(t) => {
+                let mut v = Vec::new();
+                let it = |n: String| self.items.id(&n);
+                if let Some(log) = it(format!("{t}_log")) {
+                    v.push(ItemStack::new(log, 1 + (rng.f32() < 0.4) as u8));
+                }
+                if rng.f32() < 0.1 {
+                    if let Some(s) = it(voxel::trees::sapling_of(t)) {
+                        v.push(ItemStack::new(s, 1));
+                    }
+                }
+                if matches!(t, "oak" | "dark_oak") && rng.f32() < 0.12 {
+                    if let Some(a) = it("apple".into()) {
+                        v.push(ItemStack::new(a, 1));
+                    }
+                }
+                if rng.f32() < 0.2 {
+                    if let Some(s) = it("stick".into()) {
+                        v.push(ItemStack::new(s, 1 + (rng.f32() < 0.5) as u8));
+                    }
+                }
+                v
+            }
+        };
+        let Some(Container::Chest(inv)) = self.surv.containers.get_mut(&(p - IVec3::Y)) else { return };
+        let full = drops.into_iter().filter_map(|d| inv.add(&self.items, d)).count() > 0;
+        if !full && self.body.pos.distance(p.as_vec3()) < 24.0 {
+            let glow = self.glow_layer();
+            self.particles.glow(p.as_vec3() + Vec3::new(0.5, 0.6, 0.5), Vec3::Y * 0.8, glow, [0.6, 0.95, 0.4], 0.06, 0.8);
+        }
+    }
+
+    /// Test scene: a row of planted pots on hoppers over a chest.
+    pub(crate) fn test_pots(&mut self) {
+        let f = self.forward();
+        let c = (self.body.pos + Vec3::new(f.x, 0.0, f.z).normalize_or_zero() * 4.0).floor().as_ivec3();
+        let hopper = self.reg.id_or_air("hopper");
+        let names = ["botany_pot_wheat", "botany_pot_carrots", "botany_pot_oak", "botany_pot_cherry", "botany_pot", "botany_pot_beetroots"];
+        for (k, n) in names.iter().enumerate() {
+            let p = c + IVec3::new(k as i32 - 2, 1, 0);
+            for dy in -1..4 {
+                self.world.set_block(p + IVec3::Y * dy, AIR);
+            }
+            self.world.set_block(p, hopper);
+            self.surv.containers.insert(p, Container::Chest(voxel::item::Inventory::new(5)));
+            self.world.set_block(p + IVec3::Y, self.reg.id_or_air(n));
+        }
+    }
+
+    /// Test scene: a wall of the new building blocks in front.
+    pub(crate) fn test_decor(&mut self) {
+        let f = self.forward();
+        let c = (self.body.pos + Vec3::new(f.x, 0.0, f.z).normalize_or_zero() * 7.0).floor().as_ivec3();
+        let rows: [&[&str]; 4] = [
+            &["birch_stairs", "spruce_slab", "jungle_fence", "acacia_door", "dark_oak_trapdoor", "cherry_stairs", "crimson_fence", "sandstone_stairs", "brick_slab"],
+            &["cobblestone_bricks", "mossy_cobblestone_bricks", "rocky_dirt", "thatch", "lattice", "red_curtain", "white_curtain", "nether_brick_stairs", "purpur_stairs"],
+            &["potted_poppy", "potted_dandelion", "twig", "pebble", "brazier", "quartz_stairs", "blackstone_slab", "end_stone_brick_stairs", "thatch_roof"],
+            &["chandelier", "", "", "", "", "", "", "", ""],
+        ];
+        for dz in -1..9 {
+            for dx in -6..7 {
+                for y in -1..6 {
+                    let id = if y == -1 { self.reg.id_or_air("stone") } else { AIR };
+                    self.world.set_block(c + IVec3::new(dx, y, dz), id);
+                }
+            }
+        }
+        for (r, row) in rows.iter().enumerate() {
+            for (k, n) in row.iter().enumerate() {
+                if n.is_empty() {
+                    continue;
+                }
+                let mut id = self.reg.id_or_air(n);
+                if *n == "chandelier" {
+                    id = self.reg.variant(id, 1);
+                }
+                self.world.set_block(c + IVec3::new(k as i32 - 4, r as i32, 0), id);
+            }
+        }
+        // Another Furniture: benches and drawers turned to the viewer, shelves on the wall.
+        for (k, (n, v)) in [("oak_bench", 0), ("cherry_bench", 0), ("oak_drawer", 2), ("spruce_drawer", 2), ("cherry_drawer", 2), ("dark_oak_bench", 1)].iter().enumerate() {
+            let id = self.reg.id_or_air(n);
+            self.world.set_block(c + IVec3::new(k as i32 - 4, 0, 3), self.reg.variant(id, *v));
+        }
+        let stone = self.reg.id_or_air("cobblestone_bricks");
+        for dx in 3..7 {
+            for y in 0..3 {
+                self.world.set_block(c + IVec3::new(dx, y, 2), stone);
+            }
+        }
+        for (dx, n) in [(3, "oak_shelf"), (4, "birch_shelf"), (5, "spruce_shelf"), (6, "cherry_shelf")] {
+            let id = self.reg.id_or_air(n);
+            self.world.set_block(c + IVec3::new(dx, 1, 3), self.reg.variant(id, 0));
+        }
+        // Signs: one standing, one on the wall, and carpets.
+        let sign = self.reg.id_or_air("oak_sign");
+        self.world.set_block(c + IVec3::new(2, 0, 4), self.reg.variant(sign, 0));
+        self.signs.insert((c + IVec3::new(2, 0, 4)).to_array(), "Bem-vindo\nà vila!".to_string());
+        let wall = self.reg.id_or_air("spruce_sign");
+        self.world.set_block(c + IVec3::new(3, 2, 3), self.reg.variant(wall, 4));
+        self.signs.insert((c + IVec3::new(3, 2, 3)).to_array(), "Loja\naberta".to_string());
+        // Banners: three on poles, one on the wall.
+        for (dx, n) in [(-6, "red_banner"), (-7, "blue_banner"), (-8, "yellow_banner")] {
+            let id = self.reg.id_or_air(n);
+            self.world.set_block(c + IVec3::new(dx, 0, 4), self.reg.variant(id, 0));
+        }
+        let green = self.reg.id_or_air("green_banner");
+        self.world.set_block(c + IVec3::new(5, 1, 3), self.reg.variant(green, 4));
+        for (dx, n) in [(-5, "red_carpet"), (-4, "blue_carpet"), (-3, "yellow_carpet")] {
+            self.world.set_block(c + IVec3::new(dx, 0, 5), self.reg.id_or_air(n));
+        }
+        self.body.pos = c.as_vec3() + Vec3::new(0.5, 0.0, 7.5);
+        if let Some(top) = self.reg.id("acacia_door") {
+            self.world.set_block(c + IVec3::new(-1, 1, 0), self.reg.variant(top, 8));
+        }
+    }
+}

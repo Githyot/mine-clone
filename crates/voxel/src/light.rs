@@ -32,9 +32,9 @@ pub fn compute_light(reg: &BlockRegistry, chunks: [Option<&Chunk>; 9]) -> Vec<u8
         .iter()
         .enumerate()
         .map(|(i, b)| {
-            if reg.is_opaque(i as u16) || (b.name == "lava") {
+            if reg.is_opaque(i as u16) || reg.get(b.base).name == "lava" {
                 255
-            } else if Some(i as u16) == water || Some(i as u16) == ice || b.name.ends_with("_leaves") {
+            } else if Some(b.base) == water || Some(i as u16) == ice || b.name.ends_with("_leaves") {
                 1
             } else {
                 0

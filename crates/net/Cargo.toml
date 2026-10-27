@@ -1,0 +1,16 @@
+[package]
+name = "net"
+version.workspace = true
+edition.workspace = true
+description = "Multiplayer: the wire protocol and the QUIC transport (host and guest), LAN discovery, UPnP and join codes. No game code."
+
+[dependencies]
+serde.workspace = true
+log.workspace = true
+crossbeam-channel.workspace = true
+postcard = { version = "1", default-features = false, features = ["use-std"] }
+quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring", "log"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging"] }
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "net", "time", "sync", "macros", "io-util"] }
+igd-next = { version = "0.16", default-features = false }

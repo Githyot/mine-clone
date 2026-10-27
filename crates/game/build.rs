@@ -5,6 +5,7 @@ use std::path::Path;
 
 fn main() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
+    windows_icon(&root);
     let out = Path::new(&std::env::var("OUT_DIR").unwrap()).join("embedded.rs");
     let mut code = String::new();
 
@@ -45,7 +46,20 @@ fn main() {
         }
         code.push_str("];\n");
     }
-    for (var, file) in [("MOBS_RON", "packs/vanilla/mobs.ron"), ("PAINTINGS_RON", "packs/vanilla/paintings.ron"), ("ITEMS_RON", "packs/vanilla/items.ron"), ("RECIPES_RON", "packs/vanilla/recipes.ron")] {
+    // Interface art, keyed by its path under textures/gui/ without ".png" ("sprites/hud/hotbar").
+    let gui_dir = root.join("packs/vanilla/textures/gui");
+    println!("cargo:rerun-if-changed={}", gui_dir.display());
+    let mut gui = Vec::new();
+    walk_png(&gui_dir, &mut gui);
+    gui.sort();
+    code.push_str("pub static GUI_TEXTURES: &[(&str, &[u8])] = &[\n");
+    for p in &gui {
+        let key = p.strip_prefix(&gui_dir).unwrap().with_extension("").to_string_lossy().replace('\\', "/");
+        code.push_str(&format!("    ({:?}, include_bytes!({:?})),\n", key, p.display().to_string()));
+    }
+    code.push_str("];\n");
+
+    for (var, file) in [("MOBS_RON", "packs/vanilla/mobs.ron"), ("PAINTINGS_RON", "packs/vanilla/paintings.ron"), ("ITEMS_RON", "packs/vanilla/items.ron"), ("RECIPES_RON", "packs/vanilla/recipes.ron"), ("STRUCTURES_RON", "packs/vanilla/structures.ron"), ("T5_BLOCKS_RON", "packs/vanilla/etapa5/blocks.ron"), ("T5_ITEMS_RON", "packs/vanilla/etapa5/items.ron"), ("T5_MOBS_RON", "packs/vanilla/etapa5/mobs.ron"), ("T5_RECIPES_RON", "packs/vanilla/etapa5/recipes.ron"), ("RPG_ITEMS_RON", "packs/vanilla/rpg/items.ron"), ("RPG_RECIPES_RON", "packs/vanilla/rpg/recipes.ron"), ("FASE6_BLOCKS_RON", "packs/vanilla/fase6/blocks.ron"), ("FASE6_ITEMS_RON", "packs/vanilla/fase6/items.ron"), ("FASE6_RECIPES_RON", "packs/vanilla/fase6/recipes.ron"), ("FASE6_STRUCTURES_RON", "packs/vanilla/fase6/structures.ron"), ("FASE6_MOBS_RON", "packs/vanilla/fase6/mobs.ron"), ("MODS_BLOCKS_RON", "packs/vanilla/mods/blocks.ron"), ("MODS_ITEMS_RON", "packs/vanilla/mods/items.ron"), ("MODS_RECIPES_RON", "packs/vanilla/mods/recipes.ron"), ("MODS_MOBS_RON", "packs/vanilla/mods/mobs.ron"), ("MODS_STRUCTURES_RON", "packs/vanilla/mods/structures.ron"), ("MODS_DIMS_MOBS_RON", "packs/vanilla/mods/dims_mobs.ron"), ("MODS_DIMS_STRUCTURES_RON", "packs/vanilla/mods/dims_structures.ron")] {
         let p = root.join(file);
         println!("cargo:rerun-if-changed={}", p.display());
         if p.exists() {
@@ -71,4 +85,40 @@ fn main() {
     let tracks_src = if tracks.exists() { format!("include_str!({:?})", tracks.display().to_string()) } else { "\"[]\"".into() };
     code.push_str(&format!("pub static TRACKS_JSON: &str = {tracks_src};\n"));
     fs::write(out, code).unwrap();
+}
+
+fn walk_png(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+    for e in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            println!("cargo:rerun-if-changed={}", p.display());
+            walk_png(&p, out);
+        } else if p.extension().is_some_and(|x| x == "png") {
+            out.push(p);
+        }
+    }
+}
+
+/// The program icon of the Windows .exe (the chameleon on a dirt block), compiled with windres
+/// when it is available (the MinGW cross build); other builds simply go without it.
+fn windows_icon(root: &Path) {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+    let ico = root.join("assets/icon/icon.ico");
+    println!("cargo:rerun-if-changed={}", ico.display());
+    let out = Path::new(&std::env::var("OUT_DIR").unwrap()).to_path_buf();
+    let rc = out.join("icon.rc");
+    let obj = out.join("icon.o");
+    let ico_path = ico.display().to_string().replace('\\', "/");
+    if fs::write(&rc, format!("1 ICON \"{ico_path}\"\n")).is_err() {
+        return;
+    }
+    for tool in ["x86_64-w64-mingw32-windres", "windres"] {
+        let ok = std::process::Command::new(tool).arg(&rc).args(["-O", "coff", "-o"]).arg(&obj).status().is_ok_and(|s| s.success());
+        if ok {
+            println!("cargo:rustc-link-arg-bins={}", obj.display());
+            return;
+        }
+    }
 }

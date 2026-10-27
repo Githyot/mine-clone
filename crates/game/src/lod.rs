@@ -1,7 +1,7 @@
 //! Distant terrain: past the render distance the world is drawn as a coarse, blocky heightmap
 //! straight from the world generator, so mountains and coasts show up far away without loading
 //! chunks. The ground is cut into square tiles; each tile samples one column every `step` blocks
-//! (4 near, 16 far), gives it a flat top in the colour of its surface block and walls down to its
+//! (4 near, 32 farthest), gives it a flat top in the colour of its surface block and walls down to its
 //! neighbours. Tiles are built on their own worker threads, kept while in range, and drawn by the
 //! renderer with fog. Where real chunks are drawn the shader throws the tiles away.
 
@@ -20,7 +20,8 @@ use voxel::{BlockId, BlockRegistry};
 /// Tile size in blocks.
 pub const TILE: i32 = 128;
 /// Extra distances offered in the menu (blocks past the render distance; 0 = off).
-pub const DISTANCES: [i32; 4] = [0, 256, 512, 1024];
+/// Extra blocks of distant terrain the options offer; 2048 is 128 chunks.
+pub const DISTANCES: [i32; 5] = [0, 256, 512, 1024, 2048];
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Debug)]
@@ -109,7 +110,8 @@ fn cell(gen: &Generator, colors: &LodColors, wx: i32, wz: i32) -> Cell {
     if let Some(l) = s.liquid {
         // Water surface as the mesher draws it (2/16 below the block top).
         let c = colors.get(l, false, s.biome);
-        let water = [c[0] * 0.85, c[1] * 0.9, c[2]];
+        let w = s.biome.water_tint();
+        let water = [c[0] * 0.85 * w[0], c[1] * 0.9 * w[1], c[2] * w[2]];
         return Cell { y: SEA_LEVEL as f32 + 0.875, canopy: 0.0, top: water, side: water };
     }
     let mut c = Cell { y: s.height as f32 + 1.0, canopy: 0.0, top: colors.get(s.top, false, s.biome), side: colors.get(s.top, true, s.biome) };
@@ -230,6 +232,7 @@ pub struct Lod {
     jobs: Sender<(u32, IVec2, i32)>,
     done: Receiver<(u32, IVec2, i32, TileMesh)>,
     colors: Arc<std::sync::RwLock<Arc<LodColors>>>,
+    gen: Arc<std::sync::RwLock<Arc<Generator>>>,
     pub tiles: HashMap<IVec2, GpuTile>,
     pending: HashSet<IVec2>,
     /// Tiles wanted now, nearest first, with their step.
@@ -246,6 +249,7 @@ impl Lod {
         let (jobs, job_rx) = unbounded::<(u32, IVec2, i32)>();
         let (done_tx, done) = unbounded();
         let colors = Arc::new(std::sync::RwLock::new(Arc::new(colors)));
+        let gen = Arc::new(std::sync::RwLock::new(gen));
         // Few threads: chunk generation near the player matters more.
         let workers = (thread::available_parallelism().map(|n| n.get()).unwrap_or(4) / 4).clamp(1, 3);
         for i in 0..workers {
@@ -254,6 +258,8 @@ impl Lod {
                 while let Ok((epoch, tile, step)) = rx.recv() {
                     let c = colors.read().map(|c| c.clone()).ok();
                     let Some(c) = c else { break };
+                    let g = gen.read().map(|g| g.clone()).ok();
+                    let Some(gen) = g else { break };
                     if tx.send((epoch, tile, step, build_tile(&gen, &c, tile, step))).is_err() {
                         break;
                     }
@@ -264,6 +270,7 @@ impl Lod {
             jobs,
             done,
             colors,
+            gen,
             tiles: HashMap::new(),
             pending: HashSet::new(),
             wanted: Vec::new(),
@@ -278,6 +285,15 @@ impl Lod {
     pub fn set_colors(&mut self, colors: LodColors) {
         if let Ok(mut c) = self.colors.write() {
             *c = Arc::new(colors);
+        }
+        self.epoch += 1;
+        self.clear();
+    }
+
+    /// Another world (or dimension): drop every tile and build new ones from its generator.
+    pub fn set_gen(&mut self, gen: Arc<Generator>) {
+        if let Ok(mut g) = self.gen.write() {
+            *g = gen;
         }
         self.epoch += 1;
         self.clear();
@@ -306,8 +322,10 @@ impl Lod {
             4
         } else if d < 768.0 {
             8
-        } else {
+        } else if d < 1536.0 {
             16
+        } else {
+            32
         }
     }
 
@@ -404,7 +422,7 @@ mod tests {
     fn setup() -> (Generator, LodColors) {
         let reg = BlockRegistry::from_ron(include_str!("../../../packs/vanilla/blocks.ron")).unwrap();
         let gen = Generator::new(12345, &reg);
-        let tex = TextureSet { size: 2, layers: vec![vec![128; 16]; reg.textures.len()], packs: Vec::new() };
+        let tex = TextureSet { size: 2, layers: vec![vec![128; 16]; reg.textures.len()], packs: Vec::new(), gui: Default::default() };
         let colors = LodColors::new(&reg, &tex);
         (gen, colors)
     }
@@ -412,7 +430,7 @@ mod tests {
     #[test]
     fn tiles_are_quads_inside_the_tile() {
         let (gen, colors) = setup();
-        for step in [4, 8, 16] {
+        for step in [4, 8, 16, 32] {
             let m = build_tile(&gen, &colors, IVec2::new(3, -2), step);
             let n = (TILE / step) as usize;
             assert_eq!(m.verts.len() % 4, 0);

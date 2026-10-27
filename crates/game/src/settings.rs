@@ -70,11 +70,24 @@ pub struct Settings {
     pub music_delay_max: f32,
     /// Enabled resource packs from the `resourcepacks` folder, highest priority first.
     pub resource_packs: Vec<String>,
+    /// The bundled pack was turned on once already (so turning it off sticks).
+    pub bundled_pack_offered: bool,
+    /// Creative: hotbars saved by name (up to 9 rows of 9 items).
+    pub saved_hotbars: Vec<Vec<String>>,
     pub show_clouds: bool,
     /// The view sways a little while walking.
     pub view_bobbing: bool,
+    /// Items on the ground lie flat and still (like the Item Drops mod) instead of floating.
+    pub flat_drops: bool,
     /// Animals and monsters spawn in the world.
     pub mobs: bool,
+    /// Textures get a little carved relief near the camera.
+    pub relief: bool,
+    /// Largest texture size in pixels per block face (16, 32, 64, 128). The game's own art is 64;
+    /// lower it on computers with little video memory.
+    pub texture_resolution: u32,
+    /// 0 peaceful (no monsters, health comes back), 1 easy, 2 normal, 3 hard.
+    pub difficulty: u8,
     pub gui_scale: u32,
     pub controller: ControllerSettings,
     /// Shader pack in use: a built-in name or a folder in `shaderpacks/` ("" = off).
@@ -84,6 +97,38 @@ pub struct Settings {
     pub shader_quality: ShaderQuality,
     /// Low-detail distant terrain drawn this many blocks past the render distance (0 = off).
     pub lod_distance: i32,
+    /// Buildings farther apart in new chunks (Sparse Structures idea).
+    pub sparse_structures: bool,
+    /// Multiplayer guest: the host's structure spacing, while connected (never saved).
+    #[serde(skip)]
+    pub spread_override: Option<i32>,
+    /// Several cloud layers drifting with the wind (Better Clouds idea); off = one classic layer.
+    /// Off by default: on slow (software) renderers it costs a fifth or more of the frame rate
+    /// when looking at the sky.
+    pub layered_clouds: bool,
+    /// Sun and moon shadows (Sildur's idea): 0 off, 1 fast (small map, near), 2 fancy.
+    pub shadows: u8,
+    /// Water mirrors the world around it (needs a shader pack: it reads the drawn scene).
+    pub water_reflections: bool,
+    /// Temporal anti-aliasing: smooth edges from jittered frames (needs a shader pack).
+    pub taa: bool,
+    /// Glowing bits of ore textures stay bright in the dark (Continuity's emissive textures).
+    pub emissive_textures: bool,
+    /// Block depth (parallax occlusion mapping, as in shader packs): 0 off, then the steps of
+    /// `PARALLAX_LEVELS`. Needs the "Bonito" quality.
+    pub parallax: u8,
+    /// Inventory and hotbar animations (Immersive UI idea); off = reduce motion.
+    pub ui_animations: bool,
+    /// "pt" (Portuguese, the game's own) or "en" (English, through lang.rs).
+    pub language: String,
+    /// Captions for the sounds around: what made it and from which side.
+    pub subtitles: bool,
+    /// Calm camera and interface: no view bobbing, shaking, sprint zoom or bouncing icons.
+    pub reduce_motion: bool,
+    /// Keyboard keys moved from their defaults: action → key (`keybinds.rs`).
+    pub key_binds: BTreeMap<String, String>,
+    /// Voice chat (voice.rs).
+    pub voice: crate::voice::VoiceSettings,
 }
 
 impl Default for Settings {
@@ -96,13 +141,19 @@ impl Default for Settings {
             vsync: true,
             music_mode: MusicMode::Classic,
             music_volume: 0.6,
+            difficulty: 2,
+            relief: true,
+            texture_resolution: crate::textures::BASE_RESOLUTION,
             sound_volume: 0.8,
             music_folder: "music".into(),
             music_delay_min: 600.0,
             music_delay_max: 1200.0,
             resource_packs: Vec::new(),
+            bundled_pack_offered: false,
+            saved_hotbars: Vec::new(),
             show_clouds: true,
             view_bobbing: true,
+            flat_drops: true,
             mobs: true,
             gui_scale: 0,
             controller: ControllerSettings::default(),
@@ -110,11 +161,36 @@ impl Default for Settings {
             shader_options: BTreeMap::new(),
             shader_quality: ShaderQuality::Fancy,
             lod_distance: 0,
+            sparse_structures: false,
+            spread_override: None,
+            layered_clouds: false,
+            shadows: 0,
+            water_reflections: true,
+            taa: false,
+            emissive_textures: true,
+            parallax: 2,
+            ui_animations: true,
+            language: "pt".into(),
+            subtitles: false,
+            reduce_motion: false,
+            key_binds: BTreeMap::new(),
+            voice: Default::default(),
         }
     }
 }
 
 impl Settings {
+    /// Percent spacing for buildings.
+    pub fn structure_spread(&self) -> i32 {
+        if let Some(s) = self.spread_override {
+            s
+        } else if self.sparse_structures {
+            170
+        } else {
+            100
+        }
+    }
+
     pub fn load(path: &Path) -> Settings {
         match std::fs::read_to_string(path) {
             Ok(text) => ron::from_str(&text).unwrap_or_else(|e| {
@@ -158,3 +234,12 @@ mod tests {
         assert_eq!(s.shader_quality, ShaderQuality::Fancy);
     }
 }
+
+/// Names of the shadow settings, as shown in the menu.
+/// Block depth choices: menu name and how deep the darkest texels sink, in blocks.
+pub const PARALLAX_LEVELS: [(&str, f32); 4] = [("Não", 0.0), ("Rasa", 0.06), ("Média", 0.1), ("Funda", 0.16)];
+
+pub const SHADOW_LEVELS: [&str; 3] = ["Desligadas", "Rápidas", "Bonitas"];
+
+/// Names of the difficulty levels, as shown in the menu.
+pub const DIFFICULTIES: [&str; 4] = ["Pacífico", "Fácil", "Normal", "Difícil"];

@@ -8,10 +8,20 @@ struct Item {
     info: vec4<f32>,
     // Texture layers: side, top, bottom; w: brightness boost (orbs glow).
     layers: vec4<f32>,
+    // x: pitch, y: roll (a held item tilts with the camera), z: a block part's quarter turns,
+    // w: 1 for a chest's parts (its inner faces are dark).
+    rot: vec4<f32>,
+    // A part of a block (a swinging door, a chest lid) when piv.w is 1: corners in the block's
+    // 0..1 frame, and the pivot inside the block that pos stands for.
+    bmin: vec4<f32>,
+    bmax: vec4<f32>,
+    piv: vec4<f32>,
 };
 
 @group(1) @binding(0) var itex: texture_2d_array<f32>;
 @group(1) @binding(1) var isamp: sampler;
+// Layers from 2048 on live in a second array (renderer::LAYERS_PER_ARRAY).
+@group(1) @binding(2) var itex2: texture_2d_array<f32>;
 @group(2) @binding(0) var<storage, read> items: array<Item>;
 
 struct IOut {
@@ -42,10 +52,23 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
     let face = vi / 6u;
     let c = icorner(face, vi % 6u);
     let flat = it.info.y > 0.5;
+    let part = it.piv.w > 0.5;
     var local = (c - vec3<f32>(0.5)) * it.pos.w;
+    // Where this corner sits in the block, for a block part's texture.
+    let inb = mix(it.bmin.xyz, it.bmax.xyz, c);
+    if (part) {
+        local = inb - it.piv.xyz;
+    }
     if (flat) {
         local.z = local.z / 16.0;
     }
+    // Roll around the item's facing, then pitch, then yaw.
+    let cr = cos(it.rot.y);
+    let sr = sin(it.rot.y);
+    local = vec3<f32>(local.x * cr - local.y * sr, local.x * sr + local.y * cr, local.z);
+    let cp = cos(it.rot.x);
+    let sp = sin(it.rot.x);
+    local = vec3<f32>(local.x, local.y * cp - local.z * sp, local.y * sp + local.z * cp);
     let cy = cos(it.info.x);
     let sy = sin(it.info.x);
     let rotated = vec3<f32>(local.x * cy + local.z * sy, local.y, -local.x * sy + local.z * cy);
@@ -58,21 +81,63 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
         o.uv = vec2<f32>(c.x, 1.0 - c.y);
         o.layer = i32(it.layers.x);
     } else {
-        switch face {
-            case 0u, 1u: { o.uv = vec2<f32>(c.z, 1.0 - c.y); }
-            case 4u, 5u: { o.uv = vec2<f32>(c.x, 1.0 - c.y); }
-            default: { o.uv = c.xz; }
+        var wf = face;
+        if (part) {
+            // The piece of the texture under it, turned with the block like the terrain does
+            // (rot.z quarter turns), so it lines up with the still block it replaces.
+            var t = inb;
+            var turn = array<u32, 6>(4u, 5u, 2u, 3u, 1u, 0u);
+            for (var k = 0; k < i32(it.rot.z); k++) {
+                t = vec3<f32>(1.0 - t.z, t.y, t.x);
+                wf = turn[wf];
+            }
+            switch wf {
+                case 0u: { o.uv = vec2<f32>(1.0 - t.z, 1.0 - t.y); }
+                case 1u: { o.uv = vec2<f32>(t.z, 1.0 - t.y); }
+                case 2u: { o.uv = t.xz; }
+                case 3u: { o.uv = vec2<f32>(t.x, 1.0 - t.z); }
+                case 4u: { o.uv = vec2<f32>(t.x, 1.0 - t.y); }
+                default: { o.uv = vec2<f32>(1.0 - t.x, 1.0 - t.y); }
+            }
+        } else {
+            switch face {
+                case 0u, 1u: { o.uv = vec2<f32>(c.z, 1.0 - c.y); }
+                case 4u, 5u: { o.uv = vec2<f32>(c.x, 1.0 - c.y); }
+                default: { o.uv = c.xz; }
+            }
         }
-        if (face == 2u) {
+        if (wf == 2u) {
             o.layer = i32(it.layers.y);
-        } else if (face == 3u) {
+        } else if (wf == 3u) {
             o.layer = i32(it.layers.z);
+        } else if (part && wf == 4u && it.bmax.w > 0.0 && inb.z > 0.99) {
+            // A chest's front (bmax.w is its layer).
+            o.layer = i32(it.bmax.w);
         } else {
             o.layer = i32(it.layers.x);
         }
     }
     var shade = array<f32, 6>(0.6, 0.6, 1.0, 0.5, 0.8, 0.8);
     o.shade = shade[face] + it.layers.w;
+    if (part && it.rot.w > 0.5) {
+        // Inside an open chest: faces inside the box (not on its outside or rim) are in
+        // shadow, deepest at the floor; the lid's underside is dim.
+        var inner = false;
+        switch face {
+            case 0u, 1u: { inner = inb.x > 0.01 && inb.x < 0.99; }
+            case 4u, 5u: { inner = inb.z > 0.01 && inb.z < 0.99; }
+            case 2u: { inner = inb.y < 0.6; }
+            default: { inner = inb.y > 0.05; }
+        }
+        if (inner) {
+            if (face == 3u) {
+                o.shade = 0.3;
+            } else {
+                let h = clamp((inb.y - 0.0625) / 0.5625, 0.0, 1.0);
+                o.shade = mix(0.13, 0.5, h * h) * select(1.0, 0.85, face == 0u || face == 1u);
+            }
+        }
+    }
     o.light = vec3<f32>(it.info.z, it.info.w, it.layers.w);
     o.dist = length(world - g.cam_pos.xyz);
     return o;
@@ -85,7 +150,12 @@ fn ilight(l: f32) -> f32 {
 
 @fragment
 fn fs_item(in: IOut) -> @location(0) vec4<f32> {
-    let c = textureSampleLevel(itex, isamp, in.uv, in.layer, 0.0);
+    var c: vec4<f32>;
+    if (in.layer < 2048) {
+        c = textureSampleLevel(itex, isamp, in.uv, in.layer, 0.0);
+    } else {
+        c = textureSampleLevel(itex2, isamp, in.uv, in.layer - 2048, 0.0);
+    }
     if (c.a < 0.3) {
         discard;
     }

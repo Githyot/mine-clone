@@ -26,6 +26,10 @@ pub enum Kind {
     Drop,
     /// Rises under water, pops at the surface.
     Bubble,
+    /// Magic: drifts without falling and shines at full brightness.
+    Glow,
+    /// Ambient bits (Subtle Effects idea): a leaf, ash or dust drifting slowly down, swaying.
+    Mote,
 }
 
 struct Particle {
@@ -97,6 +101,46 @@ impl Particles {
         }
     }
 
+    /// A raindrop hitting the ground: a few tiny droplets bouncing up (Particle Rain idea).
+    pub fn rain_drop(&mut self, at: Vec3, layer: u16) {
+        for _ in 0..3 {
+            let a = self.rand() * std::f32::consts::TAU;
+            let r = 0.4 + self.rand() * 0.8;
+            let p = Particle {
+                pos: at + Vec3::new(0.0, 0.05, 0.0),
+                vel: Vec3::new(a.cos() * r, 1.5 + self.rand() * 1.5, a.sin() * r),
+                life: 0.35,
+                size: 0.03 + self.rand() * 0.03,
+                layer: layer as u32,
+                uv: [0.4, 0.4],
+                tint: [0.75, 0.85, 1.0],
+                kind: Kind::Drop,
+            };
+            self.push(p);
+        }
+    }
+
+    /// A glowing mote (spell trails and bursts).
+    pub fn glow(&mut self, at: Vec3, vel: Vec3, layer: u16, tint: [f32; 3], size: f32, life: f32) {
+        let jitter = Vec3::new(self.rand() - 0.5, self.rand() - 0.5, self.rand() - 0.5);
+        let p = Particle { pos: at + jitter * size, vel: vel + jitter * 0.6, life: life * (0.7 + self.rand() * 0.6), size, layer: layer as u32, uv: [0.4, 0.4], tint, kind: Kind::Glow };
+        self.push(p);
+    }
+
+    /// A slow drifting bit lit like the world around it: a falling leaf, ash, dust.
+    pub fn mote(&mut self, at: Vec3, layer: u16, tint: [f32; 3], size: f32, fall: f32, life: f32) {
+        let a = self.rand() * std::f32::consts::TAU;
+        let uv = [(self.rand() * 12.0).floor() / 16.0, (self.rand() * 12.0).floor() / 16.0];
+        let p = Particle { pos: at, vel: Vec3::new(a.cos() * 0.2, -fall, a.sin() * 0.2), life: life * (0.7 + self.rand() * 0.6), size, layer: layer as u32, uv, tint, kind: Kind::Mote };
+        self.push(p);
+    }
+
+    /// A drop of water hanging off a ceiling, then falling.
+    pub fn drip(&mut self, at: Vec3, layer: u16) {
+        let p = Particle { pos: at, vel: Vec3::new(0.0, -0.4, 0.0), life: 2.5, size: 0.035, layer: layer as u32, uv: [0.4, 0.4], tint: [0.6, 0.75, 1.0], kind: Kind::Drop };
+        self.push(p);
+    }
+
     pub fn bubbles(&mut self, at: Vec3, layer: u16, count: usize) {
         for _ in 0..count {
             let off = Vec3::new(self.rand() - 0.5, self.rand() * 0.3, self.rand() - 0.5) * 0.6;
@@ -118,6 +162,19 @@ impl Particles {
         for p in self.list.iter_mut() {
             p.life -= dt;
             match p.kind {
+                Kind::Glow => {
+                    p.vel *= 1.0 - dt * 2.5;
+                    p.pos += p.vel * dt;
+                }
+                Kind::Mote => {
+                    // Sway side to side as it sinks; gone once it touches the ground.
+                    let t = p.life * 2.3 + p.pos.y;
+                    p.pos += (p.vel + Vec3::new(t.sin() * 0.35, 0.0, t.cos() * 0.25)) * dt;
+                    if world.solid(p.pos.floor().as_ivec3()) || world.liquid(p.pos.floor().as_ivec3()) {
+                        p.life = p.life.min(0.2);
+                        p.vel = Vec3::ZERO;
+                    }
+                }
                 Kind::Bubble => {
                     p.vel.x += ((p.pos.y * 9.0).sin()) * dt * 0.8;
                     p.pos += p.vel * dt;
@@ -153,7 +210,7 @@ impl Particles {
         self.list
             .iter()
             .map(|p| {
-                let l = world.light(p.pos.floor().as_ivec3());
+                let l = if p.kind == Kind::Glow { 0xff } else { world.light(p.pos.floor().as_ivec3()) };
                 // Shrink away at the end of life.
                 let s = p.size * (p.life / 0.25).clamp(0.0, 1.0);
                 GpuParticle {

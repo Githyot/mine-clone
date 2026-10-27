@@ -12,8 +12,11 @@ use crate::paintings::PaintingDef;
 use crate::renderer::Renderer;
 use voxel::mob::{Anim, Mob, MobDef, MobRegistry, DEATH_TIME};
 
+/// The skin layout, in model pixels (mobs.ron's texture coordinates).
 pub const SKIN_W: u32 = 64;
 pub const SKIN_H: u32 = 128;
+/// Texels per model pixel of the base game's skins (64x art: a block is 16 model pixels).
+pub const SKIN_DETAIL: u32 = 4;
 const MAX_PARTS: usize = 16;
 
 #[repr(C)]
@@ -36,9 +39,25 @@ pub struct Bones {
 
 impl Default for Bones {
     fn default() -> Self {
-        Bones { m: [Mat4::IDENTITY.to_cols_array_2d(); MAX_PARTS], light: [1.0, 0.0, 0.0, 0.0] }
+        let mut m = [Mat4::IDENTITY.to_cols_array_2d(); MAX_PARTS];
+        // The last slot carries the eyelids (see `add_eyelids`): folded to a point = eyes open.
+        m[EYELID_PART] = [[0.0; 4]; 4];
+        // And the one before it the player's mouth (see `add_mouth`): folded = closed.
+        m[MOUTH_PART] = [[0.0; 4]; 4];
+        Bones { m, light: [1.0, 0.0, 0.0, 0.0] }
     }
 }
+
+/// Test hook for screenshots: MC_BLINK=1 keeps every mob's eyes shut.
+fn eyes_shut_test() -> bool {
+    static SHUT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *SHUT.get_or_init(|| std::env::var("MC_BLINK").is_ok())
+}
+
+/// Part slot of the eyelid quads, for models with fewer parts than that.
+const EYELID_PART: usize = MAX_PARTS - 1;
+/// Part slot of the player's mouth (players have six parts; mobs never get a mouth here).
+pub(crate) const MOUTH_PART: usize = MAX_PARTS - 2;
 
 struct MobMesh {
     vbuf: wgpu::Buffer,
@@ -59,52 +78,103 @@ pub struct EntityRenderer {
     pub items: crate::item_render::ItemGpu,
     /// Meshes after this index are paintings.
     mob_meshes: usize,
+    /// First armour mesh (material * 4 + piece), when there is a player model to fit it to.
+    armor_meshes: Option<usize>,
+    /// First armour trim mesh (trim material * 4 + piece), drawn just over the armour.
+    trim_meshes: Option<usize>,
+    /// First musical instrument mesh (instruments.rs order).
+    instrument_meshes: usize,
     /// (mesh, first instance, count) for this frame.
     draws: Vec<(usize, u32, u32)>,
     pub instance_count: usize,
 }
 
+/// A skin picture: the SKIN_W × SKIN_H layout drawn with `scale` texels per model pixel.
 struct Skin {
-    pixels: Vec<u8>, // RGBA, SKIN_W × SKIN_H
+    pixels: Vec<u8>,
+    scale: u32,
 }
 
 impl Skin {
+    fn width(&self) -> u32 {
+        SKIN_W * self.scale
+    }
+
+    /// Opacity of model pixel (x, y), read at the middle of its texels.
     fn alpha(&self, x: i32, y: i32) -> u8 {
         if x < 0 || y < 0 || x >= SKIN_W as i32 || y >= SKIN_H as i32 {
             return 0;
         }
-        self.pixels[((y as u32 * SKIN_W + x as u32) * 4 + 3) as usize]
+        let s = self.scale;
+        let (tx, ty) = (x as u32 * s + s / 2, y as u32 * s + s / 2);
+        self.pixels[((ty * self.width() + tx) * 4 + 3) as usize]
+    }
+
+    /// The same picture with `scale` texels per model pixel (crisp growth, averaged shrinking).
+    fn rescaled(self, scale: u32) -> Skin {
+        if scale == self.scale {
+            return self;
+        }
+        Skin { pixels: fit_rgba(&self.pixels, self.width(), SKIN_H * self.scale, SKIN_W * scale, SKIN_H * scale), scale }
     }
 }
 
-fn load_skin(base: &Path, name: &str) -> Skin {
+/// Resize an RGBA picture to w × h: by whole multiples with crisp pixels when it grows, by
+/// averaging when it shrinks by powers of two, nearest otherwise.
+fn fit_rgba(px: &[u8], sw: u32, sh: u32, w: u32, h: u32) -> Vec<u8> {
+    if sw == w && sh == h {
+        return px.to_vec();
+    }
+    if sw > w && sw % w == 0 && (sw / w).is_power_of_two() && sh * w == h * sw {
+        let levels = (sw / w).trailing_zeros() + 1;
+        return crate::textures::mip_chain_rect(px, sw, sh, levels).pop().unwrap();
+    }
+    let mut out = vec![0u8; (w * h * 4) as usize];
+    for y in 0..h {
+        for x in 0..w {
+            let (sx, sy) = (x * sw / w, y * sh / h);
+            let s = ((sy * sw + sx) * 4) as usize;
+            let d = ((y * w + x) * 4) as usize;
+            out[d..d + 4].copy_from_slice(&px[s..s + 4]);
+        }
+    }
+    out
+}
+
+/// A mob's skin at `scale` texels per model pixel. Skins may be drawn at any multiple of the
+/// 64 × 128 layout (our own are 4×, a 1× skin from an older pack still fits).
+fn load_skin(base: &Path, name: &str, scale: u32) -> Skin {
     let bytes = std::fs::read(base.join(format!("packs/vanilla/textures/entity/{name}.png")))
         .ok()
         .or_else(|| embedded::ENTITY_TEXTURES.iter().find(|(n, _)| *n == name).map(|(_, b)| b.to_vec()));
-    let mut pixels = vec![0u8; (SKIN_W * SKIN_H * 4) as usize];
+    let (w, h) = (SKIN_W * scale, SKIN_H * scale);
     match bytes.and_then(|b| image::load_from_memory(&b).ok()) {
         Some(img) => {
             let img = img.to_rgba8();
-            for y in 0..img.height().min(SKIN_H) {
-                for x in 0..img.width().min(SKIN_W) {
-                    let p = img.get_pixel(x, y).0;
-                    let i = ((y * SKIN_W + x) * 4) as usize;
-                    pixels[i..i + 4].copy_from_slice(&p);
+            // Pictures that are not 1:2 (old 64 × 64 skins) sit at the top of the layout.
+            let k = (img.width() / SKIN_W).max(1);
+            let mut full = vec![0u8; (SKIN_W * k * SKIN_H * k * 4) as usize];
+            for y in 0..img.height().min(SKIN_H * k) {
+                for x in 0..img.width().min(SKIN_W * k) {
+                    let i = ((y * SKIN_W * k + x) * 4) as usize;
+                    full[i..i + 4].copy_from_slice(&img.get_pixel(x, y).0);
                 }
             }
+            Skin { pixels: fit_rgba(&full, SKIN_W * k, SKIN_H * k, w, h), scale }
         }
         None => {
             log::warn!("missing mob skin '{name}'");
-            for y in 0..64 {
-                for x in 0..64 {
-                    let i = ((y * SKIN_W + x) * 4) as usize;
-                    let m = ((x / 8) + (y / 8)) % 2 == 0;
+            let mut pixels = vec![0u8; (w * h * 4) as usize];
+            for y in 0..64 * scale {
+                for x in 0..64 * scale {
+                    let i = ((y * w + x) * 4) as usize;
+                    let m = ((x / (8 * scale)) + (y / (8 * scale))) % 2 == 0;
                     pixels[i..i + 4].copy_from_slice(if m { &[248, 0, 248, 255] } else { &[0, 0, 0, 255] });
                 }
             }
+            Skin { pixels, scale }
         }
     }
-    Skin { pixels }
 }
 
 /// One face of a box: where texel (0,0) sits, the directions of texture u and v, the outward normal.
@@ -191,8 +261,11 @@ impl MeshBuilder {
                 let tex = [(rx + i) as f32 + 0.5, (ry + 64 + j) as f32 + 0.5];
                 let uvc = [tex[0] / SKIN_W as f32, tex[1] / SKIN_H as f32];
                 let uv4 = [uvc; 4];
-                // Outward face.
-                self.quad([c, c + su, c + su + sv, c + sv], uv4, f.n, f.shade, part);
+                // Outward face: the whole texel square, so a detailed skin shows its detail.
+                let uvp = |x: f32, y: f32| [x / SKIN_W as f32, y / SKIN_H as f32];
+                let (u0, v0) = ((rx + i) as f32, (ry + 64 + j) as f32);
+                let cell = [uvp(u0, v0), uvp(u0 + 1.0, v0), uvp(u0 + 1.0, v0 + 1.0), uvp(u0, v0 + 1.0)];
+                self.quad([c, c + su, c + su + sv, c + sv], cell, f.n, f.shade, part);
                 // Side walls where the neighbouring texel is empty.
                 let open = |di: i32, dj: i32| skin.alpha(rx + i + di, ry + 64 + j + dj) < 128;
                 let side_shade = (f.shade * 0.85).max(0.4);
@@ -225,6 +298,8 @@ fn build_mesh(def: &MobDef, skin: &Skin, layer: u32) -> (Vec<EntityVertex>, Vec<
             mb.face(f, pi as u32);
         }
     }
+    add_eyelids(&mut mb, def, skin);
+    add_mouth(&mut mb, def);
     for l in &def.layers {
         let p = &def.parts[l.part];
         let inflate = l.inflate.max(0.1);
@@ -238,6 +313,135 @@ fn build_mesh(def: &MobDef, skin: &Skin, layer: u32) -> (Vec<EntityVertex>, Vec<
     (mb.verts, mb.indices)
 }
 
+/// Eyelids (Fresh Animations idea): the eye pixels on the front of the head are found in the
+/// skin, and each gets a little quad just in front of it, textured with the skin right above
+/// the eye. They ride on their own part slot, which is folded away except while blinking, so
+/// blinking costs nothing but one matrix.
+fn add_eyelids(mb: &mut MeshBuilder, def: &MobDef, skin: &Skin) {
+    if def.parts.len() > EYELID_PART || def.name == "player" {
+        return;
+    }
+    let Some(hi) = def.parts.iter().position(|p| p.anim == Anim::Head) else { return };
+    let p = &def.parts[hi];
+    let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32);
+    let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32);
+    let tex = (p.size.0 as i32, p.size.1 as i32, p.size.2 as i32);
+    let f = &faces(origin, size, p.uv, tex)[0];
+    // A relief layer on the head (3D skin layer) shows in front of the base face where it has
+    // pixels; lids for those pixels sit on the layer.
+    let layer = def.layers.iter().find(|l| l.part == hi).map(|l| {
+        let inf = l.inflate.max(0.1);
+        let fl = &faces(origin - Vec3::splat(inf), size + Vec3::splat(2.0 * inf), p.uv, tex)[0];
+        (fl.corner, fl.u, fl.v)
+    });
+    let (rx, ry, rw, rh) = f.rect;
+    if rw < 3 || rh < 3 {
+        return;
+    }
+    let raw = |x: i32, y: i32| -> [f32; 4] {
+        if x < 0 || y < 0 || x >= SKIN_W as i32 || y >= SKIN_H as i32 {
+            return [0.0; 4];
+        }
+        let k = ((y as u32 * SKIN_W + x as u32) * 4) as usize;
+        let c = &skin.pixels[k..k + 4];
+        [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, c[3] as f32 / 255.0]
+    };
+    // What shows at face pixel (i, j): (colour, skin row it comes from).
+    let px = |i: i32, j: i32| -> ([f32; 4], i32) {
+        if i < 0 || j < 0 || i >= rw || j >= rh {
+            return ([0.0; 4], ry + j);
+        }
+        if layer.is_some() {
+            let o = raw(rx + i, ry + 64 + j);
+            if o[3] > 0.5 {
+                return (o, ry + 64 + j);
+            }
+        }
+        (raw(rx + i, ry + j), ry + j)
+    };
+    let luma = |c: [f32; 4]| c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
+    // The face's usual colour.
+    let mut avg = [0.0f32; 3];
+    let mut n = 0.0;
+    for j in 0..rh {
+        for i in 0..rw {
+            let c = px(i, j).0;
+            if c[3] > 0.5 {
+                for k in 0..3 {
+                    avg[k] += c[k];
+                }
+                n += 1.0;
+            }
+        }
+    }
+    if n < 4.0 {
+        return;
+    }
+    avg = avg.map(|v| v / n);
+    // Eye pixels: very dark, or white, unlike the face, in the upper part of the head.
+    let eye = |i: i32, j: i32| -> bool {
+        let c = px(i, j).0;
+        if c[3] < 0.5 || j as f32 > rh as f32 * 0.6 {
+            return false;
+        }
+        let d = ((c[0] - avg[0]).powi(2) + (c[1] - avg[1]).powi(2) + (c[2] - avg[2]).powi(2)).sqrt();
+        let sat = c[0].max(c[1]).max(c[2]) - c[0].min(c[1]).min(c[2]);
+        let l = luma(c);
+        d > 0.25 && (l < 0.2 || (l > 0.78 && sat < 0.15))
+    };
+    // Eyes come in pairs: keep pixels mirrored across the face.
+    let cells: Vec<(i32, i32)> = (0..rh).flat_map(|j| (0..rw).map(move |i| (i, j))).filter(|&(i, j)| eye(i, j) && eye(rw - 1 - i, j)).collect();
+    if cells.len() < 2 || cells.len() as f32 > n * 0.2 {
+        return;
+    }
+    for &(i, j) in &cells {
+        // Lid colour: the nearest face pixel above the eye.
+        let mut lj = j - 1;
+        while lj >= 0 && (eye(i, lj) || px(i, lj).0[3] < 0.5) {
+            lj -= 1;
+        }
+        if lj < 0 {
+            lj = (j + 1..rh).find(|&b| !eye(i, b) && px(i, b).0[3] >= 0.5).unwrap_or(0);
+        }
+        let row = px(i, lj).1;
+        let t = [(rx + i) as f32 + 0.5, row as f32 + 0.5];
+        let uv = [t[0] / SKIN_W as f32, t[1] / SKIN_H as f32];
+        // On the layer when the eye pixel is drawn by it, else on the head itself.
+        let (corner, fu, fv) = match layer {
+            Some(l) if px(i, j).1 >= ry + 64 => l,
+            _ => (f.corner, f.u, f.v),
+        };
+        let su = fu / rw as f32;
+        let sv = fv / rh as f32;
+        let c = corner + su * i as f32 + sv * j as f32 + f.n * 0.04;
+        mb.quad([c, c + su, c + su + sv, c + sv], [uv; 4], f.n, f.shade, EYELID_PART as u32);
+    }
+}
+
+/// The player's mouth, for voice chat: a dark slit on the face (rows 6..7, columns 2..6 of
+/// the head's front), coloured with the skin's own lip pixel in deep shadow. It rides on its
+/// own part slot; `player_model` opens it by stretching that slot downward from its top edge
+/// with the voice, and folds it away while silent.
+fn add_mouth(mb: &mut MeshBuilder, def: &MobDef) {
+    if def.name != "player" || def.parts.len() > MOUTH_PART || def.parts.is_empty() {
+        return;
+    }
+    let p = &def.parts[0];
+    let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32);
+    let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32);
+    let tex = (p.size.0 as i32, p.size.1 as i32, p.size.2 as i32);
+    let f = &faces(origin, size, p.uv, tex)[0];
+    let (rx, ry, rw, rh) = f.rect;
+    if rw < 6 || rh < 8 {
+        return;
+    }
+    let (su, sv) = (f.u / rw as f32, f.v / rh as f32);
+    let uv = [(rx + rw / 2) as f32 + 0.5, (ry + rh - 2) as f32 + 0.5];
+    let uv = [uv[0] / SKIN_W as f32, uv[1] / SKIN_H as f32];
+    let c = f.corner + su * (rw as f32 / 2.0 - 2.0) + sv * (rh as f32 - 2.0) + f.n * 0.06;
+    mb.quad([c, c + su * 4.0, c + su * 4.0 + sv, c + sv], [uv; 4], f.n, 0.26, MOUTH_PART as u32);
+}
+
 /// A painting: a canvas one pixel thick, picture on the front, wood everywhere else.
 fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
     let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
@@ -245,6 +449,10 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
     let (iw, ih) = ((p.width * 16) as i32, (p.height * 16) as i32);
     let fs = faces(Vec3::ZERO, Vec3::new(w, h, 1.0), (0, 0), (iw, ih, 1));
     for (k, f) in fs.into_iter().enumerate() {
+        // A see-through painting is only its picture, with no wooden board behind it.
+        if p.alpha && k != 0 {
+            continue;
+        }
         let rect = if k == 0 { (0, 0, iw, ih) } else { (0, 64, 16, 16) };
         let shade = if k == 0 { 1.0 } else { f.shade };
         mb.face(&Face { rect, shade, ..f }, 0);
@@ -252,30 +460,379 @@ fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
     (mb.verts, mb.indices)
 }
 
+/// Armour materials, by the item-name prefix, with their colour.
+pub const ARMOR_MATERIALS: [(&str, [u8; 3]); 34] = [
+    ("leather", [134, 82, 46]),
+    ("chainmail", [150, 150, 156]),
+    ("iron", [206, 206, 206]),
+    ("golden", [236, 196, 60]),
+    ("diamond", [72, 214, 204]),
+    ("netherite", [74, 66, 70]),
+    ("copper", [206, 116, 66]),
+    ("bronze", [184, 132, 62]),
+    ("lead", [104, 112, 131]),
+    ("silver", [214, 217, 222]),
+    ("tungsten", [113, 144, 116]),
+    ("platinum", [196, 222, 230]),
+    // Hard mode metals (Etapa 5).
+    ("cobalt", [52, 98, 196]),
+    ("palladium", [222, 120, 70]),
+    ("mythril", [86, 170, 140]),
+    ("orichalcum", [214, 96, 178]),
+    ("adamantite", [196, 40, 60]),
+    ("titanium", [150, 156, 170]),
+    ("radiant", [240, 214, 110]),
+    ("verdite", [96, 206, 70]),
+    ("lumite", [120, 236, 220]),
+    // The mod pack's dimensions (tools/moddata/aether.py, otherside.py).
+    ("zanite", [128, 72, 200]),
+    ("gravitite", [200, 74, 180]),
+    ("valkyrie", [208, 210, 216]),
+    ("phoenix", [232, 100, 26]),
+    ("resonarium", [30, 138, 154]),
+    // Wizard robes, one set per school (tools/moddata/spellbooks.py).
+    ("pyromancer", [176, 52, 22]),
+    ("cryomancer", [92, 160, 214]),
+    ("electromancer", [214, 184, 50]),
+    ("priest", [228, 214, 160]),
+    ("voidwalker", [120, 46, 168]),
+    ("bloodmage", [130, 18, 30]),
+    ("cultist", [18, 110, 116]),
+    ("archevoker", [140, 120, 72]),
+];
+
+/// The boxes of one armour piece (helmet, chestplate, leggings, boots) on the player model:
+/// (part, origin, size, texture-net origin, inflate). Every box has its own place in the
+/// 64×64 armour texture.
+fn armor_boxes(def: &MobDef, piece: usize) -> Vec<(usize, Vec3, Vec3, (u16, u16), f32)> {
+    let part = |i: usize| {
+        let p = &def.parts[i];
+        (Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32), Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32))
+    };
+    if def.parts.len() < 6 {
+        return Vec::new();
+    }
+    let mut v = Vec::new();
+    match piece {
+        0 => {
+            let (o, sz) = part(0);
+            v.push((0, o, sz, (0, 0), 1.0));
+        }
+        1 => {
+            let (o, sz) = part(1);
+            v.push((1, o, sz, (32, 0), 1.0));
+            for (k, uv) in [(2, (0, 16)), (3, (16, 16))] {
+                let (o, sz) = part(k);
+                // Sleeves cover the upper arm.
+                v.push((k, o + Vec3::Y * 5.0, Vec3::new(sz.x, sz.y - 5.0, sz.z), uv, 1.0));
+            }
+        }
+        2 => {
+            let (o, sz) = part(1);
+            v.push((1, o, Vec3::new(sz.x, 5.0, sz.z), (0, 32), 0.6));
+            for (k, uv) in [(4, (32, 16)), (5, (48, 16))] {
+                let (o, sz) = part(k);
+                v.push((k, o + Vec3::Y * 3.0, Vec3::new(sz.x, sz.y - 3.0, sz.z), uv, 0.6));
+            }
+        }
+        _ => {
+            for (k, uv) in [(4, (24, 32)), (5, (40, 32))] {
+                let (o, sz) = part(k);
+                v.push((k, o, Vec3::new(sz.x, 4.0, sz.z), uv, 1.0));
+            }
+        }
+    }
+    v
+}
+
+/// Our own armour picture for one material, drawn in the classic style at `scale` texels per
+/// model pixel: a softly speckled metal surface with a thin dark rim and a lit bevel where plates
+/// meet, round glints in the top corners, a collar and belly plates on the chest, a belt and knee
+/// caps on the leggings, soles and cuffs on the boots and a crest on the helmet. Chainmail is a
+/// mesh of round rings.
+fn armor_skin(def: &MobDef, color: [u8; 3], chain: bool, matte: bool, scale: u32) -> Skin {
+    let sc = scale.max(1);
+    let w = SKIN_W * sc;
+    let mut pixels = vec![0u8; (w * SKIN_H * sc * 4) as usize];
+    let glint = if matte { 0.18 } else { 0.5 };
+    let speck = [0.74, 0.84, 0.84, 0.9, 0.9, 0.9, 0.96, 0.96, 0.96, 0.96, 1.0, 1.0, 1.0, 1.04, 1.08, 0.8];
+    for piece in 0..4 {
+        for (b, (_, _, size, uv, _)) in armor_boxes(def, piece).into_iter().enumerate() {
+            let tex = (size.x as i32, size.y as i32, size.z as i32);
+            for (fi, f) in faces(Vec3::ZERO, size, uv, tex).iter().enumerate() {
+                let (rx, ry, rw, rh) = f.rect;
+                let front = fi == 0;
+                let top = fi == 4;
+                let bottom = fi == 5;
+                for j in 0..rh {
+                    for i in 0..rw {
+                        let (x, y) = (rx + i, ry + j);
+                        if x < 0 || y < 0 || x >= 64 || y >= 64 {
+                            continue;
+                        }
+                        let mut k = 1.0f32;
+                        let mut white = 0.0f32;
+                        let edge = i == 0 || j == 0 || i == rw - 1 || j == rh - 1;
+                        let mut a = 255u8;
+                        if bottom {
+                            k *= 0.7;
+                        }
+                        let mid = rw / 2;
+                        match piece {
+                            0 => {
+                                // Helmet: open below the brow, with a dark lip over the eyes and a
+                                // raised crest along the top.
+                                if front && j >= 3 && i >= 1 && i < rw - 1 {
+                                    a = 0;
+                                }
+                                if front && j == 2 && i >= 1 && i < rw - 1 {
+                                    k *= 0.74;
+                                }
+                                if top && (i == mid || i == mid - 1) {
+                                    k *= 1.12;
+                                    white = glint * 0.4;
+                                }
+                            }
+                            1 if b == 0 => {
+                                // Chestplate: a V collar, belly plates and a lit breast.
+                                if front && j == 1 && (i - mid).abs() <= 1 {
+                                    k *= 0.7;
+                                }
+                                if (front || fi == 1) && j > 2 && j == rh - 4 && !edge {
+                                    k *= 0.78;
+                                }
+                                if front && j > 1 && j < 5 && (i == 2 || i == rw - 3) {
+                                    k *= 1.08;
+                                }
+                            }
+                            1 => {
+                                // Shoulder plates: lit on top, a dark lower rim.
+                                if j == 1 && !top && !bottom {
+                                    k *= 1.12;
+                                }
+                                if j == rh - 2 && !top && !bottom {
+                                    k *= 0.86;
+                                }
+                            }
+                            2 if b == 0 => {
+                                // Leggings belt with a buckle in front.
+                                if j == 1 && !top && !bottom {
+                                    k *= 0.72;
+                                    if front && (i == mid || i == mid - 1) {
+                                        k = 1.1;
+                                        white = glint;
+                                    }
+                                }
+                            }
+                            2 => {
+                                // Knee caps.
+                                let knee = rh / 2;
+                                if front && (j == knee || j == knee - 1) && i >= 1 && i < rw - 1 {
+                                    k *= if j == knee - 1 { 1.1 } else { 0.8 };
+                                }
+                            }
+                            _ => {
+                                // Boots: a lit cuff, a dark sole and a shiny toe.
+                                if j == 0 && !top && !bottom {
+                                    k = 1.04;
+                                }
+                                if j == rh - 1 && !top && !bottom {
+                                    k *= 0.6;
+                                }
+                                if front && j == rh - 2 && i >= 1 && i < rw - 1 {
+                                    k *= 1.1;
+                                }
+                            }
+                        }
+                        // Every model pixel is `sc` × `sc` texels; details are drawn at that finer size.
+                        for sj in 0..sc {
+                            for si in 0..sc {
+                                let fx = i as f32 + (si as f32 + 0.5) / sc as f32;
+                                let fy = j as f32 + (sj as f32 + 0.5) / sc as f32;
+                                let (tx, ty) = ((x as u32 * sc + si) as i32, (y as u32 * sc + sj) as i32);
+                                let h = (((tx * 73 + ty * 151) ^ (tx * ty * 17)) + (tx * 31 ^ ty * 7)) & 15;
+                                // Soft speckle: the classic flecks, at a third less contrast.
+                                let mut kk = k * (1.0 + (speck[h as usize] - 0.93) * 0.65);
+                                let mut wh = white;
+                                let mut aa = a;
+                                // A thin dark rim around each plate and a lit bevel just inside it.
+                                let rim = (fx.min(fy).min(rw as f32 - fx).min(rh as f32 - fy)) * sc as f32;
+                                if !top && !bottom {
+                                    if rim < 1.0 {
+                                        kk *= 0.62;
+                                    } else if rim < 2.0 && (fx < 1.0 || fy < 1.0) {
+                                        kk *= 1.1;
+                                    } else if rim < 2.0 {
+                                        kk *= 0.86;
+                                    }
+                                }
+                                // Round glint in the top-left corner of each face.
+                                if !bottom {
+                                    let d = ((fx - 1.4).powi(2) + (fy - 1.4).powi(2)).sqrt();
+                                    wh = wh.max(glint * (1.0 - d / 1.2).clamp(0.0, 1.0));
+                                }
+                                if !edge && h == 15 && !matte && j < rh / 2 {
+                                    wh = wh.max(glint * 0.3);
+                                }
+                                if chain && !(piece == 0 && front && j < 3) && !edge {
+                                    let (cx, cy) = (fx.fract() - 0.5, fy.fract() - 0.5);
+                                    let r = (cx * cx + cy * cy).sqrt();
+                                    if r < 0.2 || ((i + j) % 2 == 1 && r > 0.46) {
+                                        aa = 0;
+                                    }
+                                    kk *= 1.0 + (0.3 - r) * 0.5 - cy * 0.3;
+                                }
+                                let o = ((ty as u32 * w + tx as u32) * 4) as usize;
+                                for c in 0..3 {
+                                    let v = (color[c] as f32 * kk).min(255.0);
+                                    pixels[o + c] = (v + (255.0 - v) * wh) as u8;
+                                }
+                                pixels[o + 3] = aa;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Skin { pixels, scale: sc }
+}
+
+/// An armour trim in one colour: a bright line along the rims of each plate and a chevron down
+/// the front, see-through everywhere else. It sits a hair over the armour.
+fn trim_skin(def: &MobDef, color: [u8; 3]) -> Skin {
+    let mut pixels = vec![0u8; (SKIN_W * SKIN_H * 4) as usize];
+    for piece in 0..4 {
+        for (_, _, size, uv, _) in armor_boxes(def, piece) {
+            let tex = (size.x as i32, size.y as i32, size.z as i32);
+            for (fi, f) in faces(Vec3::ZERO, size, uv, tex).iter().enumerate() {
+                let (rx, ry, rw, rh) = f.rect;
+                if fi >= 4 {
+                    continue;
+                }
+                for j in 0..rh {
+                    for i in 0..rw {
+                        let (x, y) = (rx + i, ry + j);
+                        if x < 0 || y < 0 || x >= 64 || y >= 64 {
+                            continue;
+                        }
+                        let rim = j == rh - 1 || (piece == 0 && j == 2);
+                        let mid = rw / 2;
+                        let chevron = fi == 0 && rw >= 4 && (j == (i - mid).abs() + 1 || j == (i - mid + 1).abs() + 1) && j < rh - 1;
+                        if !(rim || chevron) {
+                            continue;
+                        }
+                        let k = if (x + y) % 3 == 0 { 1.15 } else { 0.92 };
+                        let o = ((y * SKIN_W as i32 + x) * 4) as usize;
+                        for c in 0..3 {
+                            pixels[o + c] = (color[c] as f32 * k).min(255.0) as u8;
+                        }
+                        pixels[o + 3] = 255;
+                    }
+                }
+            }
+        }
+    }
+    Skin { pixels, scale: 1 }
+}
+
+fn armor_mesh(def: &MobDef, piece: usize, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
+    armor_mesh_over(def, piece, layer, 0.0)
+}
+
+fn armor_mesh_over(def: &MobDef, piece: usize, layer: u32, over: f32) -> (Vec<EntityVertex>, Vec<u32>) {
+    let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
+    for (part, origin, size, uv, inflate) in armor_boxes(def, piece) {
+        let inflate = inflate + over;
+        let tex = (size.x as i32, size.y as i32, size.z as i32);
+        for f in faces(origin - Vec3::splat(inflate), size + Vec3::splat(2.0 * inflate), uv, tex).iter() {
+            // Both sides, so an open sleeve or helmet still looks solid from inside.
+            mb.face(f, part as u32);
+        }
+    }
+    (mb.verts, mb.indices)
+}
+
+/// A musical instrument (instruments.rs): its boxes, each face painted with its material's
+/// swatch, the grain running along the longer side.
+fn instrument_mesh(i: usize, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
+    let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
+    let light = Vec3::new(0.2, 0.6, 0.8).normalize();
+    for p in crate::instruments::model(i) {
+        for b in &p.boxes {
+            for axis in 0..3 {
+                for s in [-1.0f32, 1.0] {
+                    let (t1, t2) = ((axis + 1) % 3, (axis + 2) % 3);
+                    let plane = if s > 0.0 { b.hi[axis] } else { b.lo[axis] };
+                    let corner = |a: f32, c: f32| {
+                        let mut v = Vec3::ZERO;
+                        v[axis] = plane;
+                        v[t1] = a;
+                        v[t2] = c;
+                        p.place.transform_point3(v)
+                    };
+                    let pts = [corner(b.lo[t1], b.lo[t2]), corner(b.hi[t1], b.lo[t2]), corner(b.hi[t1], b.hi[t2]), corner(b.lo[t1], b.hi[t2])];
+                    let (l1, l2) = (b.hi[t1] - b.lo[t1], b.hi[t2] - b.lo[t2]);
+                    let along = l1 >= l2;
+                    let (x, y, w, h) = if along { crate::instruments::swatch(b.mat, l1, l2) } else { crate::instruments::swatch(b.mat, l2, l1) };
+                    let uv = |u: f32, v: f32| [(x + u * w) / SKIN_W as f32, (y + v * h) / SKIN_H as f32];
+                    let uvs = if along { [uv(0.0, 0.0), uv(1.0, 0.0), uv(1.0, 1.0), uv(0.0, 1.0)] } else { [uv(0.0, 0.0), uv(0.0, 1.0), uv(1.0, 1.0), uv(1.0, 0.0)] };
+                    let mut n = Vec3::ZERO;
+                    n[axis] = s;
+                    let n = p.place.transform_vector3(n).normalize_or_zero();
+                    let shade = 0.6 + 0.4 * n.dot(light).max(0.0);
+                    mb.quad(pts, uvs, n, shade, p.part);
+                }
+            }
+        }
+    }
+    (mb.verts, mb.indices)
+}
+
 impl EntityRenderer {
-    pub fn new(r: &Renderer, reg: &MobRegistry, paintings: &[PaintingDef], base: &Path) -> EntityRenderer {
+    /// `texture_res` is the texture resolution setting (pixels per block face): skins get one
+    /// texel per model pixel at 16, up to SKIN_DETAIL at 64 and above.
+    pub fn new(r: &Renderer, reg: &MobRegistry, paintings: &[PaintingDef], base: &Path, texture_res: u32) -> EntityRenderer {
         let device = &r.device;
-        let mut skins: Vec<Skin> = reg.defs.iter().map(|d| load_skin(base, &d.name)).collect();
+        let scale = (texture_res / 16).clamp(1, SKIN_DETAIL).next_power_of_two();
+        let mut skins: Vec<Skin> = reg.defs.iter().map(|d| load_skin(base, &d.name, scale)).collect();
         let back = crate::paintings::back_pixels(base);
-        skins.extend(paintings.iter().map(|p| Skin { pixels: crate::paintings::skin_pixels(p, &back) }));
+        skins.extend(paintings.iter().map(|p| Skin { pixels: crate::paintings::skin_pixels(p, &back), scale: 1 }.rescaled(scale)));
+        let player = reg.id("player").map(|i| &reg.defs[i]);
+        let armor_layer0 = skins.len();
+        if let Some(pd) = player {
+            skins.extend(ARMOR_MATERIALS.iter().map(|(n, c)| armor_skin(pd, *c, *n == "chainmail", *n == "leather", scale)));
+        }
+        let trim_layer0 = skins.len();
+        if let Some(pd) = player {
+            skins.extend(crate::smithing::MATERIALS.iter().map(|m| trim_skin(pd, m.2).rescaled(scale)));
+        }
+        let instrument_layer = skins.len();
+        skins.push(Skin { pixels: crate::instruments::paint_skin(SKIN_DETAIL), scale: SKIN_DETAIL }.rescaled(scale));
         let layers = skins.len().max(1) as u32;
+        let (tw, th) = (SKIN_W * scale, SKIN_H * scale);
+        let levels = scale.trailing_zeros() + 1;
         let tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("mob skins"),
-            size: wgpu::Extent3d { width: SKIN_W, height: SKIN_H, depth_or_array_layers: layers },
-            mip_level_count: 1,
+            size: wgpu::Extent3d { width: tw, height: th, depth_or_array_layers: layers },
+            mip_level_count: levels,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
+        // Mip levels down to one texel per model pixel, so detailed skins don't shimmer far away.
         for (i, s) in skins.iter().enumerate() {
-            r.queue.write_texture(
-                wgpu::TexelCopyTextureInfo { texture: &tex, mip_level: 0, origin: wgpu::Origin3d { x: 0, y: 0, z: i as u32 }, aspect: wgpu::TextureAspect::All },
-                &s.pixels,
-                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(SKIN_W * 4), rows_per_image: Some(SKIN_H) },
-                wgpu::Extent3d { width: SKIN_W, height: SKIN_H, depth_or_array_layers: 1 },
-            );
+            for (level, data) in crate::textures::mip_chain_rect(&s.pixels, tw, th, levels).iter().enumerate() {
+                let (lw, lh) = (tw >> level, th >> level);
+                r.queue.write_texture(
+                    wgpu::TexelCopyTextureInfo { texture: &tex, mip_level: level as u32, origin: wgpu::Origin3d { x: 0, y: 0, z: i as u32 }, aspect: wgpu::TextureAspect::All },
+                    data,
+                    wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(lw * 4), rows_per_image: Some(lh) },
+                    wgpu::Extent3d { width: lw, height: lh, depth_or_array_layers: 1 },
+                );
+            }
         }
         let view = tex.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
         let skin_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -284,6 +841,7 @@ impl EntityRenderer {
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&r.sampler) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&view) },
             ],
         });
         let inst_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -358,9 +916,63 @@ impl EntityRenderer {
                 indices: idx.len() as u32,
             });
         }
+        let armor_meshes = player.map(|pd| {
+            let first = meshes.len();
+            for m in 0..ARMOR_MATERIALS.len() {
+                for piece in 0..4 {
+                    let (v, idx) = armor_mesh(pd, piece, (armor_layer0 + m) as u32);
+                    meshes.push(MobMesh {
+                        vbuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("armor verts"), contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX }),
+                        ibuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("armor idx"), contents: bytemuck::cast_slice(&idx), usage: wgpu::BufferUsages::INDEX }),
+                        indices: idx.len() as u32,
+                    });
+                }
+            }
+            first
+        });
+        let trim_meshes = player.map(|pd| {
+            let first = meshes.len();
+            for m in 0..crate::smithing::MATERIALS.len() {
+                for piece in 0..4 {
+                    let (v, idx) = armor_mesh_over(pd, piece, (trim_layer0 + m) as u32, 0.12);
+                    meshes.push(MobMesh {
+                        vbuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("trim verts"), contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX }),
+                        ibuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("trim idx"), contents: bytemuck::cast_slice(&idx), usage: wgpu::BufferUsages::INDEX }),
+                        indices: idx.len() as u32,
+                    });
+                }
+            }
+            first
+        });
+        let instrument_meshes = meshes.len();
+        for i in 0..crate::instruments::COUNT {
+            let (v, idx) = instrument_mesh(i, instrument_layer as u32);
+            meshes.push(MobMesh {
+                vbuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("instrument verts"), contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX }),
+                ibuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("instrument idx"), contents: bytemuck::cast_slice(&idx), usage: wgpu::BufferUsages::INDEX }),
+                indices: idx.len() as u32,
+            });
+        }
         let particles = crate::particles::ParticleGpu::new(r);
         let items = crate::item_render::ItemGpu::new(r);
-        EntityRenderer { particles, items, pipelines, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, draws: Vec::new(), instance_count: 0 }
+        EntityRenderer { particles, items, pipelines, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, armor_meshes, trim_meshes, instrument_meshes, draws: Vec::new(), instance_count: 0 }
+    }
+
+    /// Mesh index of an armour piece (0 helmet .. 3 boots) for the item named `item`.
+    pub fn armor_mesh(&self, item: &str, piece: usize) -> Option<usize> {
+        let first = self.armor_meshes?;
+        let m = ARMOR_MATERIALS.iter().position(|(n, _)| item.starts_with(&format!("{n}_")))?;
+        Some(first + m * 4 + piece.min(3))
+    }
+
+    /// Mesh index of the trim over an armour piece, by trim material.
+    pub fn trim_mesh(&self, material: usize, piece: usize) -> Option<usize> {
+        Some(self.trim_meshes? + material * 4 + piece.min(3))
+    }
+
+    /// Mesh index of musical instrument `i`.
+    pub fn instrument_mesh(&self, i: usize) -> Option<usize> {
+        (i < crate::instruments::COUNT).then_some(self.instrument_meshes + i)
     }
 
     /// Mesh index of a painting, for `prepare`.
@@ -446,18 +1058,46 @@ pub fn bones_for(mob: &Mob, def: &MobDef, cam_block: IVec3, sky: f32, blk: f32) 
         let t = (mob.dead_age / DEATH_TIME).clamp(0.0, 1.0);
         model = model * Mat4::from_translation(Vec3::new(0.0, -t * 0.4, 0.0)) * Mat4::from_rotation_z(t * std::f32::consts::FRAC_PI_2);
     }
-    let scale = 1.0 / 16.0 * (1.0 + swell * 0.3);
+    let scale = def.scale / 16.0 * (1.0 + swell * 0.3);
     model = model * Mat4::from_scale(Vec3::splat(scale));
+    // Asleep: legs folded flat, the body resting on the ground.
+    let leg_h = def.parts.iter().filter(|p| matches!(p.anim, Anim::Leg(_))).map(|p| p.size.1 as f32).fold(0.0, f32::max);
+    if mob.sleeping && mob.alive() {
+        model = model * Mat4::from_translation(Vec3::new(0.0, -(leg_h - 1.0).max(0.0), 0.0));
+    }
     let amp = (mob.walk_speed / def.speed.max(0.1)).min(1.3);
     let t = mob.walk;
     let airborne = !mob.body.on_ground && !mob.body.in_water;
+    // Livelier movement (Fresh Animations idea): a bounce in the step, slow breathing, and an
+    // idle head that looks around and tilts now and then.
+    let idle = (1.0 - amp).clamp(0.0, 1.0) * if mob.alive() && !mob.sleeping { 1.0 } else { 0.0 };
+    let ph = mob.age + mob.phase * 3.0;
+    let breathe = (ph * 1.7).sin();
+    if mob.alive() && !airborne {
+        let bob = (t * 2.0).sin().abs() * 0.6 * amp.min(1.0) + breathe * 0.12 * idle;
+        model = model * Mat4::from_translation(Vec3::new(0.0, bob, 0.0));
+    }
+    let look = ((ph * 0.31).sin() * 0.45 + (ph * 0.13).sin() * 0.3) * idle;
+    let tilt = (ph * 0.23).sin().max(0.0).powi(3) * 0.25 * idle;
     for (i, p) in def.parts.iter().enumerate().take(MAX_PARTS) {
         let pivot = Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32, p.pivot.2 as f32);
         let rot = match p.anim {
             Anim::None => Quat::IDENTITY,
-            Anim::Head => Quat::from_rotation_y(mob.head_yaw) * Quat::from_rotation_x(mob.head_pitch),
+            Anim::Head => {
+                // Walking: a small nod with each step.
+                let nod = (t * 2.0).sin() * 0.06 * amp.min(1.0) + breathe * 0.02 * idle;
+                Quat::from_rotation_y(mob.head_yaw + look) * Quat::from_rotation_x(mob.head_pitch + nod) * Quat::from_rotation_z(tilt)
+            }
+            Anim::Leg(_) if mob.sleeping && mob.alive() => {
+                // Front legs tuck forward, hind legs back.
+                Quat::from_rotation_x(if p.pivot.2 >= 0 { -std::f32::consts::FRAC_PI_2 } else { std::f32::consts::FRAC_PI_2 })
+            }
             Anim::Leg(k) => Quat::from_rotation_x((t + k as f32 * std::f32::consts::PI).sin() * 0.8 * amp),
-            Anim::Arm(k) => Quat::from_rotation_x((t + k as f32 * std::f32::consts::PI + std::f32::consts::PI).sin() * 0.7 * amp),
+            Anim::Arm(k) => {
+                let side = if k == 0 { 1.0 } else { -1.0 };
+                Quat::from_rotation_x((t + k as f32 * std::f32::consts::PI + std::f32::consts::PI).sin() * 0.7 * amp + breathe * 0.04 * idle * side)
+                    * Quat::from_rotation_z(side * (0.04 + breathe * 0.03) * idle)
+            }
             Anim::ArmForward(k) => Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2 + (mob.age * 2.0 + k as f32).sin() * 0.08),
             Anim::Wing(k) => {
                 let side = if k == 0 { 1.0 } else { -1.0 };
@@ -470,11 +1110,22 @@ pub fn bones_for(mob: &Mob, def: &MobDef, cam_block: IVec3, sky: f32, blk: f32) 
                 let fan = (kk - 1.5) * 0.4 * side;
                 let swing = (t * 2.0 + kk * 1.3 + if k < 4 { 0.0 } else { std::f32::consts::PI }).sin() * 0.35 * amp;
                 let lift = ((t * 2.0 + kk * 1.3).cos().max(0.0)) * 0.3 * amp;
-                Quat::from_rotation_y(fan + swing) * Quat::from_rotation_z((-0.35 - lift) * side)
+                // The legs reach out and down to the ground; lifting raises the tip.
+                Quat::from_rotation_y(fan + swing) * Quat::from_rotation_z((0.5 - lift) * side)
             }
         };
         let part = Mat4::from_translation(pivot) * Mat4::from_quat(rot) * Mat4::from_translation(-pivot);
         b.m[i] = (model * part).to_cols_array_2d();
+        // Blinking: every few seconds (each mob on its own beat) for a tenth of a second, and
+        // always while asleep or dead.
+        if p.anim == Anim::Head && def.parts.len() <= EYELID_PART {
+            let period = 3.2 + mob.phase.fract() * 3.0;
+            let beat = (mob.age + mob.phase * 7.0) % period;
+            let double = mob.phase.fract() > 0.7 && (0.25..0.37).contains(&beat);
+            if beat < 0.12 || double || mob.sleeping || !mob.alive() || eyes_shut_test() {
+                b.m[EYELID_PART] = b.m[i];
+            }
+        }
     }
     b
 }

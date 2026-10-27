@@ -22,6 +22,126 @@ pub enum Shape {
     Liquid,
     /// Nothing to draw.
     Invisible,
+    /// Half block: bottom, top or both (see `shapes`).
+    Slab,
+    Stairs,
+    Fence,
+    Wall,
+    /// Thin glass or bars.
+    Pane,
+    /// Two blocks tall; right click opens it.
+    Door,
+    Trapdoor,
+    /// A cube whose sides sit one pixel in, each showing its whole picture, so spikes drawn
+    /// at the edges of the texture stick out without leaving see-through gaps (the cactus).
+    Inset,
+    /// Thin layers that pile up, 1 to 8 (snow).
+    Layer,
+    /// A sloped roof (Macaw's Roofs idea): eight thin steps rising to the side it faces.
+    Roof,
+    /// Redstone dust lying on a block; the variant is its power, 0 to 15.
+    Wire,
+    /// On the floor or a wall; flips on and off.
+    Lever,
+    /// On the floor or a wall; pressed for a moment.
+    Button,
+    /// Pressure plate, pressed while something stands on it.
+    Plate,
+    /// A redstone repeater: a thin slab with two little torches.
+    Repeater,
+    /// Piston base, facing any of six ways, pushed out or not.
+    Piston,
+    /// The arm of a pushed-out piston.
+    PistonHead,
+    /// A redstone comparator: like a repeater, with two torches at the back.
+    Comparator,
+    /// A full block with a front facing any of six ways (observer, dropper, dispenser).
+    Oriented,
+    /// A hopper: a wide bowl over a spout pointing down or to a side.
+    Hopper,
+    /// A rail: flat on the ground, straight, curved or sloping up a block (see `shapes::RAIL_ENDS`).
+    Rail,
+    /// A chair you can sit on (Handcrafted and Macaw's Furniture idea): faces one of four ways,
+    /// with its back on the far side.
+    Chair,
+    /// A table: a top on legs; tables side by side share one top and lose the legs between them.
+    Table,
+    /// A lantern standing on the ground (variant 0) or hanging from a chain (1).
+    Lantern,
+    /// A thin chain hanging straight down.
+    Chain,
+    /// A rope bridge (Macaw's Bridges idea): a plank deck with rope rails, running north-south
+    /// (variant 0) or east-west (1).
+    Bridge,
+    /// The glowing sheet inside a lit portal frame: across x (variant 0) or across z (1).
+    Portal,
+    /// A small pot (Botany Pots idea) with a plant standing in it, crossed like a flower: the
+    /// pot takes the side and top pictures, the plant the bottom one.
+    Pot,
+    /// A bench to sit on (Another Furniture idea): a long seat on two legs, no back.
+    Bench,
+    /// A shelf board on a wall, with two brackets under it.
+    Shelf,
+    /// A sign: a board on a post (variant facing 0-3) or on a wall (4-7).
+    Sign,
+    /// A banner: a cloth hanging from a bar on a pole (variant facing 0-3) or on a wall (4-7).
+    Banner,
+    /// A head or skull: an 8-pixel cube on the floor.
+    Skull,
+    /// A hollow log (Distant Lands idea): four walls round a hole, standing up (variant 0) or
+    /// lying along x (1) or z (2).
+    Hollow,
+    /// A fence gate (Macaw's Fences idea): two posts and a swinging leaf; right click opens it.
+    FenceGate,
+    /// A ladder flat against the wall to one side (variant facing 0-3); climbable.
+    Ladder,
+    /// A cake: half a block high, losing a slice from one side per bite (variant 0-6 bites).
+    Cake,
+}
+
+impl Shape {
+    /// Drawn and collided as boxes from `shapes::boxes`.
+    pub fn is_boxes(self) -> bool {
+        matches!(
+            self,
+            Shape::Slab
+                | Shape::Stairs
+                | Shape::Fence
+                | Shape::Wall
+                | Shape::Pane
+                | Shape::Door
+                | Shape::Trapdoor
+                | Shape::Layer
+                | Shape::Roof
+                | Shape::Wire
+                | Shape::Lever
+                | Shape::Button
+                | Shape::Plate
+                | Shape::Repeater
+                | Shape::Piston
+                | Shape::PistonHead
+                | Shape::Comparator
+                | Shape::Oriented
+                | Shape::Hopper
+                | Shape::Rail
+                | Shape::Chair
+                | Shape::Table
+                | Shape::Lantern
+                | Shape::Chain
+                | Shape::Bridge
+                | Shape::Portal
+                | Shape::Pot
+                | Shape::Bench
+                | Shape::Shelf
+                | Shape::Sign
+                | Shape::Banner
+                | Shape::Skull
+                | Shape::Hollow
+                | Shape::FenceGate
+                | Shape::Ladder
+                | Shape::Cake
+        )
+    }
 }
 
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -94,6 +214,9 @@ pub struct BlockDef {
     /// Experience dropped when mined (min, max).
     #[serde(default)]
     pub xp: (u8, u8),
+    /// Stands in water (kelp): drawn and swum through as water, leaves water when broken.
+    #[serde(default)]
+    pub waterlogged: bool,
 }
 
 /// Tool families. Blocks name the one that digs them fast; items say which one they are.
@@ -153,6 +276,11 @@ pub struct Block {
     pub tier: u8,
     pub drops: Option<Vec<DropDef>>,
     pub xp: (u8, u8),
+    pub waterlogged: bool,
+    /// Orientation (stairs, doors...); 0 for the base block.
+    pub variant: u8,
+    /// The base block of a variant (itself for the base): what it drops and shows as.
+    pub base: BlockId,
 }
 
 pub struct BlockRegistry {
@@ -163,12 +291,23 @@ pub struct BlockRegistry {
     // Dense per-id property tables for the hot loops (meshing, lighting).
     opaque: Vec<bool>,
     light: Vec<u8>,
+    /// Id of variant 1 of each base block (variants follow it in order), 0 when it has none.
+    first_variant: Vec<BlockId>,
 }
 
 impl BlockRegistry {
     pub fn from_ron(text: &str) -> Result<Self, String> {
-        let file: BlockFile = ron::from_str(text).map_err(|e| format!("blocks.ron: {e}"))?;
-        Self::from_defs(file.blocks)
+        Self::from_ron_many(&[text])
+    }
+
+    /// Several block files read as one list, in order (the base game, then mod packs).
+    pub fn from_ron_many(texts: &[&str]) -> Result<Self, String> {
+        let mut defs = Vec::new();
+        for text in texts.iter().filter(|t| !t.trim().is_empty()) {
+            let file: BlockFile = ron::from_str(text).map_err(|e| format!("blocks.ron: {e}"))?;
+            defs.extend(file.blocks);
+        }
+        Self::from_defs(defs)
     }
 
     pub fn from_defs(defs: Vec<BlockDef>) -> Result<Self, String> {
@@ -178,6 +317,7 @@ impl BlockRegistry {
             textures: Vec::new(),
             opaque: Vec::new(),
             light: Vec::new(),
+            first_variant: Vec::new(),
         };
         let mut tex_index: HashMap<String, u16> = HashMap::new();
         let mut tex = |name: &str, reg_tex: &mut Vec<String>| -> u16 {
@@ -207,11 +347,13 @@ impl BlockRegistry {
             tier: 0,
             drops: Some(Vec::new()),
             xp: (0, 0),
+            waterlogged: false,
         }];
         all.extend(defs.into_iter().filter(|d| d.name != "air"));
         for d in all {
             if reg.by_name.contains_key(&d.name) {
-                return Err(format!("duplicate block name '{}'", d.name));
+                // Two data files naming the same block (stages merged together): the first wins.
+                continue;
             }
             let t = &d.textures;
             let fallback = t.all.clone().or_else(|| t.side.clone()).unwrap_or_else(|| d.name.clone());
@@ -256,7 +398,40 @@ impl BlockRegistry {
                 tier: d.tier,
                 drops: d.drops,
                 xp: d.xp,
+                waterlogged: d.waterlogged,
+                variant: 0,
+                base: id,
             });
+        }
+        // Orientations get hidden ids after every base block, so base ids don't move.
+        let bases = reg.blocks.len();
+        reg.first_variant = vec![AIR; bases];
+        for base in 0..bases {
+            let b = reg.blocks[base].clone();
+            let n = crate::shapes::variant_count(b.shape);
+            if n > 1 {
+                reg.first_variant[base] = reg.blocks.len() as BlockId;
+            }
+            for v in 1..n {
+                let id = reg.blocks.len() as BlockId;
+                let name = format!("{}:{}", b.name, v);
+                let mut vb = b.clone();
+                vb.name = name.clone();
+                vb.variant = v;
+                vb.in_inventory = false;
+                // A double slab is a full cube; the upper half of a door uses the top texture.
+                vb.opaque = (b.shape == Shape::Slab && v == 2 || b.shape == Shape::Layer && v == 7) && b.transparency == Transparency::Opaque;
+                if b.shape == Shape::Door {
+                    vb.faces = [if v & 8 != 0 { b.faces[2] } else { b.faces[0] }; 6];
+                }
+                reg.by_name.insert(name, id);
+                reg.opaque.push(vb.opaque);
+                reg.light.push(vb.light);
+                reg.blocks.push(vb);
+            }
+            if b.shape == Shape::Door {
+                reg.blocks[base].faces = [b.faces[0]; 6];
+            }
         }
         if reg.blocks.len() > u16::MAX as usize {
             return Err("too many blocks".into());
@@ -277,6 +452,16 @@ impl BlockRegistry {
     #[inline(always)]
     pub fn light_of(&self, id: BlockId) -> u8 {
         self.light[id as usize]
+    }
+
+    /// Variant `v` of a block (any variant of it may be passed); the base itself for 0 or when
+    /// the shape has no such variant.
+    pub fn variant(&self, id: BlockId, v: u8) -> BlockId {
+        let base = self.blocks[id as usize].base;
+        if v == 0 || v >= crate::shapes::variant_count(self.blocks[base as usize].shape) {
+            return base;
+        }
+        self.first_variant[base as usize] + v as BlockId - 1
     }
 
     pub fn id(&self, name: &str) -> Option<BlockId> {

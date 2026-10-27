@@ -43,6 +43,8 @@ pub struct LayerDef {
 pub enum Kind {
     Passive,
     Hostile,
+    /// Leaves the player alone until hurt, then fights back (bears).
+    Neutral,
 }
 
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -51,12 +53,22 @@ pub enum SpawnRule {
     Grass,
     /// Anywhere dark (night or caves).
     Dark,
+    /// On the surface of water, in daylight (ducks).
+    Water,
     /// Never spawns by itself (the player's own model).
     Never,
 }
 
 fn d_false() -> bool {
     false
+}
+
+fn d_group() -> (u8, u8) {
+    (2, 4)
+}
+
+fn d_weight() -> u32 {
+    10
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -87,6 +99,70 @@ pub struct MobDef {
     pub drops: Vec<crate::block::DropDef>,
     #[serde(default)]
     pub xp: u8,
+    /// Runs away from the player when they come this close (0 = never; hurt animals still panic).
+    #[serde(default)]
+    pub flee_range: f32,
+    /// Floats on the water surface and paddles about instead of bobbing.
+    #[serde(default = "d_false")]
+    pub swims: bool,
+    /// Moves in hops (rabbits).
+    #[serde(default = "d_false")]
+    pub hops: bool,
+    /// Naps on the ground in the daytime.
+    #[serde(default = "d_false")]
+    pub sleeps: bool,
+    /// Mobs (by name) it hunts now and then.
+    #[serde(default)]
+    pub prey: Vec<String>,
+    /// Biomes (as `Biome::name()` says them) where it spawns; empty means anywhere.
+    #[serde(default)]
+    pub biomes: Vec<String>,
+    /// Blocks it spawns on (names) for the `Grass` rule; empty means grass blocks.
+    #[serde(default)]
+    pub ground: Vec<String>,
+    /// How many come together (animals): min, max.
+    #[serde(default = "d_group")]
+    pub group: (u8, u8),
+    /// How often it is picked among the mobs that may spawn at a spot.
+    #[serde(default = "d_weight")]
+    pub weight: u32,
+    /// Drawn this many times bigger than its model (bosses).
+    #[serde(default = "d_scale")]
+    pub scale: f32,
+    /// A boss: health bar at the top of the screen, never wanders off.
+    #[serde(default = "d_false")]
+    pub boss: bool,
+    /// A town NPC: lives in a house, never despawns, talks and trades.
+    #[serde(default = "d_false")]
+    pub town: bool,
+    /// Flies instead of walking (ghasts, blazes, the Wither), keeping `hover` blocks above
+    /// the ground, or above the player while fighting.
+    #[serde(default = "d_false")]
+    pub flies: bool,
+    #[serde(default)]
+    pub hover: f32,
+    /// How far a ranged mob shoots from.
+    #[serde(default = "d_range")]
+    pub range: f32,
+    /// Lives under water (fish, whales): swims about below the surface, never climbs out onto
+    /// the bank, and flops about when stranded. See `Mob::aquatic_steer`.
+    #[serde(default = "d_false")]
+    pub aquatic: bool,
+}
+
+fn d_range() -> f32 {
+    15.0
+}
+
+fn d_scale() -> f32 {
+    1.0
+}
+
+impl MobDef {
+    /// Spawns in this biome?
+    pub fn in_biome(&self, biome: &str) -> bool {
+        self.biomes.is_empty() || self.biomes.iter().any(|b| b == biome)
+    }
 }
 
 #[derive(Deserialize)]
@@ -101,7 +177,16 @@ pub struct MobRegistry {
 
 impl MobRegistry {
     pub fn from_ron(text: &str) -> Result<Self, String> {
-        let f: MobFile = ron::from_str(text).map_err(|e| format!("mobs.ron: {e}"))?;
+        Self::from_ron_many(&[text])
+    }
+
+    /// Several mob files read as one list (the base game, then mod packs).
+    pub fn from_ron_many(texts: &[&str]) -> Result<Self, String> {
+        let mut f = MobFile { mobs: Vec::new() };
+        for text in texts.iter().filter(|t| !t.trim().is_empty()) {
+            let g: MobFile = ron::from_str(text).map_err(|e| format!("mobs.ron: {e}"))?;
+            f.mobs.extend(g.mobs);
+        }
         for m in &f.mobs {
             if m.parts.len() > 16 {
                 return Err(format!("mob '{}' has more than 16 parts", m.name));
@@ -125,9 +210,11 @@ impl MobRegistry {
 pub enum MobEvent {
     /// Melee hit on the player.
     Hit { damage: f32, from: Vec3 },
-    /// An arrow: hit or miss is decided here.
-    Shoot { damage: f32, hit: bool },
+    /// An arrow leaves `from` aimed at `at` (the player's feet); `hit` says whether the aim is true.
+    Shoot { damage: f32, from: Vec3, at: Vec3, hit: bool },
     Explode { pos: Vec3, power: f32 },
+    /// Bit its prey (the mob the game set as `Mob::prey`).
+    Bite { damage: f32 },
     /// Took damage from the sun; the game shows fire.
     Burning,
     Died { pos: Vec3 },
@@ -149,6 +236,8 @@ pub struct Mob {
     pub walk_speed: f32,
     pub age: f32,
     pub dead_age: f32,
+    /// A per-mob offset for idle animations, so a herd doesn't move in step.
+    pub phase: f32,
     wander: Option<Vec3>,
     idle: f32,
     attack_cd: f32,
@@ -156,12 +245,56 @@ pub struct Mob {
     pub aggro: bool,
     burn_tick: f32,
     pub stuck: f32,
+    /// Seconds left of running away after being hurt, and from where.
+    panic: f32,
+    panic_from: Vec3,
+    /// Napping (drawn lying down).
+    pub sleeping: bool,
+    sleep_t: f32,
+    /// Where the prey it is hunting is now (set by the game each tick), and how long until it
+    /// is hungry again after a catch.
+    pub prey: Option<Vec3>,
+    pub fed: f32,
+    /// Seconds left burning (fire spells) and slowed (frost spells).
+    pub on_fire: f32,
+    pub chill: f32,
+    /// Lasting harm the game put on it (Terraria-style debuffs: poison, frostburn, ichor...):
+    /// effect id and seconds left. The game ticks them; `vuln` is how much more a hit hurts.
+    pub debuffs: Vec<(u8, f32)>,
+    pub vuln: f32,
+    /// Where a town NPC lives; it wanders near here.
+    pub home: Option<Vec3>,
+    /// Wears a saddle (horses and the like), and has the player on its back.
+    pub saddled: bool,
+    pub ridden: bool,
+    /// A name given with a name tag (shown over its head; it stays around).
+    pub name: Option<String>,
+    /// On a lead: held by the player, or tied to the fence post at `post`.
+    pub leashed: bool,
+    pub post: Option<glam::IVec3>,
+    /// Set by the game's Apotheosis mod: elite rank (see mods/apotheosis.rs) and how much
+    /// harder this mob hits than its kind (world tier, elites).
+    pub elite: u8,
+    pub power: f32,
+    /// Its death was handed to the game (drops, bosses); set once.
+    pub counted: bool,
+    fire_tick: f32,
     rng: Rng,
+    /// Unique for the life of the program: how multiplayer names this mob.
+    pub net_id: u32,
 }
+
+static NEXT_NET_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
 pub const DEATH_TIME: f32 = 0.9;
 
 impl Mob {
+    /// Walk to a spot (town folk at work), then stand there a moment.
+    pub fn go_to(&mut self, p: Vec3, wait: f32) {
+        self.wander = Some(p);
+        self.idle = wait;
+    }
+
     pub fn new(def_index: usize, def: &MobDef, pos: Vec3, seed: u64) -> Mob {
         let mut body = Body::sized(pos, def.width, def.height);
         body.speed_override = Some(def.speed);
@@ -179,6 +312,7 @@ impl Mob {
             walk_speed: 0.0,
             age: 0.0,
             dead_age: 0.0,
+            phase: rng.f32() * std::f32::consts::TAU,
             wander: None,
             idle: rng.f32() * 3.0,
             attack_cd: 1.0,
@@ -186,7 +320,28 @@ impl Mob {
             aggro: false,
             burn_tick: 0.0,
             stuck: 0.0,
+            panic: 0.0,
+            panic_from: pos,
+            sleeping: false,
+            sleep_t: 0.0,
+            prey: None,
+            fed: 20.0 + rng.f32() * 40.0,
+            on_fire: 0.0,
+            chill: 0.0,
+            debuffs: Vec::new(),
+            vuln: 0.0,
+            home: None,
+            saddled: false,
+            ridden: false,
+            name: None,
+            leashed: false,
+            post: None,
+            elite: 0,
+            power: 1.0,
+            counted: false,
+            fire_tick: 0.0,
             rng,
+            net_id: NEXT_NET_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         }
     }
 
@@ -199,18 +354,33 @@ impl Mob {
         if !self.alive() {
             return false;
         }
-        self.health -= damage;
+        self.health -= damage * (1.0 + self.vuln);
         self.hurt_age = 0.0;
         let dir = self.body.pos - from;
         self.body.knockback(dir, 6.0);
         self.aggro = true;
         self.wander = None;
+        self.panic = 5.0;
+        self.panic_from = from;
+        self.sleeping = false;
         self.health <= 0.0
     }
 
     /// Fuse progress 0..1 for exploding mobs (drives the swelling animation).
     pub fn fuse(&self) -> f32 {
         (self.fuse / 1.5).clamp(0.0, 1.0)
+    }
+
+    /// Lie down for a nap of `secs` seconds.
+    pub fn fall_asleep(&mut self, secs: f32) {
+        self.sleeping = true;
+        self.sleep_t = secs;
+        self.wander = None;
+    }
+
+    /// Looking for something to hunt?
+    pub fn hungry(&self, def: &MobDef) -> bool {
+        !def.prey.is_empty() && self.fed <= 0.0 && !self.sleeping && self.alive()
     }
 
     /// One simulation step.
@@ -229,6 +399,8 @@ impl Mob {
         self.age += dt;
         self.hurt_age += dt;
         self.attack_cd -= dt;
+        self.fed -= dt;
+        self.panic -= dt;
         if !self.alive() {
             self.dead_age += dt;
             // Keep falling while the death animation plays.
@@ -241,8 +413,26 @@ impl Mob {
 
         let mut wish = Vec3::ZERO;
         let mut jump = false;
+        let mut run = false;
         let hostile = def.kind == Kind::Hostile && !player_creative;
 
+        // Set alight by a spell: a point of damage a second until it goes out (water puts it out).
+        if self.on_fire > 0.0 {
+            self.on_fire = if self.body.in_water { 0.0 } else { self.on_fire - dt };
+            self.fire_tick += dt;
+            if self.fire_tick > 1.0 {
+                self.fire_tick = 0.0;
+                self.health -= 1.0;
+                self.hurt_age = 0.0;
+                out.push(MobEvent::Burning);
+                if self.health <= 0.0 {
+                    out.push(MobEvent::Died { pos: self.body.center() });
+                    return;
+                }
+            }
+        }
+        self.chill = (self.chill - dt).max(0.0);
+        self.body.speed_override = Some(def.speed * if self.chill > 0.0 { 0.4 } else { 1.0 });
         if def.burns_in_daylight && daylight && sky_light_at_head >= 14 && !self.body.in_water {
             self.burn_tick += dt;
             if self.burn_tick > 1.0 {
@@ -263,8 +453,19 @@ impl Mob {
         if hostile && dist > 28.0 {
             self.aggro = false;
         }
+        // A neutral animal calms down once the player is gone (or can't be hurt).
+        if def.kind == Kind::Neutral && (dist > 20.0 || player_creative) {
+            self.aggro = false;
+        }
+        let fights = self.aggro && !player_creative && def.kind != Kind::Passive;
+        let flee_player = def.flee_range > 0.0 && dist < def.flee_range && !player_creative;
+        let panicking = self.panic > 0.0 && def.kind == Kind::Passive;
+        if fights || flee_player || panicking || !daylight {
+            self.sleeping = false;
+        }
 
-        if hostile && self.aggro {
+        if fights {
+            run = true;
             // Face the player and close in.
             let target_yaw = flat.x.atan2(flat.z);
             self.yaw = turn_towards(self.yaw, target_yaw, dt * 6.0);
@@ -285,21 +486,59 @@ impl Mob {
                 }
             } else if def.ranged {
                 // Keep some distance, shoot every couple of seconds.
-                if dist < 6.0 {
+                let (near, far) = (def.range * 0.4, def.range * 0.67);
+                if dist < near {
                     wish = -flat.normalize_or_zero();
-                } else if dist > 10.0 {
+                } else if dist > far {
                     wish = flat.normalize_or_zero();
                 }
-                if self.attack_cd <= 0.0 && dist < 15.0 {
+                if self.attack_cd <= 0.0 && dist < def.range {
                     self.attack_cd = 2.0 + self.rng.f32();
                     let hit = self.rng.chance((1.0 - dist / 22.0).clamp(0.2, 0.85));
-                    out.push(MobEvent::Shoot { damage: def.attack, hit });
+                    let from = self.body.pos + Vec3::Y * (def.height * 0.75);
+                    out.push(MobEvent::Shoot { damage: def.attack, from, at: player, hit });
                 }
             } else if dist > reach {
                 wish = flat.normalize_or_zero();
             } else if self.attack_cd <= 0.0 {
                 self.attack_cd = 1.0;
                 out.push(MobEvent::Hit { damage: def.attack, from: self.body.center() });
+            }
+        } else if let Some(prey) = self.prey.filter(|_| self.hungry(def)) {
+            // Hunting: run the prey down and bite it.
+            self.fuse = 0.0;
+            run = true;
+            let d = Vec3::new(prey.x - self.body.pos.x, 0.0, prey.z - self.body.pos.z);
+            self.yaw = turn_towards(self.yaw, d.x.atan2(d.z), dt * 8.0);
+            self.head_yaw = turn_towards(self.head_yaw, 0.0, dt * 5.0);
+            if d.length() > def.width / 2.0 + 0.7 {
+                wish = d.normalize_or_zero();
+            } else if self.attack_cd <= 0.0 {
+                self.attack_cd = 1.0;
+                out.push(MobEvent::Bite { damage: def.attack.max(2.0) });
+            }
+        } else if flee_player || panicking {
+            // Run away from whatever scared it.
+            self.fuse = 0.0;
+            run = true;
+            self.wander = None;
+            let threat = if panicking { self.panic_from } else { player };
+            let mut away = self.body.pos - threat;
+            away.y = 0.0;
+            let away = if away.length_squared() < 1e-4 { Vec3::new(self.yaw.sin(), 0.0, self.yaw.cos()) } else { away.normalize() };
+            wish = away;
+            self.yaw = turn_towards(self.yaw, away.x.atan2(away.z), dt * 8.0);
+            self.head_yaw = turn_towards(self.head_yaw, 0.0, dt * 5.0);
+            self.head_pitch = turn_towards(self.head_pitch, 0.0, dt * 5.0);
+        } else if self.sleeping {
+            // Curled up with the head down; wakes after a while or when someone comes close.
+            self.fuse = 0.0;
+            self.sleep_t -= dt;
+            self.head_yaw = turn_towards(self.head_yaw, 0.0, dt * 2.0);
+            self.head_pitch = turn_towards(self.head_pitch, 0.45, dt * 2.0);
+            if self.sleep_t <= 0.0 || (dist < 3.0 && !player_creative) {
+                self.sleeping = false;
+                self.idle = 1.0 + self.rng.f32() * 2.0;
             }
         } else {
             self.fuse = 0.0;
@@ -317,10 +556,17 @@ impl Mob {
                     }
                 }
                 None => {
-                    if self.idle <= 0.0 {
+                    if self.idle <= 0.0 && def.sleeps && daylight && self.rng.chance(0.35) {
+                        self.sleeping = true;
+                        self.sleep_t = 15.0 + self.rng.f32() * 25.0;
+                    } else if self.idle <= 0.0 {
                         let a = self.rng.f32() * std::f32::consts::TAU;
-                        let r = 3.0 + self.rng.f32() * 6.0;
-                        self.wander = Some(self.body.pos + Vec3::new(a.cos() * r, 0.0, a.sin() * r));
+                        // Town folk potter about near home.
+                        let (centre, r) = match self.home {
+                            Some(h) => (h, self.rng.f32() * 3.0),
+                            None => (self.body.pos, 3.0 + self.rng.f32() * 6.0),
+                        };
+                        self.wander = Some(centre + Vec3::new(a.cos() * r, 0.0, a.sin() * r));
                         self.idle = 3.0 + self.rng.f32() * 4.0;
                     }
                 }
@@ -337,20 +583,41 @@ impl Mob {
             }
         }
 
-        // Jump over single blocks when the way is blocked.
+        // Jump over single blocks when the way is blocked (also out of the water onto a bank).
         let before = self.body.pos;
-        if wish != Vec3::ZERO && self.body.on_ground {
+        if wish != Vec3::ZERO && (self.body.on_ground || self.body.in_water) {
             let ahead = self.body.pos + wish.normalize() * (def.width / 2.0 + 0.2);
             let foot = ahead.floor().as_ivec3();
             if world.solid(foot) && !world.solid(foot + glam::IVec3::Y) && !world.solid(foot + glam::IVec3::Y * 2) {
                 jump = true;
             }
         }
-        if self.body.in_water {
+        if def.hops && wish != Vec3::ZERO && self.body.on_ground {
             jump = true;
         }
-        let input = Input { wish, jump, sneak: false, sprint: hostile && self.aggro, crawl: false };
-        self.body.step(world, &input, dt);
+        if self.body.in_water && !def.aquatic {
+            if def.swims {
+                // Float: paddle up only while the waterline is above the belly.
+                if world.liquid((self.body.pos + Vec3::Y * 0.35).floor().as_ivec3()) {
+                    jump = true;
+                }
+            } else {
+                jump = true;
+            }
+        }
+        let mut sneak = false;
+        if def.flies && def.hover <= 0.0 {
+            (wish, jump, sneak) = self.fly(def, world, player, fights, wish);
+        }
+        if def.aquatic {
+            self.aquatic_steer(world, &mut wish, &mut jump);
+        }
+        let input = Input { wish, jump, sneak, sprint: run, crawl: false };
+        if def.flies && def.hover > 0.0 {
+            self.fly_step(def, world, wish, if fights { Some(player) } else { None }, run, dt);
+        } else {
+            self.body.step(world, &input, dt);
+        }
         let moved = (self.body.pos - before) * Vec3::new(1.0, 0.0, 1.0);
         let speed = moved.length() / dt.max(1e-4);
         self.walk_speed += (speed - self.walk_speed) * (dt * 10.0).min(1.0);
@@ -364,6 +631,72 @@ impl Mob {
             }
         } else {
             self.stuck = 0.0;
+        }
+    }
+}
+
+impl Mob {
+    /// Flying: glide toward `wish` at the mob's speed and hold a height, `hover` blocks over the
+    /// ground below (or over the player it fights), bobbing a little.
+    fn fly_step(&mut self, def: &MobDef, world: &impl Terrain, wish: Vec3, target: Option<Vec3>, run: bool, dt: f32) {
+        let at = self.body.pos;
+        let ground = (0..40).map(|k| at.y.floor() as i32 - k).find(|&y| world.solid(glam::IVec3::new(at.x.floor() as i32, y, at.z.floor() as i32)));
+        let bob = (self.age * 1.3 + self.phase).sin() * 0.6;
+        let want_y = match (target, ground) {
+            (Some(p), _) => p.y + def.hover + bob,
+            (None, Some(g)) => g as f32 + 1.0 + def.hover + bob,
+            (None, None) => at.y - 1.0,
+        };
+        let speed = def.speed * if run { 1.3 } else { 1.0 } * if self.chill > 0.0 { 0.4 } else { 1.0 };
+        let mut v = Vec3::new(wish.x, 0.0, wish.z) * speed;
+        v.y = ((want_y - at.y) * 1.5).clamp(-speed, speed);
+        // Ease into the new speed so turns are smooth.
+        let k = (dt * 4.0).min(1.0);
+        let vel = self.body.vel + (v - self.body.vel) * k;
+        self.body.fly(world, vel, dt);
+    }
+
+    /// Flying: climb or sink toward the wanted height (a few blocks over the ground, bobbing,
+    /// or level with the player when fighting) and slow the wish down to the mob's own speed.
+    fn fly(&mut self, def: &MobDef, world: &impl Terrain, player: Vec3, fights: bool, wish: Vec3) -> (Vec3, bool, bool) {
+        self.body.flying = true;
+        let ground = (0..40).map(|k| (self.body.pos - Vec3::Y * k as f32).floor().as_ivec3()).find(|&p| world.solid(p)).map(|p| p.y as f32 + 1.0);
+        let want = if fights {
+            player.y + if def.ranged { 4.0 } else { 0.5 }
+        } else {
+            let hover = 3.0 + (self.phase.sin() * 0.5 + 0.5) * 5.0 + (self.age * 0.4 + self.phase).sin();
+            ground.map(|g| g + hover).unwrap_or(self.body.pos.y)
+        };
+        let dy = want - self.body.pos.y;
+        let k = def.speed / crate::physics::FLY_SPEED;
+        (wish * k, dy > 0.5, dy < -0.5)
+    }
+
+    /// Water creatures (`MobDef::aquatic`): in the water they keep off the bottom and away from
+    /// the surface, and never swim out onto land (a wander goal or chase that leads out of the
+    /// water is dropped); stranded on land they flop about until they reach water again.
+    fn aquatic_steer(&mut self, world: &impl Terrain, wish: &mut Vec3, jump: &mut bool) {
+        let at = |p: Vec3| p.floor().as_ivec3();
+        if self.body.in_water {
+            if *wish != Vec3::ZERO {
+                let ahead = self.body.pos + Vec3::Y * 0.3 + wish.normalize() * 1.2;
+                if !world.liquid(at(ahead)) {
+                    *wish = Vec3::ZERO;
+                    self.wander = None;
+                    self.idle = 0.5 + self.rng.f32();
+                }
+            }
+            // Rise off the bottom; sink back when close under the surface.
+            let near_bottom = world.solid(at(self.body.pos - Vec3::Y * 0.6));
+            let near_top = !world.liquid(at(self.body.pos + Vec3::Y * 1.4));
+            *jump = near_bottom && !near_top;
+        } else {
+            // Stranded: flop about now and then.
+            *jump = self.body.on_ground && self.rng.chance(0.04);
+            if *jump {
+                let a = self.rng.f32() * std::f32::consts::TAU;
+                *wish = Vec3::new(a.cos(), 0.0, a.sin());
+            }
         }
     }
 }
@@ -408,5 +741,173 @@ mod tests {
         }
         assert!(m.body.pos.x > 5.0, "{}", m.body.pos.x);
         assert!(ev.iter().any(|e| matches!(e, MobEvent::Hit { .. })));
+    }
+
+    fn vanilla() -> MobRegistry {
+        MobRegistry::from_ron(include_str!("../../../packs/vanilla/mobs.ron")).unwrap()
+    }
+
+    fn run(reg: &MobRegistry, name: &str, at: Vec3, player: Vec3, secs: f32, world: &impl Terrain) -> (Mob, Vec<MobEvent>) {
+        let i = reg.id(name).unwrap();
+        let def = &reg.defs[i];
+        let mut m = Mob::new(i, def, at, 7);
+        let mut ev = Vec::new();
+        for _ in 0..(secs / 0.02) as usize {
+            m.tick(def, world, player, false, 15, true, 0.02, &mut ev);
+        }
+        (m, ev)
+    }
+
+    #[test]
+    fn old_mob_data_still_loads_with_defaults() {
+        let text = r#"(mobs: [(name: "blob", display_name: "Blob", kind: Passive, health: 4, speed: 2.0,
+            width: 0.5, height: 0.5, spawn: Grass, parts: [(size: (4, 4, 4), origin: (-2, 0, -2), uv: (0, 0))])])"#;
+        let reg = MobRegistry::from_ron(text).unwrap();
+        let d = &reg.defs[0];
+        assert_eq!(d.flee_range, 0.0);
+        assert!(!d.swims && !d.hops && !d.sleeps && d.prey.is_empty());
+        assert!(d.in_biome("Desert") && d.in_biome("Some Future Biome"));
+        assert_eq!(d.group, (2, 4));
+        assert_eq!(d.weight, 10);
+    }
+
+    #[test]
+    fn new_animals_are_there_and_biome_bound() {
+        let reg = vanilla();
+        for n in ["deer", "fox", "rabbit", "bear", "duck"] {
+            assert!(reg.id(n).is_some(), "{n}");
+        }
+        let deer = &reg.defs[reg.id("deer").unwrap()];
+        assert!(deer.in_biome("Taiga") && !deer.in_biome("Desert"));
+        assert_eq!(reg.defs[reg.id("bear").unwrap()].kind, Kind::Neutral);
+        assert_eq!(reg.defs[reg.id("duck").unwrap()].spawn, SpawnRule::Water);
+    }
+
+    #[test]
+    fn deer_runs_from_the_player() {
+        let reg = vanilla();
+        let player = Vec3::new(0.5, 10.0, 0.5);
+        let (m, _) = run(&reg, "deer", Vec3::new(5.5, 10.0, 0.5), player, 3.0, &Flat);
+        assert!((m.body.pos - player).length() > 9.5, "{}", m.body.pos);
+    }
+
+    #[test]
+    fn bear_is_calm_until_hurt() {
+        let reg = vanilla();
+        let i = reg.id("bear").unwrap();
+        let def = &reg.defs[i];
+        let player = Vec3::new(2.0, 10.0, 0.5);
+        let mut m = Mob::new(i, def, Vec3::new(0.5, 10.0, 0.5), 3);
+        let mut ev = Vec::new();
+        for _ in 0..200 {
+            m.tick(def, &Flat, player, false, 15, true, 0.02, &mut ev);
+        }
+        assert!(!ev.iter().any(|e| matches!(e, MobEvent::Hit { .. })));
+        m.hurt(1.0, player);
+        for _ in 0..300 {
+            m.tick(def, &Flat, player, false, 15, true, 0.02, &mut ev);
+        }
+        assert!(ev.iter().any(|e| matches!(e, MobEvent::Hit { .. })));
+    }
+
+    /// Ground up to y=4, water from 5 to 9.
+    struct Pond;
+    impl Terrain for Pond {
+        fn solid(&self, p: IVec3) -> bool {
+            p.y < 5
+        }
+        fn liquid(&self, p: IVec3) -> bool {
+            (5..10).contains(&p.y)
+        }
+    }
+
+    #[test]
+    fn duck_floats_on_the_surface() {
+        let reg = vanilla();
+        let far = Vec3::new(100.0, 10.0, 100.0);
+        let (m, _) = run(&reg, "duck", Vec3::new(0.5, 7.0, 0.5), far, 6.0, &Pond);
+        assert!(m.body.pos.y > 9.3 && m.body.pos.y < 10.2, "{}", m.body.pos.y);
+        let (m, _) = run(&reg, "duck", Vec3::new(0.5, 9.6, 0.5), far, 6.0, &Pond);
+        assert!(m.body.pos.y > 9.3 && m.body.pos.y < 10.2, "{}", m.body.pos.y);
+    }
+
+    fn with_mods() -> MobRegistry {
+        MobRegistry::from_ron_many(&[include_str!("../../../packs/vanilla/mobs.ron"), include_str!("../../../packs/vanilla/mods/mobs.ron")]).unwrap()
+    }
+
+    #[test]
+    fn mod_creatures_load_with_unique_names_and_known_prey() {
+        let reg = with_mods();
+        for n in ["gorilla", "crocodile", "cachalot_whale", "snail", "giraffe", "mutant_stalker", "void_walker_jungle"] {
+            assert!(reg.id(n).is_some(), "{n}");
+        }
+        let mut names: Vec<&str> = reg.defs.iter().map(|d| d.name.as_str()).collect();
+        names.sort();
+        let n = names.len();
+        names.dedup();
+        assert_eq!(n, names.len(), "duplicate mob names");
+        for d in &reg.defs {
+            for p in &d.prey {
+                assert!(reg.id(p).is_some(), "{} hunts unknown {p}", d.name);
+            }
+            // Mini-bosses never get the boss bar.
+            assert!(!(d.name.starts_with("mutant_") && d.boss), "{}", d.name);
+        }
+        assert!(reg.defs[reg.id("orca").unwrap()].aquatic);
+    }
+
+    /// Water from y=5 to 9 for x < 3, dry land (ground at y=9) beyond.
+    struct Lake;
+    impl Terrain for Lake {
+        fn solid(&self, p: IVec3) -> bool {
+            p.y < 5 || (p.x >= 3 && p.y < 10)
+        }
+        fn liquid(&self, p: IVec3) -> bool {
+            p.x < 3 && (5..10).contains(&p.y)
+        }
+    }
+
+    #[test]
+    fn fish_stay_in_the_water() {
+        let reg = with_mods();
+        let i = reg.id("bass").unwrap();
+        let def = &reg.defs[i];
+        let mut m = Mob::new(i, def, Vec3::new(1.5, 7.0, 0.5), 9);
+        let far = Vec3::new(100.0, 10.0, 100.0);
+        let mut ev = Vec::new();
+        for k in 0..3000 {
+            if k % 300 == 0 {
+                // Tempt it towards the shore.
+                m.go_to(Vec3::new(8.5, 10.0, 0.5), 5.0);
+            }
+            m.tick(def, &Lake, far, false, 15, true, 0.02, &mut ev);
+            assert!(m.body.pos.x < 3.6, "swam out at {}", m.body.pos);
+        }
+        assert!(m.body.in_water && m.body.pos.y < 9.5 && m.body.pos.y > 4.9, "{}", m.body.pos);
+    }
+
+    #[test]
+    fn hungry_fox_bites_its_prey_and_sleeps_by_day() {
+        let reg = vanilla();
+        let i = reg.id("fox").unwrap();
+        let def = &reg.defs[i];
+        let far = Vec3::new(100.0, 10.0, 100.0);
+        let mut m = Mob::new(i, def, Vec3::new(0.5, 10.0, 0.5), 5);
+        m.fed = 0.0;
+        let mut ev = Vec::new();
+        for _ in 0..200 {
+            m.prey = Some(Vec3::new(4.5, 10.0, 0.5));
+            m.tick(def, &Flat, far, false, 15, true, 0.02, &mut ev);
+        }
+        assert!(ev.iter().any(|e| matches!(e, MobEvent::Bite { .. })));
+        m.fed = 100.0;
+        m.prey = None;
+        m.fall_asleep(30.0);
+        let at = m.body.pos;
+        for _ in 0..200 {
+            m.tick(def, &Flat, far, false, 15, true, 0.02, &mut ev);
+        }
+        assert!(m.sleeping);
+        assert!((m.body.pos - at).length() < 0.3);
     }
 }

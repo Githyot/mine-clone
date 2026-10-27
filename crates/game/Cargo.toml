@@ -10,6 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 voxel = { path = "../voxel" }
+net = { path = "../net" }
 glam.workspace = true
 bytemuck.workspace = true
 serde.workspace = true
@@ -27,6 +28,9 @@ env_logger = "0.11"
 gilrs = "0.11"
 sysinfo = { version = "0.39", default-features = false, features = ["system", "disk", "component"] }
 nvml-wrapper = "0.13"
+# Opus for voice chat (libopus, built from source with CMake).
+opus-head-sys = { version = "0.3.3", default-features = false }
+wasmi = { version = "2.0.0", default-features = false, features = ["std", "wat", "validate", "portable-dispatch"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_System_Performance"] }

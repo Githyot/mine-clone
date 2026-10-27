@@ -8,7 +8,7 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use glam::{IVec3, Mat4, Quat, Vec3};
 use voxel::mob::MobDef;
 
-use crate::entity::Bones;
+use crate::entity::{Bones, MOUTH_PART};
 
 /// Body part indexes in the "player" model of mobs.ron.
 const HEAD: usize = 0;
@@ -36,12 +36,20 @@ pub struct Pose {
     pub sprinting: bool,
     pub burning: bool,
     pub hurt: bool,
+    /// In a cart or on a chair.
+    pub sitting: bool,
+    /// Something in the right hand: the arm is held a little forward, as in the classic game.
+    pub holding: bool,
+    /// Pulling up onto a ledge: 0 = not climbing, else 0..1 through the climb, and the
+    /// ledge's top above the feet.
+    pub mantle: f32,
+    pub ledge: f32,
 }
 
 /// Smoothed animation state that lives between frames.
 #[derive(Default)]
 pub struct Animator {
-    body_yaw: f32,
+    pub body_yaw: f32,
     walk: f32,
     amount: f32,
     time: f32,
@@ -51,11 +59,19 @@ pub struct Animator {
     lean: f32,
     /// Attack swing 0..1 (0 = not swinging).
     pub swing: f32,
+    /// How the weapon moves (Better Combat idea, see `mods/combat.rs`): 0 chop down from
+    /// above, 1 slash across, 2 thrust ahead, 3 uppercut from below.
+    pub swing_style: u8,
     was_ground: bool,
     fall_speed: f32,
     /// 0..1 head under water, and the breaststroke phase for the first-person arms.
-    underwater: f32,
+    pub underwater: f32,
     stroke: f32,
+    /// 0..1 how open the mouth is (voice chat, voice.rs).
+    pub talk: f32,
+    /// Climbing a ledge (copied from the pose for the first-person arms).
+    mantle: f32,
+    ledge: f32,
 }
 
 fn wrap(a: f32) -> f32 {
@@ -63,13 +79,29 @@ fn wrap(a: f32) -> f32 {
 }
 
 impl Animator {
+    /// A body lying still (a corpse), facing `yaw`.
+    pub fn lying(yaw: f32) -> Animator {
+        Animator { body_yaw: yaw, ..Default::default() }
+    }
+
     pub fn start_swing(&mut self) {
         if self.swing <= 0.0 || self.swing > 0.5 {
             self.swing = 0.001;
+            self.swing_style = 0;
         }
     }
 
+    /// Start a weapon swing of the given style right away (combo attacks).
+    pub fn start_styled_swing(&mut self, style: u8) {
+        self.swing = 0.001;
+        self.swing_style = style;
+    }
+
     pub fn update(&mut self, p: &Pose, dt: f32) {
+        if self.time == 0.0 {
+            // The first frame: the body starts out facing where the player looks.
+            self.body_yaw = p.look_yaw + PI;
+        }
         self.time += dt;
         if self.swing > 0.0 {
             self.swing += dt * 3.6;
@@ -119,6 +151,13 @@ impl Animator {
         self.stroke += dt * (0.55 + (speed / 3.0).min(1.0) * 0.6);
         let swimming = p.head_in_water && speed > 1.0;
         self.swim += ((swimming as u8 as f32) - self.swim) * (dt * 5.0).min(1.0);
+        self.mantle = p.mantle;
+        self.ledge = p.ledge;
+        if p.mantle > 0.0 {
+            // Hanging on a ledge is neither a jump nor a fall.
+            self.air_time = 0.0;
+            self.fall_speed = 0.0;
+        }
         let lean_target = if p.flying { (speed / 11.0).min(1.0) } else { 0.0 };
         self.lean += (lean_target - self.lean) * (dt * 4.0).min(1.0);
     }
@@ -158,7 +197,9 @@ impl Animator {
         // Arms swing against the legs, a little outward; idle breathing sways them.
         let arm = -leg * 0.85;
         let sway = 0.04 + breathe * 0.03 * idle;
-        rot[R_ARM] = Quat::from_rotation_x(arm + breathe * 0.03 * idle) * Quat::from_rotation_z(-sway);
+        // Holding something, the right arm swings half as far and stays raised 18° forward.
+        let r_arm = if p.holding { arm * 0.5 - PI / 10.0 } else { arm };
+        rot[R_ARM] = Quat::from_rotation_x(r_arm + breathe * 0.03 * idle) * Quat::from_rotation_z(-sway);
         rot[L_ARM] = Quat::from_rotation_x(-arm - breathe * 0.03 * idle) * Quat::from_rotation_z(sway);
         if p.sprinting && a > 0.8 {
             // Running: arms pump harder and the body leans in.
@@ -233,16 +274,55 @@ impl Animator {
                 rot[L_ARM] = rot[L_ARM].slerp(Quat::from_rotation_x(-PI + 0.9) * Quat::from_rotation_y(-0.6), prone);
             }
         }
+        if p.mantle > 0.0 {
+            // Climbing a ledge: both hands on the edge, the body hauls itself up, then leans
+            // over the top while one knee comes up onto it and the arms push down behind.
+            let (f, over) = mantle_reach(p.mantle);
+            let grab = (p.mantle / voxel::physics::MANTLE_GRAB).min(1.0);
+            let angle = 0.3 * (1.0 - grab) + mantle_arm(f, p.ledge - 1.4) * grab;
+            let kick = (self.time * 11.0).sin() * 0.25 * (1.0 - over);
+            rot[R_ARM] = Quat::from_rotation_x(-angle) * Quat::from_rotation_z(-0.12);
+            rot[L_ARM] = Quat::from_rotation_x(-angle) * Quat::from_rotation_z(0.12);
+            rot[BODY] = Quat::from_rotation_x(0.12 + 0.35 * over);
+            // Feet scrabble against the wall, then the right knee steps up.
+            rot[R_LEG] = Quat::from_rotation_x(-0.25 + kick - 1.2 * (over * PI).sin());
+            rot[L_LEG] = Quat::from_rotation_x(0.1 - kick + 0.35 * over);
+        }
+        if p.sitting {
+            // Seated: thighs forward, a little apart; hands resting on the knees.
+            rot[R_LEG] = Quat::from_rotation_x(-1.45) * Quat::from_rotation_z(0.1);
+            rot[L_LEG] = Quat::from_rotation_x(-1.45) * Quat::from_rotation_z(-0.1);
+            rot[R_ARM] = Quat::from_rotation_x(-0.55 + breathe * 0.02) * Quat::from_rotation_z(-0.05);
+            rot[L_ARM] = Quat::from_rotation_x(-0.55 - breathe * 0.02) * Quat::from_rotation_z(0.05);
+        }
         if p.burning {
             let f = self.time * 18.0;
             rot[R_ARM] = Quat::from_rotation_x(-2.4 + f.sin() * 0.6);
             rot[L_ARM] = Quat::from_rotation_x(-2.4 + f.cos() * 0.6);
         }
         if self.swing > 0.0 {
-            // Hit: the right arm comes down from above, the body twists into it.
+            // Hit: the right arm comes down from above, the body twists into it. Combo swings
+            // cut across, thrust ahead or come up from below instead.
             let s = (self.swing * PI).sin();
-            rot[R_ARM] = Quat::from_rotation_y(-s * 0.3) * Quat::from_rotation_x(-1.9 * s - 0.2) * Quat::from_rotation_z(0.2 * s);
-            rot[BODY] = rot[BODY] * Quat::from_rotation_y(-s * 0.25);
+            let ph = self.swing;
+            match self.swing_style {
+                1 => {
+                    rot[R_ARM] = Quat::from_rotation_y(0.9 - 1.8 * ph) * Quat::from_rotation_x(-1.45 * s - 0.15) * Quat::from_rotation_z(0.3 * s);
+                    rot[BODY] = rot[BODY] * Quat::from_rotation_y(0.35 - 0.7 * ph);
+                }
+                2 => {
+                    rot[R_ARM] = Quat::from_rotation_x(-1.55 * s.sqrt() - 0.05) * Quat::from_rotation_z(0.05 * s);
+                    rot[BODY] = rot[BODY] * Quat::from_rotation_y(-s * 0.4) * Quat::from_rotation_x(s * 0.12);
+                }
+                3 => {
+                    rot[R_ARM] = Quat::from_rotation_y(-s * 0.2) * Quat::from_rotation_x(0.5 - 3.0 * ph) * Quat::from_rotation_z(0.15 * s);
+                    rot[BODY] = rot[BODY] * Quat::from_rotation_y(-s * 0.2);
+                }
+                _ => {
+                    rot[R_ARM] = Quat::from_rotation_y(-s * 0.3) * Quat::from_rotation_x(-1.9 * s - 0.2) * Quat::from_rotation_z(0.2 * s);
+                    rot[BODY] = rot[BODY] * Quat::from_rotation_y(-s * 0.25);
+                }
+            }
         }
         // Head follows the camera, relative to the body.
         let head_yaw = wrap(p.look_yaw + PI - self.body_yaw).clamp(-1.3, 1.3);
@@ -262,36 +342,86 @@ impl Animator {
             let own = if i == BODY { Mat4::IDENTITY } else { Mat4::from_translation(pivot) * Mat4::from_quat(rot[i]) * Mat4::from_translation(-pivot) };
             b.m[i] = (root * body * Mat4::from_translation(shift[i]) * own).to_cols_array_2d();
         }
+        // Talking: the mouth opens downward from its top edge, two pixels above the chin.
+        if self.talk > 0.03 && def.parts.len() <= MOUTH_PART {
+            let top = def.parts[HEAD].origin.1 as f32 + 2.0;
+            let open = Mat4::from_translation(Vec3::Y * top) * Mat4::from_scale(Vec3::new(1.0, 0.2 + self.talk * 1.1, 1.0)) * Mat4::from_translation(-Vec3::Y * top);
+            b.m[MOUTH_PART] = (Mat4::from_cols_array_2d(&b.m[HEAD]) * open).to_cols_array_2d();
+        }
         b
     }
 
     /// First person: only the right arm, held in front of the camera. `eye` is relative to
     /// the camera's block; `bob` is the walking phase for the sway.
+    /// Camera space: x right, y up, -z forward.
+    fn camera(eye: Vec3, yaw: f32, pitch: f32) -> Mat4 {
+        Mat4::from_translation(eye) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(pitch)
+    }
+
+    /// Where the right arm sits in camera space, with walking sway and the swing. The shoulder
+    /// is the origin and the arm hangs along -Y from it.
+    fn arm_place(&self) -> Mat4 {
+        let s = if self.swing > 0.0 { (self.swing * PI).sin() } else { 0.0 };
+        let s2 = if self.swing > 0.0 { (self.swing.sqrt() * PI).sin() } else { 0.0 };
+        let bob = self.walk;
+        let a = self.amount.min(1.0);
+        let sway = Vec3::new((bob).sin() * 0.03 * a, -((bob).cos().abs()) * 0.035 * a, 0.0);
+        let ph = self.swing.max(0.0);
+        let (swing_off, turn, tip) = match self.swing_style {
+            // Slash: the fist sweeps from the right across to the left.
+            1 => (Vec3::new(0.2 * s - 0.55 * ph * s, 0.12 * s, -0.22 * s), 0.25 + s * (0.7 - 1.6 * ph), 1.75 + s * 0.15),
+            // Thrust: straight into the screen and back.
+            2 => (Vec3::new(-0.12 * s, 0.06 * s, -0.5 * s), 0.25 - s * 0.15, 1.75 + s * 0.05),
+            // Uppercut: from low up past the middle.
+            3 => (Vec3::new(-0.15 * s, -0.25 * s + 0.5 * ph * s, -0.2 * s), 0.25 - s * 0.4, 1.75 + s * (1.1 - 1.2 * ph)),
+            _ => (Vec3::new(-0.18 * s2, 0.12 * (s2 * 2.0 * PI / PI).sin().abs() * 0.5, -0.25 * s), 0.25 - s * 0.6, 1.75 + s * 0.5),
+        };
+        // Tipping the arm forward makes it reach into the screen.
+        Mat4::from_translation(Vec3::new(0.40, -0.46, -0.30) + sway + swing_off)
+            * Mat4::from_rotation_y(turn)
+            * Mat4::from_rotation_x(tip)
+            * Mat4::from_rotation_z(0.15)
+    }
+
     pub fn first_person_arm(&self, def: &MobDef, eye: Vec3, yaw: f32, pitch: f32, sky: f32, blk: f32) -> Bones {
         let mut b = Bones { light: [sky, blk, 0.0, 0.0], ..Default::default() };
         let zero = [[0.0f32; 4]; 4];
         for m in b.m.iter_mut() {
             *m = zero;
         }
-        let s = if self.swing > 0.0 { (self.swing * PI).sin() } else { 0.0 };
-        let s2 = if self.swing > 0.0 { (self.swing.sqrt() * PI).sin() } else { 0.0 };
-        let bob = self.walk;
-        let a = self.amount.min(1.0);
-        // Camera space: x right, y up, -z forward. Place the arm low on the right.
-        let cam = Mat4::from_translation(eye) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(pitch);
-        let sway = Vec3::new((bob).sin() * 0.03 * a, -((bob).cos().abs()) * 0.035 * a, 0.0);
-        let swing_off = Vec3::new(-0.18 * s2, 0.12 * (s2 * 2.0 * PI / PI).sin().abs() * 0.5, -0.25 * s);
-        // The arm hangs along -Y from the shoulder; tipping it forward makes it reach into the screen.
-        let place = Mat4::from_translation(Vec3::new(0.40, -0.46, -0.30) + sway + swing_off)
-            * Mat4::from_rotation_y(0.25 - s * 0.6)
-            * Mat4::from_rotation_x(1.75 + s * 0.5)
-            * Mat4::from_rotation_z(0.15);
+        let cam = Self::camera(eye, yaw, pitch);
+        let place = self.arm_place();
         let arm_model = |part: usize, place: Mat4| {
             let p = &def.parts[part];
             let pivot = Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32, p.pivot.2 as f32);
             // Model space has +Z forward; turn it so the arm points into the screen (-Z).
             (cam * place * Mat4::from_rotation_y(PI) * Mat4::from_scale(Vec3::splat(1.0 / 16.0)) * Mat4::from_translation(-pivot)).to_cols_array_2d()
         };
+        if self.mantle > 0.0 {
+            // Climbing a ledge: both hands grip the edge in front and stay on it while the view
+            // rises past, pressing down until they drop out of sight below. Placed level, not
+            // tipped with the look, since the hands hold onto the world.
+            let flat = Mat4::from_translation(eye) * Mat4::from_rotation_y(yaw);
+            let (f, over) = mantle_reach(self.mantle);
+            let grab = (self.mantle / voxel::physics::MANTLE_GRAB).min(1.0);
+            // On the edge while it is in sight; once the view has risen past it the hands keep
+            // pressing at the bottom of the view, then slide down out of it while swinging over.
+            let ledge = self.ledge - voxel::physics::EYE_HEIGHT;
+            let up = ledge.clamp(-0.32, 0.1) - over * 0.6;
+            // While the edge is still above the view the hands show on the wall's face below
+            // it, stretched up; from there on they rest on top.
+            let below = ((ledge - up) / 0.15).clamp(0.0, 1.0);
+            let ahead = (f.max(0.0) + 0.22) * (1.0 - below) + 0.27 * below;
+            for (part, side) in [(R_ARM, 1.0f32), (L_ARM, -1.0f32)] {
+                // Reaching out from below at first, then on the edge.
+                let hand = Vec3::new(side * 0.27, up - (1.0 - grab) * 0.35, -ahead);
+                let shoulder = Vec3::new(side * 0.42, -0.62, -0.1);
+                let d = (hand - shoulder).normalize();
+                let place = Mat4::from_translation(hand - d * 0.62) * Mat4::from_quat(Quat::from_rotation_arc(Vec3::NEG_Y, d));
+                b.m[part] = arm_model(part, cam.inverse() * flat * place);
+            }
+            return b;
+        }
         let w = self.underwater;
         if w > 0.05 && self.swing <= 0.0 {
             // Under water: both arms do the breaststroke. Reach ahead together, sweep out and
@@ -313,6 +443,21 @@ impl Animator {
         b.m[R_ARM] = arm_model(R_ARM, place);
         b
     }
+}
+
+/// How far ahead of the body the ledge's edge is (blocks, negative once the body has swung
+/// past it), and 0..1 through the swing over the top.
+fn mantle_reach(u: f32) -> (f32, f32) {
+    use voxel::physics::MANTLE_PULL;
+    let x = ((u - MANTLE_PULL) / (1.0 - MANTLE_PULL)).clamp(0.0, 1.0);
+    let over = x * x * (3.0 - 2.0 * x);
+    (0.4 - 0.8 * over, over)
+}
+
+/// The arm's forward swing (radians from hanging down) to reach a hand `ahead` blocks in front
+/// and `up` blocks above the shoulder.
+fn mantle_arm(ahead: f32, up: f32) -> f32 {
+    ahead.atan2(-up)
 }
 
 impl Animator {

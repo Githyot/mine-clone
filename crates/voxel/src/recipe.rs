@@ -77,7 +77,21 @@ pub struct Recipes {
 
 impl Recipes {
     pub fn from_ron(text: &str, items: &ItemRegistry) -> Result<Recipes, String> {
-        let f: RecipeFile = ron::from_str(text).map_err(|e| format!("recipes.ron: {e}"))?;
+        Self::from_ron_many(&[text], items)
+    }
+
+    /// Several recipe files read as one (the base game, then mod packs); tags merge by name.
+    pub fn from_ron_many(texts: &[&str], items: &ItemRegistry) -> Result<Recipes, String> {
+        let mut f = RecipeFile { tags: HashMap::new(), shaped: Vec::new(), shapeless: Vec::new(), smelting: Vec::new() };
+        for text in texts.iter().filter(|t| !t.trim().is_empty()) {
+            let g: RecipeFile = ron::from_str(text).map_err(|e| format!("recipes.ron: {e}"))?;
+            for (k, v) in g.tags {
+                f.tags.entry(k).or_default().extend(v);
+            }
+            f.shaped.extend(g.shaped);
+            f.shapeless.extend(g.shapeless);
+            f.smelting.extend(g.smelting);
+        }
         let ing = |name: &str| -> Result<Ingredient, String> {
             if let Some(tag) = name.strip_prefix('#') {
                 let list = f.tags.get(tag).ok_or_else(|| format!("unknown tag #{tag}"))?;
@@ -180,6 +194,20 @@ impl Recipes {
 mod tests {
     use super::*;
     use crate::block::BlockRegistry;
+
+    /// The real game files load together, and armor can be made.
+    #[test]
+    fn vanilla_pack_loads() {
+        let blocks = BlockRegistry::from_ron(include_str!("../../../packs/vanilla/blocks.ron")).unwrap();
+        let items = ItemRegistry::from_ron(include_str!("../../../packs/vanilla/items.ron"), &blocks).unwrap();
+        let r = Recipes::from_ron(include_str!("../../../packs/vanilla/recipes.ron"), &items).unwrap();
+        let ingot = Some(ItemStack::new(items.id("iron_ingot").unwrap(), 1));
+        let grid = [ingot, ingot, ingot, ingot, None, ingot, None, None, None];
+        let out = r.craft(&grid, 3).unwrap();
+        assert_eq!(items.get(out.item).name, "iron_helmet");
+        assert_eq!(items.get(out.item).armor.unwrap().slot, 0);
+        assert!(r.smelt(items.id("raw_iron").unwrap()).is_some());
+    }
 
     #[test]
     fn planks_sticks_and_a_mirrored_axe() {

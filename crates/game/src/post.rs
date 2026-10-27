@@ -22,6 +22,10 @@ pub struct PostUniform {
     pub fog_color: [f32; 4],
     pub params: [f32; 4],
     pub options: [[f32; 4]; 2],
+    /// TAA: this frame's clip position → last frame's (see post_common.wgsl).
+    pub reproj: [[f32; 4]; 4],
+    /// TAA: x on, y last frame's picture is usable.
+    pub taa: [f32; 4],
 }
 
 struct Active {
@@ -35,7 +39,13 @@ struct Active {
 
 /// Size-dependent textures and the bind groups that read them.
 struct Targets {
+    scene_tex: wgpu::Texture,
     scene: wgpu::TextureView,
+    /// TAA: two history pictures used in turn, the scene bind group reading each, and the
+    /// TAA pass inputs (tex_a = the other history).
+    hist: Vec<wgpu::TextureView>,
+    bg0_hist: Vec<wgpu::BindGroup>,
+    taa_in: Vec<wgpu::BindGroup>,
     mips: Vec<(wgpu::TextureView, u32, u32)>,
     rays: Option<(wgpu::TextureView, u32, u32)>,
     bg0: wgpu::BindGroup,
@@ -57,6 +67,11 @@ pub struct PostFx {
     down: wgpu::RenderPipeline,
     up: wgpu::RenderPipeline,
     rays: wgpu::RenderPipeline,
+    taa_pipe: wgpu::RenderPipeline,
+    /// Temporal anti-aliasing on (set from the settings; call `resize` after changing it).
+    pub taa: bool,
+    /// Which history picture this frame writes.
+    hist_cur: usize,
     dummy_bg1: wgpu::BindGroup,
     dummy: wgpu::TextureView,
     surface_format: wgpu::TextureFormat,
@@ -103,6 +118,10 @@ fn pipeline(
 }
 
 fn color_target(device: &wgpu::Device, label: &str, w: u32, h: u32) -> wgpu::TextureView {
+    color_texture(device, label, w, h).create_view(&Default::default())
+}
+
+fn color_texture(device: &wgpu::Device, label: &str, w: u32, h: u32) -> wgpu::Texture {
     device
         .create_texture(&wgpu::TextureDescriptor {
             label: Some(label),
@@ -111,10 +130,10 @@ fn color_target(device: &wgpu::Device, label: &str, w: u32, h: u32) -> wgpu::Tex
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: HDR,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            // Copied from for water reflections (scenefx.rs).
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         })
-        .create_view(&Default::default())
 }
 
 /// Turn a wgpu validation error into one line for the HUD, with the line number in the user's
@@ -196,6 +215,7 @@ impl PostFx {
         let down = pipeline(device, "bloom down", &builtin_layout, &builtin_module, "fs_down", HDR, None);
         let up = pipeline(device, "bloom up", &builtin_layout, &builtin_module, "fs_up", HDR, add);
         let rays = pipeline(device, "sun rays", &builtin_layout, &builtin_module, "fs_rays", HDR, None);
+        let taa_pipe = pipeline(device, "taa", &builtin_layout, &builtin_module, "fs_taa", HDR, None);
         let dummy = color_target(device, "post dummy", 1, 1);
         let dummy_bg1 = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("post dummy"),
@@ -217,6 +237,9 @@ impl PostFx {
             down,
             up,
             rays,
+            taa_pipe,
+            taa: false,
+            hist_cur: 0,
             dummy_bg1,
             dummy,
             surface_format,
@@ -272,7 +295,8 @@ impl PostFx {
             self.targets = None;
             return;
         };
-        let scene = color_target(device, "scene hdr", w, h);
+        let scene_tex = color_texture(device, "scene hdr", w, h);
+        let scene = scene_tex.create_view(&Default::default());
         let mips: Vec<(wgpu::TextureView, u32, u32)> = (1..=a.bloom_levels as u32)
             .map(|k| {
                 let (mw, mh) = ((w >> k).max(1), (h >> k).max(1));
@@ -283,16 +307,21 @@ impl PostFx {
             let (rw, rh) = ((w / a.rays_div).max(1), (h / a.rays_div).max(1));
             (color_target(device, "sun rays", rw, rh), rw, rh)
         });
-        let bg0 = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("post scene"),
-            layout: &self.layout0,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: self.uniform.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&scene) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(depth) },
-                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&self.sampler) },
-            ],
-        });
+        let make_bg0 = |v: &wgpu::TextureView| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("post scene"),
+                layout: &self.layout0,
+                entries: &[
+                    wgpu::BindGroupEntry { binding: 0, resource: self.uniform.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(v) },
+                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(depth) },
+                    wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&self.sampler) },
+                ],
+            })
+        };
+        let bg0 = make_bg0(&scene);
+        let hist: Vec<wgpu::TextureView> = if self.taa { (0..2).map(|_| color_target(device, "taa history", w, h)).collect() } else { Vec::new() };
+        let bg0_hist = hist.iter().map(make_bg0).collect();
         let bg1 = |a: &wgpu::TextureView, b: &wgpu::TextureView| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("post inputs"),
@@ -307,7 +336,8 @@ impl PostFx {
         let down = (0..n).map(|k| (k >= 1).then(|| bg1(&mips[k - 1].0, &self.dummy))).collect();
         let up = (0..n).map(|k| (k + 1 < n).then(|| bg1(&mips[k + 1].0, &self.dummy))).collect();
         let composite = bg1(mips.first().map(|m| &m.0).unwrap_or(&self.dummy), rays.as_ref().map(|r| &r.0).unwrap_or(&self.dummy));
-        self.targets = Some(Targets { scene, mips, rays, bg0, down, up, composite });
+        let taa_in = (0..hist.len()).map(|k| bg1(&hist[1 - k], &self.dummy)).collect();
+        self.targets = Some(Targets { scene_tex, scene, hist, bg0_hist, taa_in, mips, rays, bg0, down, up, composite });
     }
 
     /// Where the 3D scene should be drawn while a pack is on.
@@ -315,12 +345,27 @@ impl PostFx {
         self.active.as_ref().and(self.targets.as_ref()).map(|t| &t.scene)
     }
 
+    /// The HDR scene texture (copied for water reflections).
+    pub fn scene_texture(&self) -> Option<&wgpu::Texture> {
+        self.active.as_ref().and(self.targets.as_ref()).map(|t| &t.scene_tex)
+    }
+
     /// Run the passes, ending with the composite into `out` (the swapchain image).
-    pub fn run(&self, queue: &wgpu::Queue, enc: &mut wgpu::CommandEncoder, out: &wgpu::TextureView, mut u: PostUniform) {
+    pub fn run(&mut self, queue: &wgpu::Queue, enc: &mut wgpu::CommandEncoder, out: &wgpu::TextureView, mut u: PostUniform) {
         let (Some(a), Some(t)) = (&self.active, &self.targets) else { return };
         u.options = [[self.options[0], self.options[1], self.options[2], self.options[3]], [self.options[4], self.options[5], self.options[6], self.options[7]]];
         u.params[3] = if self.quality == ShaderQuality::Fancy { 1.0 } else { 0.0 };
+        let taa = !t.hist.is_empty() && u.taa[0] > 0.5;
+        if !taa {
+            u.taa = [0.0; 4];
+        }
         queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&u));
+        let cur = self.hist_cur;
+        if taa {
+            self.hist_cur = 1 - cur;
+        }
+        // With TAA every later pass reads the smoothed picture instead of the raw scene.
+        let bg0 = if taa { &t.bg0_hist[cur] } else { &t.bg0 };
 
         let pass = |enc: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, load: bool, pipe: &wgpu::RenderPipeline, bg1: &wgpu::BindGroup| {
             let mut p = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -335,10 +380,28 @@ impl PostFx {
                 occlusion_query_set: None,
             });
             p.set_pipeline(pipe);
-            p.set_bind_group(0, &t.bg0, &[]);
+            p.set_bind_group(0, bg0, &[]);
             p.set_bind_group(1, bg1, &[]);
             p.draw(0..3, 0..1);
         };
+        if taa {
+            // The TAA pass itself reads the raw scene and last frame's history.
+            let mut p = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("taa"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &t.hist[cur],
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            p.set_pipeline(&self.taa_pipe);
+            p.set_bind_group(0, &t.bg0, &[]);
+            p.set_bind_group(1, &t.taa_in[cur], &[]);
+            p.draw(0..3, 0..1);
+        }
         if !t.mips.is_empty() {
             pass(enc, &t.mips[0].0, false, &self.bright, &self.dummy_bg1);
             for k in 1..t.mips.len() {
@@ -363,7 +426,7 @@ impl PostFx {
             occlusion_query_set: None,
         });
         p.set_pipeline(&a.composite);
-        p.set_bind_group(0, &t.bg0, &[]);
+        p.set_bind_group(0, bg0, &[]);
         if a.builtin.is_some() {
             p.set_bind_group(1, &t.composite, &[]);
         }

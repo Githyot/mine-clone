@@ -48,7 +48,7 @@ fn vs_entity(
 
 @fragment
 fn fs_entity(in: EOut) -> @location(0) vec4<f32> {
-    let c = textureSampleLevel(skins, skin_samp, in.uv, in.layer, 0.0);
+    let c = textureSample(skins, skin_samp, in.uv, in.layer);
     if (c.a < 0.5) {
         discard;
     }
@@ -57,6 +57,7 @@ fn fs_entity(in: EOut) -> @location(0) vec4<f32> {
     let blk = light_curve(in.light.y);
     var l = max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82));
     l = max(mix(l, sqrt(l), 0.15), vec3<f32>(0.05));
+    l = max(l, dim_ambient());
     var rgb = c.rgb * in.shade * l;
     rgb = mix(rgb, vec3<f32>(1.0, 0.25, 0.2), in.light.z * 0.6);
     rgb = mix(rgb, vec3<f32>(1.0), in.light.w);

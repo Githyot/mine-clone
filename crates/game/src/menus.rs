@@ -92,12 +92,24 @@ impl Game {
         let seed = level.as_ref().map(|l| l.seed).or(seed).unwrap_or_else(|| {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1)
         });
-        let gen = Arc::new(Generator::new(seed, &self.reg));
+        let gen = Arc::new(Generator::new(seed, &self.reg).with_structures(self.structures.clone()).with_spread(self.settings.structure_spread()));
         let tints: Vec<[f32; 3]> = (0..Biome::COUNT).map(|b| Biome::from_u8(b as u8).tint()).collect();
         let tables = Arc::new(MeshTables::new(&self.reg, tints));
         // Dropping the old world stops its worker threads.
         self.world = World::new(self.reg.clone(), gen.clone(), save.clone(), tables);
-        self.renderer.clear_chunks();
+        self.lod.set_gen(gen.clone());
+        self.dim = voxel::worldgen::Dim::Overworld;
+        self.arrival = None;
+        self.respawn_home = false;
+        self.portal_t = 0.0;
+        self.fluids = crate::fluids::Fluids::new(&self.reg);
+        self.redstone = crate::redstone::Redstone::new(self.reg.clone());
+        self.riding = None;
+        self.seat = None;
+        self.tnt.clear();
+        if let Some(r) = self.renderer.get_mut() {
+            r.clear_chunks();
+        }
         self.world_name = name.to_string();
         self.seed = seed;
         let (sx, sy, sz) = gen.find_spawn();
@@ -106,6 +118,7 @@ impl Game {
         self.yaw = 0.0;
         self.pitch = 0.0;
         self.time_of_day = 1000.0;
+        self.weather = crate::weather::Weather::new(crate::weather::WeatherSave::default(), seed);
         self.needs_spawn = true;
         self.survival = survival.unwrap_or(false);
         self.health = 20.0;
@@ -114,19 +127,26 @@ impl Game {
         self.mining = None;
         self.mobs.list.clear();
         self.target = None;
+        // What belongs to the world itself: life and mana crystals, bosses beaten, town folk.
+        self.max_health = level.as_ref().map(|l| l.max_health.clamp(20.0, 50.0)).unwrap_or(20.0);
+        self.magic.max_mana = level.as_ref().map(|l| l.max_mana).unwrap_or(20.0);
+        self.boss = crate::bosses::BossState::new(level.as_ref().map(|l| l.bosses.clone()).unwrap_or_default());
+        self.town = crate::npcs::Town::new(level.as_ref().map(|l| l.npcs.iter().map(|(n, h)| crate::npcs::NpcSave { name: n.clone(), home: *h }).collect()).unwrap_or_default());
+        self.t5 = crate::terraria::Terraria::default();
         if let Some(l) = &level {
             self.body.pos = Vec3::from(l.player_pos);
             self.body.flying = l.flying;
             self.yaw = l.player_yaw;
             self.pitch = l.player_pitch;
             self.time_of_day = l.time_of_day;
+            self.weather = crate::weather::Weather::new(crate::weather::WeatherSave { raining: l.raining, thunder: l.thunder, timer: l.weather_timer }, l.seed);
             if l.hotbar.len() == 9 {
                 for (i, n) in l.hotbar.iter().enumerate() {
                     self.hotbar[i] = self.reg.id_or_air(n);
                 }
             }
             self.survival = l.survival;
-            self.health = if l.health > 0.0 { l.health } else { 20.0 };
+            self.health = if l.health > 0.0 { l.health.min(self.max_health) } else { self.max_health };
             self.needs_spawn = false;
         }
         if self.survival {
@@ -134,7 +154,15 @@ impl Game {
         }
         self.fall_peak = self.body.pos.y;
         self.paintings = paintings::load(&save.dir, &self.painting_defs);
+        self.surv = crate::survival::Survival::load(&save.dir, &self.items);
+        self.prog = crate::progression::Prog::load(&save.dir);
+        self.extras.load(&save.dir, &crate::level_path_hint(&self.base, &self.world_name));
+        let dim = level.as_ref().map(|l| voxel::worldgen::Dim::from_u8(l.dim)).unwrap_or_default();
+        if dim != voxel::worldgen::Dim::Overworld {
+            self.load_dim(dim, false);
+        }
         self.title_world = name.to_string();
+        self.load_mods();
     }
 
     /// Enter the world that is loaded behind the menus (or open a different one first).
@@ -163,7 +191,7 @@ impl Game {
 
     pub(crate) fn is_title_screen(&self) -> bool {
         matches!(self.screen, Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer)
-            || (!self.world_open && matches!(self.screen, Screen::Options | Screen::Packs))
+            || (!self.world_open && matches!(self.screen, Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice))
     }
 
     fn click_sound(&mut self) {
@@ -188,7 +216,6 @@ impl Game {
     }
 
     pub(crate) fn draw_title_menus(&mut self, w: f32, h: f32, mouse: (f32, f32)) {
-        let s = self.ui.scale;
         // Until the panorama is ready, plain dirt-brown; then a light veil over the world.
         let ready = self.world.meshed_count > 20;
         self.ui.rect(0.0, 0.0, w, h, if ready { [0, 0, 0, 70] } else { [44, 34, 26, 255] });
@@ -196,22 +223,7 @@ impl Game {
             Screen::Title => self.draw_title(w, h, mouse),
             Screen::Worlds => self.draw_worlds(w, h, mouse),
             Screen::CreateWorld => self.draw_create(w, h, mouse),
-            Screen::Multiplayer => {
-                self.ui.text_centered(w / 2.0, h / 2.0 - 50.0 * s, "Multijogador", WHITE);
-                let lines = [
-                    "Jogar com amigos chega na fase 7 do plano:",
-                    "servidor dedicado, LAN e convite por código.",
-                    "Por enquanto, jogue em Um jogador.",
-                ];
-                for (i, l) in lines.iter().enumerate() {
-                    self.ui.text_centered(w / 2.0, h / 2.0 - 30.0 * s + i as f32 * 11.0 * s, l, GRAY);
-                }
-                let bw = 200.0 * s;
-                if self.ui.button((w - bw) / 2.0, h / 2.0 + 20.0 * s, bw, 20.0 * s, "Voltar", mouse) && self.clicked {
-                    self.click_sound();
-                    self.set_screen(Screen::Title);
-                }
-            }
+            Screen::Multiplayer => self.draw_multiplayer_menu(w, h, mouse),
             _ => {}
         }
     }
@@ -417,6 +429,23 @@ impl Game {
 
     /// Typing into the new-world form.
     pub(crate) fn type_text(&mut self, text: &str) {
+        if self.net_text(text) {
+            return;
+        }
+        self.creative_type(text);
+        if self.screen == Screen::Sign && self.extras.book.is_some() {
+            self.book_type(text);
+            return;
+        }
+        if self.screen == Screen::Sign && self.cmdblocks.edit.is_some() {
+            self.cmdblock_type(text);
+            return;
+        }
+        if self.screen == Screen::Sign {
+            self.naming_type(text);
+            self.sign_type(text);
+            return;
+        }
         if self.screen != Screen::CreateWorld {
             return;
         }
@@ -460,7 +489,16 @@ impl Game {
             format!("Mobs: {}", onoff(st.mobs)),
             format!("Tamanho da interface: {}", if st.gui_scale == 0 { "Automático".to_string() } else { st.gui_scale.to_string() }),
             format!("Balanço da visão: {}", onoff(st.view_bobbing)),
+            format!("Itens no chão: {}", if st.flat_drops { "Deitados" } else { "Flutuando" }),
+            format!("Construções: {}", if st.sparse_structures { "Espaçadas" } else { "Normais" }),
+            format!("Resolução das texturas: {}x", st.texture_resolution),
+            format!("Animações da interface: {}", onoff(st.ui_animations)),
+            format!("Legendas: {}", onoff(st.subtitles)),
+            format!("Reduzir movimento: {}", onoff(st.reduce_motion)),
+            format!("Idioma: {}", crate::lang::language_name(&st.language)),
+            "Teclas...".to_string(),
             "Controle...".to_string(),
+            "Chat de voz...".to_string(),
             "Pacotes de textura...".to_string(),
         ]
     }
@@ -529,10 +567,35 @@ impl Game {
             }
             11 => st.gui_scale = (st.gui_scale + 1) % 5,
             12 => st.view_bobbing = !st.view_bobbing,
-            13 => {
+            13 => st.flat_drops = !st.flat_drops,
+            14 => st.sparse_structures = !st.sparse_structures,
+            15 => {
+                st.texture_resolution = match st.texture_resolution {
+                    16 => 32,
+                    32 => 64,
+                    64 => 128,
+                    _ => 16,
+                };
+                self.reload_textures();
+            }
+            16 => st.ui_animations = !st.ui_animations,
+            17 => st.subtitles = !st.subtitles,
+            18 => st.reduce_motion = !st.reduce_motion,
+            19 => {
+                let all = crate::lang::languages(&self.base);
+                let k = all.iter().position(|c| *c == st.language).map(|k| (k + 1) % all.len()).unwrap_or(0);
+                st.language = all[k].clone();
+                self.apply_language();
+            }
+            20 => {
+                self.key_rebinding = None;
+                self.set_screen(Screen::Keys);
+            }
+            21 => {
                 self.options_back = self.screen;
                 self.set_screen(Screen::Controls);
             }
+            22 => self.set_screen(Screen::Voice),
             _ => {
                 self.packs = textures::list_resource_packs(&self.base.join("resourcepacks"));
                 self.set_screen(Screen::Packs);
@@ -587,7 +650,8 @@ impl Game {
         let to = match self.screen {
             Screen::Worlds | Screen::Multiplayer => Screen::Title,
             Screen::CreateWorld => Screen::Worlds,
-            Screen::Options | Screen::Packs => {
+            Screen::Voice => Screen::Options,
+            Screen::Options | Screen::Packs | Screen::Keys => {
                 if self.world_open {
                     Screen::Paused
                 } else {
@@ -602,6 +666,7 @@ impl Game {
     /// Pause menu "save and quit": back to the title, keeping the world as the panorama.
     pub(crate) fn quit_to_title(&mut self) {
         self.save_all();
+        self.net_stop();
         self.world_open = false;
         self.title_world = self.world_name.clone();
         self.set_screen(Screen::Title);

@@ -3,26 +3,107 @@
 // No console window behind the game on Windows release builds.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod ambient;
+mod keybinds;
+mod lang;
+mod subtitles;
+mod pvp;
+mod cmdblock;
+mod server;
+mod plugins;
+mod nature;
+mod bench;
+mod swing;
+mod stands;
+mod pale;
+mod selectors;
 mod audio;
+mod backpacks;
 mod controller;
+mod enchanting;
+mod effects;
+mod progression;
+mod stations;
+mod smithing;
+mod weapons;
+mod advancements;
+mod trials;
+mod deepdark;
+mod archaeology;
+mod fase6_test;
+#[cfg(test)]
+mod parity_test;
+mod copper;
+mod commands;
+mod creative;
+mod dimension;
+mod end;
+mod farm;
+mod fishing;
+mod magic;
+mod bosses;
+mod npcs;
+mod pets;
+mod raids;
+mod leads;
+mod bees;
+mod boats;
+mod villages;
+mod explore;
+mod signs;
+mod terraria;
+mod rpg;
+mod accessories;
+mod affixes;
+mod boss_ai;
+mod glyphs;
+mod hardmode;
+mod hook;
+mod mantle;
+mod fluids;
+mod redstone;
+mod wanderers;
+mod furniture;
+mod gear;
+mod weather;
+mod windmill;
 mod entity;
+mod instruments;
 mod item_render;
+mod juice;
 mod menus;
 mod monitor;
+mod multiplayer;
+mod voice;
+mod mods;
 mod lod;
 mod mobs;
+mod nether_end;
 mod paintings;
 mod particles;
 mod player_model;
 mod post;
+mod pots;
+mod progress;
+mod rails;
+mod headless;
+mod packmodels;
 mod renderer;
+mod scenefx;
 mod settings;
 mod sfx;
+mod mob_sounds;
+mod sfx_extra;
+mod soundscape;
+mod fx;
 mod shaderpack;
 mod survival;
 mod textures;
 mod ui;
 mod world;
+mod vanilla_extras;
+mod vanilla_mobs;
+mod wagons;
 
 mod embedded {
     include!(concat!(env!("OUT_DIR"), "/embedded.rs"));
@@ -33,7 +114,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use glam::{IVec3, Vec3};
+use glam::{IVec3, Vec3, Vec4};
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -58,13 +139,26 @@ use voxel::worldgen::{Biome, Generator};
 use voxel::{BlockId, BlockRegistry, AIR};
 use world::World;
 
-const REACH: f32 = 6.0;
+
+/// Textures loaded after the block and item ones: the experience orb, then the ten cracks
+/// drawn over a block while it is being broken.
+fn extra_textures() -> Vec<String> {
+    let mut v = vec!["item/xp_orb".to_string()];
+    v.extend((0..10).map(|i| format!("destroy_stage_{i}")));
+    v
+}
 const CLOUD_HEIGHT: f32 = 160.0;
 const RENDER_DISTANCES: [i32; 9] = [4, 6, 8, 10, 12, 16, 20, 24, 32];
 
 #[derive(Default, Clone)]
 struct Args {
     world: Option<String>,
+    /// Dedicated server: no window shown, the world open to friends, commands from the console.
+    server: bool,
+    /// Run only a relay (`--relay [port]`), for hosts whose router won't open a port.
+    relay: Option<u16>,
+    /// Benchmark: fly for this many seconds, then report frame times and close.
+    bench: Option<f32>,
     seed: Option<u64>,
     screenshot: Option<PathBuf>,
     pos: Option<Vec3>,
@@ -75,16 +169,43 @@ struct Args {
     fly: bool,
     /// Build a few things in front of the player (used for test screenshots).
     demo: bool,
+    shapes: bool,
+    /// Build test redstone circuits in front of the player.
+    redstone: bool,
+    /// Build the Phase 4 test scene: rails and carts, copper, a crafter.
+    phase4: bool,
+    /// Take the --screenshot of the loading screen instead of the game.
+    shot_loading: bool,
+    /// Start with the interface hidden (F1), for clean screenshots.
+    no_hud: bool,
+    rain: bool,
+    find: Option<String>,
+    storm: bool,
+    /// Screenshots: also wait this many seconds of game time (to let water flow).
+    wait: f32,
+    /// Creative inventory tab to open (0..13).
+    ctab: Option<usize>,
     show_inventory: bool,
+    /// Where the mouse sits in screenshots (pixels).
+    mouse: Option<(f32, f32)>,
     show_pause: bool,
     /// Open the shader menu once the world is ready (test screenshots).
     show_shaders: bool,
     debug: bool,
+    no_cave_cull: bool,
     /// Spawn a few mobs in front of the player (test screenshots).
     mobs: bool,
     survival: bool,
     /// Test: fill the survival inventory and drop items in front of the player.
     kit: bool,
+    /// Test: show the target block this far broken (0..1).
+    mine: Option<f32>,
+    /// Test hook: freeze the arm swing at this point (0..1) for screenshots.
+    swing: Option<f32>,
+    /// Test hook: die on arrival (the body with the items is left on the ground).
+    die: bool,
+    /// Test: hotbar slot in hand (1-9).
+    slot: Option<usize>,
     /// Test: open a survival screen (table, furnace or chest).
     open: Option<String>,
     particles: bool,
@@ -97,11 +218,13 @@ struct Args {
     shader: Option<String>,
     /// Distant terrain past the render distance, in blocks (0 = off).
     lod: Option<i32>,
+    /// Block depth level 0..3 (test screenshots and benchmarks).
+    parallax: Option<u8>,
 }
 
 fn parse_args() -> Args {
     let mut a = Args::default();
-    let mut it = std::env::args().skip(1);
+    let mut it = std::env::args().skip(1).peekable();
     let f3 = |s: &str| -> Option<Vec3> {
         let v: Vec<f32> = s.split(',').filter_map(|x| x.trim().parse().ok()).collect();
         (v.len() == 3).then(|| Vec3::new(v[0], v[1], v[2]))
@@ -109,6 +232,9 @@ fn parse_args() -> Args {
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--world" => a.world = it.next(),
+            "--server" => a.server = true,
+            "--relay" => a.relay = Some(it.next_if(|v| v.parse::<u16>().is_ok()).and_then(|v| v.parse().ok()).unwrap_or(net::relay::DEFAULT_PORT)),
+            "--bench" => a.bench = Some(it.next_if(|v| v.parse::<f32>().is_ok()).and_then(|v| v.parse().ok()).unwrap_or(60.0)),
             "--seed" => a.seed = it.next().and_then(|s| s.parse().ok()),
             "--screenshot" => a.screenshot = it.next().map(PathBuf::from),
             "--pos" => a.pos = it.next().and_then(|s| f3(&s)),
@@ -128,10 +254,22 @@ fn parse_args() -> Args {
             }
             "--fly" => a.fly = true,
             "--demo" => a.demo = true,
+            "--shapes" => a.shapes = true,
+            "--redstone" => a.redstone = true,
+            "--fase4" => a.phase4 = true,
+            "--shot-loading" => a.shot_loading = true,
+            "--no-hud" => a.no_hud = true,
+            "--rain" => a.rain = true,
+            "--find" => a.find = it.next(),
+            "--storm" => a.storm = true,
+            "--wait" => a.wait = it.next().and_then(|v| v.parse().ok()).unwrap_or(0.0),
+            "--ctab" => a.ctab = it.next().and_then(|v| v.parse().ok()),
             "--inventory" => a.show_inventory = true,
+            "--mouse" => a.mouse = it.next().and_then(|s| { let (x, y) = s.split_once(',')?; Some((x.parse().ok()?, y.parse().ok()?)) }),
             "--pause" => a.show_pause = true,
             "--shaders-menu" => a.show_shaders = true,
             "--debug" => a.debug = true,
+            "--no-cave-cull" => a.no_cave_cull = true,
             "--mobs" => a.mobs = true,
             "--particles" => a.particles = true,
             "--perf" => a.perf = true,
@@ -140,15 +278,23 @@ fn parse_args() -> Args {
             "--title" => a.title = true,
             "--survival" => a.survival = true,
             "--kit" => a.kit = true,
+            "--mine" => a.mine = it.next().and_then(|v| v.parse().ok()),
+            "--die" => a.die = true,
+            "--swing" => a.swing = it.next().and_then(|v| v.parse().ok()),
+            "--slot" => a.slot = it.next().and_then(|v| v.parse::<usize>().ok()).map(|v| v.clamp(1, 9) - 1),
             "--open" => a.open = it.next(),
             "--shader" => a.shader = it.next(),
             "--lod" => a.lod = it.next().and_then(|s| s.parse().ok()),
+            "--parallax" => a.parallax = it.next().and_then(|s| s.parse().ok()),
             "--help" | "-h" => {
                 println!(
                     "mine-clone [--world NAME] [--seed N] [--render-distance N] [--size WxH]\n\
+                     Server: mine-clone --server [--world NAME] (no window; type commands, \"parar\" saves and stops)\n\
+                     Relay: mine-clone --relay [port] (for hosts whose router won't open a port; default port 24455)\n\
+                     Benchmark: mine-clone --bench [seconds] [--world NAME] (report in bench/)\n\
                      Testing: [--screenshot out.png] [--pos x,y,z] [--look yaw,pitch] [--time ticks] [--fly] [--demo] [--inventory] [--pause] [--debug]\n\
                      \x20        [--survival] [--kit] [--open table|furnace|chest] [--mobs] [--perf] [--prone] [--camera N]\n\
-                     \x20        [--shader NAME|off] [--shaders-menu] [--lod BLOCKS]"
+                     \x20        [--shader NAME|off] [--shaders-menu] [--lod BLOCKS] [--parallax 0-3]"
                 );
                 std::process::exit(0);
             }
@@ -160,6 +306,139 @@ fn parse_args() -> Args {
 
 /// Folder for settings, saves, resource packs and music: the source tree when run with cargo,
 /// otherwise the folder the executable is in.
+/// Shrink a frame to a small grid and blur it, for the loading screen's background.
+fn blurred_backdrop(w: usize, h: usize, px: &[u8]) -> (usize, usize, Vec<[u8; 4]>) {
+    let (bw, bh) = (40usize, ((40 * h / w.max(1)).max(2)).min(40));
+    let mut out = vec![[0u8; 4]; bw * bh];
+    for by in 0..bh {
+        for bx in 0..bw {
+            let (x0, x1) = (bx * w / bw, ((bx + 1) * w / bw).max(bx * w / bw + 1));
+            let (y0, y1) = (by * h / bh, ((by + 1) * h / bh).max(by * h / bh + 1));
+            let mut sum = [0u64; 3];
+            let mut n = 0u64;
+            for y in (y0..y1.min(h)).step_by(2) {
+                for x in (x0..x1.min(w)).step_by(2) {
+                    let i = (y * w + x) * 4;
+                    for k in 0..3 {
+                        sum[k] += px[i + k] as u64;
+                    }
+                    n += 1;
+                }
+            }
+            let n = n.max(1);
+            out[by * bw + bx] = [(sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8, 255];
+        }
+    }
+    // Two passes of a 3x3 box blur soften it further.
+    for _ in 0..2 {
+        let src = out.clone();
+        for y in 0..bh {
+            for x in 0..bw {
+                let mut sum = [0u32; 3];
+                let mut n = 0;
+                for yy in y.saturating_sub(1)..(y + 2).min(bh) {
+                    for xx in x.saturating_sub(1)..(x + 2).min(bw) {
+                        for k in 0..3 {
+                            sum[k] += src[yy * bw + xx][k] as u32;
+                        }
+                        n += 1;
+                    }
+                }
+                out[y * bw + x] = [(sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8, 255];
+            }
+        }
+    }
+    (bw, bh, out)
+}
+
+/// Blocks, items and recipes from text.
+fn game_data(blocks: &str, items: &str, recipes: &str) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
+    game_data_with_mods([blocks, embedded::MODS_BLOCKS_RON], [items, embedded::MODS_ITEMS_RON], [recipes, embedded::MODS_RECIPES_RON])
+}
+
+/// Base game data, then the mod content pack (`packs/vanilla/mods/`); the Terraria side (Etapa 5)
+/// and Fase 6 keep their data in their own files, joined onto the base lists.
+fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
+    let b0 = terraria::with_extra(&merge_list(blocks[0], &fase6_text(None, "blocks.ron")), embedded::T5_BLOCKS_RON);
+    let i0 = terraria::with_extra(&merge_list(items[0], &fase6_text(None, "items.ron")), embedded::T5_ITEMS_RON);
+    // The stats content (rpg.rs) after the Terraria side's own items.
+    let i0 = terraria::with_extra(&i0, embedded::RPG_ITEMS_RON);
+    let reg = BlockRegistry::from_ron_many(&[b0.as_str(), blocks[1]])?;
+    let items = ItemRegistry::from_ron_many(&[i0.as_str(), items[1]], &reg)?;
+    let mut recipes = Recipes::from_ron_many(&recipes, &items)?;
+    terraria::add_recipes(&mut recipes, embedded::T5_RECIPES_RON, &items)?;
+    terraria::add_recipes(&mut recipes, embedded::RPG_RECIPES_RON, &items)?;
+    let extra = fase6_text(None, "recipes.ron");
+    if !extra.trim().is_empty() {
+        let more = Recipes::from_ron(&extra, &items)?;
+        recipes.shaped.extend(more.shaped);
+        recipes.shapeless.extend(more.shapeless);
+        recipes.smelting.extend(more.smelting);
+    }
+    Ok((reg, items, recipes))
+}
+
+/// A data file of the base game and its counterpart in the mod content pack, each read from
+/// disk when it is there, else the built-in copy.
+fn read_pack_pair(base: &Path, name: &str, built_in: &str, mods_built_in: &str) -> [String; 2] {
+    let read = |p: PathBuf, b: &str| std::fs::read_to_string(p).unwrap_or_else(|_| b.to_string());
+    [read(base.join("packs/vanilla").join(name), built_in), read(base.join("packs/vanilla/mods").join(name), mods_built_in)]
+}
+/// A data file of the Phase 6 content (`packs/vanilla/fase6/`): on disk when there is one,
+/// else the built-in copy.
+fn fase6_text(base: Option<&Path>, name: &str) -> String {
+    let built_in = match name {
+        "blocks.ron" => embedded::FASE6_BLOCKS_RON,
+        "items.ron" => embedded::FASE6_ITEMS_RON,
+        "recipes.ron" => embedded::FASE6_RECIPES_RON,
+        "structures.ron" => embedded::FASE6_STRUCTURES_RON,
+        "mobs.ron" => embedded::FASE6_MOBS_RON,
+        _ => "",
+    };
+    base.and_then(|b| std::fs::read_to_string(b.join("packs/vanilla/fase6").join(name)).ok()).unwrap_or_else(|| built_in.to_string())
+}
+
+/// `main` with the entries of `extra`'s list added to its list (both written as `(key: [...])`),
+/// so a stage of the game can keep its blocks, items, mobs and buildings in a file of its own.
+fn merge_list(main: &str, extra: &str) -> String {
+    let body = |t: &str| -> Option<(usize, usize)> {
+        let a = t.find('[')?;
+        let b = t.rfind(']')?;
+        (b > a).then_some((a, b))
+    };
+    let (Some((_, me)), Some((xa, xe))) = (body(main), body(extra)) else { return main.to_string() };
+    let inner = extra[xa + 1..xe].trim();
+    if inner.is_empty() {
+        return main.to_string();
+    }
+    let head = main[..me].trim_end();
+    let sep = if head.ends_with(',') || head.ends_with('[') { "" } else { "," };
+    format!("{head}{sep}\n{inner}\n{}", &main[me..])
+}
+
+/// The data files in `packs/vanilla/` when there are any, each falling back to the built-in copy.
+fn load_game_data(base: &Path) -> Result<(BlockRegistry, ItemRegistry, Recipes), String> {
+    let [b, mb] = read_pack_pair(base, "blocks.ron", embedded::BLOCKS_RON, embedded::MODS_BLOCKS_RON);
+    let [i, mi] = read_pack_pair(base, "items.ron", embedded::ITEMS_RON, embedded::MODS_ITEMS_RON);
+    let [r, mr] = read_pack_pair(base, "recipes.ron", embedded::RECIPES_RON, embedded::MODS_RECIPES_RON);
+    game_data_with_mods([&b, &mb], [&i, &mi], [&r, &mr])
+}
+
+/// Buildings the generator scatters (`packs/vanilla/structures.ron` and the mod pack's, else the built-in copies).
+fn load_structures(base: &Path, reg: &BlockRegistry) -> Arc<voxel::structures::Structures> {
+    let [text, mods] = read_pack_pair(base, "structures.ron", embedded::STRUCTURES_RON, embedded::MODS_STRUCTURES_RON);
+    let text = merge_list(&text, &fase6_text(Some(base), "structures.ron"));
+    let [_, dims] = read_pack_pair(base, "dims_structures.ron", "", embedded::MODS_DIMS_STRUCTURES_RON);
+    let parsed = voxel::structures::Structures::from_ron_many(&[&text, &mods, &dims], reg).or_else(|e| {
+        log::error!("{e}; using the built-in structures");
+        voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, embedded::MODS_STRUCTURES_RON, embedded::MODS_DIMS_STRUCTURES_RON], reg)
+    });
+    Arc::new(parsed.unwrap_or_else(|e| {
+        log::error!("{e}");
+        voxel::structures::Structures::empty()
+    }))
+}
+
 fn base_dir() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_default();
     if cwd.join("packs/vanilla").is_dir() {
@@ -214,7 +493,7 @@ fn ensure_folders(base: &Path, settings: &Settings) {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Screen {
+pub(crate) enum Screen {
     Loading,
     Playing,
     Paused,
@@ -232,8 +511,18 @@ enum Screen {
     Multiplayer,
     Options,
     Packs,
+    /// Moving the keyboard keys (keybinds.rs).
+    Keys,
+    /// Voice chat options (voice.rs).
+    Voice,
     /// Shader packs and their options.
     Shaders,
+    /// Writing on a sign.
+    Sign,
+    /// The glyph grimoire: writing spells (Etapa 5).
+    Grimoire,
+    /// A window a plugin opened.
+    Plugin,
 }
 
 /// What a row of the shader menu does.
@@ -248,6 +537,14 @@ enum ShaderRow {
     Opt(usize),
     /// Distant terrain distance.
     Lod,
+    /// Graphics extras (Sildur's, Better Clouds and Continuity ideas).
+    Shadows,
+    Reflections,
+    Taa,
+    Clouds,
+    Emissive,
+    /// Block depth (parallax occlusion mapping).
+    Parallax,
 }
 
 struct Toast {
@@ -256,8 +553,8 @@ struct Toast {
 }
 
 struct Game {
-    window: Arc<Window>,
-    renderer: Renderer,
+    window: headless::Gpu<Arc<Window>>,
+    renderer: headless::Gpu<Renderer>,
     world: World,
     reg: Arc<BlockRegistry>,
     settings: Settings,
@@ -275,8 +572,6 @@ struct Game {
 
     hotbar: [BlockId; 9],
     selected: usize,
-    inventory: Vec<BlockId>,
-    inv_scroll: usize,
     time_of_day: f32,
 
     screen: Screen,
@@ -284,13 +579,31 @@ struct Game {
     mouse_held: [bool; 3],
     mouse_pos: (f32, f32),
     clicked: bool,
+    /// The attack button went down this frame (survival swings use it).
+    attack_pressed: bool,
     last_space: f32,
     break_cd: f32,
     place_cd: f32,
     target: Option<RayHit>,
     step_dist: f32,
+    /// Distance walked through plants since the last rustle.
+    rustle_dist: f32,
 
     pads: Controllers,
+    /// Keys the player moved (keybinds.rs) and the action waiting for its new key.
+    key_map: keybinds::KeyMap,
+    key_rebinding: Option<usize>,
+    /// Sound captions on screen (subtitles.rs).
+    subtitles: Vec<subtitles::Subtitle>,
+    /// Hearts: the health last frame, and when the last healing began (its wave runs across).
+    last_health: f32,
+    /// The block just placed and when, for its pop.
+    place_pop: Option<(IVec3, BlockId, f32)>,
+    /// Doors and chest lids swinging (swing.rs).
+    swings: swing::Swings,
+    /// What armor stands wear (stands.rs).
+    stands: stands::Stands,
+    heal_wave: f32,
     /// Action waiting for a button press in the controller menu.
     rebinding: Option<Action>,
     /// Actions held this frame through the controller.
@@ -299,10 +612,34 @@ struct Game {
     pad_scroll_cd: f32,
 
     mobs: mobs::Mobs,
-    entities: entity::EntityRenderer,
+    entities: headless::Gpu<entity::EntityRenderer>,
     /// Survival mode: health, damage, no flying.
     survival: bool,
     health: f32,
+    /// 20 at the start, up to 40 with life crystals.
+    max_health: f32,
+    magic: magic::Magic,
+    boss: bosses::BossState,
+    /// The Terraria side (Etapa 5): accessories, glyph spells, hard mode and its events.
+    t5: terraria::Terraria,
+    ne: nether_end::NetherEnd,
+    town: npcs::Town,
+    progress: progress::Progress,
+    raid: raids::Raid,
+    villages: villages::Villages,
+    /// Wagons and carts on the roads and parked (ambience, not saved).
+    wagons: wagons::Wagons,
+    map: explore::MapCache,
+    /// Saved tame animals not back in the world yet.
+    pets_waiting: Vec<pets::PetSave>,
+    signs: std::collections::HashMap<[i32; 3], String>,
+    sign_edit: Option<IVec3>,
+    cmdblocks: cmdblock::CmdBlocks,
+    /// WebAssembly mods from `plugins/` (plugins.rs).
+    plugins: plugins::Plugins,
+    /// Body temperature, thirst and food groups (nature.rs).
+    nature: nature::Nature,
+    bench: bench::Bench,
     /// Seconds since the player was last hurt (red flash, invulnerability).
     hurt_age: f32,
     regen: f32,
@@ -326,6 +663,47 @@ struct Game {
     /// Survival mining: block being broken and how far along (seconds).
     mining: Option<(IVec3, f32)>,
     particles: particles::Particles,
+    fluids: fluids::Fluids,
+    redstone: redstone::Redstone,
+    /// Lit TNT, falling and flashing until it goes off.
+    tnt: Vec<redstone::PrimedTnt>,
+    /// Seconds until hoppers next move an item.
+    hopper_t: f32,
+    /// The cart the player sits in.
+    riding: Option<usize>,
+    /// The boat the player sits in.
+    boating: Option<usize>,
+    /// A creature being named with a name tag, and the name so far.
+    naming: Option<(usize, String)>,
+    /// The chair the player sits on.
+    seat: Option<IVec3>,
+    /// Which dimension is loaded, time spent standing in a portal, and where a trip lands.
+    dim: voxel::worldgen::Dim,
+    portal_t: f32,
+    arrival: Option<Vec3>,
+    /// Died in the Nether: once the Overworld is loaded, come back to life there.
+    respawn_home: bool,
+    /// Coming home from the End: land on the ground (at the bed, if any), not in a portal.
+    arrive_plain: bool,
+    /// Fractional count of ambient blocks still to look at (ambient.rs).
+    ambient_t: f32,
+    room_t: f32,
+    walker_t: f32,
+    melody_cd: f32,
+    /// A town NPC playing an instrument (instruments.rs).
+    musicians: instruments::Musicians,
+    /// Sounds and effects of the immersion stage (soundscape.rs, effects.rs).
+    fx: soundscape::Immersion,
+    wander: wanderers::Wanderers,
+    /// The mod content pack's state (mods/).
+    mods: mods::Mods,
+    /// The wind turning windmill sails (windmill.rs).
+    sails: windmill::Sails,
+    copper: copper::Copper,
+    farm: farm::Farm,
+    pots: pots::Pots,
+    bobber: Option<fishing::Bobber>,
+    weather: weather::Weather,
     anim: player_model::Animator,
     /// 0 = first person, 1 = behind, 2 = in front (F5).
     camera_mode: u8,
@@ -353,10 +731,25 @@ struct Game {
     swim_dist: f32,
     items: ItemRegistry,
     recipes: Recipes,
+    structures: Arc<voxel::structures::Structures>,
     /// First texture layer of the item sprites (they come after the block textures).
     item_base: u16,
     surv: survival::Survival,
+    /// Phase 6: effects, stations, enchantment play, statistics and advancements.
+    prog: progression::Prog,
+    /// Lote 1 vanilla things: fire, jukebox, books, shields...
+    extras: vanilla_extras::Extras,
+    /// Eyeblossoms and creaking hearts (pale.rs).
+    pale: pale::Pale,
+    /// Lote 2 vanilla creatures' memory (allays, cures, spawners...).
+    vm: vanilla_mobs::VMobs,
     rclicked: bool,
+    /// Middle click in a menu this frame.
+    mclicked: bool,
+    /// Right button held (menus: drag one item into each slot passed over).
+    rdown: bool,
+    /// Last frame's camera (view-projection and camera block) for drawing labels over mobs.
+    ui_view_proj: Option<(glam::Mat4, IVec3)>,
     inv_number_key: Option<usize>,
     bubble_cd: f32,
 
@@ -383,8 +776,17 @@ struct Game {
     last_frame_info: (usize, usize, usize),
     autosave: f32,
     loaded_frames: u32,
+    /// Loading screen: the last frame shrunk and blurred (width, height, pixels), and whether to
+    /// grab it from the next frame.
+    backdrop: Option<(usize, usize, Vec<[u8; 4]>)>,
+    want_backdrop: bool,
+    /// Loading screen: the chunk it waits around and how far.
+    loading_area: (ChunkPos, i32),
     screenshot_request: bool,
     grabbed: bool,
+    /// Multiplayer: hosting, or a guest in someone else's world.
+    net: multiplayer::Net,
+    voice: voice::VoiceState,
 }
 
 fn level_path_hint(base: &Path, name: &str) -> PathBuf {
@@ -392,8 +794,10 @@ fn level_path_hint(base: &Path, name: &str) -> PathBuf {
 }
 
 impl Game {
-    fn new(window: Arc<Window>, args: Args) -> Game {
+    /// `window` is None for the dedicated server, which never draws.
+    fn new(window: Option<Arc<Window>>, args: Args) -> Game {
         let base = base_dir();
+        let mut loaded_plugins = plugins::load(&base);
         let settings_path = base.join("settings.ron");
         let mut settings = Settings::load(&settings_path);
         settings.controller.fill_missing();
@@ -403,68 +807,93 @@ impl Game {
         if let Some(l) = args.lod {
             settings.lod_distance = l.max(0);
         }
+        if let Some(p) = args.parallax {
+            settings.parallax = p.min(3);
+        }
         if let Some(sh) = &args.shader {
             settings.shader_pack = if sh == "off" { String::new() } else { sh.clone() };
         }
         ensure_folders(&base, &settings);
+        // The pack that comes with the game is on the first time it is found.
+        const BUNDLED_PACK: &str = "Vanilla Experience ++.zip";
+        if !settings.bundled_pack_offered && base.join("resourcepacks").join(BUNDLED_PACK).exists() {
+            settings.bundled_pack_offered = true;
+            settings.resource_packs = vec![BUNDLED_PACK.to_string()];
+            settings.save(&settings_path);
+        }
 
-        // Blocks: a blocks.ron on disk wins (so it can be modded), otherwise the built-in copy.
-        let blocks_text = std::fs::read_to_string(base.join("packs/vanilla/blocks.ron")).unwrap_or_else(|_| embedded::BLOCKS_RON.to_string());
-        let reg = Arc::new(BlockRegistry::from_ron(&blocks_text).unwrap_or_else(|e| {
-            log::error!("{e}; using built-in blocks");
-            BlockRegistry::from_ron(embedded::BLOCKS_RON).unwrap()
-        }));
-
-        // Items and recipes: files on disk win, like blocks.
-        let items_text = std::fs::read_to_string(base.join("packs/vanilla/items.ron")).unwrap_or_else(|_| embedded::ITEMS_RON.to_string());
-        let items = ItemRegistry::from_ron(&items_text, &reg).unwrap_or_else(|e| {
-            log::error!("{e}; using built-in items");
-            ItemRegistry::from_ron(embedded::ITEMS_RON, &reg).unwrap()
+        // Blocks, items and recipes: files on disk win (so they can be modded), otherwise the
+        // built-in copies. They depend on each other, so if any file is missing or doesn't fit
+        // the others (an old copy left from an earlier version), all three come from the built-in set.
+        let (reg, items, recipes) = load_game_data(&base).unwrap_or_else(|e| {
+            log::error!("{e}; using the built-in blocks, items and recipes");
+            game_data(embedded::BLOCKS_RON, embedded::ITEMS_RON, embedded::RECIPES_RON).expect("built-in game data")
         });
-        let recipes_text = std::fs::read_to_string(base.join("packs/vanilla/recipes.ron")).unwrap_or_else(|_| embedded::RECIPES_RON.to_string());
-        let recipes = Recipes::from_ron(&recipes_text, &items).unwrap_or_else(|e| {
-            log::error!("{e}; using built-in recipes");
-            Recipes::from_ron(embedded::RECIPES_RON, &items).unwrap()
-        });
-        let item_base = reg.textures.len() as u16;
-        let texture_names: Vec<String> = reg.textures.iter().chain(items.textures.iter()).cloned().chain(["item/xp_orb".to_string()]).collect();
+        let (reg, mut items) = (Arc::new(reg), items);
+        // Plugins' items go after everyone else's.
+        loaded_plugins.base_items = items.items.len();
+        loaded_plugins.register_items(&mut items);
+        // Resource pack block models; the pictures only they use go right after ours.
+        let pack_models = packmodels::load(&reg, &base, &settings.resource_packs);
+        let item_base = (reg.textures.len() + pack_models.textures.len()) as u16;
+        let texture_names: Vec<String> =
+            reg.textures.iter().chain(pack_models.textures.iter()).chain(items.textures.iter()).cloned().chain(extra_textures()).collect();
 
         // Without --world the game opens on the title screen, with the last played world behind it.
         let camera_mode = args.camera.min(2);
         let show_perf = args.perf;
         let start_prone = args.prone;
-        let title_mode = args.title || (args.world.is_none() && args.screenshot.is_none());
+        let title_mode = !args.server && args.bench.is_none() && (args.title || (args.world.is_none() && args.screenshot.is_none()));
         let world_name = args.world.clone().or_else(|| menus::list_worlds(&base).first().map(|w| w.name.clone())).unwrap_or_else(|| "Mundo 1".into());
         let save = Arc::new(WorldSave::new(level_path_hint(&base, &world_name)));
         let level = save.load_level();
+        let start_dim = level.as_ref().map(|l| voxel::worldgen::Dim::from_u8(l.dim)).unwrap_or_default();
         let seed = level.as_ref().map(|l| l.seed).or(args.seed).unwrap_or_else(|| {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1)
         });
-        let gen = Arc::new(Generator::new(seed, &reg));
+        let structures = load_structures(&base, &reg);
+        let gen = Arc::new(Generator::new(seed, &reg).with_structures(structures.clone()).with_spread(settings.structure_spread()));
         let tints: Vec<[f32; 3]> = (0..Biome::COUNT).map(|b| Biome::from_u8(b as u8).tint()).collect();
         let tables = Arc::new(MeshTables::new(&reg, tints));
-        let world = World::new(reg.clone(), gen.clone(), save.clone(), tables);
+        tables.set_models(pack_models.models);
+        let reg_for_fluids = reg.clone();
+        let mut world = World::new(reg.clone(), gen.clone(), save.clone(), tables);
+        world.headless = window.is_none();
 
-        let tex = textures::load(&texture_names, &base, &settings.resource_packs);
+        let tex = textures::load(&texture_names, &base, &settings.resource_packs, settings.texture_resolution);
         let textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
         let lod = lod::Lod::new(gen.clone(), lod::LodColors::new(&reg, &tex));
         let font = FontAtlas::new();
-        let renderer = pollster::block_on(Renderer::new(window.clone(), settings.vsync, &tex, &font));
-        let ui = UiBatch::new(&font);
-        let audio = Audio::new(&settings, &base);
+        let mut renderer = window.clone().map(|w| pollster::block_on(Renderer::new(w, settings.vsync, &tex, &font)));
+        if let Some(r) = renderer.as_mut() {
+            r.cave_cull = !args.no_cave_cull;
+        }
+        let mut ui = UiBatch::new(&font);
+        ui.gui = tex.gui.sprites.clone();
+        let mut audio = if args.server { None } else { Audio::new(&settings, &base) };
+        if let Some(a) = audio.as_mut() {
+            a.set_pack_sounds(textures::pack_sounds(&base, &settings.resource_packs, &audio::PACK_KEYS));
+        }
 
         // Mobs: a mobs.ron on disk wins, like blocks.
-        let mobs_text = std::fs::read_to_string(base.join("packs/vanilla/mobs.ron")).unwrap_or_else(|_| embedded::MOBS_RON.to_string());
-        let mob_reg = voxel::mob::MobRegistry::from_ron(&mobs_text).unwrap_or_else(|e| {
+        let [mobs_text, mods_mobs] = read_pack_pair(&base, "mobs.ron", embedded::MOBS_RON, embedded::MODS_MOBS_RON);
+        let mobs_text = terraria::with_extra(&merge_list(&mobs_text, &fase6_text(Some(&base), "mobs.ron")), embedded::T5_MOBS_RON);
+        let [_, dims_mobs] = read_pack_pair(&base, "dims_mobs.ron", "", embedded::MODS_DIMS_MOBS_RON);
+        let mob_reg = voxel::mob::MobRegistry::from_ron_many(&[&mobs_text, &mods_mobs, &dims_mobs]).unwrap_or_else(|e| {
             log::error!("{e}; using built-in mobs");
-            voxel::mob::MobRegistry::from_ron(embedded::MOBS_RON).unwrap_or_default()
+            voxel::mob::MobRegistry::from_ron_many(&[embedded::MOBS_RON, embedded::MODS_MOBS_RON, embedded::MODS_DIMS_MOBS_RON]).unwrap_or_default()
         });
         let painting_defs = paintings::load_defs(&base);
         let paintings = paintings::load(&save.dir, &painting_defs);
         let surv = survival::Survival::load(&save.dir, &items);
-        let entities = entity::EntityRenderer::new(&renderer, &mob_reg, &painting_defs, &base);
+        let prog = progression::Prog::load(&save.dir);
+        let pale = pale::Pale::new(&reg);
+        let mut extras = vanilla_extras::Extras::new(&reg);
+        extras.load(&save.dir, &level_path_hint(&base, &world_name));
+        let entities = renderer.as_ref().map(|r| entity::EntityRenderer::new(r, &mob_reg, &painting_defs, &base, settings.texture_resolution));
         let mut mobs = mobs::Mobs::new(mob_reg, reg.id_or_air("grass_block"), seed);
         mobs.enabled = settings.mobs;
+        mobs.peaceful = settings.difficulty == 0;
 
         let (sx, sy, sz) = gen.find_spawn();
         let mut body = Body::new(Vec3::new(sx as f32 + 0.5, sy as f32, sz as f32 + 0.5));
@@ -472,17 +901,27 @@ impl Game {
         let mut hotbar_names: Vec<String> =
             ["grass_block", "dirt", "stone", "cobblestone", "oak_planks", "oak_log", "glass", "torch", "glowstone"].iter().map(|s| s.to_string()).collect();
         let mut time_of_day = 1000.0;
+        let mut weather_save = weather::WeatherSave::default();
         let mut needs_spawn = true;
         let mut survival = args.survival;
         let mut health = 20.0;
+        let mut max_health = 20.0f32;
+        let mut max_mana = 20.0f32;
+        let mut bosses_beaten = Vec::new();
+        let mut town_npcs = Vec::new();
         if let Some(l) = &level {
+            max_mana = l.max_mana;
+            bosses_beaten = l.bosses.clone();
+            town_npcs = l.npcs.iter().map(|(n, h)| npcs::NpcSave { name: n.clone(), home: *h }).collect();
             survival = l.survival || args.survival;
-            health = if l.health > 0.0 { l.health } else { 20.0 };
+            max_health = l.max_health.clamp(20.0, 50.0);
+            health = if l.health > 0.0 { l.health.min(max_health) } else { max_health };
             body.pos = Vec3::from(l.player_pos);
             body.flying = l.flying;
             yaw = l.player_yaw;
             pitch = l.player_pitch;
             time_of_day = l.time_of_day;
+            weather_save = weather::WeatherSave { raining: l.raining, thunder: l.thunder, timer: l.weather_timer };
             if l.hotbar.len() == 9 {
                 hotbar_names = l.hotbar.clone();
             }
@@ -491,6 +930,21 @@ impl Game {
         if let Some(p) = args.pos {
             body.pos = p;
             needs_spawn = false;
+        }
+        // Test screenshots: stand south of the nearest building of that name, looking at it.
+        if let Some(name) = &args.find {
+            if let Some((o, size)) = gen.find_structure(name, body.pos.x as i32, body.pos.z as i32, 40) {
+                body.pos = Vec3::new(o.x as f32 + size.x as f32 / 2.0, o.y as f32 + size.y as f32 * 0.6 + 2.0, o.z as f32 + size.z as f32 + 9.0);
+                // MC_INSIDE: stand in the middle of its floor instead (buried crypts).
+                if std::env::var("MC_INSIDE").is_ok() {
+                    body.pos = Vec3::new(o.x as f32 + size.x as f32 / 2.0, o.y as f32 + 1.0, o.z as f32 + size.z as f32 - 2.5);
+                }
+                needs_spawn = false;
+                body.flying = true;
+                log::info!("found {name} at {o}");
+            } else {
+                log::warn!("no {name} nearby");
+            }
         }
         if let Some((y, p)) = args.look {
             yaw = y.to_radians();
@@ -509,19 +963,24 @@ impl Game {
         for (i, n) in hotbar_names.iter().enumerate() {
             hotbar[i] = reg.id_or_air(n);
         }
-        let inventory: Vec<BlockId> = (1..reg.len() as BlockId).filter(|&i| reg.get(i).in_inventory).collect();
         let packs = textures::list_resource_packs(&base.join("resourcepacks"));
         let show_debug = args.debug;
+        textures::extract_pack_shaders(&base, &settings.resource_packs);
         let (shader_packs, pack_errors) = shaderpack::list_packs(&base.join("shaderpacks"));
         for e in &pack_errors {
             log::warn!("shader pack: {e}");
         }
 
-        log::info!("world '{world_name}' seed {seed}, {} blocks, {} textures ({}px)", reg.len(), reg.textures.len(), renderer.texture_size);
+        log::info!("world '{world_name}' seed {seed}, {} blocks, {} textures ({}px)", reg.len(), reg.textures.len(), renderer.as_ref().map_or(0, |r| r.texture_size));
+        log::info!("{} interface pictures from packs", ui.gui.len());
         let now = Instant::now();
+        if args.rain || args.storm {
+            weather_save = weather::WeatherSave { raining: true, thunder: args.storm, timer: 600.0 };
+        }
+        let no_hud = args.no_hud;
         let mut game = Game {
-            window,
-            renderer,
+            window: headless::Gpu::new(window),
+            renderer: headless::Gpu::new(renderer),
             world,
             reg,
             settings,
@@ -537,28 +996,56 @@ impl Game {
             needs_spawn,
             hotbar,
             selected: 0,
-            inventory,
-            inv_scroll: 0,
             time_of_day,
             screen: if title_mode { Screen::Title } else { Screen::Loading },
             keys: HashSet::new(),
             mouse_held: [false; 3],
             mouse_pos: (0.0, 0.0),
             clicked: false,
+            attack_pressed: false,
+            ui_view_proj: None,
             last_space: -10.0,
             break_cd: 0.0,
             place_cd: 0.0,
             target: None,
             step_dist: 0.0,
+            rustle_dist: 0.0,
             pads: Controllers::new(),
+            key_map: keybinds::KeyMap::default(),
+            key_rebinding: None,
+            subtitles: Vec::new(),
+            last_health: 0.0,
+            place_pop: None,
+            swings: Default::default(),
+            stands: Default::default(),
+            pale,
+            heal_wave: -10.0,
             rebinding: None,
             pad_held: HashSet::new(),
             pad_back: false,
             pad_scroll_cd: 0.0,
             mobs,
-            entities,
+            entities: headless::Gpu::new(entities),
             survival,
             health,
+            max_health,
+            magic: magic::Magic::new(max_mana),
+            boss: bosses::BossState::new(bosses_beaten),
+            t5: terraria::Terraria::default(),
+            ne: nether_end::NetherEnd::default(),
+            town: npcs::Town::new(town_npcs),
+            progress: progress::Progress::new(),
+            raid: raids::Raid::default(),
+            villages: villages::Villages::default(),
+            wagons: wagons::Wagons::default(),
+            map: explore::MapCache::default(),
+            pets_waiting: pets::load(&save.dir),
+            signs: signs::load(&save.dir),
+            cmdblocks: cmdblock::load(&save.dir),
+            plugins: loaded_plugins,
+            nature: nature::load(&save.dir),
+            bench: Default::default(),
+            sign_edit: None,
             hurt_age: 100.0,
             regen: 0.0,
             fall_peak: f32::MIN,
@@ -573,6 +1060,33 @@ impl Game {
             painting_check: 0.0,
             mining: None,
             particles: particles::Particles::new(),
+            bobber: None,
+            fluids: fluids::Fluids::new(&reg_for_fluids),
+            redstone: redstone::Redstone::new(reg_for_fluids.clone()),
+            tnt: Vec::new(),
+            hopper_t: 0.0,
+            riding: None,
+            boating: None,
+            naming: None,
+            seat: None,
+            dim: voxel::worldgen::Dim::Overworld,
+            portal_t: 0.0,
+            arrival: None,
+            respawn_home: false,
+            arrive_plain: false,
+            ambient_t: 0.0,
+            room_t: 0.0,
+            walker_t: 0.0,
+            melody_cd: 0.0,
+            musicians: Default::default(),
+            fx: soundscape::Immersion::new(),
+            wander: Default::default(),
+            mods: Default::default(),
+            sails: Default::default(),
+            copper: copper::Copper::new(&reg_for_fluids),
+            farm: farm::Farm::new(&reg_for_fluids),
+            pots: pots::Pots::new(&reg_for_fluids),
+            weather: weather::Weather::new(weather_save, seed),
             anim: player_model::Animator::default(),
             camera_mode,
             world_open: !title_mode,
@@ -593,9 +1107,15 @@ impl Game {
             swim_dist: 0.0,
             items,
             recipes,
+            structures,
             item_base,
             surv,
+            prog,
+            extras,
+            vm: Default::default(),
             rclicked: false,
+            mclicked: false,
+            rdown: false,
             inv_number_key: None,
             bubble_cd: 4.0,
             ui,
@@ -603,7 +1123,8 @@ impl Game {
             show_perf,
             perf: monitor::FpsStats::new(),
             sysmon: monitor::SysMonitor::new(),
-            hide_hud: false,
+            // Test hook for clean pictures: MC_NOHUD=1 also starts with the interface hidden (F1).
+            hide_hud: no_hud || std::env::var("MC_NOHUD").is_ok(),
             toast: None,
             packs,
             textures_name,
@@ -619,11 +1140,101 @@ impl Game {
             last_frame_info: (0, 0, 0),
             autosave: 0.0,
             loaded_frames: 0,
+            backdrop: None,
+            want_backdrop: true,
+            loading_area: (ChunkPos::new(0, 0), 3),
             screenshot_request: false,
             grabbed: false,
+            net: Default::default(),
+            voice: Default::default(),
         };
         game.apply_shader();
+        if start_dim != voxel::worldgen::Dim::Overworld {
+            game.load_dim(start_dim, false);
+        }
+        if std::env::var("MC_END").is_ok() && game.dim == voxel::worldgen::Dim::Overworld {
+            // Test hook: arrive in the End on its platform.
+            game.load_dim(voxel::worldgen::Dim::End, true);
+            game.arrival = Some(game.end_arrival());
+            game.body.pos = game.arrival.unwrap();
+            game.needs_spawn = false;
+            if let Some(name) = game.args.find.clone() {
+                // Test hook: look at a structure on the far islands.
+                if let Some((o, size)) = game.world.gen.find_structure(&name, 1500, 0, 60) {
+                    game.arrival = None;
+                    game.body.pos = Vec3::new(o.x as f32 + size.x as f32 / 2.0, o.y as f32 + size.y as f32 * 0.6 + 2.0, o.z as f32 + size.z as f32 + 9.0);
+                    game.body.flying = true;
+                    log::info!("found {name} at {o}");
+                }
+            }
+        }
+        if std::env::var("MC_NETHER").is_ok() && game.dim == voxel::worldgen::Dim::Overworld {
+            // Test hook: arrive in the Nether through a fresh portal.
+            let p = game.body.pos;
+            game.load_dim(voxel::worldgen::Dim::Nether, true);
+            game.arrival = Some(Vec3::new(p.x / 8.0, 70.0, p.z / 8.0));
+            game.body.pos = game.arrival.unwrap();
+            game.needs_spawn = false;
+            let want = match std::env::var("MC_NETHER").as_deref() {
+                Ok("warped") => Some(voxel::worldgen::Biome::WarpedForest),
+                Ok("deltas") => Some(voxel::worldgen::Biome::BasaltDeltas),
+                _ => None,
+            };
+            if let Some(want) = want {
+                // Test hook: stand on a floor in the nearest warped forest (or basalt deltas).
+                let (x0, z0) = (game.body.pos.x as i32, game.body.pos.z as i32);
+                'search: for r in (0..2000).step_by(16) {
+                    for k in 0..(r / 8).max(1) {
+                        let a = k as f32 / (r / 8).max(1) as f32 * std::f32::consts::TAU;
+                        let (x, z) = (x0 + (a.cos() * r as f32) as i32, z0 + (a.sin() * r as f32) as i32);
+                        if game.world.gen.biome_at(x, z) != want {
+                            continue;
+                        }
+                        if let Some(y) = game.world.gen.nether_floor_near(x, 40, z) {
+                            game.arrival = None;
+                            game.body.pos = Vec3::new(x as f32 + 0.5, y as f32 + 1.0, z as f32 + 0.5);
+                            log::info!("warped forest at {x},{y},{z}");
+                            break 'search;
+                        }
+                    }
+                }
+            }
+            if let Some(name) = game.args.find.clone() {
+                let (x, z) = (game.body.pos.x as i32, game.body.pos.z as i32);
+                if let Some((o, size)) = game.world.gen.find_structure(&name, x, z, 40) {
+                    game.arrival = None;
+                    game.body.pos = Vec3::new(o.x as f32 + size.x as f32 / 2.0, o.y as f32 + size.y as f32 * 0.6 + 2.0, o.z as f32 + size.z as f32 + 7.0);
+                    game.body.flying = true;
+                    log::info!("found {name} at {o}");
+                }
+            }
+        }
+        game.load_mods();
+        game.mods_dim_test_hook();
+        game.key_map = keybinds::KeyMap::new(&game.settings.key_binds);
+        game.apply_language();
+        // Test hook: open a menu for screenshots (MC_SCREEN=options or keys).
+        match std::env::var("MC_SCREEN").as_deref() {
+            Ok("options") => game.set_screen(Screen::Options),
+            Ok("keys") => game.set_screen(Screen::Keys),
+            Ok("voice") => game.set_screen(Screen::Voice),
+            _ => {}
+        }
         game
+    }
+
+    /// Load the chosen language, and teach it the names of every block, item and mob.
+    pub(crate) fn apply_language(&mut self) {
+        for b in &self.reg.blocks {
+            lang::add_name(&b.display_name, &b.name);
+        }
+        for i in &self.items.items {
+            lang::add_name(&i.display_name, &i.name);
+        }
+        for d in &self.mobs.reg.defs {
+            lang::add_name(&d.display_name, &d.name);
+        }
+        lang::set_language(&self.settings.language, &self.base);
     }
 
     /// Turn on the shader pack named in the settings (or none). Errors turn shaders off and
@@ -640,7 +1251,9 @@ impl Game {
                 None => self.shader_error = Some(format!("pacote \"{}\" não encontrado", self.settings.shader_pack)),
             }
         }
-        if let Err(e) = self.renderer.set_shader(pack.as_ref(), self.settings.shader_quality) {
+        let Some(r) = self.renderer.get_mut() else { return };
+        r.post.taa = self.settings.taa;
+        if let Err(e) = r.set_shader(pack.as_ref(), self.settings.shader_quality) {
             self.toast(format!("Erro no shader: {e}"), 8.0);
             self.shader_error = Some(e);
         }
@@ -656,7 +1269,9 @@ impl Game {
 
     fn sync_shader_options(&mut self) {
         let values = self.active_shader().map(|p| p.values(self.settings.shader_options.get(&p.id))).unwrap_or_default();
-        self.renderer.post.options = values;
+        if let Some(r) = self.renderer.get_mut() {
+            r.post.options = values;
+        }
     }
 
     /// Name for the pause menu and the F3 screen.
@@ -666,6 +1281,24 @@ impl Game {
             (Some(p), None) => p.def.name.clone(),
             (None, None) => "Desligado".to_string(),
         }
+    }
+
+    /// Block depth for the terrain shader (`Globals::pom`). Off on the "Rápido" quality. A shader
+    /// pack can scale it with an option named "profundidade" (1 = as chosen in the menu).
+    fn parallax_uniform(&self) -> [f32; 4] {
+        let depth = settings::PARALLAX_LEVELS[self.settings.parallax.min(3) as usize].1;
+        if depth <= 0.0 || self.settings.shader_quality == ShaderQuality::Fast {
+            return [0.0; 4];
+        }
+        let scale = self
+            .active_shader()
+            .and_then(|p| {
+                let i = p.def.options.iter().take(shaderpack::MAX_OPTIONS).position(|o| o.name() == "profundidade")?;
+                Some(p.values(self.settings.shader_options.get(&p.id))[i])
+            })
+            .unwrap_or(1.0);
+        // Steps grow with the depth; the cracks' own shadows come with the sun shadows.
+        [depth * scale.max(0.0), 10.0 + depth * 60.0, 20.0, (self.settings.shadows > 0) as u8 as f32]
     }
 
     /// Terrain shader extras switched on by the built-in "Realçado" pack.
@@ -699,6 +1332,9 @@ impl Game {
     }
 
     fn set_grab(&mut self, grab: bool) {
+        if self.window.get().is_none() {
+            return;
+        }
         if grab {
             let ok = self.window.set_cursor_grab(CursorGrabMode::Locked).or_else(|_| self.window.set_cursor_grab(CursorGrabMode::Confined));
             if ok.is_err() {
@@ -713,12 +1349,16 @@ impl Game {
     }
 
     fn set_screen(&mut self, s: Screen) {
+        self.surv.opened_at = None;
         if self.screen == Screen::Loading && s != Screen::Loading {
             // Loading frames say nothing about how the game runs.
             self.perf.reset();
         }
-        if self.screen == Screen::Inventory && s != Screen::Inventory && self.survival {
+        if self.screen == Screen::Inventory && s != Screen::Inventory {
             self.surv_close();
+        }
+        if s == Screen::Loading && self.screen != Screen::Loading {
+            self.want_backdrop = true;
         }
         self.screen = s;
         self.set_grab(s == Screen::Playing);
@@ -730,6 +1370,9 @@ impl Game {
     }
 
     fn save_all(&mut self) {
+        if self.world_open {
+            self.net_save();
+        }
         if !self.world_open {
             self.settings.save(&self.base.join("settings.ron"));
             return;
@@ -745,15 +1388,34 @@ impl Game {
             hotbar: self.hotbar.iter().map(|&id| self.reg.get(id).name.clone()).collect(),
             survival: self.survival,
             health: self.health,
+            max_health: self.max_health,
+            max_mana: self.magic.max_mana - self.mods.spellbooks.mana_bonus,
+            bosses: self.boss.defeated.clone(),
+            npcs: self.town.npcs.iter().map(|n| (n.name.clone(), n.home)).collect(),
+            raining: self.weather.state.raining,
+            thunder: self.weather.state.thunder,
+            weather_timer: self.weather.state.timer,
+            dim: self.dim.as_u8(),
         };
         if self.screen != Screen::Loading || !self.needs_spawn {
-            if let Err(e) = self.world.save.save_level(&level) {
+            // level.ron always lives in the world's own folder, whatever dimension is loaded.
+            let root = WorldSave::new(level_path_hint(&self.base, &self.world_name));
+            if let Err(e) = root.save_level(&level) {
                 log::error!("could not save the world: {e}");
             }
         }
         self.world.save_all();
         paintings::save(&self.world.save.dir, &self.paintings);
+        signs::save(&self.world.save.dir, &self.signs);
+        cmdblock::save(&self.world.save.dir, &self.cmdblocks);
+        nature::save(&self.world.save.dir, &self.nature);
+        self.save_pets();
         self.surv.save(&self.world.save.dir, &self.items);
+        self.progress_save();
+        self.t5_save();
+        self.prog.save(&level_path_hint(&self.base, &self.world_name), &self.items);
+        self.extras.save(&self.world.save.dir, &level_path_hint(&self.base, &self.world_name));
+        self.save_mods();
         self.settings.save(&self.base.join("settings.ron"));
     }
 
@@ -762,16 +1424,32 @@ impl Game {
             _ if self.is_title_screen() => Situation::Title,
             Screen::Loading => Situation::Title,
             _ if self.body.head_in_water => Situation::Underwater,
+            _ if self.dim == voxel::worldgen::Dim::Nether => Situation::Nether,
+            _ if self.dim == voxel::worldgen::Dim::End => Situation::End,
             _ => Situation::Creative,
         }
     }
 
     fn reload_textures(&mut self) {
-        let names: Vec<String> = self.reg.textures.iter().chain(self.items.textures.iter()).cloned().chain(["item/xp_orb".to_string()]).collect();
-        let tex = textures::load(&names, &self.base, &self.settings.resource_packs);
+        let pack_models = packmodels::load(&self.reg, &self.base, &self.settings.resource_packs);
+        self.item_base = (self.reg.textures.len() + pack_models.textures.len()) as u16;
+        let names: Vec<String> =
+            self.reg.textures.iter().chain(pack_models.textures.iter()).chain(self.items.textures.iter()).cloned().chain(extra_textures()).collect();
+        self.world.tables.set_models(pack_models.models);
+        self.world.remesh_all();
+        let tex = textures::load(&names, &self.base, &self.settings.resource_packs, self.settings.texture_resolution);
         self.textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
-        self.renderer.reload_textures(&tex);
+        if let Some(r) = self.renderer.get_mut() {
+            r.reload_textures(&tex);
+        }
+        self.ui.gui = tex.gui.sprites.clone();
         self.lod.set_colors(lod::LodColors::new(&self.reg, &tex));
+        if let Some(a) = self.audio.as_mut() {
+            a.set_pack_sounds(textures::pack_sounds(&self.base, &self.settings.resource_packs, &audio::PACK_KEYS));
+        }
+        if textures::extract_pack_shaders(&self.base, &self.settings.resource_packs) {
+            self.reload_shader_packs();
+        }
         self.toast(format!("Texturas: {}", self.textures_name), 3.0);
     }
 
@@ -794,11 +1472,35 @@ impl Game {
             self.keys.remove(&code);
             return;
         }
+        if self.screen == Screen::Sign {
+            if self.extras.book.is_some() {
+                self.book_key(code);
+            } else if self.cmdblocks.edit.is_some() {
+                self.cmdblock_key(code);
+            } else if self.naming.is_some() {
+                self.naming_key(code);
+            } else {
+                self.sign_key(code);
+            }
+            return;
+        }
+        if self.net_key(code, pressed) {
+            return;
+        }
+        if !repeat && self.voice_key(code) {
+            return;
+        }
         if self.screen == Screen::CreateWorld && code != KeyCode::Escape {
             self.form_key(code);
             return;
         }
+        if self.creative_key(code) {
+            return;
+        }
         if repeat {
+            return;
+        }
+        if self.progress_key(code) || self.advancements_key(code) || self.mods_key(code) {
             return;
         }
         let f3 = self.keys.contains(&KeyCode::F3);
@@ -808,17 +1510,21 @@ impl Game {
                 Screen::Paused | Screen::Inventory => self.set_screen(Screen::Playing),
                 Screen::Controls => self.set_screen(self.options_back),
                 Screen::Shaders => self.set_screen(Screen::Paused),
-                Screen::Paintings => self.set_screen(Screen::Playing),
-                Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs => self.menu_back(),
+                Screen::Paintings | Screen::Sign | Screen::Grimoire | Screen::Plugin => {
+                    self.plugins.screen = None;
+                    self.extras.book = None;
+                    self.set_screen(Screen::Playing);
+                }
+                Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice => self.menu_back(),
                 Screen::Loading | Screen::Dead | Screen::Title => {}
             },
             KeyCode::KeyE => match self.screen {
-                Screen::Playing if self.survival => self.surv_open_inventory(),
-                Screen::Playing => self.set_screen(Screen::Inventory),
-                Screen::Inventory => self.set_screen(Screen::Playing),
+                Screen::Playing => self.surv_open_inventory(),
+                Screen::Inventory | Screen::Grimoire => self.set_screen(Screen::Playing),
                 _ => {}
             },
             KeyCode::KeyT if f3 => self.reload_textures(),
+            KeyCode::KeyG if self.screen == Screen::Playing => self.glyph_cycle(),
             KeyCode::KeyP => match self.screen {
                 Screen::Playing => self.open_paintings(),
                 Screen::Paintings => self.set_screen(Screen::Playing),
@@ -834,7 +1540,21 @@ impl Game {
             KeyCode::F2 => self.screenshot_request = true,
             KeyCode::F5 => self.camera_mode = (self.camera_mode + 1) % 3,
             KeyCode::KeyZ if self.screen == Screen::Playing => self.prone = !self.prone,
-            KeyCode::KeyQ if self.screen == Screen::Playing && self.survival => {
+            // Terraria-style quick keys (rpg.rs): heal, mana, buffs, and the stats sheet.
+            KeyCode::KeyH if self.screen == Screen::Playing => self.quick_heal(),
+            KeyCode::KeyN if self.screen == Screen::Playing => {
+                if !self.quick_mana() {
+                    self.toast("Nenhuma poção de mana ou mana já cheia", 1.5);
+                }
+            }
+            KeyCode::KeyB if self.screen == Screen::Playing => self.quick_buff(),
+            KeyCode::KeyC if matches!(self.screen, Screen::Playing | Screen::Inventory) => self.t5.rpg.sheet = !self.t5.rpg.sheet,
+            KeyCode::KeyR if self.screen == Screen::Inventory && self.survival => self.surv.want_recipe = true,
+            KeyCode::KeyU if self.screen == Screen::Inventory && self.survival => {
+                self.surv.want_recipe = true;
+                self.surv.uses_pending = true;
+            }
+            KeyCode::KeyQ if self.screen == Screen::Playing => {
                 let all = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
                 self.surv_throw(all);
             }
@@ -877,12 +1597,8 @@ impl Game {
             KeyCode::Digit9,
         ];
         if let Some(i) = digits.iter().position(|&d| d == code) {
-            if self.screen == Screen::Inventory && self.survival {
+            if self.screen == Screen::Inventory {
                 self.inv_number_key = Some(i);
-            } else if self.screen == Screen::Inventory {
-                if let Some(id) = self.hovered_inventory_block() {
-                    self.hotbar[i] = id;
-                }
             } else {
                 self.selected = i;
                 self.show_held_name();
@@ -891,16 +1607,8 @@ impl Game {
     }
 
     fn show_held_name(&mut self) {
-        if self.survival {
-            if let Some(st) = self.held_stack() {
-                let n = self.items.get(st.item).display_name.clone();
-                self.toast(n, 1.5);
-            }
-            return;
-        }
-        let id = self.hotbar[self.selected];
-        if id != AIR {
-            let n = self.reg.get(id).display_name.clone();
+        if let Some(st) = self.held_stack() {
+            let n = self.item_label(&st);
             self.toast(n, 1.5);
         }
     }
@@ -929,60 +1637,114 @@ impl Game {
                     self.shader_scroll += 1;
                 }
             }
+            Screen::Inventory if self.creative_screen_open() => self.creative_scroll(lines > 0.0),
             Screen::Inventory => {
-                let rows = self.inventory.len().div_ceil(9);
-                let visible = self.inventory_layout().3;
-                if lines > 0.0 {
-                    self.inv_scroll = self.inv_scroll.saturating_sub(1);
-                } else if self.inv_scroll + visible < rows {
-                    self.inv_scroll += 1;
+                if self.wheel_move(lines > 0.0) {
+                } else if lines > 0.0 {
+                    self.surv.book_scroll = self.surv.book_scroll.saturating_sub(1);
+                } else {
+                    self.surv.book_scroll += 1;
                 }
             }
             _ => {}
         }
     }
 
-    // ---------- inventory layout (shared by drawing and clicking) ----------
-    fn inventory_layout(&self) -> (f32, f32, f32, usize) {
-        let s = self.ui.scale;
-        let cell = 18.0 * s;
-        let w = cell * 9.0 + 16.0 * s;
-        let rows = (((self.ui.height - 80.0 * s) / cell).floor() as usize).clamp(3, 8);
-        let x = (self.ui.width - w) / 2.0;
-        let y = ((self.ui.height - (cell * rows as f32 + 60.0 * s)) / 2.0).max(4.0 * s);
-        (x, y, cell, rows)
-    }
-
-    fn hovered_inventory_block(&self) -> Option<BlockId> {
-        let (x, y, cell, rows) = self.inventory_layout();
-        let s = self.ui.scale;
-        let gx = x + 8.0 * s;
-        let gy = y + 20.0 * s;
-        let (mx, my) = self.mouse_pos;
-        if mx < gx || my < gy {
-            return None;
-        }
-        let col = ((mx - gx) / cell) as usize;
-        let row = ((my - gy) / cell) as usize;
-        if col >= 9 || row >= rows {
-            return None;
-        }
-        self.inventory.get((row + self.inv_scroll) * 9 + col).copied()
-    }
 
     fn update(&mut self, dt: f32) {
         self.now += dt;
+        self.update_subtitles(dt);
+        if self.health > self.last_health + 0.05 && self.last_health > 0.0 && self.now - self.heal_wave > 0.8 {
+            self.heal_wave = self.now;
+        }
+        self.last_health = self.health;
+        // Peaceful: health comes back on its own.
+        if self.survival && self.settings.difficulty == 0 && self.screen != Screen::Dead && self.health > 0.0 {
+            self.health = (self.health + dt).min(self.max_health);
+        }
         let rd = self.settings.render_distance;
         let eye = self.body.eye();
         let center = ChunkPos::new((eye.x.floor() as i32) >> 4, (eye.z.floor() as i32) >> 4);
         self.world.update(center, rd);
+        self.swing_update();
         let events = std::mem::take(&mut self.world.events);
-        self.renderer.apply_mesh_events(events);
+        if let Some(r) = self.renderer.get_mut() {
+            r.apply_mesh_events(events);
+        }
+        if self.world_open && self.screen == Screen::Playing {
+            self.plugins_tick(dt);
+        }
+        self.net_update(dt);
+        self.voice_update(dt);
+        // A guest in the host's dimension gets the world's own changes from the host.
+        let sim = self.net_simulates();
+        if self.world_open && self.screen != Screen::Loading {
+            let shot = self.args.screenshot.is_some();
+            self.weather.update(&self.world, eye, dt, shot);
+            self.windmills_update(dt);
+            if self.dim != voxel::worldgen::Dim::Overworld {
+                // No weather under the Nether's roof (it carries on at home).
+                self.weather.rain = 0.0;
+                self.weather.flash = 0.0;
+                self.weather.columns.clear();
+                self.weather.thunder_sound = None;
+                self.weather.rain_sound = false;
+            }
+            if let Some(close) = self.weather.thunder_sound {
+                self.sfx(Sfx::Thunder(close));
+                self.lightning_trap();
+            }
+            if self.weather.rain_sound {
+                let vol = self.settings.sound_volume * 0.5 * self.weather.rain;
+                if let Some(a) = self.audio.as_mut() {
+                    a.play(Sfx::Rain, vol);
+                }
+            }
+            if self.weather.snowing_here && self.weather.rain > 0.9 {
+                self.settle_snow(dt);
+            } else if self.weather.rain > 0.3 {
+                self.rain_splashes(dt);
+            }
+            if sim {
+                self.update_leaf_decay(dt);
+            }
+            if matches!(self.screen, Screen::Playing | Screen::Inventory) {
+                self.portal_step(dt);
+                self.update_ambient(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.update_musicians(dt);
+                self.update_immersion(if self.args.screenshot.is_some() { 0.0 } else { dt });
+            }
+            self.update_fishing(dt);
+            self.update_carts(dt);
+            self.update_boats(dt);
+            self.update_wagons(dt);
+            if sim {
+                self.update_redstone(dt);
+                self.update_random_ticks(dt);
+                self.update_farmers(dt);
+                self.update_walkers(dt);
+                let fe = self.fluids.update(&mut self.world, dt);
+                if let Some(p) = fe.hardened.first() {
+                    if p.as_vec3().distance(self.body.pos) < 24.0 {
+                        self.sfx(Sfx::Fizz);
+                    }
+                }
+            } else {
+                self.world.changed.clear();
+            }
+        } else {
+            self.world.changed.clear();
+            self.weather.columns.clear();
+        }
+        if let Some(r) = self.renderer.get_mut() {
+            r.set_rain(&self.weather.columns);
+        }
 
         if self.screen == Screen::Loading {
             let (sx, sz) = if self.needs_spawn { self.spawn_xz } else { (self.body.pos.x.floor() as i32, self.body.pos.z.floor() as i32) };
             let c = ChunkPos::new(sx >> 4, sz >> 4);
             let near = rd.min(3);
+            self.loading_area = (c, near);
             let mut ready = true;
             for dz in -near..=near {
                 for dx in -near..=near {
@@ -992,20 +1754,151 @@ impl Game {
                     }
                 }
             }
-            if ready {
+            if ready && (self.arrival.is_some() || self.respawn_home) {
+                self.finish_travel();
+            } else if ready {
                 if self.needs_spawn {
                     let y = self.world.surface_y(sx, sz).unwrap_or(100) + 1;
                     self.body.pos = Vec3::new(sx as f32 + 0.5, y as f32, sz as f32 + 0.5);
                     self.needs_spawn = false;
                 }
+                // Never start the game inside rock (the Nether test shortcuts land in closed caves).
+                self.unstick();
                 if self.args.demo {
                     self.build_demo();
+                }
+                if self.args.shapes {
+                    self.build_shapes();
+                }
+                if self.args.redstone {
+                    self.build_redstone();
+                }
+                if self.args.phase4 {
+                    self.build_phase4();
                 }
                 if self.args.mobs {
                     self.spawn_demo_mobs();
                 }
+                self.fill_creative_hotbar();
+                if let Some(c) = self.args.ctab {
+                    self.surv.ctab = c.min(12);
+                }
                 if self.args.kit {
                     self.test_kit();
+                }
+                if self.args.die {
+                    // Test hook: die where you stand and step back to look at the body.
+                    self.surv_died();
+                    let f = self.forward();
+                    self.body.pos -= Vec3::new(f.x, 0.0, f.z).normalize_or_zero() * 2.5;
+                }
+                if let Some(i) = self.args.slot {
+                    self.selected = i;
+                }
+                if let Some(it) = std::env::var("MC_HOLD").ok().and_then(|n| self.items.id(&n)) {
+                    // Test hook: hold this item (any item name) in the selected slot.
+                    self.surv.inv.slots[self.selected] = Some(voxel::item::ItemStack::new(it, 1));
+                }
+                if std::env::var("MC_NOHUD").is_ok() {
+                    // Test hook: no HUD, for clean third-person shots.
+                    self.hide_hud = true;
+                }
+                if std::env::var("MC_AMBIENT").is_ok() {
+                    // Test hook: a few seconds of ambient bits already in the air.
+                    for _ in 0..80 {
+                        self.update_ambient(0.05);
+                        self.particles.update(&self.world, 0.05);
+                    }
+                }
+                if std::env::var("MC_FARM").is_ok() {
+                    // Test hook: a small field in front, some of it ripe.
+                    self.test_farm();
+                }
+                if let Ok(name) = std::env::var("MC_BIOME") {
+                    // Test hook: stand in the nearest biome of that name (e.g. "Meadow").
+                    self.test_biome(&name);
+                }
+                if let Ok(kind) = std::env::var("MC_CAVE") {
+                    // Test hook: stand in a cave biome.
+                    self.test_cave(&kind);
+                }
+                if let Ok(scene) = std::env::var("MC_FASE6") {
+                    // Test hook: a Phase 6 scene (stations, effects, advancements, mobs).
+                    self.test_fase6(&scene);
+                }
+                if std::env::var("MC_PALE").is_ok() {
+                    // Test hook: the pale garden's and resin's new blocks.
+                    self.test_pale();
+                }
+                if std::env::var("MC_DECOR").is_ok() {
+                    // Test hook: the new building blocks.
+                    self.test_decor();
+                }
+                if std::env::var("MC_POTS").is_ok() {
+                    // Test hook: planted pots on hoppers.
+                    self.test_pots();
+                }
+                if std::env::var("MC_END_RING").is_ok() {
+                    // Test hook: a ring of end portal frames, the last eye just set.
+                    self.test_end_ring();
+                }
+                if std::env::var("MC_PORTAL").is_ok() {
+                    // Test hook: an obsidian frame in front, lit with flint and steel.
+                    self.test_portal();
+                }
+                if std::env::var("MC_TRAVEL").is_ok() {
+                    // Test hook: walk through a portal right away (saves, loads the Nether).
+                    let p = self.body.pos;
+                    self.travel(voxel::worldgen::Dim::Nether, Vec3::new(p.x / 8.0, 70.0, p.z / 8.0));
+                    return;
+                }
+                if let Ok(n) = std::env::var("MC_PROGRESS") {
+                    // Test hook: chapters before N done, the Guide in front (MC_TALK, MC_JOURNAL, MC_REWARD).
+                    self.test_progress(n.parse().unwrap_or(0));
+                }
+                if let Ok(u) = std::env::var("MC_MANTLE") {
+                    // Test hook: caught partway up a two-block ledge (MC_MANTLE_SHELF: a shelf).
+                    self.test_mantle(u.parse().unwrap_or(0.4));
+                }
+                if std::env::var("MC_HOUSE").is_ok() {
+                    // Test hook: two small houses in front; people move in; MC_SHOP opens a shop.
+                    self.test_houses();
+                }
+                if let Ok(boss) = std::env::var("MC_BOSS") {
+                    // Test hook: a boss in front (MC_BOSS=name, or 1 for the Forest Guardian), hurt
+                    // to show its bar and angry volley.
+                    let boss = if boss.len() > 1 { boss } else { "forest_guardian".to_string() };
+                    let f = self.forward();
+                    let flat = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
+                    let at = self.body.pos + flat * 14.0;
+                    let y = self.world.surface_y(at.x.floor() as i32, at.z.floor() as i32).map(|y| y as f32 + 1.0).unwrap_or(at.y);
+                    if self.mobs.spawn(&boss, Vec3::new(at.x, y, at.z)) {
+                        let m = self.mobs.list.last_mut().unwrap();
+                        m.yaw = (-flat.x).atan2(-flat.z);
+                        m.health = m.max_health * 0.4;
+                        self.boss.called_help = true;
+                        for _ in 0..8 {
+                            self.update_boss(0.5);
+                            self.update_magic(0.03, false);
+                            self.particles.update(&self.world, 0.03);
+                        }
+                    }
+                }
+                if let Ok(what) = std::env::var("MC_NE") {
+                    // Test hook: the Nether and End's fights (shots, wither, dragon, glide, gateway).
+                    self.nether_end_test(&what);
+                }
+                if let Ok(spell) = std::env::var("MC_CAST") {
+                    // Test hook: a caster in hand, a few spells frozen in flight.
+                    if let Some(id) = self.items.id(&spell) {
+                        let sel = self.selected;
+                        self.surv.inv.slots[sel] = Some(voxel::item::ItemStack::new(id, 1));
+                        self.screen = Screen::Playing;
+                        for k in 0..12 {
+                            self.update_magic(0.03, k % 4 == 0);
+                            self.particles.update(&self.world, 0.03);
+                        }
+                    }
                 }
                 if self.args.particles {
                     // Frozen in mid-air for a test picture: a broken block and a splash.
@@ -1024,7 +1917,19 @@ impl Game {
                         self.particles.update(&self.world, 0.03);
                     }
                 }
-                if self.args.show_inventory || self.args.open.is_some() {
+                if let Ok(scene) = std::env::var("MC_T5") {
+                    // Test hook: an Etapa 5 scene (terraria.rs, test_t5).
+                    self.test_t5(&scene);
+                }
+                if let Ok(scene) = std::env::var("MC_RPG") {
+                    // Test hook: stats, minions, debuffs (rpg.rs, test_rpg).
+                    self.test_rpg(&scene);
+                }
+                self.mods_test_hooks();
+                if let Some(m) = self.args.mouse {
+                    self.mouse_pos = m;
+                }
+                if self.args.show_inventory || self.surv.open == survival::Open::Shop || self.args.open.as_deref().is_some_and(|o| o != "corpse") {
                     self.set_screen(Screen::Inventory);
                 } else if self.args.show_pause {
                     self.set_screen(Screen::Paused);
@@ -1033,13 +1938,17 @@ impl Game {
                 } else {
                     self.set_screen(Screen::Playing);
                 }
-                self.toast(if self.survival { "Bem-vindo! Esc = menu, E = inventário" } else { "Bem-vindo! Esc = menu, E = blocos" }, 6.0);
+                self.toast("Bem-vindo! Esc = menu, E = inventário", 6.0);
+                if std::env::var("MC_T5").as_deref() == Ok("grimoire") {
+                    self.set_screen(Screen::Grimoire);
+                }
             }
         }
 
         // Singleplayer: the pause menu (and the option screens opened from it) stop the world.
-        let paused = self.world_open && matches!(self.screen, Screen::Paused | Screen::Options | Screen::Controls | Screen::Packs | Screen::Shaders);
-        if !paused {
+        // With friends in it, it keeps going.
+        let paused = self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Options | Screen::Controls | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders);
+        if !paused && self.net.rules.daylight_cycle {
             self.time_of_day = (self.time_of_day + dt * 20.0) % 24000.0;
         }
         if self.args.time.is_some() && self.args.screenshot.is_some() {
@@ -1059,23 +1968,75 @@ impl Game {
         if self.world_open && !paused && self.screen != Screen::Loading {
             let use_held = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
             self.surv_update(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
+            self.update_magic(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
+            self.update_fase6(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
+            if sim {
+                self.update_boss(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.update_progress(if self.args.screenshot.is_some() { 0.0 } else { dt });
+            }
+            if sim && self.dim == voxel::worldgen::Dim::Overworld {
+                // Townsfolk live at home.
+                self.update_npcs(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.update_raids(dt);
+                self.update_villages(dt);
+                self.update_leads(dt);
+                self.update_map(dt);
+                self.update_pets(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.stands_update();
+            }
+            self.update_mods(if self.args.screenshot.is_some() { 0.0 } else { dt });
         }
-        if self.world_open && !matches!(self.screen, Screen::Loading | Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Shaders) {
+        let menus_stop = !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Controls | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders);
+        if self.world_open && sim && self.screen != Screen::Loading && !menus_stop {
             let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
             let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
-            let creative = !self.survival || self.screen == Screen::Dead;
+            let creative = !self.survival || self.screen == Screen::Dead || self.has_effect(effects::INVISIBILITY);
+            if self.screen == Screen::Playing && self.dim == voxel::worldgen::Dim::Overworld {
+                self.update_wanderers(if self.args.screenshot.is_some() { 0.0 } else { dt }, daylight);
+            }
             // Screenshots hold the world still so the picture is stable.
             let mdt = if self.args.screenshot.is_some() { 0.0 } else { dt };
+            self.before_mobs();
             let out = self.mobs.update(&self.world, self.body.pos, creative, daylight, mdt);
             for (dmg, from) in out.damage {
+                self.mob_hit_effects(from);
+                self.rpg_mob_hit(from);
                 self.damage(dmg, from);
             }
+            self.net_remote_hits(&out.remote_hits);
             for (pos, power) in out.explosions {
                 self.explode(pos, power);
             }
-            if self.survival {
-                self.surv_mob_deaths(&out.deaths);
+            for (from, vel, dmg, school) in out.fireballs {
+                self.enemy_bolt(from, vel, school, dmg);
+                self.sfx(Sfx::Cast(school));
             }
+            self.update_nether_end(mdt, &out.special, &out.deaths);
+            // A soft thrum when a bow is loosed, a wooden thunk when an arrow lands.
+            if out.shots > 0 {
+                self.sfx(Sfx::Place(Material::Cloth));
+            }
+            if out.arrow_hits > 0 {
+                self.sfx(Sfx::Hit(Material::Wood));
+            }
+            for &(def, pos) in &out.deaths {
+                self.rpg_drops(def, pos);
+                let d = &self.mobs.reg.defs[def];
+                if d.boss {
+                    let (n, dn) = (d.name.clone(), d.display_name.clone());
+                    self.boss_defeated(&n, &dn);
+                }
+            }
+            self.progress_deaths(&out.deaths);
+            // Mobs a friend finished off drop their loot for that friend.
+            let deaths = self.net_kill_credit(&out.deaths);
+            if self.survival {
+                self.surv_mob_deaths(&deaths);
+            }
+            // After the mobs' own tick: worms, flyers, hard mode, accessories, glyph spells.
+            let use_held = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
+            self.update_t5(mdt, use_held && self.screen == Screen::Playing);
+            self.fase6_mob_deaths(&out.deaths);
             self.painting_check -= dt;
             if self.painting_check <= 0.0 {
                 self.painting_check = 0.5;
@@ -1128,6 +2089,7 @@ impl Game {
         if playing && self.pads.pad.connected {
             wish += fwd * self.pads.pad.ly + right * self.pads.pad.lx;
         }
+        let wish = self.rpg_wish(wish);
         let held = |a: Action| playing && self.pad_held.contains(&a);
         // Lying down: the box drops to 0.6 high so the player fits through one-block gaps. Getting
         // up waits until there is room, so a tunnel keeps you crawling.
@@ -1169,7 +2131,29 @@ impl Game {
         let was_ground = self.body.on_ground;
         // The camera pass for screenshots holds still.
         if self.args.screenshot.is_none() {
-            self.body.step(&self.world, &input, dt);
+            if !self.seat_step(input.sneak)
+                && !self.ride_step(wish, input.sneak)
+                && !self.pilot_step(wish, input.sneak, dt)
+                && !self.boat_step(wish, input.sneak, dt)
+                && !self.mount_step(wish, input.jump, input.sneak, dt)
+                && !self.strider_step(wish, input.sneak, dt)
+                && !self.elytra_step(input.jump, dt)
+            {
+                self.pre_step(input.sneak);
+                let was_mantling = self.body.mantle.is_some();
+                if self.body.try_mantle(&self.world, &input) {
+                    self.mantle_started();
+                }
+                self.body.step(&self.world, &input, dt);
+                if was_mantling && self.body.mantle.is_none() {
+                    // Up on the ledge: the feet come down on it.
+                    let below = self.world.block_or_air((self.body.pos - Vec3::Y * 0.2).floor().as_ivec3());
+                    if below != AIR {
+                        self.sfx(Sfx::Step(Material::of(&self.reg.get(below).name)));
+                    }
+                }
+                self.post_step(dt);
+            }
         } else {
             // Held still, but still know about water for the picture.
             self.body.head_in_water = voxel::physics::Terrain::liquid(&self.world, self.body.eye().floor().as_ivec3());
@@ -1190,10 +2174,23 @@ impl Game {
                 }
             }
         }
+        // Pushing through tall grass, flowers and bushes rustles them.
+        {
+            let feet = self.body.pos.floor().as_ivec3();
+            let in_plants = [feet, feet + IVec3::Y].iter().any(|&p| self.reg.get(self.world.block_or_air(p)).shape == Shape::Cross);
+            if in_plants && !self.body.flying {
+                self.rustle_dist += moved.length();
+                if self.rustle_dist > 1.1 {
+                    self.rustle_dist = 0.0;
+                    self.sfx_here(Sfx::Fx(sfx_extra::Fx::Brush), 0.55);
+                }
+            } else {
+                self.rustle_dist = 0.9;
+            }
+        }
 
-        let lava = self.reg.id_or_air("lava");
         let feet = self.body.pos.floor().as_ivec3();
-        let pose = self.pose(lava != AIR && (self.world.block_or_air(feet) == lava || self.world.block_or_air(feet + IVec3::Y) == lava));
+        let pose = self.pose(self.extras.burning > 0.0 || self.world.fluid(self.world.block_or_air(feet)) == 2 || self.world.fluid(self.world.block_or_air(feet + IVec3::Y)) == 2);
         self.anim.update(&pose, dt);
 
         // Water: splash going in, strokes while swimming, drips coming out, bubbles below.
@@ -1239,10 +2236,19 @@ impl Game {
 
         // What the player is looking at.
         let world = &self.world;
-        self.target = raycast(self.body.eye(), self.forward(), REACH, |p| match world.block(p) {
-            Some(id) => id != AIR && !world.is_liquid(id),
+        let (eye, fwd) = (self.body.eye(), self.forward());
+        let reach = self.reach();
+        self.target = raycast(eye, fwd, reach, |p| match world.block(p) {
+            Some(id) => id != AIR && !world.is_liquid(id) && (!self.reg.get(id).shape.is_boxes() || world.ray_shape(eye, fwd, p).is_some()),
             None => false,
         });
+        // Shaped blocks: the face actually hit (the top of a slab, the side of a stair step).
+        if let Some(h) = self.target.as_mut() {
+            if let Some((d, n)) = world.ray_shape(eye, fwd, h.block) {
+                h.distance = d;
+                h.normal = n;
+            }
+        }
 
         self.break_cd -= dt;
         self.place_cd -= dt;
@@ -1252,9 +2258,13 @@ impl Game {
         let attack = self.mouse_held[0] || self.pad_held.contains(&Action::Attack);
         let use_ = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
         self.attack_cd -= dt;
+        if attack && self.attack_cd <= 0.0 && self.break_cd <= 0.0 && (self.aircraft_attack() || self.cart_attack() || self.boat_attack()) {
+            self.attack_cd = 0.3;
+            self.break_cd = 0.3;
+        }
         if attack && self.attack_cd <= 0.0 && self.break_cd <= 0.0 {
             let block_dist = self.target.map(|t| t.distance).unwrap_or(f32::MAX);
-            if let Some((i, t)) = paintings::pick(&self.paintings, &self.painting_defs, self.body.eye(), self.forward(), REACH) {
+            if let Some((i, t)) = paintings::pick(&self.paintings, &self.painting_defs, self.body.eye(), self.forward(), self.reach()) {
                 if t < block_dist {
                     self.paintings.remove(i);
                     self.break_cd = 0.3;
@@ -1263,25 +2273,70 @@ impl Game {
                 }
             }
         }
-        if attack && self.attack_cd <= 0.0 {
-            let block_dist = self.target.map(|t| t.distance).unwrap_or(f32::MAX);
-            if let Some((i, t)) = self.mobs.pick(self.body.eye(), self.forward(), 3.5) {
+        // Survival swings land when the weapon is ready again, or on a fresh click (weaker).
+        let ready = !self.survival || self.attack_pressed || self.attack_charge() >= 1.0;
+        if attack && self.attack_cd <= 0.0 && ready && self.deflect_shot() {
+            self.attack_cd = 0.3;
+        }
+        if attack && self.attack_cd <= 0.0 && ready {
+            // Plants don't block a swing: the hit goes through grass and flowers to the mob.
+            let world = &self.world;
+            let reg = &self.reg;
+            let block_dist = raycast(self.body.eye(), self.forward(), self.reach(), |p| match world.block(p) {
+                Some(id) => id != AIR && !world.is_liquid(id) && !matches!(reg.get(id).shape, Shape::Cross),
+                None => false,
+            })
+            .map(|t| t.distance)
+            .unwrap_or(f32::MAX);
+            if self.pvp_swing(block_dist) || self.combat_swing(block_dist) {
+            } else if let Some((i, t)) = self.mobs.pick(self.body.eye(), self.forward(), self.weapon_reach()) {
                 if t < block_dist {
-                    self.attack_cd = 0.45;
+                    self.attack_cd = if self.survival { 0.1 } else { 0.45 };
                     self.break_cd = 0.3;
                     let eye = self.body.eye();
+                    let charge = if self.survival { self.attack_charge() } else { 1.0 };
                     let base = if self.survival { self.surv_attack_damage() } else { 4.0 };
-                    let dmg = if self.body.vel.y < -0.5 && !self.body.on_ground { base * 1.5 } else { base };
+                    // Falling onto a mob with a ready weapon is a critical hit.
+                    let crit = (self.body.vel.y < -0.5 && !self.body.on_ground && !self.body.in_water && charge > 0.9) || (charge > 0.9 && self.surv.rng.f32() < self.held_crit() + self.t5.rpg.stats.crit[rpg::MELEE]);
+                    let dmg = if crit { base * 1.5 } else { base };
+                    self.prog.was_full = charge > 0.9;
+                    let dmg = if self.survival { self.weapon_melee_bonus(i, dmg) } else { dmg };
+                    let sprint_hit = self.sprinting && charge > 0.9;
+                    if crit || sprint_hit {
+                        let at = self.mobs.list[i].body.pos + Vec3::Y * 0.9;
+                        let wool = self.reg.id_or_air("white_wool");
+                        if wool != AIR && crit {
+                            let (layer, _) = self.block_look(wool);
+                            self.particles.block_bits(at.floor().as_ivec3(), layer, [1.0, 0.95, 0.7], 10, 0.6);
+                        }
+                    }
                     let m = &mut self.mobs.list[i];
                     m.hurt(dmg, eye);
+                    if sprint_hit {
+                        // A running hit knocks the mob further and ends the sprint.
+                        let dir = m.body.pos - eye;
+                        m.body.knockback(dir, 4.0);
+                    }
                     let def = &self.mobs.reg.defs[m.def];
                     self.last_hit = Some((def.display_name.clone(), m.health.max(0.0), m.max_health, self.now + 3.0));
                     self.sfx(Sfx::MobHit);
                     self.anim.start_swing();
                     self.pads.rumble(0.3, 0.6, 0.1);
+                    if self.survival {
+                        self.after_melee(i, dmg);
+                    }
+                    if sprint_hit {
+                        self.sprinting = false;
+                    }
                 }
             }
         }
+        if attack && self.survival && self.attack_pressed && self.target.is_none() {
+            // A swing at the air still uses up the weapon's readiness.
+            self.surv.attack_t = 0.0;
+            self.anim.start_swing();
+        }
+        self.attack_pressed = false;
         // Survival: hold to dig, with a knock every few moments, like the classic game.
         if self.survival {
             let target = self.target.map(|t| t.block);
@@ -1318,11 +2373,17 @@ impl Game {
         if attack && self.break_cd <= 0.0 && (!self.survival || dig_done) {
             if let Some(hit) = self.target {
                 let id = self.world.block_or_air(hit.block);
-                if id != AIR && self.reg.get(id).hardness >= 0.0 && self.world.break_block(hit.block) {
+                if id != AIR && (self.reg.get(id).hardness >= 0.0 || !self.survival) && self.world.break_block(hit.block) {
                     self.mining = None;
+                    self.after_break(hit.block, id);
                     if self.survival {
                         self.surv_block_broken(hit.block, id);
                     }
+                    let axe = self.held_tool().is_some_and(|t| t.kind == voxel::block::ToolKind::Axe);
+                    if axe && self.crouch <= 0.5 && self.reg.get(id).name.ends_with("_log") {
+                        self.fell_tree(hit.block, id);
+                    }
+                    self.area_break(hit.block, hit.normal, id);
                     let (layer, tint) = self.block_look(id);
                     self.particles.block_bits(hit.block, layer, tint, 18, 1.0);
                     self.anim.start_swing();
@@ -1337,8 +2398,12 @@ impl Game {
             }
         }
         if use_ && self.place_cd <= 0.0 {
-            if !self.survival {
-                self.try_place();
+            if self.mods_use() {
+                self.place_cd = 0.3;
+            } else if self.cart_use() || self.boat_use() || self.sit_use() {
+                self.place_cd = 0.3;
+            } else if self.crouch <= 0.5 && self.toggle_shaped() {
+                self.place_cd = 0.25;
             } else if self.surv_use() {
                 self.place_cd = self.place_cd.max(0.22);
             }
@@ -1351,11 +2416,7 @@ impl Game {
                     self.surv_pick(id);
                     self.show_held_name();
                 } else if id != AIR {
-                    if let Some(i) = self.hotbar.iter().position(|&h| h == id) {
-                        self.selected = i;
-                    } else {
-                        self.hotbar[self.selected] = id;
-                    }
+                    self.creative_pick(id);
                     self.show_held_name();
                 }
             }
@@ -1444,10 +2505,20 @@ impl Game {
         }
     }
 
+    /// How far the player reaches blocks (and boats, carts, paintings), as in Java Edition:
+    /// 4.5 blocks in survival, 5 in creative.
+    pub(crate) fn reach(&self) -> f32 {
+        if self.survival {
+            4.5 + self.t5.rpg.stats.reach
+        } else {
+            5.0
+        }
+    }
+
     /// Seconds to dig a block by hand in survival (no tools yet).
     fn dig_time(&self, id: BlockId) -> f32 {
         if self.survival {
-            return self.items.dig_time(&self.reg, id, self.held_tool().as_ref());
+            return self.items.dig_time(&self.reg, id, self.held_tool().as_ref()) / self.dig_speed_bonus(id);
         }
         let h = self.reg.get(id).hardness.max(0.0);
         if h == 0.0 {
@@ -1461,6 +2532,7 @@ impl Game {
     fn shader_rows(&self) -> Vec<(String, ShaderRow, bool)> {
         let cur = if self.settings.shader_pack.is_empty() { None } else { self.active_shader().map(|p| p.id.clone()) };
         let mark = |on: bool, name: &str| if on { format!("> {name} <") } else { name.to_string() };
+        let onoff = |b: bool| if b { "Sim" } else { "Não" };
         let mut v = vec![
             ("Voltar".to_string(), ShaderRow::Back, false),
             (format!("Qualidade: {}", self.settings.shader_quality.label()), ShaderRow::Quality, false),
@@ -1471,6 +2543,20 @@ impl Game {
                     d => format!("Distância LOD: +{d}"),
                 },
                 ShaderRow::Lod,
+                false,
+            ),
+            (format!("Sombras: {}", settings::SHADOW_LEVELS[self.settings.shadows.min(2) as usize]), ShaderRow::Shadows, false),
+            (format!("Reflexos na água: {}{}", onoff(self.settings.water_reflections), if cur.is_none() { " (com shader)" } else { "" }), ShaderRow::Reflections, false),
+            (format!("Suavização TAA: {}{}", onoff(self.settings.taa), if cur.is_none() { " (com shader)" } else { "" }), ShaderRow::Taa, false),
+            (format!("Nuvens: {}", if !self.settings.show_clouds { "Não" } else if self.settings.layered_clouds { "Em camadas" } else { "Simples" }), ShaderRow::Clouds, false),
+            (format!("Minérios brilhantes: {}", onoff(self.settings.emissive_textures)), ShaderRow::Emissive, false),
+            (
+                format!(
+                    "Profundidade: {}{}",
+                    settings::PARALLAX_LEVELS[self.settings.parallax.min(3) as usize].0,
+                    if self.settings.parallax > 0 && self.settings.shader_quality == ShaderQuality::Fast { " (só Bonito)" } else { "" }
+                ),
+                ShaderRow::Parallax,
                 false,
             ),
             (mark(cur.is_none(), "Desligado"), ShaderRow::Pack(None), false),
@@ -1503,8 +2589,8 @@ impl Game {
         let fits = (((h - top - 40.0 * s) / step).floor() as usize).max(4);
         let left: Vec<usize> = (0..rows.len()).filter(|&i| !rows[i].2).collect();
         let right: Vec<usize> = (0..rows.len()).filter(|&i| rows[i].2).collect();
-        // The first five rows always show; the pack list scrolls with the wheel.
-        let fixed = 5.min(left.len());
+        // The first rows (settings) always show; the pack list scrolls with the wheel.
+        let fixed = 11.min(left.len());
         let scroll_max = left.len().saturating_sub(fits);
         self.shader_scroll = self.shader_scroll.min(scroll_max);
         let mut hit = None;
@@ -1577,6 +2663,23 @@ impl Game {
                 self.apply_shader();
             }
             ShaderRow::Reload => self.reload_shader_packs(),
+            ShaderRow::Shadows => self.settings.shadows = (self.settings.shadows + 1) % 3,
+            ShaderRow::Reflections => self.settings.water_reflections = !self.settings.water_reflections,
+            ShaderRow::Taa => {
+                self.settings.taa = !self.settings.taa;
+                self.apply_shader();
+            }
+            ShaderRow::Clouds => {
+                // Off → simple → layered → off.
+                let st = &mut self.settings;
+                (st.show_clouds, st.layered_clouds) = match (st.show_clouds, st.layered_clouds) {
+                    (false, _) => (true, false),
+                    (true, false) => (true, true),
+                    (true, true) => (false, true),
+                };
+            }
+            ShaderRow::Emissive => self.settings.emissive_textures = !self.settings.emissive_textures,
+            ShaderRow::Parallax => self.settings.parallax = (self.settings.parallax.min(3) + 1) % 4,
             ShaderRow::Lod => {
                 let d = &lod::DISTANCES;
                 let cur = d.iter().position(|&x| x >= self.settings.lod_distance).unwrap_or(0);
@@ -1604,7 +2707,9 @@ impl Game {
             vel: self.body.vel,
             look_yaw: self.yaw,
             look_pitch: self.pitch,
-            on_ground: self.body.on_ground,
+            // Held still in the air (the world around is still loading) counts as standing,
+            // not as a long fall.
+            on_ground: self.body.on_ground || self.body.vel == Vec3::ZERO,
             in_water: self.body.in_water,
             head_in_water: self.body.head_in_water,
             flying: self.body.flying,
@@ -1613,6 +2718,25 @@ impl Game {
             sprinting: self.sprinting,
             burning,
             hurt: self.survival && self.hurt_age < 0.3,
+            sitting: self.riding.is_some() || self.seat.is_some() || self.mods.aircraft.pilot.is_some(),
+            holding: self.held_stack().is_some(),
+            mantle: self.body.mantle.map_or(0.0, |m| m.progress().max(1e-3)),
+            ledge: self.body.mantle.map_or(0.0, |m| m.ledge - self.body.pos.y),
+        }
+    }
+
+    /// The hands caught a ledge: a scrape on the edge's block, and a little hunger.
+    fn mantle_started(&mut self) {
+        let Some(m) = self.body.mantle else { return };
+        let dir = (m.to - m.from) * Vec3::new(1.0, 0.0, 1.0);
+        let edge = Vec3::new(m.from.x, m.ledge - 0.05, m.from.z) + dir.normalize_or_zero() * 0.5;
+        let id = self.world.block_or_air(edge.floor().as_ivec3());
+        if id != AIR {
+            let mat = Material::of(&self.reg.get(id).name);
+            self.sfx(Sfx::Step(mat));
+        }
+        if self.survival {
+            self.surv.exhaustion += 0.2;
         }
     }
 
@@ -1632,17 +2756,44 @@ impl Game {
 
     /// Hurt the player (survival only). `from` pushes the player away.
     fn damage(&mut self, amount: f32, from: Option<Vec3>) {
-        if !self.survival || self.screen == Screen::Dead || self.hurt_age < 0.5 || amount <= 0.0 {
+        let pvp = std::mem::take(&mut self.net.pvp_incoming);
+        if !self.survival || self.net.server || self.screen == Screen::Dead || self.hurt_age < 0.5 + self.t5.rpg.stats.iframes || amount <= 0.0 {
+            self.prog.next_kind = Default::default();
+            return;
+        }
+        // Monsters and blasts hit harder on harder difficulties.
+        let amount = if from.is_some() && !pvp { amount * [0.0, 0.5, 1.0, 1.5][self.settings.difficulty.min(3) as usize] } else { amount };
+        // Dodged (mirror charm, the radiant set): nothing at all.
+        if self.rpg_dodge(from) {
+            self.prog.next_kind = Default::default();
+            return;
+        }
+        // A shield up and facing the hit takes it all.
+        let amount = self.shield_block(amount, from);
+        if amount <= 0.0 {
+            self.prog.next_kind = Default::default();
+            return;
+        }
+        // Armor softens hits from something (mobs, blasts), not falls, drowning or hunger.
+        let amount = if from.is_some() { self.armor_absorb(amount) } else { amount };
+        let amount = self.t5_incoming(amount, from);
+        let amount = self.protect(amount, from);
+        if amount <= 0.0 {
             return;
         }
         self.health -= amount;
+        self.prog.stats.add("damage_taken", (amount * 10.0) as u64);
         self.hurt_age = 0.0;
         self.regen = 0.0;
-        if let Some(f) = from {
+        if let Some(f) = from.filter(|_| !self.no_knockback()) {
             self.body.knockback(self.body.pos - f, 5.0);
         }
+        self.rpg_after_hurt(amount, from);
         self.sfx(Sfx::Hurt);
         self.pads.rumble(0.9, 0.6, 0.25);
+        if self.health <= 0.0 && self.use_totem() {
+            return;
+        }
         if self.health <= 0.0 {
             self.health = 0.0;
             self.prone = false;
@@ -1662,66 +2813,149 @@ impl Game {
         // Fall damage: one point per block beyond three.
         if self.body.on_ground || self.body.in_water {
             let fall = self.fall_peak - self.body.pos.y;
-            if fall > 3.5 && !self.body.in_water {
-                self.damage((fall - 3.0).floor(), None);
+            if fall > 3.5 && !self.body.in_water && !self.no_fall_damage() {
+                self.prog.next_kind = progression::DamageKind::Fall;
+                self.damage(((fall - 3.0) * self.snow_fall_factor()).floor(), None);
             }
             self.fall_peak = self.body.pos.y;
         } else {
             self.fall_peak = self.fall_peak.max(self.body.pos.y);
         }
         // Breath under water.
-        if self.body.head_in_water {
-            self.air -= dt;
+        if self.body.head_in_water && !self.has_effect(effects::WATER_BREATHING) && !self.has_effect(effects::CONDUIT_POWER) {
+            // Respiration: each level makes a breath last that much longer.
+            self.air -= dt / (1.0 + self.armor_ench(enchanting::RESPIRATION) as f32) / self.t5.rpg.stats.breath;
             if self.air < -1.0 {
                 self.air = 0.0;
+                self.prog.next_kind = progression::DamageKind::Drown;
                 self.damage(2.0, None);
             }
         } else {
             self.air = (self.air + dt * 5.0).min(10.0);
         }
         // Lava burns.
-        let lava = self.reg.id_or_air("lava");
         let feet = self.body.pos.floor().as_ivec3();
-        if lava != AIR && (self.world.block_or_air(feet) == lava || self.world.block_or_air(feet + IVec3::Y) == lava) {
+        if (self.world.fluid(self.world.block_or_air(feet)) == 2 || self.world.fluid(self.world.block_or_air(feet + IVec3::Y)) == 2) && !self.lava_safe(dt) {
+            self.prog.next_kind = progression::DamageKind::Fire;
             self.damage(4.0, None);
         }
         // Healing comes from a full stomach (survival.rs).
     }
 
+    /// A health bar floating over each mob that was hurt lately, with its name.
+    fn draw_mob_health_bars(&mut self, w: f32, h: f32) {
+        let Some((vp, cam_block)) = self.ui_view_proj else { return };
+        let s = self.ui.scale;
+        let eye = self.body.eye();
+        for m in &self.mobs.list {
+            if !m.alive() || m.hurt_age > 5.0 {
+                continue;
+            }
+            let def = &self.mobs.reg.defs[m.def];
+            let top = m.body.pos + Vec3::Y * (def.height + 0.45);
+            let dist = (top - eye).length();
+            if dist > 24.0 {
+                continue;
+            }
+            let c = vp * (top - cam_block.as_vec3()).extend(1.0);
+            if c.w < 0.1 {
+                continue;
+            }
+            let (nx, ny) = (c.x / c.w, c.y / c.w);
+            if nx.abs() > 1.1 || ny.abs() > 1.1 {
+                continue;
+            }
+            let (x, y) = ((nx * 0.5 + 0.5) * w, (0.5 - ny * 0.5) * h);
+            let k = (6.0 / dist.max(1.0)).clamp(0.35, 1.0);
+            let bw = (30.0 * s * k).round();
+            let bh = (3.0 * s * k).max(s).round();
+            let frac = (m.health / m.max_health).clamp(0.0, 1.0);
+            self.ui.rect(x - bw / 2.0 - s, y - s, bw + 2.0 * s, bh + 2.0 * s, [0, 0, 0, 170]);
+            self.ui.rect(x - bw / 2.0, y, bw, bh, [70, 15, 15, 230]);
+            let col = if frac > 0.5 { [60, 200, 60, 255] } else if frac > 0.25 { [230, 190, 40, 255] } else { [220, 40, 40, 255] };
+            self.ui.rect(x - bw / 2.0, y, bw * frac, bh, col);
+            if k > 0.6 {
+                let label = format!("{} {:.0}/{:.0}", def.display_name, m.health.max(0.0).ceil(), m.max_health);
+                let tw = self.ui.text_width(&label, s);
+                self.ui.text(x - tw / 2.0, y - 9.0 * s, &label, WHITE);
+            }
+        }
+    }
+
     /// A blast: breaks blocks around it and hurts everything nearby.
     fn explode(&mut self, pos: Vec3, power: f32) {
-        let r = power.ceil() as i32;
-        let c = pos.floor().as_ivec3();
-        for dy in -r..=r {
-            for dz in -r..=r {
-                for dx in -r..=r {
-                    let d = IVec3::new(dx, dy, dz);
-                    let dist = d.as_vec3().length();
-                    // Ragged edges look more natural than a perfect ball.
-                    let jitter = ((dx * 73 + dy * 151 + dz * 37 + c.x * 11 + c.z * 7).rem_euclid(10)) as f32 * 0.06;
-                    if dist > power - jitter {
+        // The classic explosion: rays from the centre out through a 16×16×16 grid of
+        // directions; each loses strength as it goes and more through tougher blocks, so soft
+        // ground opens a wide crater while stone holds better.
+        let mut hit: std::collections::HashSet<IVec3> = std::collections::HashSet::new();
+        let mut seed = (pos.x * 91.7 + pos.y * 13.3 + pos.z * 47.1).to_bits();
+        let mut rand = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            (seed % 10000) as f32 / 10000.0
+        };
+        for i in 0..16 {
+            for j in 0..16 {
+                for k in 0..16 {
+                    if !(i == 0 || i == 15 || j == 0 || j == 15 || k == 0 || k == 15) {
                         continue;
                     }
-                    let p = c + d;
-                    let id = self.world.block_or_air(p);
-                    if id == AIR || self.world.is_liquid(id) {
-                        continue;
-                    }
-                    let b = self.reg.get(id);
-                    if b.hardness < 0.0 || b.hardness >= 50.0 {
-                        continue;
-                    }
-                    if self.world.break_block(p) && (dx + dy + dz) % 3 == 0 {
-                        let (layer, tint) = self.block_look(id);
-                        self.particles.block_bits(p, layer, tint, 3, 2.0);
+                    let dir = Vec3::new(i as f32 / 15.0 * 2.0 - 1.0, j as f32 / 15.0 * 2.0 - 1.0, k as f32 / 15.0 * 2.0 - 1.0).normalize();
+                    let mut strength = power * (0.7 + rand() * 0.6);
+                    let mut p = pos;
+                    while strength > 0.0 {
+                        let b = p.floor().as_ivec3();
+                        let id = self.world.block_or_air(b);
+                        if id != AIR {
+                            let blk = self.reg.get(id);
+                            let res = if self.world.is_liquid(id) {
+                                100.0
+                            } else if blk.hardness < 0.0 || blk.hardness >= 50.0 {
+                                1200.0
+                            } else if blk.hardness < 1.0 {
+                                blk.hardness
+                            } else {
+                                blk.hardness * 4.0
+                            };
+                            strength -= (res + 0.3) * 0.3;
+                            if strength > 0.0 {
+                                hit.insert(b);
+                            }
+                        }
+                        p += dir * 0.3;
+                        strength -= 0.225;
                     }
                 }
+            }
+        }
+        let keep = 1.0 / power.max(1.0);
+        let mut n = 0;
+        for b in hit {
+            let id = self.world.block_or_air(b);
+            if self.redstone.kind(id) == redstone::Kind::Tnt {
+                // TNT caught in a blast lights with a short, uneven fuse.
+                let fuse = 0.5 + rand();
+                self.prime_tnt(b, fuse);
+                continue;
+            }
+            if id == AIR || !self.world.break_block(b) {
+                continue;
+            }
+            if self.survival {
+                self.blast_drops(b, id, keep);
+            }
+            n += 1;
+            if n % 3 == 0 {
+                let (layer, tint) = self.block_look(id);
+                self.particles.block_bits(b, layer, tint, 3, 2.0);
             }
         }
         let reach = power * 2.0;
         let d = (self.body.center() - pos).length();
         if d < reach {
             let k = 1.0 - d / reach;
+            self.prog.next_kind = progression::DamageKind::Explosion;
             self.damage((k * power * 7.0).round(), Some(pos));
             self.body.knockback(self.body.center() - pos, k * 12.0);
         }
@@ -1732,15 +2966,25 @@ impl Game {
             }
         }
         self.sfx(Sfx::Explode);
+        self.explosion_fx(pos, power);
         self.pads.rumble(1.0, 1.0, 0.6);
+        self.net_explosion(pos, power);
     }
 
     fn respawn(&mut self) {
+        if self.respawn_at_anchor() {
+            return;
+        }
+        if self.dim != voxel::worldgen::Dim::Overworld {
+            // Death in the Nether sends you home: load the Overworld first.
+            self.travel_home_after_death();
+            return;
+        }
         let (sx, sz) = self.spawn_xz;
         let y = self.world.surface_y(sx, sz).unwrap_or(100) + 1;
         self.body.pos = Vec3::new(sx as f32 + 0.5, y as f32, sz as f32 + 0.5);
         self.body.vel = Vec3::ZERO;
-        self.health = 20.0;
+        self.health = self.max_health;
         self.air = 10.0;
         self.hurt_age = 100.0;
         self.surv_respawned();
@@ -1751,16 +2995,27 @@ impl Game {
 
     /// Test scene: one of every mob in a row in front of the player.
     fn spawn_demo_mobs(&mut self) {
+        if let Ok(floor) = std::env::var("MC_ARENA") {
+            // Test hook: a flat floor for the line-up (the Nether's slopes hide the mobs).
+            self.test_arena(&floor);
+        }
         let f = self.forward();
         let fwd = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
         let side = Vec3::new(-fwd.z, 0.0, fwd.x);
-        let names: Vec<String> = self.mobs.reg.defs.iter().filter(|d| d.spawn != voxel::mob::SpawnRule::Never).map(|d| d.name.clone()).collect();
-        let n = names.len() as f32;
+        // MC_MOBS=a,b picks which ones (any mob, even those that never spawn on their own).
+        let names: Vec<String> = match std::env::var("MC_MOBS") {
+            Ok(list) => list.split(',').map(|s| s.trim().to_string()).collect(),
+            Err(_) => self.mobs.reg.defs.iter().filter(|d| d.spawn != voxel::mob::SpawnRule::Never).map(|d| d.name.clone()).collect(),
+        };
+        // Rows of up to seven, the first ones (the tall monsters) further back.
+        let rows = names.len().div_ceil(7);
         for (i, name) in names.iter().enumerate() {
-            let p = self.body.pos + fwd * 7.0 + side * ((i as f32 - (n - 1.0) / 2.0) * 1.8);
+            let (row, col) = (i / 7, i % 7);
+            let n = (names.len() - row * 7).min(7) as f32;
+            let p = self.body.pos + fwd * (6.0 + (rows - 1 - row) as f32 * 4.5) + side * ((col as f32 - (n - 1.0) / 2.0) * 1.8);
             let x = p.x.floor() as i32;
             let z = p.z.floor() as i32;
-            let y = self.world.surface_y(x, z).unwrap_or(p.y as i32) + 1;
+            let y = self.ground_y(x, z, self.body.pos.y as i32 + 4).unwrap_or(p.y as i32) + 1;
             let at = Vec3::new(p.x, y as f32, p.z);
             if self.mobs.spawn(name, at) {
                 // Face the camera.
@@ -1769,48 +3024,304 @@ impl Game {
                 m.yaw = to.x.atan2(to.z);
             }
         }
-    }
-
-    fn try_place(&mut self) {
-        let id = self.hotbar[self.selected];
-        if id != AIR {
-            self.place_block_as(id);
-        }
+        // An arrow on its way, frozen in the air, for the test picture.
+        let from = self.body.pos + fwd * 4.0 + side * 1.5 + Vec3::Y * 1.6;
+        self.mobs.arrows.push(mobs::Arrow { pos: from, vel: (-fwd * 0.3 + side * 1.0 + Vec3::Y * 0.1) * 0.001, age: 0.0, stuck: true, damage: 0.0 });
     }
 
     /// Place a block where the player is aiming. Returns where it went.
     fn place_block_as(&mut self, id: BlockId) -> Option<IVec3> {
         let hit = self.target?;
         let clicked = self.world.block_or_air(hit.block);
+        let shape = self.reg.get(id).shape;
+        // A half slab clicked on its open side becomes a double slab.
+        let cb = self.reg.get(clicked);
+        if shape == Shape::Slab && cb.base == id && ((cb.variant == 0 && hit.normal == IVec3::Y) || (cb.variant == 1 && hit.normal == -IVec3::Y)) {
+            let double = self.variant_id(id, 2);
+            if self.body.intersects_block(hit.block) || !self.world.set_block(hit.block, double) {
+                return None;
+            }
+            return self.placed(hit.block, id);
+        }
+        // Another layer of snow on a layer: it grows.
+        if shape == Shape::Layer && cb.base == id && cb.variant < 7 {
+            let more = self.variant_id(id, cb.variant + 1);
+            if !self.world.set_block(hit.block, more) {
+                return None;
+            }
+            return self.placed(hit.block, id);
+        }
         // Plants are replaced instead of placed against.
-        let pos = if self.reg.get(clicked).shape == Shape::Cross && clicked != id { hit.block } else { hit.block + hit.normal };
+        let pos = if (cb.shape == Shape::Cross || self.snow_replaceable(clicked)) && clicked != id { hit.block } else { hit.block + hit.normal };
         let cur = self.world.block_or_air(pos);
-        if cur != AIR && !self.world.is_liquid(cur) && self.reg.get(cur).shape != Shape::Cross {
+        if cur != AIR && !self.world.is_liquid(cur) && self.reg.get(cur).shape != Shape::Cross && !self.snow_replaceable(cur) {
             return None;
         }
         let b = self.reg.get(id);
-        if b.solid && b.shape == Shape::Cube && self.body.intersects_block(pos) {
+        if b.solid && !matches!(b.shape, Shape::Cross | Shape::Torch) && self.body.intersects_block(pos) {
             return None;
         }
-        // Plants and torches need something under them.
-        if matches!(b.shape, Shape::Cross | Shape::Torch) {
+        // Orientation from where the player looks and which half of the face was clicked.
+        let f = self.forward();
+        let facing = |x: f32, z: f32| if x.abs() > z.abs() { if x > 0.0 { 1 } else { 3 } } else if z > 0.0 { 2 } else { 0 };
+        let at = self.body.eye() + f * hit.distance;
+        let upper = if hit.normal.y != 0 { hit.normal.y < 0 } else { at.y - pos.y as f32 > 0.5 };
+        let v = match shape {
+            Shape::Slab => upper as u8,
+            Shape::Stairs | Shape::Roof => facing(f.x, f.z) | if upper { 4 } else { 0 },
+            Shape::Door => facing(f.x, f.z),
+            Shape::FenceGate => facing(f.x, f.z),
+            // A chair turns to face the player who puts it down.
+            Shape::Chair => facing(-f.x, -f.z),
+            // A bench runs across your view.
+            Shape::Bench => facing(f.x, f.z) ^ 1,
+            // A sign hangs on the wall clicked, or stands facing you.
+            Shape::Sign | Shape::Banner => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) | 4 } else if hit.normal.y > 0 { facing(f.x, f.z) } else { return None },
+            // A shelf goes on the wall you clicked.
+            Shape::Shelf => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) } else { facing(f.x, f.z) },
+            // A ladder goes flat on the wall clicked.
+            Shape::Ladder => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) } else { return None },
+            // Under a block it hangs on a chain.
+            Shape::Lantern => (hit.normal.y < 0) as u8,
+            // Runs the way you look.
+            Shape::Bridge => facing(f.x, f.z) & 1,
+            // Along the axis of the face clicked, like a log.
+            Shape::Hollow => if hit.normal.y != 0 { 0 } else if hit.normal.x != 0 { 1 } else { 2 },
+            Shape::Trapdoor => {
+                let side = if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) ^ 2 } else { facing(-f.x, -f.z) };
+                side | if upper { 8 } else { 0 }
+            }
+            // On a wall: facing the wall (the block it hangs on); on the floor: the way you look.
+            Shape::Lever | Shape::Button => {
+                if hit.normal.y < 0 {
+                    return None;
+                }
+                if hit.normal.y == 0 {
+                    facing(-hit.normal.x as f32, -hit.normal.z as f32) | 8
+                } else {
+                    facing(f.x, f.z)
+                }
+            }
+            // Signal goes out the way you look.
+            Shape::Repeater | Shape::Comparator => facing(f.x, f.z),
+            // Rails join the rails around them.
+            Shape::Rail => self.rail_variant(pos, id, f),
+            // On a wall when placed against one (1 + the wall's side), else standing.
+            Shape::Torch => {
+                if hit.normal.y < 0 {
+                    return None;
+                }
+                if hit.normal.y == 0 {
+                    1 + facing(-hit.normal.x as f32, -hit.normal.z as f32)
+                } else {
+                    0
+                }
+            }
+            // The spout points into the block clicked from the side, else down.
+            Shape::Hopper => {
+                if hit.normal.y == 0 {
+                    1 + facing(-hit.normal.x as f32, -hit.normal.z as f32)
+                } else {
+                    0
+                }
+            }
+            // Observers watch the way you look; droppers and dispensers face you.
+            Shape::Oriented => {
+                let toward = self.reg.get(id).name == "observer";
+                let k = if toward { 1.0 } else { -1.0 };
+                if self.reg.get(id).name.ends_with("_drawer") || self.reg.get(id).name == "windmill_sails" {
+                    facing(-f.x, -f.z)
+                } else if f.y * k > 0.75 {
+                    4
+                } else if f.y * k < -0.75 {
+                    5
+                } else {
+                    facing(f.x * k, f.z * k)
+                }
+            }
+            // The face points back at you (up or down when looking steeply).
+            Shape::Piston => {
+                if f.y < -0.75 {
+                    4
+                } else if f.y > 0.75 {
+                    5
+                } else {
+                    facing(-f.x, -f.z)
+                }
+            }
+            _ => 0,
+        };
+        if matches!(shape, Shape::Lever | Shape::Button) && v & 8 != 0 {
+            if !self.reg.get(clicked).solid || !self.reg.is_opaque(clicked) && self.reg.get(clicked).shape != Shape::Cube {
+                return None;
+            }
+        }
+        if shape == Shape::Door {
+            let above = pos + IVec3::Y;
+            if self.world.block_or_air(above) != AIR || self.body.intersects_block(above) {
+                return None;
+            }
+            let (lower, top) = (self.variant_id(id, v), self.variant_id(id, v | 8));
+            if self.world.set_block(pos, lower) {
+                self.world.set_block(above, top);
+                return self.placed(pos, id);
+            }
+            return None;
+        }
+        let id_v = self.variant_id(id, v);
+        // Plants, torches and redstone parts need something under them.
+        let on_floor = matches!(b.shape, Shape::Wire | Shape::Plate | Shape::Repeater | Shape::Comparator | Shape::Rail) || matches!(b.shape, Shape::Lever | Shape::Button) && v & 8 == 0;
+        if on_floor {
+            let under = self.world.block_or_air(pos - IVec3::Y);
+            if !self.reg.is_opaque(under) {
+                return None;
+            }
+        }
+        if b.shape == Shape::Torch && v > 0 {
+            if !self.reg.get(clicked).solid {
+                return None;
+            }
+        } else if matches!(b.shape, Shape::Cross | Shape::Torch) {
             let under = self.world.block_or_air(pos - IVec3::Y);
             if under == AIR || !self.reg.get(under).solid {
                 return None;
             }
         }
-        if self.world.place_block(pos, id) {
-            self.place_cd = 0.22;
-            self.anim.start_swing();
-            self.pads.rumble(0.0, 0.35, 0.05);
-            let m = Material::of(&b.name);
-            let vol = self.settings.sound_volume;
-            if let Some(a) = self.audio.as_mut() {
-                a.play(Sfx::Place(m), vol);
+        if self.world.place_block(pos, id_v) {
+            if shape == Shape::Rail {
+                self.connect_rail(pos);
             }
-            return Some(pos);
+            return self.placed(pos, id);
         }
         None
+    }
+
+    /// The id of an orientation of a shaped block (see `voxel::shapes`).
+    fn variant_id(&self, id: BlockId, v: u8) -> BlockId {
+        self.reg.variant(id, v)
+    }
+
+    /// Right click on a door or trapdoor opens or closes it. Returns true when it did.
+    fn toggle_shaped(&mut self) -> bool {
+        let Some(hit) = self.target else { return false };
+        if self.redstone.interact(&mut self.world, hit.block) {
+            self.anim.start_swing();
+            return true;
+        }
+        let id = self.world.block_or_air(hit.block);
+        let b = self.reg.get(id);
+        // Iron doors only open with redstone.
+        if !matches!(b.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate) || self.reg.get(b.base).name.starts_with("iron_") {
+            return false;
+        }
+        let (base, v, door) = (b.base, b.variant ^ 4, b.shape == Shape::Door);
+        let new = self.variant_id(base, v);
+        self.world.set_block(hit.block, new);
+        if door {
+            let other = if v & 8 != 0 { hit.block - IVec3::Y } else { hit.block + IVec3::Y };
+            if self.reg.get(self.world.block_or_air(other)).base == base {
+                let ov = self.variant_id(base, v ^ 8);
+                self.world.set_block(other, ov);
+            }
+        }
+        self.anim.start_swing();
+        self.sfx(Sfx::Place(Material::Wood));
+        true
+    }
+
+    /// Effects after a block went down.
+    fn placed(&mut self, pos: IVec3, id: BlockId) -> Option<IVec3> {
+        self.place_cd = 0.22;
+        self.plugins_block(pos, id, true);
+        self.anim.start_swing();
+        self.pads.rumble(0.0, 0.35, 0.05);
+        let m = Material::of(&self.reg.get(id).name);
+        let vol = self.settings.sound_volume;
+        if let Some(a) = self.audio.as_mut() {
+            a.play(Sfx::Place(m), vol);
+        }
+        if self.reg.get(id).shape == Shape::Sign && self.args.screenshot.is_none() {
+            self.edit_sign(pos);
+        }
+        // A full block gives a little "pop" as it goes down (game feel, Lote 6).
+        if self.reg.get(id).shape == Shape::Cube && !self.settings.reduce_motion {
+            self.place_pop = Some((pos, id, self.now));
+        }
+        Some(pos)
+    }
+
+    /// Test scene: every block shape in a few orientations, on a stone floor in front of the player.
+    fn build_shapes(&mut self) {
+        let p = self.body.pos.floor().as_ivec3();
+        let g = |n: &str| self.reg.id_or_air(n);
+        let floor = g("stone");
+        for x in -6..=6 {
+            for z in 2..=12 {
+                self.world.set_block(IVec3::new(p.x + x, p.y - 1, p.z - z), floor);
+                for y in 0..4 {
+                    self.world.set_block(IVec3::new(p.x + x, p.y + y, p.z - z), AIR);
+                }
+            }
+        }
+        let put = |w: &mut World, x: i32, y: i32, z: i32, name: &str| {
+            w.set_block(IVec3::new(p.x + x, p.y + y, p.z - z - 2), self.reg.id_or_air(name));
+        };
+        let w = &mut self.world;
+        // Stairs facing each way, and upside down.
+        for (i, v) in ["", ":1", ":2", ":3", ":4", ":5"].iter().enumerate() {
+            put(w, -5 + i as i32, 0, 3, &format!("oak_stairs{v}"));
+        }
+        put(w, 2, 0, 3, "cobblestone_stairs:2");
+        put(w, 3, 0, 3, "stone_brick_stairs:3");
+        // Slabs: bottom, top, double.
+        put(w, 4, 0, 3, "stone_slab");
+        put(w, 5, 0, 3, "stone_slab:1");
+        put(w, 6, 0, 3, "stone_slab:2");
+        // A fence corner, a wall and a pane line.
+        for x in -5..=-2 {
+            put(w, x, 0, 6, "oak_fence");
+        }
+        put(w, -2, 0, 7, "oak_fence");
+        for x in -1..=2 {
+            put(w, x, 0, 6, "cobblestone_wall");
+        }
+        put(w, 2, 0, 7, "cobblestone_wall");
+        for x in 3..=6 {
+            put(w, x, 0, 6, "glass_pane");
+            put(w, x, 1, 6, "glass_pane");
+        }
+        // Doors: closed and open, and trapdoors.
+        put(w, -4, 0, 9, "oak_door:2");
+        put(w, -4, 1, 9, "oak_door:10");
+        put(w, -2, 0, 9, "oak_door:6");
+        put(w, -2, 1, 9, "oak_door:14");
+        put(w, 0, 0, 9, "oak_trapdoor");
+        put(w, 1, 0, 9, "oak_trapdoor:8");
+        put(w, 2, 0, 9, "oak_trapdoor:6");
+        put(w, 4, 0, 9, "oak_planks");
+        put(w, 4, 1, 9, "oak_planks");
+        // Roofs: two little gables and one upside down, then a glass wall that joins up.
+        for z in 11..=12 {
+            put(w, -6, 0, z, "oak_roof:1");
+            put(w, -5, 0, z, "oak_roof:3");
+            put(w, -3, 0, z, "brick_roof:1");
+            put(w, -2, 0, z, "brick_roof:3");
+        }
+        put(w, 0, 0, 11, "spruce_roof:6");
+        // A spring on a little ledge: it pours off and spreads over the floor.
+        for x in 4..=6 {
+            put(w, x, 0, 1, "cobblestone");
+            put(w, x, 0, 0, "cobblestone");
+        }
+        put(w, 6, 1, 0, "water");
+        for x in 2..=5 {
+            for y in 0..3 {
+                put(w, x, y, 11, "glass");
+            }
+        }
+        // Look from above.
+        self.body.pos.y += 3.5;
+        self.body.flying = true;
     }
 
     /// A little scene for test screenshots: a house with glass, torches and a glowstone lamp.
@@ -1861,6 +3372,78 @@ impl Game {
             let y = self.world.surface_y(q.x, q.z).unwrap_or(q.y - 1) + 1;
             self.world.set_block(IVec3::new(q.x, y, q.z), g(n));
         }
+        // MC_CTM=1: a shelf wall and a row of ores in front, for connected and glowing textures.
+        if std::env::var("MC_CTM").is_ok() {
+            let ores = ["diamond_ore", "redstone_ore", "emerald_ore", "lapis_ore", "gold_ore", "iron_ore", "amethyst_block"];
+            for i in -3..=3 {
+                let q = base + side * i - dir * 2;
+                for h in 0..2 {
+                    self.world.set_block(q + IVec3::Y * h, g("bookshelf"));
+                }
+                self.world.set_block(q + IVec3::Y * 2, g(ores[(i + 3) as usize]));
+            }
+        }
+        // MC_POM=1: a wall of rough blocks right in front, for the block depth option.
+        if std::env::var("MC_POM").is_ok() {
+            let wall = ["cobblestone", "stone_bricks", "bricks", "mossy_cobblestone", "deepslate_tiles", "oak_log", "andesite"];
+            for i in -3..=3 {
+                let q = p + dir * 2 + side * i;
+                let ground = self.world.surface_y(q.x, q.z).unwrap_or(p.y - 1);
+                for h in 0..3 {
+                    self.world.set_block(IVec3::new(q.x, ground + 1 + h, q.z), g(wall[(i + 3) as usize]));
+                }
+            }
+        }
+    }
+
+    /// Raindrops splashing on the ground and on water around the player.
+    fn rain_splashes(&mut self, dt: f32) {
+        let water = self.reg.get(self.reg.id_or_air("water")).faces[2];
+        let n = (self.weather.rain * 90.0 * dt).ceil() as i32;
+        let c = self.body.pos.floor().as_ivec3();
+        for _ in 0..n {
+            let x = c.x + self.surv.rng.range(-12, 13);
+            let z = c.z + self.surv.rng.range(-12, 13);
+            if matches!(self.world.gen.base_biome_at(x, z).name(), "Desert" | "Badlands") {
+                continue;
+            }
+            let Some(y) = self.world.surface_y(x, z) else { continue };
+            if (y - c.y).abs() > 20 {
+                continue;
+            }
+            let at = Vec3::new(x as f32 + self.surv.rng.f32(), y as f32 + 1.0, z as f32 + self.surv.rng.f32());
+            self.particles.rain_drop(at, water);
+        }
+    }
+
+    /// Snow settles in thin layers on open ground around the player while it snows.
+    fn settle_snow(&mut self, dt: f32) {
+        let Some(layer) = self.reg.id("snow_layer") else { return };
+        let tries = (dt * 6.0).ceil() as i32;
+        let c = self.body.pos.floor().as_ivec3();
+        for _ in 0..tries {
+            let x = c.x + self.surv.rng.range(-24, 25);
+            let z = c.z + self.surv.rng.range(-24, 25);
+            let Some(y) = self.world.surface_y(x, z) else { continue };
+            let p = IVec3::new(x, y, z);
+            if self.snow_settle_extra(p) {
+                continue;
+            }
+            let id = self.world.block_or_air(p);
+            let b = self.reg.get(id);
+            if b.base == layer {
+                // Piles up slowly, never past half a block on its own.
+                if b.variant < 3 && self.surv.rng.chance(0.2) {
+                    self.world.set_block(p, self.variant_id(layer, b.variant + 1));
+                }
+            } else if (self.reg.is_opaque(id) || b.name.ends_with("_leaves")) && b.shape == Shape::Cube && self.world.block_or_air(p + IVec3::Y) == AIR {
+                // Also on treetops (Snow! Real Magic! idea).
+                self.world.set_block(p + IVec3::Y, layer);
+            } else if self.reg.is_opaque(id) && self.reg.get(self.world.block_or_air(p + IVec3::Y)).name == "short_grass" {
+                // Grass gets buried.
+                self.world.set_block(p + IVec3::Y, layer);
+            }
+        }
     }
 
     fn sky(&self) -> ([f32; 3], [f32; 3], f32, Vec3) {
@@ -1868,9 +3451,19 @@ impl Game {
         let sun = Vec3::new(a.cos(), a.sin(), 0.0);
         let daylight = (a.sin() * 2.2 + 0.45).clamp(0.0, 1.0);
         let lerp = |n: [f32; 3], d: [f32; 3]| [n[0] + (d[0] - n[0]) * daylight, n[1] + (d[1] - n[1]) * daylight, n[2] + (d[2] - n[2]) * daylight];
-        let top = lerp([0.008, 0.01, 0.035], [0.47, 0.65, 1.0]);
-        let horizon = lerp([0.02, 0.025, 0.06], [0.74, 0.84, 1.0]);
-        (top, horizon, daylight.max(0.16), sun)
+        let mut top = lerp([0.008, 0.01, 0.035], [0.47, 0.65, 1.0]);
+        let mut horizon = lerp([0.02, 0.025, 0.06], [0.74, 0.84, 1.0]);
+        // Rain greys the sky and dims the day; lightning lights everything for a moment.
+        let gloom = self.weather.gloom();
+        let flash = self.weather.flash;
+        for c in [&mut top, &mut horizon] {
+            let grey = (c[0] + c[1] + c[2]) / 3.0;
+            for v in c.iter_mut() {
+                *v = (*v + (grey - *v) * (gloom * 1.8).min(1.0)) * (1.0 - gloom * 0.85) + flash * 0.5;
+            }
+        }
+        let daylight = daylight * (1.0 - gloom) + flash * 0.6;
+        (top, horizon, daylight.clamp(0.16, 1.0), sun)
     }
 
     /// F9: frame rate and machine usage, top right.
@@ -1962,20 +3555,88 @@ impl Game {
         self.ui.scale = gui;
     }
 
+    /// Loading screen like the classic one: the last view blurred, "Carregando terreno...", a green
+    /// bar and a map of the chunks around the spawn coloured by how far along they are.
+    fn draw_loading(&mut self, w: f32, h: f32) {
+        let s = self.ui.scale;
+        match &self.backdrop {
+            Some((bw, bh, px)) => {
+                let (cw, ch) = (w / (*bw - 1) as f32, h / (*bh - 1) as f32);
+                let dark = |c: [u8; 4]| [(c[0] as f32 * 0.75) as u8, (c[1] as f32 * 0.75) as u8, (c[2] as f32 * 0.75) as u8, 255];
+                for y in 0..bh - 1 {
+                    for x in 0..bw - 1 {
+                        let at = |xx: usize, yy: usize| dark(px[yy * bw + xx]);
+                        self.ui.gradient(x as f32 * cw, y as f32 * ch, cw + 0.5, ch + 0.5, [at(x, y), at(x + 1, y), at(x + 1, y + 1), at(x, y + 1)]);
+                    }
+                }
+            }
+            None => self.ui.rect(0.0, 0.0, w, h, [44, 34, 26, 255]),
+        }
+        let (c, near) = self.loading_area;
+        let mut total = 0;
+        let mut done = 0;
+        for dz in -near..=near {
+            for dx in -near..=near {
+                if dx * dx + dz * dz <= near * near {
+                    total += 1;
+                    done += (self.world.chunk_status(c + ChunkPos::new(dx, dz)) == 3) as i32;
+                }
+            }
+        }
+        let pct = done as f32 / total.max(1) as f32;
+        let ty = (h * 0.18).floor();
+        let label = "Carregando terreno...";
+        let tw = self.ui.text_width(label, s);
+        self.ui.text((w - tw) / 2.0 + s, ty + s, label, [40, 40, 40, 255]);
+        self.ui.text((w - tw) / 2.0, ty, label, WHITE);
+        let bw = (w * 0.6).floor();
+        let (bx, by) = ((w - bw) / 2.0, ty + 14.0 * s);
+        self.ui.rect(bx, by, bw, 2.0 * s, [0, 0, 0, 255]);
+        self.ui.rect(bx, by, bw * pct, 2.0 * s, [0, 255, 0, 255]);
+        // Chunk map: a grey square in a thick black frame, one cell per chunk.
+        let r = near + 2;
+        let n = (2 * r + 1) as f32;
+        let cell = (4.0 * s).floor().max(2.0);
+        let inner = n * cell;
+        let border = 8.0 * s;
+        let mx = ((w - inner) / 2.0).floor();
+        let my = (by + 2.0 * s + 22.0 * s).floor();
+        self.ui.rect(mx - border, my - border, inner + 2.0 * border, inner + 2.0 * border, [0, 0, 0, 255]);
+        self.ui.rect(mx, my, inner, inner, [153, 153, 153, 255]);
+        for dz in -r..=r {
+            for dx in -r..=r {
+                let st = self.world.chunk_status(c + ChunkPos::new(dx, dz));
+                let (x, y) = (mx + (dx + r) as f32 * cell, my + (dz + r) as f32 * cell);
+                let col = if dx == 0 && dz == 0 && st == 3 {
+                    [255, 255, 255, 255]
+                } else {
+                    match st {
+                        1 => [47, 53, 119, 255],
+                        2 => [127, 178, 76, 255],
+                        3 => [217, 217, 217, 255],
+                        _ => continue,
+                    }
+                };
+                self.ui.rect(x, y, cell, cell, col);
+            }
+        }
+    }
+
     fn draw_ui(&mut self, mut info_lines: Vec<String>) {
         let (w, h) = (self.renderer.config.width as f32, self.renderer.config.height as f32);
         self.ui.begin(w, h, self.settings.gui_scale);
         let s = self.ui.scale;
         let mouse = self.mouse_pos;
         let mut clicked_button: Option<usize> = None;
+        // Screenshots show things at rest.
+        let anim = juice::enabled(self.settings.ui_animations && !self.settings.reduce_motion, self.args.screenshot.is_some());
+        self.surv.juice.tick(self.selected, anim);
 
         if self.screen == Screen::Loading {
-            self.ui.rect(0.0, 0.0, w, h, [44, 34, 26, 255]);
-            let pct = (self.world.meshed_count as f32 / 49.0).min(1.0);
-            self.ui.text_centered(w / 2.0, h / 2.0 - 30.0 * s, "Gerando o mundo...", WHITE);
-            let bw = 100.0 * s;
-            self.ui.rect(w / 2.0 - bw / 2.0, h / 2.0, bw, 2.0 * s, [128, 128, 128, 255]);
-            self.ui.rect(w / 2.0 - bw / 2.0, h / 2.0, bw * pct, 2.0 * s, [128, 255, 128, 255]);
+            // The first loading frame shows the plain view so it can be captured as the backdrop.
+            if !self.want_backdrop {
+                self.draw_loading(w, h);
+            }
             return;
         }
 
@@ -1983,33 +3644,68 @@ impl Game {
             let a = ((0.4 - self.hurt_age) / 0.4 * 90.0) as u8;
             self.ui.rect(0.0, 0.0, w, h, [200, 0, 0, a]);
         }
-        let menu_screen = self.is_title_screen() || matches!(self.screen, Screen::Options | Screen::Packs);
+        self.draw_immersion_overlay(w, h);
+        let haze = self.portal_haze();
+        if haze > 0.0 {
+            // Standing in a portal: the view fills with purple until the trip starts.
+            let wave = 0.85 + 0.15 * (self.now as f32 * 4.0).sin();
+            self.ui.rect(0.0, 0.0, w, h, [110, 30, 170, (haze * wave * 170.0) as u8]);
+        }
+        let menu_screen = self.is_title_screen() || matches!(self.screen, Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice);
         if !self.hide_hud && !matches!(self.screen, Screen::Paused | Screen::Dead | Screen::Shaders) && !menu_screen {
             // Crosshair.
             if self.screen == Screen::Playing {
                 let (cx, cy) = (w / 2.0, h / 2.0);
-                let c = [235, 235, 235, 220];
-                self.ui.rect(cx - 5.0 * s, cy - s / 2.0, 10.0 * s, s, c);
-                self.ui.rect(cx - s / 2.0, cy - 5.0 * s, s, 10.0 * s, c);
+                if !self.ui.sprite("sprites/hud/crosshair", (cx - 7.5 * s).round(), (cy - 7.5 * s).round(), 15.0 * s, 15.0 * s) {
+                    let c = [235, 235, 235, 220];
+                    self.ui.rect(cx - 5.0 * s, cy - s / 2.0, 10.0 * s, s, c);
+                    self.ui.rect(cx - s / 2.0, cy - 5.0 * s, s, 10.0 * s, c);
+                }
+                // How ready the weapon is, under the crosshair, while it recharges.
+                if self.survival {
+                    let k = self.attack_charge();
+                    if k < 1.0 {
+                        let bw = 16.0 * s;
+                        self.ui.rect(cx - bw / 2.0, cy + 9.0 * s, bw, 2.0 * s, [40, 40, 40, 200]);
+                        self.ui.rect(cx - bw / 2.0, cy + 9.0 * s, bw * k, 2.0 * s, [235, 235, 235, 230]);
+                    }
+                }
+            }
+            self.draw_effect_overlays(w, h);
+            self.draw_mob_health_bars(w, h);
+            self.draw_hunter_marks(w, h);
+            self.draw_sign_texts(w, h);
+            self.draw_mob_names(w, h);
+            if self.screen == Screen::Playing {
+                self.draw_explore_hud(w, h);
             }
             // Hotbar.
             let cell = 20.0 * s;
             let hx = (w - cell * 9.0) / 2.0;
             let hy = h - cell - 2.0 * s;
-            self.ui.rect(hx - s, hy - s, cell * 9.0 + 2.0 * s, cell + 2.0 * s, [0, 0, 0, 150]);
-            for i in 0..9 {
-                let x = hx + i as f32 * cell;
-                self.ui.frame(x, hy, cell, cell, s, [110, 110, 110, 255]);
-                let id = self.hotbar[i];
-                if id != AIR && !self.survival {
-                    self.ui.block_icon(&self.reg, id, x + 3.0 * s, hy + 2.5 * s, 14.0 * s);
+            let hud_art = self.ui.sprite("sprites/hud/hotbar", hx - s, hy - s, 182.0 * s, 22.0 * s);
+            if !hud_art {
+                self.ui.rect(hx - s, hy - s, cell * 9.0 + 2.0 * s, cell + 2.0 * s, [0, 0, 0, 150]);
+                for i in 0..9 {
+                    let x = hx + i as f32 * cell;
+                    self.ui.frame(x, hy, cell, cell, s, [110, 110, 110, 255]);
                 }
             }
+            self.draw_hotbar_items(hx, hy, cell);
+            self.draw_boss_bar(w);
+            self.draw_progress(w, h);
+            self.draw_t5_hud(w, h);
+            self.draw_mods_hud(w, h);
             if self.survival {
                 self.draw_survival_hud(hx, hy, cell);
+                self.draw_mana(w);
             }
-            let sx = hx + self.selected as f32 * cell;
-            self.ui.frame(sx - s, hy - s, cell + 2.0 * s, cell + 2.0 * s, 2.0 * s, [255, 255, 255, 255]);
+            self.draw_fase6_hud(w, h, hx, hy, cell);
+            // The selector slides from slot to slot (Immersive UI idea).
+            let sx = (hx + self.surv.juice.selector() * cell).round();
+            if !self.ui.sprite("sprites/hud/hotbar_selection", sx - 2.0 * s, hy - 2.0 * s, 24.0 * s, 23.0 * s) {
+                self.ui.frame(sx - s, hy - s, cell + 2.0 * s, cell + 2.0 * s, 2.0 * s, [255, 255, 255, 255]);
+            }
             if self.body.flying {
                 self.ui.text(4.0 * s, h - 12.0 * s, "Voando", GRAY);
             } else if self.crouch > 0.5 {
@@ -2027,12 +3723,34 @@ impl Game {
                 }
             }
             if self.survival {
-                // Ten hearts above the left of the hotbar, bubbles on the right under water.
-                let y = hy - 11.0 * s;
-                for i in 0..10 {
-                    let x = hx + i as f32 * 8.0 * s;
+                // Ten hearts a row above the left of the hotbar (life crystals add rows going up),
+                // bubbles on the right under water.
+                let y0 = hy - 11.0 * s;
+                let hearts = (self.max_health / 2.0).ceil() as i32;
+                let rows = (hearts + 9) / 10;
+                let row_step = if rows > 1 { 10.0 * s - (rows - 2) as f32 * 2.0 * s } else { 10.0 * s };
+                let y = y0 - (rows - 1) as f32 * row_step;
+                for i in 0..hearts {
+                    let x = hx + (i % 10) as f32 * 8.0 * s;
+                    let y = y0 - (i / 10) as f32 * row_step;
                     let v = self.health - i as f32 * 2.0;
                     let blink = self.hurt_age < 0.6 && ((self.hurt_age * 10.0) as i32) % 2 == 0;
+                    // Hearts tremble when health is low, and a wave runs across them on healing.
+                    let calm = self.settings.reduce_motion;
+                    let mut y = y;
+                    if !calm && self.health <= 4.0 {
+                        y += (((self.now * 14.0) as i32 * 7 + i * 13).rem_euclid(3) - 1) as f32 * s;
+                    }
+                    if !calm && ((self.now - self.heal_wave) * 22.0) as i32 == i {
+                        y -= 2.0 * s;
+                    }
+                    if self.ui.sprite("sprites/hud/heart/container", x, y - s, 9.0 * s, 9.0 * s) {
+                        if v > 0.0 {
+                            let art = if v >= 2.0 { "sprites/hud/heart/full" } else { "sprites/hud/heart/half" };
+                            self.ui.sprite(art, x, y - s, 9.0 * s, 9.0 * s);
+                        }
+                        continue;
+                    }
                     draw_heart(&mut self.ui, x, y, s, [40, 0, 0, 255], 1.0, blink);
                     if v > 0.0 {
                         draw_heart(&mut self.ui, x, y, s, [220, 30, 30, 255], if v >= 2.0 { 1.0 } else { 0.5 }, false);
@@ -2042,23 +3760,17 @@ impl Game {
                     let bubbles = (self.air.max(0.0).ceil()) as i32;
                     for i in 0..bubbles {
                         let x = hx + cell * 9.0 - (i + 1) as f32 * 8.0 * s;
-                        let y = y - 10.0 * s;
+                        let y = y - 10.0 * s - if self.thirst_shown() { 10.0 * s } else { 0.0 };
+                        if self.ui.sprite("sprites/hud/air", x, y - s, 9.0 * s, 9.0 * s) {
+                            continue;
+                        }
                         self.ui.rect(x + s, y + s, 5.0 * s, 5.0 * s, [60, 120, 230, 255]);
                         self.ui.rect(x + 2.0 * s, y + 2.0 * s, 2.0 * s, 2.0 * s, [220, 240, 255, 255]);
                     }
                 }
             }
-            if let Some((name, hp, max, until)) = &self.last_hit {
-                if *until > self.now {
-                    let bw = 120.0 * s;
-                    let bx = w / 2.0 - bw / 2.0;
-                    let by = 14.0 * s;
-                    let label = format!("{name}  {:.0}/{:.0}", hp.ceil(), max);
-                    self.ui.text_centered(w / 2.0, by - 10.0 * s, &label, WHITE);
-                    self.ui.rect(bx, by, bw, 3.0 * s, [40, 10, 10, 220]);
-                    self.ui.rect(bx, by, bw * (hp / max).clamp(0.0, 1.0), 3.0 * s, [210, 40, 40, 255]);
-                }
-            }
+            self.draw_subtitles(w, h);
+            self.draw_scoreboard(w, h);
             if let Some(t) = &self.toast {
                 if t.until > self.now {
                     let text = t.text.clone();
@@ -2068,6 +3780,7 @@ impl Game {
             }
             if self.show_debug {
                 info_lines.insert(0, format!("Mine Clone {} (F3)", env!("CARGO_PKG_VERSION")));
+                info_lines.extend(self.mods_info_lines());
                 for (i, l) in info_lines.iter().enumerate() {
                     let y = 2.0 * s + i as f32 * 10.0 * s;
                     let tw = self.ui.text_width(l, s);
@@ -2075,8 +3788,12 @@ impl Game {
                     self.ui.text(2.0 * s, y, l, [224, 224, 224, 255]);
                 }
             }
+            // The advancements panel covers the rest of the HUD.
+            self.draw_advancements(w, h);
         }
 
+        self.draw_net_overlay(w, h);
+        self.draw_voice_overlay();
         match self.screen {
             Screen::Paused => {
                 self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 140]);
@@ -2092,13 +3809,16 @@ impl Game {
                     format!("Distância de visão: {} chunks", self.settings.render_distance),
                     format!("Música: {} ({} suas)", self.settings.music_mode.label(), custom),
                     "Tocar próxima música (M)".to_string(),
-                    format!("Pacote de texturas: {pack}"),
+                    format!("Texturas: {}", pack.trim_end_matches(".zip")),
                     format!("Nuvens: {}", if self.settings.show_clouds { "Sim" } else { "Não" }),
                     format!("VSync: {}", if self.settings.vsync { "Sim" } else { "Não" }),
                     format!("Controle: {}", if self.pads.pad.connected { self.pads.pad.name.as_str() } else { "nenhum conectado" }),
                     format!("Modo: {}", if self.survival { "Sobrevivência" } else { "Criativo" }),
                     format!("Mobs: {}", if self.settings.mobs { "Sim" } else { "Não" }),
                     format!("Shaders: {}", self.shader_name()),
+                    format!("Volume da música: {}%", (self.settings.music_volume * 100.0).round() as i32),
+                    format!("Dificuldade: {}", settings::DIFFICULTIES[self.settings.difficulty.min(3) as usize]),
+                    self.net_pause_label(),
                     "Salvar e sair".to_string(),
                 ];
                 // First and last buttons are wide; the options between them sit in two columns.
@@ -2142,8 +3862,12 @@ impl Game {
                 }
             }
             Screen::Paintings => self.draw_paintings_menu(w, h, mouse),
+            Screen::Sign if self.extras.book.is_some() => self.draw_book(w, h),
+            Screen::Sign if self.naming.is_some() => self.draw_naming(w, h),
+            Screen::Sign if self.cmdblocks.edit.is_some() => self.draw_cmdblock_editor(w, h),
+            Screen::Sign => self.draw_sign_editor(w, h),
             Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer => self.draw_title_menus(w, h, mouse),
-            Screen::Options | Screen::Packs => {
+            Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice => {
                 if self.world_open {
                     self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 150]);
                 } else {
@@ -2152,11 +3876,17 @@ impl Game {
                 }
                 if self.screen == Screen::Options {
                     self.draw_options(w, h, mouse);
+                } else if self.screen == Screen::Keys {
+                    self.draw_keys(w, h, mouse);
+                } else if self.screen == Screen::Voice {
+                    self.draw_voice_options(w, h, mouse);
                 } else {
                     self.draw_packs(w, h, mouse);
                 }
             }
             Screen::Shaders => clicked_button = self.draw_shaders_menu(w, h, mouse),
+            Screen::Grimoire => self.draw_grimoire(w, h, mouse),
+            Screen::Plugin => self.draw_plugin_screen(w, h, mouse),
             Screen::Dead => {
                 self.ui.rect(0.0, 0.0, w, h, [120, 0, 0, 110]);
                 self.ui.text_centered(w / 2.0, h / 2.0 - 40.0 * s, "Você morreu!", WHITE);
@@ -2166,49 +3896,8 @@ impl Game {
                     clicked_button = Some(0);
                 }
             }
-            Screen::Inventory if self.survival => self.draw_survival_inventory(w, h, mouse),
-            Screen::Inventory => {
-                self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 120]);
-                let (x, y, cell, vis_rows) = self.inventory_layout();
-                let pw = cell * 9.0 + 16.0 * s;
-                let ph = cell * vis_rows as f32 + 30.0 * s;
-                self.ui.rect(x, y, pw, ph, [198, 198, 198, 255]);
-                self.ui.frame(x, y, pw, ph, s, [255, 255, 255, 255]);
-                self.ui.label(x + 8.0 * s, y + 6.0 * s, "Blocos (modo criativo)", [64, 64, 64, 255], s);
-                let gx = x + 8.0 * s;
-                let gy = y + 20.0 * s;
-                let hovered = self.hovered_inventory_block();
-                for row in 0..vis_rows {
-                    for col in 0..9 {
-                        let cx = gx + col as f32 * cell;
-                        let cy = gy + row as f32 * cell;
-                        self.ui.rect(cx, cy, cell - s, cell - s, [139, 139, 139, 255]);
-                        if let Some(&id) = self.inventory.get((row + self.inv_scroll) * 9 + col) {
-                            if hovered == Some(id) {
-                                self.ui.rect(cx, cy, cell - s, cell - s, [200, 200, 200, 255]);
-                            }
-                            self.ui.block_icon(&self.reg, id, cx + 1.5 * s, cy + 1.0 * s, 14.0 * s);
-                        }
-                    }
-                }
-                let rows = self.inventory.len().div_ceil(9);
-                if rows > vis_rows {
-                    let t = format!("rolar {}/{}", self.inv_scroll + 1, rows - vis_rows + 1);
-                    let tw = self.ui.text_width(&t, s);
-                    self.ui.label(x + pw - tw - 8.0 * s, y + 6.0 * s, &t, [64, 64, 64, 255], s);
-                }
-                if let Some(id) = hovered {
-                    let name = self.reg.get(id).display_name.clone();
-                    let tw = self.ui.text_width(&name, s);
-                    let (mx, my) = mouse;
-                    self.ui.rect(mx + 8.0 * s, my - 14.0 * s, tw + 6.0 * s, 12.0 * s, [16, 0, 16, 235]);
-                    self.ui.text(mx + 11.0 * s, my - 12.0 * s, &name, WHITE);
-                    if self.clicked {
-                        self.hotbar[self.selected] = id;
-                    }
-                }
-                self.ui.text_centered(w / 2.0, y + ph + 4.0 * s, "Clique para pôr na barra, ou aponte e aperte 1-9", WHITE);
-            }
+            Screen::Inventory if self.creative_screen_open() => self.draw_creative_inventory(w, h, mouse),
+            Screen::Inventory => self.draw_survival_inventory(w, h, mouse),
             Screen::Controls => {
                 self.ui.rect(0.0, 0.0, w, h, [0, 0, 0, 170]);
                 clicked_button = self.draw_controls_menu(w, h, mouse);
@@ -2230,6 +3919,7 @@ impl Game {
         }
         self.clicked = false;
         self.rclicked = false;
+        self.mclicked = false;
 
         if let Some(i) = clicked_button {
             if self.screen == Screen::Controls {
@@ -2373,6 +4063,7 @@ impl Game {
             Action::Screenshot => self.screenshot_request = true,
             Action::Debug => self.show_debug = !self.show_debug,
             Action::HideHud => self.hide_hud = !self.hide_hud,
+            Action::Attack => self.attack_pressed = true,
             Action::NextSong => {
                 let sit = self.situation();
                 if let Some(au) = self.audio.as_mut() {
@@ -2496,7 +4187,7 @@ impl Game {
                         }
                         Screen::Shaders => self.set_screen(Screen::Paused),
                         Screen::Dead | Screen::Title => {}
-                        Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs => self.menu_back(),
+                        Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice => self.menu_back(),
                         _ => self.set_screen(Screen::Playing),
                     }
                 }
@@ -2540,7 +4231,7 @@ impl Game {
                 self.survival = !self.survival;
                 if self.survival {
                     self.body.flying = false;
-                    self.health = 20.0;
+                    self.health = self.max_health;
                     self.fall_peak = self.body.pos.y;
                     self.toast("Modo sobrevivência: cuidado com quedas e monstros", 4.0);
                 } else {
@@ -2555,6 +4246,16 @@ impl Game {
                 self.shader_scroll = 0;
                 self.set_screen(Screen::Shaders);
             }
+            11 => {
+                // 0% .. 100% in steps of 10.
+                let v = ((self.settings.music_volume * 10.0).round() as i32 + 1) % 11;
+                self.settings.music_volume = v as f32 / 10.0;
+            }
+            12 => {
+                self.settings.difficulty = (self.settings.difficulty + 1) % 4;
+                self.mobs.peaceful = self.settings.difficulty == 0;
+            }
+            13 => self.net_pause_button(),
             _ => {
                 self.quit_to_title();
                 return;
@@ -2578,6 +4279,10 @@ impl Game {
             self.frame_times.clear();
         }
         self.update(dt);
+        if self.bench_tick(raw_dt) {
+            self.save_all();
+            std::process::exit(0);
+        }
 
         // Eye height eases between standing, sneaking and lying down instead of jumping.
         let stand = if self.body.flying { voxel::physics::EYE_HEIGHT } else { voxel::physics::EYE_HEIGHT - 0.25 * self.crouch };
@@ -2588,33 +4293,54 @@ impl Game {
         let eye = if third {
             // Pull the camera back (or around to the front), stopping short of walls.
             let dir = if self.camera_mode == 1 { -view_fwd } else { view_fwd };
+            // Test hook: MC_ORBIT=degrees swings the camera around the player for side shots.
+            let orbit = std::env::var("MC_ORBIT").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0);
+            let dir = glam::Quat::from_rotation_y(orbit.to_radians()) * dir;
             let world = &self.world;
             // Lying down, the camera orbits a bit above the body so it clears the ground.
             let pivot = head + Vec3::Y * 0.6 * self.prone_t;
-            let dist = raycast(pivot, dir, 4.0, |p| voxel::physics::Terrain::solid(world, p)).map(|h| (h.distance - 0.3).max(0.2)).unwrap_or(4.0);
-            if self.camera_mode == 2 {
-                view_fwd = -view_fwd;
-            }
+            // Test hook: MC_CAMDIST=blocks for close-ups.
+            let far = std::env::var("MC_CAMDIST").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(4.0);
+            let dist = raycast(pivot, dir, far, |p| voxel::physics::Terrain::solid(world, p)).map(|h| (h.distance - 0.3).max(0.2)).unwrap_or(far);
+            view_fwd = -dir;
             pivot + dir * dist
-        } else if playing_view && self.settings.view_bobbing {
+        } else if playing_view && self.settings.view_bobbing && !self.settings.reduce_motion {
             head + self.anim.view_bob(self.yaw, self.body.on_ground && !self.body.flying)
         } else {
             head
         };
+        let eye = if playing_view { eye + self.shake_offset() } else { eye };
         let block = eye.floor().as_ivec3();
         let (top, horizon, daylight, sun) = self.sky();
         let underwater = self.body.head_in_water;
         let rd = self.settings.render_distance as f32 * 16.0;
         // Distant terrain pushes the fog out to its own edge.
-        let extra = self.settings.lod_distance.max(0) as f32;
+        // The Nether has a roof: no distant terrain there.
+        let nether = self.dim == voxel::worldgen::Dim::Nether;
+        let end = self.dim == voxel::worldgen::Dim::End;
+        // The Otherside (mods/portals.rs) is a closed, dark world like the Nether.
+        let other = self.dim == voxel::worldgen::Dim::Otherside;
+        // Nor in the mod pack's dimensions (floating islands, closed caverns).
+        let extra = if self.dim != voxel::worldgen::Dim::Overworld { 0.0 } else { self.settings.lod_distance.max(0) as f32 };
         let view_end = rd + extra;
         let (fog_color, fog_start, fog_end) = if underwater {
             ([0.04, 0.12, 0.35], 0.0, 28.0)
+        } else if end {
+            // A dark violet void.
+            ([0.03, 0.018, 0.045], rd * 0.45, rd - 2.0)
+        } else if nether {
+            // A thick red haze instead of a sky.
+            ([0.2, 0.035, 0.025], rd * 0.15, rd * 0.85)
+        } else if other {
+            // A cold blue-black murk.
+            ([0.03, 0.07, 0.08], rd * 0.3, rd - 2.0)
         } else if extra > 0.0 {
             (horizon, rd * 0.6, view_end - 8.0)
         } else {
             (horizon, rd * 0.55, rd - 2.0)
         };
+        let (fog_start, fog_end) = if underwater || nether || end { (fog_start, fog_end) } else { self.mist_fog(fog_start, fog_end) };
+        let (fog_color, fog_start, fog_end) = self.effect_fog(fog_color, fog_start, fog_end);
         // Real chunks surely cover this radius (see World::update); distant terrain starts here.
         let lod_inner = (self.settings.render_distance as f32 - 0.5) * 16.0;
         self.lod.update(&self.renderer.device, eye, lod_inner, if extra > 0.0 { view_end } else { 0.0 });
@@ -2623,22 +4349,39 @@ impl Game {
         let mut g = Globals {
             cam_pos: [eye.x - block.x as f32, eye.y - block.y as f32, eye.z - block.z as f32, (self.now % 3600.0) + self.start.elapsed().as_secs_f32() * 0.0],
             cam_world: [eye.x, eye.y, eye.z, CLOUD_HEIGHT],
-            fog_color: [fog_color[0], fog_color[1], fog_color[2], daylight],
-            fog: [fog_start, fog_end, if underwater { 1.0 } else { 0.0 }, 0.3],
-            sun_dir: [sun.x, sun.y, sun.z, 0.0],
+            fog_color: [fog_color[0], fog_color[1], fog_color[2], if nether || end || other { 0.0 } else { daylight }],
+            fog: [fog_start, fog_end, if underwater { 1.0 } else { 0.0 }, if nether || end || other { 1.0 } else { 0.3 }],
+            sun_dir: [sun.x, sun.y, sun.z, if self.settings.relief { 1.0 } else { 0.0 }],
             sky_top: [top[0], top[1], top[2], 1.0],
             sky_horizon: [horizon[0], horizon[1], horizon[2], 1.0],
             effects,
+            // The light a held torch gives comes from the player's hand, wherever the camera is.
+            hand_light: [head.x - block.x as f32, head.y - 0.4 - block.y as f32, head.z - block.z as f32, self.hand_light_level()],
+            // z: 1 Nether, 2 End, -1 Aether, 1.25 Otherside (sky and ambient light in the shaders).
+            weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else if end { 2.0 } else { self.mod_dim_uniform() }, self.night_vision()],
+            dyn_lights: self.dynamic_lights(eye, block),
+            extra: [self.settings.layered_clouds as u8 as f32, self.settings.emissive_textures as u8 as f32, 0.0, self.season_uniform()],
+            pom: self.parallax_uniform(),
             ..Default::default()
         };
+        // Shadows and reflections (scenefx.rs); the renderer fills in the rest of the globals.
+        self.renderer.fx.level = self.settings.shadows.min(2);
+        self.renderer.fx.reflections = self.settings.water_reflections;
+        self.renderer.fx.fancy = self.settings.shader_quality == ShaderQuality::Fancy;
         let cam = Camera {
             block,
             frac: Vec3::from_slice(&g.cam_pos[..3]),
             forward: view_fwd,
-            fov_y: (self.settings.fov * (1.0 + 0.12 * self.fov_kick)).to_radians(),
+            fov_y: (self.settings.fov * (1.0 + if self.settings.reduce_motion { 0.0 } else { 0.12 * self.fov_kick }) * if self.spyglass_up() { 0.2 } else { 1.0 }).to_radians(),
             far: view_end + 32.0,
         };
 
+        {
+            let (w, h) = (self.renderer.config.width as f32, self.renderer.config.height as f32);
+            let proj = glam::Mat4::perspective_rh(cam.fov_y, w / h.max(1.0), 0.05, cam.far);
+            let view = glam::Mat4::look_to_rh(cam.frac, cam.forward, Vec3::Y);
+            self.ui_view_proj = Some((proj * view, block));
+        }
         let mut lines = Vec::new();
         if self.show_debug {
             let p = self.body.pos;
@@ -2702,31 +4445,126 @@ impl Game {
         // Automated screenshots: wait until the view is fully built.
         let mut capture = self.screenshot_request;
         let mut exit_after = false;
-        if self.args.screenshot.is_some() && self.screen != Screen::Loading {
+        if self.args.shot_loading && self.screen == Screen::Loading && self.backdrop.is_some() && self.world.meshed_count >= 12 {
+            capture = true;
+            exit_after = true;
+        } else if self.args.screenshot.is_some() && self.screen != Screen::Loading && !self.args.shot_loading {
             self.loaded_frames += 1;
             if self.loaded_frames % 30 == 0 {
                 log::info!("screenshot wait: frame {}, {:.1} fps, {} jobs pending", self.loaded_frames, self.fps, self.world.pending_jobs());
             }
-            if (self.loaded_frames > 30 && self.world.pending_jobs() == 0 && self.lod.is_complete()) || self.loaded_frames > 1500 {
+            if (self.loaded_frames > 30 && self.world.pending_jobs() == 0 && self.lod.is_complete() && self.fluids.time >= self.args.wait as f64) || self.loaded_frames > 1500 {
                 capture = true;
                 exit_after = true;
             }
         }
         let selection = if self.screen == Screen::Playing || self.args.screenshot.is_some() { self.target.map(|t| t.block) } else { None };
         let mut items = self.mobs.instances(&self.world, block, rd + 16.0);
+        let musician = self.musician_instances(&mut items, block);
+        let mob_items = self.arrow_and_bow_instances(&items, block);
+        items.extend(musician);
+        let (net_models, mut net_held) = self.net_instances(block);
+        items.extend(net_models);
+        let (stand_models, stand_held) = self.stand_instances(block, rd + 16.0);
+        items.extend(stand_models);
+        net_held.extend(stand_held);
+        let mut held_third = None;
         if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
             let def = &self.mobs.reg.defs[pd];
             let pose = self.pose(false);
             if third {
                 let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
-                items.push((pd, self.anim.bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0)));
+                let mut bones = self.anim.bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
+                let pv = def.parts[2].pivot;
+                held_third = self.held_item_third_person(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32));
+                // An instrument is held in both hands, in 3D.
+                if let Some((i, play)) = self.held_instrument() {
+                    if let (Some(ib), Some(mesh)) = (instruments::pose(def, &mut bones, i, play), self.entities.instrument_mesh(i)) {
+                        items.push((mesh, ib));
+                    }
+                }
+                items.extend(self.armor_instances(&bones));
+                items.push((pd, bones));
             } else if self.screen == Screen::Playing && !self.hide_hud {
+                // The arm always shows; a held item sits in its fist (held_item_instance).
                 let l = self.world.light(head.floor().as_ivec3());
-                items.push((pd, self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0)));
+                let light = [(l >> 4) as f32 / 15.0, ((l & 15) as f32 / 15.0).max(self.hand_light_level()), 0.0, 0.0];
+                let two_hands = self.held_instrument().and_then(|(i, play)| {
+                    let (arms, ib) = instruments::first_person(def, i, play, eye - block.as_vec3(), self.yaw, self.pitch, light)?;
+                    Some((arms, (self.entities.instrument_mesh(i)?, ib)))
+                });
+                if let Some((arms, inst)) = two_hands {
+                    items.push((pd, arms));
+                    items.push(inst);
+                } else {
+                    items.push((pd, self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, light[0], light[1])));
+                }
             }
         }
         for p in &self.paintings {
             items.push((self.entities.painting_mesh(p.def), p.bones(block, &self.world)));
+        }
+        items.extend(self.cart_instances(block));
+        items.extend(self.boat_instances(block));
+        items.extend(self.wagon_instances(block, rd + 16.0));
+        items.extend(self.aircraft_instances(block));
+        items.extend(self.windmill_instances(block, eye, rd + 16.0));
+        // The player figure in the inventory, in 3D, turning its head toward the mouse.
+        let mut figure_backdrop = None;
+        if let (Some((bx, by, bw, bh)), Some(pd)) = (self.surv.figure_box.take(), self.mobs.reg.id("player")) {
+            let (sw, sh) = (self.renderer.config.width as f32, self.renderer.config.height as f32);
+            let d = 0.3;
+            let half_h = (cam.fov_y * 0.5).tan() * d;
+            let half_w = half_h * sw / sh.max(1.0);
+            let f = cam.forward.normalize();
+            let right = f.cross(Vec3::Y).normalize_or_zero();
+            let up = right.cross(f);
+            let to_world = |x: f32, y: f32| eye + f * d + right * ((x / sw * 2.0 - 1.0) * half_w) + up * ((1.0 - y / sh * 2.0) * half_h);
+            let center = to_world(bx + bw / 2.0, by + bh / 2.0);
+            let world_h = bh / sh * 2.0 * half_h;
+            let k = world_h * 0.8 / 2.0;
+            let feet = center - up * (world_h * 0.44);
+            let (mx, my) = self.mouse_pos;
+            // Like the classic screen: the head follows the mouse, but only so far.
+            let look_x = (((mx - (bx + bw / 2.0)) / (bw * 0.6)).atan() * 0.45).clamp(-0.5, 0.5);
+            let look_y = ((((by + bh * 0.25) - my) / (bh * 0.6)).atan() * 0.25).clamp(-0.3, 0.3);
+            let def = &self.mobs.reg.defs[pd];
+            let pose = player_model::Pose { pos: block.as_vec3(), look_yaw: look_x - std::f32::consts::PI, look_pitch: -look_y, on_ground: true, ..Default::default() };
+            let base = player_model::Animator::lying(0.0).bones(def, &pose, block, 1.0, 1.0);
+            // Stand it up facing the camera, scaled into the box.
+            let face = glam::Mat4::from_cols(right.extend(0.0), up.extend(0.0), (-f).extend(0.0), Vec4::W);
+            let m = glam::Mat4::from_translation(feet - block.as_vec3()) * face * glam::Mat4::from_rotation_y(look_x * 0.4) * glam::Mat4::from_scale(Vec3::splat(k));
+            let mut b = base;
+            for mm in b.m.iter_mut() {
+                *mm = (m * glam::Mat4::from_cols_array_2d(mm)).to_cols_array_2d();
+            }
+            items.extend(self.armor_instances(&b));
+            items.push((pd, b));
+            let back = center + f * (world_h * 1.3) - block.as_vec3();
+            figure_backdrop = Some(item_render::GpuItem { pos: [back.x, back.y, back.z, world_h * 1.22 * (d + world_h * 1.3) / d], info: [0.0, 0.0, 0.0, 0.0], layers: [0.0; 4], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
+        }
+        if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
+            let def = &self.mobs.reg.defs[pd];
+            for c in &self.surv.corpses {
+                if (c.pos - eye).length() > rd + 16.0 {
+                    continue;
+                }
+                let pose = player_model::Pose { pos: c.pos, crawling: 1.0, look_yaw: c.yaw, on_ground: true, ..Default::default() };
+                let l = self.world.light((c.pos + Vec3::Y * 0.3).floor().as_ivec3());
+                let bones = player_model::Animator::lying(c.yaw).bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
+                // The armour stays on the body until it is taken back.
+                let mut worn = [false; 4];
+                for st in &c.items {
+                    let it = self.items.get(st.item);
+                    let Some(a) = it.armor else { continue };
+                    let piece = (a.slot as usize).min(3);
+                    if !worn[piece] {
+                        worn[piece] = true;
+                        items.extend(self.entities.armor_mesh(&it.name, piece).map(|m| (m, bones)));
+                    }
+                }
+                items.push((pd, bones));
+            }
         }
         if let (Screen::Paintings, Some((d, anchor)), Some((_, n))) = (self.screen, self.painting_preview, self.painting_spot) {
             let p = paintings::Painting { name: String::new(), anchor: anchor.to_array(), facing: n.to_array(), def: d };
@@ -2734,9 +4572,54 @@ impl Game {
         }
         self.entities.prepare(&self.renderer, items);
         self.entities.particles.prepare(&self.renderer, &self.particles, &self.world, block);
-        let drops = self.drop_instances(block);
+        let mut drops = self.drop_instances(block);
+        drops.extend(figure_backdrop);
+        drops.extend(self.tnt_instances(block));
+        if let Some(k) = self.args.swing {
+            self.anim.swing = k;
+        }
+        if !third && self.screen == Screen::Playing && !self.hide_hud && self.camera_mode == 0 {
+            drops.extend(self.held_item_instance(eye, block));
+        }
+        drops.extend(held_third);
+        drops.extend(mob_items);
+        drops.extend(self.minion_instances(block));
+        drops.extend(net_held);
+        if let (Some(k), Some(h)) = (self.args.mine, self.target) {
+            let id = self.world.block_or_air(h.block);
+            self.mining = Some((h.block, k * self.dig_time(id)));
+        }
+        // Cracks spreading over the block being broken.
+        if let Some((b, t)) = self.mining {
+            let id = self.world.block_or_air(b);
+            let k = t / self.dig_time(id).max(0.01);
+            if id != AIR && k > 0.0 {
+                let layer = (self.item_base as usize + self.items.textures.len() + 1 + ((k * 10.0) as usize).min(9)) as f32;
+                let p = b.as_vec3() + Vec3::splat(0.5) - block.as_vec3();
+                let lp = self.target.map(|h| h.block + h.normal).unwrap_or(b + IVec3::Y);
+                let l = self.world.light(lp);
+                drops.push(item_render::GpuItem {
+                    pos: [p.x, p.y, p.z, 1.004],
+                    info: [0.0, 0.0, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0],
+                    layers: [layer, layer, layer, 0.0],
+                    rot: [0.0; 4],
+                    ..bytemuck::Zeroable::zeroed()
+                });
+            }
+        }
         self.entities.items.prepare(&self.renderer, &drops);
-        let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds, Some(&self.entities), Some(&self.lod), &self.ui, capture);
+        let grab_backdrop = self.want_backdrop && self.screen == Screen::Loading;
+        self.renderer.extra_lines = self.fishing_line(block, third);
+        let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds && self.dim == voxel::worldgen::Dim::Overworld, Some(&self.entities), Some(&self.lod), &self.ui, capture || grab_backdrop);
+        let shot = if grab_backdrop {
+            self.want_backdrop = false;
+            if let Some((w, h, px)) = &shot {
+                self.backdrop = Some(blurred_backdrop(*w as usize, *h as usize, px));
+            }
+            shot.filter(|_| capture)
+        } else {
+            shot
+        };
         self.last_frame_info = (info.sections_drawn, info.quads_drawn, info.lod_drawn);
         if let Some((w, h, px)) = shot {
             let path = if exit_after {
@@ -2751,7 +4634,8 @@ impl Game {
                 Ok(_) => {
                     log::info!("screenshot saved to {}", path.display());
                     if !exit_after {
-                        self.toast(format!("Foto salva: {}", path.display()), 3.0);
+                        let n = self.gallery_count();
+                        self.toast(format!("Foto salva: {} ({n} na galeria)", path.display()), 3.0);
                     }
                 }
                 Err(e) => log::error!("screenshot failed: {e}"),
@@ -2784,9 +4668,19 @@ impl ApplicationHandler for App {
             return;
         }
         let (w, h) = self.args.size.unwrap_or((1280, 720));
-        let attrs = Window::default_attributes().with_title("Mine Clone").with_inner_size(winit::dpi::PhysicalSize::new(w, h));
+        let icon = image::load_from_memory(include_bytes!("../../../assets/icon/icon_64.png"))
+            .ok()
+            .and_then(|i| {
+                let i = i.to_rgba8();
+                let (iw, ih) = i.dimensions();
+                winit::window::Icon::from_rgba(i.into_raw(), iw, ih).ok()
+            });
+        let attrs = Window::default_attributes()
+            .with_title("Mine Clone")
+            .with_window_icon(icon)
+            .with_inner_size(winit::dpi::PhysicalSize::new(w, h));
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
-        self.game = Some(Game::new(window, self.args.clone()));
+        self.game = Some(Game::new(Some(window), self.args.clone()));
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -2794,18 +4688,19 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => {
                 game.save_all();
+                game.net_stop();
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => game.renderer.resize(size.width, size.height),
             WindowEvent::Focused(false) => {
                 game.keys.clear();
-                if game.screen == Screen::Playing && game.args.screenshot.is_none() {
+                if game.screen == Screen::Playing && game.args.screenshot.is_none() && !game.args.server {
                     game.set_screen(Screen::Paused);
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(code) = event.physical_key {
-                    game.key(code, event.state == ElementState::Pressed, event.repeat);
+                    game.window_key(code, event.state == ElementState::Pressed, event.repeat);
                 }
                 if event.state == ElementState::Pressed {
                     if let Some(t) = &event.text {
@@ -2822,11 +4717,17 @@ impl ApplicationHandler for App {
                     _ => return,
                 };
                 let pressed = state == ElementState::Pressed;
+                if idx == 1 {
+                    game.rdown = pressed;
+                }
                 if game.screen == Screen::Playing {
                     if !game.grabbed {
                         game.set_grab(true);
                     }
                     game.mouse_held[idx] = pressed;
+                    if pressed && idx == 0 {
+                        game.attack_pressed = true;
+                    }
                     if !pressed {
                         if idx == 0 {
                             game.break_cd = 0.0;
@@ -2838,6 +4739,8 @@ impl ApplicationHandler for App {
                     game.clicked = true;
                 } else if pressed && idx == 1 {
                     game.rclicked = true;
+                } else if pressed && idx == 2 {
+                    game.mclicked = true;
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
@@ -2865,7 +4768,7 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, _el: &ActiveEventLoop) {
-        if let Some(g) = &self.game {
+        if let Some(g) = self.game.as_mut() {
             g.window.request_redraw();
         }
     }
@@ -2882,6 +4785,19 @@ fn main() {
         let _ = std::fs::write(&crash_file, format!("Mine Clone {} crashed:\n{info}\n\n{bt}\n", env!("CARGO_PKG_VERSION")));
         default_hook(info);
     }));
+    if let Some(port) = args.relay {
+        if let Err(e) = net::relay::run(port) {
+            log::error!("relay: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    if args.server {
+        // No window and no graphics: the server only ticks the world and talks to players.
+        let mut game = Game::new(None, args);
+        while game.server_tick() {}
+        return;
+    }
     let event_loop = EventLoop::new().expect("event loop");
     event_loop.set_control_flow(ControlFlow::Poll);
     let mut app = App { args, game: None };
@@ -2899,5 +4815,28 @@ fn draw_heart(ui: &mut UiBatch, x: f32, y: f32, s: f32, color: [u8; 4], fill: f3
                 ui.rect(x + c as f32 * s, y + r as f32 * s, s, s, color);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod data_tests {
+    use super::*;
+
+    #[test]
+    fn built_in_data_loads() {
+        let (reg, items, recipes) = game_data(embedded::BLOCKS_RON, embedded::ITEMS_RON, embedded::RECIPES_RON).unwrap();
+        assert!(reg.id("oak_stairs:5").is_some());
+        assert!(items.id("cobblestone_slab").is_some());
+        assert!(!recipes.shaped.is_empty());
+    }
+
+    #[test]
+    fn stale_blocks_file_is_rejected() {
+        // An old blocks.ron without slabs must make the game use the built-in set, not crash.
+        let dir = std::env::temp_dir().join(format!("mc-stale-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("packs/vanilla")).unwrap();
+        std::fs::write(dir.join("packs/vanilla/blocks.ron"), "(blocks: [(name: \"stone\")])").unwrap();
+        assert!(load_game_data(&dir).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
