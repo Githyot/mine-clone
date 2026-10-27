@@ -1003,6 +1003,12 @@ impl Game {
                         return true;
                     }
                     "reforge_table" => return self.t5_use_block("reforge_table"),
+                    "scale_altar" => return self.use_scale_altar(hit.block),
+                    "piggy_bank" => return self.open_bank(0),
+                    "music_box" => return self.use_music_box(hit.block),
+                    "dye_vat" => return self.use_dye_vat(),
+                    "locked_chest" => return self.use_locked_chest(hit.block),
+                    "safe" => return self.open_bank(1),
                     n if n.starts_with("pylon_") => {
                         let kind = n.trim_start_matches("pylon_").to_string();
                         return self.use_pylon(hit.block, &kind);
@@ -2104,7 +2110,7 @@ impl Game {
     fn craft_result(&self) -> Option<ItemStack> {
         let n = self.surv.grid_size();
         let grid: Vec<Option<ItemStack>> = (0..n * n).map(|i| self.surv.craft[i]).collect();
-        self.recipes.craft(&grid, n)
+        self.recipes.craft(&grid, n).filter(|r| self.station_ok(r.item))
     }
 
     pub(crate) fn slot_get(&self, slot: Slot) -> Option<ItemStack> {
@@ -2641,8 +2647,8 @@ impl Game {
     pub(crate) fn armor_instances(&self, bones: &crate::entity::Bones) -> Vec<(usize, crate::entity::Bones)> {
         let mut out = Vec::new();
         for piece in 0..4 {
-            let Some(st) = self.surv.armor[piece] else { continue };
-            if let Some(mesh) = self.entities.armor_mesh(&self.items.get(st.item).name, piece) {
+            let Some(st) = self.shown_armor(piece) else { continue };
+            if let Some(mesh) = self.entities.armor_mesh(&self.armor_look(piece, &st), piece) {
                 out.push((mesh, *bones));
                 // Smithing trims show as a coloured pattern over the piece.
                 if let Some(t) = crate::smithing::trim_of(&st).and_then(|(_, m)| self.entities.trim_mesh(m, piece)) {
@@ -3012,8 +3018,8 @@ impl Game {
                 item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, result, rx + 8.0 * s, gy + cell, 16.0 * s);
                 let rows = cells.len().div_ceil(*rw);
                 let need = (*rw).max(rows);
-                let label = if need <= 2 { "Grade 2x2" } else { "Mesa 3x3" };
-                self.ui.text(gx, gy + 3.0 * cell + 3.0 * s, label, [200, 200, 200, 255]);
+                let label = format!("{}{}", if need <= 2 { "Grade 2x2" } else { "Mesa 3x3" }, self.station_label(result.item));
+                self.ui.text(gx, gy + 3.0 * cell + 3.0 * s, &label, [200, 200, 200, 255]);
                 fill = Some((*rw, cells.clone()));
             }
             BookRecipe::Smelt { input, result } => {

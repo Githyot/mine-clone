@@ -51,6 +51,12 @@ pub struct Moves {
     pub flying: bool,
 }
 
+/// Accessories that are several in one (Lote 9): wearing one counts as wearing its parts.
+const COMBOS: &[(&str, &[&str])] = &[
+    ("terraspark_boots", &["frost_spark_boots", "water_walking_boots", "obsidian_charm"]),
+    ("bundle_of_balloons", &["cloud_bottle", "blizzard_bottle", "sandstorm_bottle", "shiny_balloon"]),
+];
+
 /// Extra jumps in the air, used in this order: (accessory, upward speed).
 const JUMPS: &[(&str, f32)] = &[
     ("cloud_bottle", 9.5),
@@ -80,7 +86,10 @@ impl Game {
 
     /// Is this accessory worn (in an open slot)?
     pub(crate) fn wears(&self, name: &str) -> bool {
-        self.t5.acc[..self.acc_slots()].iter().flatten().any(|s| self.items.get(s.item).name == name)
+        self.t5.acc[..self.acc_slots()].iter().flatten().any(|s| {
+            let worn = &self.items.get(s.item).name;
+            worn == name || COMBOS.iter().any(|(c, parts)| c == worn && parts.contains(&name))
+        })
     }
 
     /// Melee damage multiplier: emblems, sets, buffs (rpg.rs).

@@ -22,7 +22,7 @@ use crate::Game;
 
 /// Bosses fought entirely in this file (bosses.rs leaves them alone).
 pub fn own_ai(name: &str) -> bool {
-    matches!(name, "king_jelly" | "great_eye" | "blight_mind" | "hive_queen")
+    matches!(name, "king_jelly" | "great_eye" | "blight_mind" | "hive_queen") || crate::tr_endgame::own_ai(name) || crate::tr_invasions::own_ai(name)
 }
 
 /// (summon item, boss, where it works)
@@ -34,10 +34,11 @@ const SUMMONS: &[(&str, &str, &str)] = &[
     ("frost_horn", "frost_colossus", "snow"),
 ];
 
-const SMALL_FLYERS: [&str; 8] = ["harpy", "servant_eye", "hive_drone", "blight_creeper", "meteor_head", "dune_wraith", "reaper", "eclipse_moth"];
+const SMALL_FLYERS: [&str; 12] = ["ether_wyvern", "vortex_hornet", "nebula_eye", "dungeon_spirit", "harpy", "servant_eye", "hive_drone", "blight_creeper", "meteor_head", "dune_wraith", "reaper", "eclipse_moth"];
 
 #[derive(Default)]
 pub struct Fight {
+    /// (reset_contact lets the next touch land at once.)
     vel: Vec3,
     t: f32,
     mode: u8,
@@ -63,6 +64,12 @@ fn jungle(b: Biome) -> bool {
 
 fn snowy(b: Biome) -> bool {
     matches!(b, Biome::Snowy | Biome::SnowyPeaks | Biome::SnowyTaiga | Biome::IceSpikes | Biome::SnowySlopes | Biome::Grove | Biome::FrozenRiver | Biome::SnowyBeach | Biome::FrozenOcean)
+}
+
+impl Fight {
+    pub(crate) fn reset_contact(&mut self) {
+        self.contact_t = 0.0;
+    }
 }
 
 impl Game {
@@ -169,7 +176,7 @@ impl Game {
     }
 
     /// Hurt the player when a boss's body touches them.
-    fn tr_contact(&mut self, pos: Vec3, radius: f32, damage: f32) {
+    pub(crate) fn tr_contact(&mut self, pos: Vec3, radius: f32, damage: f32) {
         if self.t5.tr.fight.contact_t > 0.0 || !self.survival {
             return;
         }
@@ -181,7 +188,7 @@ impl Game {
         }
     }
 
-    fn puff(&mut self, at: Vec3, n: usize, spread: f32, tint: [f32; 3]) {
+    pub(crate) fn puff(&mut self, at: Vec3, n: usize, spread: f32, tint: [f32; 3]) {
         let glow = self.glow_layer();
         for _ in 0..n {
             let v = Vec3::new(self.surv.rng.f32() - 0.5, self.surv.rng.f32() - 0.3, self.surv.rng.f32() - 0.5) * spread;

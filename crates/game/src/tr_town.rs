@@ -292,6 +292,7 @@ impl Game {
     }
 
     fn town_morning(&mut self) {
+        self.angler_new_day();
         let people = self.town.npcs.len();
         // The peddler comes some mornings, to one of the houses.
         if people >= 2 && self.t5.tr.town.peddler.is_empty() && self.surv.rng.f32() < 0.4 {

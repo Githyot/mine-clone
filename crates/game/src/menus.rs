@@ -26,6 +26,8 @@ pub struct NewWorldForm {
     pub name: String,
     pub seed: String,
     pub survival: bool,
+    /// World difficulty (tr_modes.rs): 0 Normal, 1 Especialista, 2 Mestre.
+    pub mode: u8,
     /// 0 = name field, 1 = seed field.
     pub field: usize,
 }
@@ -348,7 +350,7 @@ impl Game {
                     while self.worlds.iter().any(|w| w.name == format!("Mundo {n}")) {
                         n += 1;
                     }
-                    self.new_world = NewWorldForm { name: format!("Mundo {n}"), seed: String::new(), survival: true, field: 0 };
+                    self.new_world = NewWorldForm { name: format!("Mundo {n}"), seed: String::new(), survival: true, mode: 0, field: 0 };
                     self.set_screen(Screen::CreateWorld);
                 }
                 _ => self.set_screen(Screen::Title),
@@ -385,6 +387,11 @@ impl Game {
             hit = Some(0);
         }
         y += fh + 2.0 * s;
+        let diff = format!("Dificuldade: {}", crate::tr_modes::MODE_NAMES[self.new_world.mode.min(2) as usize]);
+        if self.ui.button(x, y, fw, fh, &diff, mouse) && self.clicked {
+            hit = Some(3);
+        }
+        y += fh + 2.0 * s;
         let hint = if self.new_world.survival { "Vida, fome de aventura e monstros à noite." } else { "Voe, todos os blocos, sem dano." };
         let hs = (s / 2.0).floor().max(1.0);
         let tw = self.ui.text_width(hint, hs);
@@ -401,6 +408,7 @@ impl Game {
             self.click_sound();
             match i {
                 0 => self.new_world.survival = !self.new_world.survival,
+                3 => self.new_world.mode = (self.new_world.mode + 1) % 3,
                 1 => self.create_world(),
                 _ => self.set_screen(Screen::Worlds),
             }
@@ -418,6 +426,12 @@ impl Game {
         while level_path_hint(&self.base, &final_name).join("level.ron").exists() {
             final_name = format!("{name} ({n})");
             n += 1;
+        }
+        if self.new_world.mode > 0 {
+            // The Terraria side reads it on the first frame in the world (tr.rs).
+            let dir = level_path_hint(&self.base, &final_name);
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::write(dir.join("tr.ron"), format!("(mode: {})", self.new_world.mode));
         }
         let seed = parse_seed(&self.new_world.seed);
         let survival = self.new_world.survival;

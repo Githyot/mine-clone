@@ -126,6 +126,10 @@ impl Game {
     /// Mobs killed this frame: jellies count for the jelly rain.
     pub(crate) fn tr_deaths(&mut self, deaths: &[(usize, Vec3)]) {
         self.tr_soul_drops(deaths);
+        self.endgame_deaths(deaths);
+        self.invasion_deaths(deaths);
+        self.modes_deaths(deaths);
+        self.dungeon_deaths(deaths);
         let Some(rain) = self.t5.tr.ev.rain.as_mut() else { return };
         for &(def, _) in deaths {
             if self.mobs.reg.defs[def].name.starts_with("jelly_") {
@@ -514,6 +518,22 @@ impl Game {
         let k = self.t5.tr.ev.storm_k;
         if k > 0.02 {
             self.ui.rect(0.0, 0.0, w, h, [200, 160, 100, (k * 80.0) as u8]);
+        }
+        if let Some((title, k)) = self.invasion_hud() {
+            let s = self.ui.scale;
+            let bw = 160.0 * s;
+            let (x, y) = ((w - bw) / 2.0, 44.0 * s);
+            let tw = self.ui.text_width(&title, s);
+            self.ui.text((w - tw) / 2.0, y - 11.0 * s, &title, [240, 210, 160, 255]);
+            self.ui.rect(x - s, y - s, bw + 2.0 * s, 6.0 * s, [0, 0, 0, 200]);
+            self.ui.rect(x, y, bw, 4.0 * s, [60, 40, 30, 255]);
+            self.ui.rect(x, y, bw * k.min(1.0), 4.0 * s, [230, 150, 60, 255]);
+        }
+        if let Some(line) = self.pillar_status() {
+            let s = self.ui.scale;
+            let t = format!("Pilares: {line}");
+            let tw = self.ui.text_width(&t, s);
+            self.ui.text((w - tw) / 2.0, 58.0 * s, &t, [200, 210, 255, 255]);
         }
         let Some((killed, need)) = self.t5.tr.ev.rain.as_ref().map(|r| (r.killed, r.need)) else { return };
         let s = self.ui.scale;

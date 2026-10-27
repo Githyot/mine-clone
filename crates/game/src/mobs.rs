@@ -25,6 +25,8 @@ pub struct Mobs {
     pub peaceful: bool,
     /// A calm night (tr_events.rs): no monsters spawn on the surface, the ones there stay.
     pub calm: bool,
+    /// World difficulty (tr_modes.rs): monsters spawn with this much more health.
+    pub hp_scale: f32,
     /// Blocks each mob may spawn on (from `MobDef::ground`), resolved on first use.
     ground: Vec<Vec<BlockId>>,
     /// Multiplayer: the other players in this dimension (where, creative), so monsters hunt
@@ -99,7 +101,7 @@ impl Mobs {
     }
 
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, calm: false, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), anim: Default::default() }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, calm: false, hp_scale: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), anim: Default::default() }
     }
 
     fn next_rand(&mut self) -> u64 {
@@ -118,8 +120,17 @@ impl Mobs {
     pub fn spawn(&mut self, name: &str, pos: Vec3) -> bool {
         let Some(i) = self.reg.id(name) else { return false };
         let s = self.next_rand();
-        self.list.push(Mob::new(i, &self.reg.defs[i], pos, s));
+        self.push_mob(Mob::new(i, &self.reg.defs[i], pos, s));
         true
+    }
+
+    /// Add a mob; monsters get the world difficulty's extra health.
+    fn push_mob(&mut self, mut m: Mob) {
+        if self.hp_scale != 1.0 && self.reg.defs[m.def].kind == Kind::Hostile {
+            m.health *= self.hp_scale;
+            m.max_health *= self.hp_scale;
+        }
+        self.list.push(m);
     }
 
     /// Natural spawning around the player: animals on grass in the light, monsters in the dark.
@@ -214,7 +225,7 @@ impl Mobs {
             for k in 0..n {
                 let off = Vec3::new((k % 2) as f32 * 1.2 - 0.6, 0.0, (k / 2) as f32 * 1.2);
                 let s = self.next_rand();
-                self.list.push(Mob::new(pick, &self.reg.defs[pick], pos + off, s));
+                self.push_mob(Mob::new(pick, &self.reg.defs[pick], pos + off, s));
             }
             return;
         }

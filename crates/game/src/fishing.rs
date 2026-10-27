@@ -40,7 +40,7 @@ impl Game {
     fn wait_for_bite(&mut self) -> f32 {
         // Rain brings the fish up.
         let rain = if self.weather.rain > 0.5 { 0.7 } else { 1.0 };
-        (5.0 + self.surv.rng.f32() * 20.0) * rain * self.rod_bite_factor()
+        (5.0 + self.surv.rng.f32() * 20.0) * rain * self.rod_bite_factor() * self.tr_bite_factor()
     }
 
     /// Right click with the rod: cast, or reel in.
@@ -94,7 +94,8 @@ impl Game {
         let junk: Vec<(&'static str, u32)> = JUNK.iter().chain(crate::mods::aquaculture::MORE_JUNK).copied().collect();
         let (fish_p, junk_p) = self.rod_odds();
         let table: &[(&'static str, u32)] = if roll < fish_p { &fish } else if roll < fish_p + junk_p { &junk } else { TREASURE };
-        let Some(name) = self.pick(table) else { return };
+        let special = self.tr_special_catch(at);
+        let Some(name) = special.or_else(|| self.pick(table)) else { return };
         let Some(id) = self.items.id(name) else { return };
         // The catch flies to the player.
         let to = self.body.eye() - at;
@@ -127,12 +128,14 @@ impl Game {
                 let next = b.pos + b.vel * dt;
                 let cell = next.floor().as_ivec3();
                 let id = self.world.block_or_air(cell);
-                if self.world.fluid(id) == 1 {
+                let fluid = self.world.fluid(id);
+                if fluid == 1 || (fluid == 2 && self.lava_rod()) {
+                    self.t5.tr.fish.lava = fluid == 2;
                     b.in_water = true;
                     b.pos = Vec3::new(next.x, cell.y as f32 + 0.85, next.z);
                     // Float to the top of the water.
                     let mut top = cell;
-                    while self.world.fluid(self.world.block_or_air(top + IVec3::Y)) == 1 && top.y < cell.y + 16 {
+                    while self.world.fluid(self.world.block_or_air(top + IVec3::Y)) == fluid && top.y < cell.y + 16 {
                         top.y += 1;
                     }
                     b.pos.y = top.y as f32 + 0.85;
@@ -155,7 +158,7 @@ impl Game {
         } else {
             b.wait -= dt;
             if b.wait <= 0.0 {
-                b.bite = self.rod_bite_window();
+                b.bite = self.rod_bite_window() * self.tr_bite_window();
                 self.sfx(Sfx::Splash(0.22));
                 let water = self.reg.get(self.reg.id_or_air("water")).faces[2];
                 self.particles.splash(b.pos, water, 0.2);

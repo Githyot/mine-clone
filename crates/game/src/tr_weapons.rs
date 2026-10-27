@@ -63,6 +63,7 @@ const WEAPONS: &[WDef] = &[
     w("iron_flail", Wk::Flail(0.32), 6.0, 0.4, 22.0, None),
     w("umbral_flail", Wk::Flail(0.36), 9.0, 0.4, 24.0, None),
     w("sanguinite_flail", Wk::Flail(0.36), 9.0, 0.4, 24.0, Some((BLEEDING, 4.0))),
+    w("bone_flail", Wk::Flail(0.36), 8.0, 0.4, 24.0, None),
     w("sun_flail", Wk::Flail(0.4), 12.0, 0.4, 26.0, Some((MOB_BURN, 5.0))),
     w("flintlock_pistol", Wk::Gun(1, 0.0), 6.0, 0.4, 70.0, None),
     w("musket", Wk::Gun(1, 0.0), 10.0, 0.9, 80.0, None),
@@ -70,12 +71,25 @@ const WEAPONS: &[WDef] = &[
     w("rapid_gun", Wk::Gun(1, 0.035), 2.5, 0.11, 70.0, None),
     w("shuriken", Wk::Throw(6.0), 3.0, 0.25, 26.0, None),
     w("throwing_knife", Wk::Throw(10.0), 4.5, 0.3, 24.0, None),
+    w("javelin", Wk::Throw(7.0), 6.0, 0.45, 26.0, None),
+    w("bone_javelin", Wk::Throw(7.0), 8.0, 0.45, 26.0, Some((BLEEDING, 3.0))),
+    w("sun_javelin", Wk::Throw(5.0), 16.0, 0.35, 32.0, Some((MOB_BURN, 5.0))),
     w("bomb", Wk::Bomb(3.0, true, 2.5), 10.0, 0.8, 12.0, None),
     w("grenade", Wk::Bomb(2.5, false, 1.6), 12.0, 0.6, 16.0, None),
     w("dynamite", Wk::Bomb(5.0, true, 4.0), 20.0, 1.0, 10.0, None),
     w("ballista_rod", Wk::Sentry, 5.0, 1.0, 40.0, None),
     w("enchanted_sword", Wk::Beam(false), 4.0, 0.5, 30.0, None),
     w("star_saber", Wk::Beam(true), 6.0, 0.6, 40.0, None),
+    // Lote 7: the last bosses' and the pillars' weapons.
+    w("crystal_yoyo", Wk::Yoyo(11.0), 12.0, 0.0, 30.0, None),
+    w("stone_fist", Wk::Flail(0.45), 18.0, 0.4, 28.0, None),
+    w("tide_boomerang", Wk::Boomerang(0.6), 16.0, 0.25, 30.0, Some((CHILLED, 4.0))),
+    w("bubble_rifle", Wk::Gun(3, 0.08), 8.0, 0.35, 60.0, None),
+    w("prism_saber", Wk::Beam(true), 14.0, 0.45, 44.0, None),
+    w("solar_eruption", Wk::Flail(0.5), 30.0, 0.35, 32.0, Some((MOB_BURN, 6.0))),
+    w("vortex_beater", Wk::Gun(1, 0.03), 9.0, 0.09, 90.0, None),
+    w("nebula_blade", Wk::Beam(false), 18.0, 0.35, 40.0, None),
+    w("stardust_yoyo", Wk::Yoyo(14.0), 22.0, 0.0, 34.0, None),
 ];
 
 /// How much harder an ore bow hits than the plain bow (None: not one of them).

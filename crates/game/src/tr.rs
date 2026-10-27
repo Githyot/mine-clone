@@ -36,6 +36,29 @@ struct Saved {
     pylons: Vec<(String, (i32, i32, i32))>,
     #[serde(default)]
     animals: Vec<(String, (f32, f32, f32))>,
+    /// The celestial pillars (tr_endgame.rs).
+    #[serde(default)]
+    pillars: Vec<crate::tr_endgame::Pillar>,
+    /// The angler's quests done (tr_fishing.rs).
+    #[serde(default)]
+    quests_done: u32,
+    /// Permanent upgrades from the Shimmer (tr_utility.rs).
+    #[serde(default)]
+    perma: u32,
+    /// World difficulty and the bestiary (tr_modes.rs).
+    #[serde(default)]
+    mode: u8,
+    #[serde(default)]
+    kills: Vec<(String, u32)>,
+    #[serde(default)]
+    bestiary_rewards: u8,
+    /// Vanity clothes worn and the music boxes' songs (tr_style.rs).
+    #[serde(default)]
+    vanity: Vec<String>,
+    #[serde(default)]
+    music_boxes: Vec<((i32, i32, i32), String)>,
+    #[serde(default)]
+    dyes: Vec<Option<u8>>,
 }
 
 #[derive(Default)]
@@ -46,6 +69,13 @@ pub struct Tr {
     pub(crate) wep: crate::tr_weapons::Weapons,
     pub(crate) pets: crate::tr_pets::Pets,
     pub(crate) town: crate::tr_town::TownLife,
+    pub(crate) end: crate::tr_endgame::Endgame,
+    pub(crate) fish: crate::tr_fishing::Fishing,
+    pub(crate) inv: crate::tr_invasions::Invasions,
+    pub(crate) util: crate::tr_utility::Utility,
+    pub(crate) modes: crate::tr_modes::Modes,
+    pub(crate) style: crate::tr_style::Style,
+    pub(crate) dungeon: crate::tr_dungeon::Dungeon,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -54,7 +84,7 @@ pub struct Tr {
 }
 
 impl Tr {
-    pub fn load(dir: &Path) -> Tr {
+    pub fn load(dir: &Path, items: &voxel::item::ItemRegistry) -> Tr {
         let s: Saved = std::fs::read_to_string(dir.join("tr.ron")).ok().and_then(|x| ron::from_str(&x).ok()).unwrap_or_default();
         let mut tr = Tr { eye_nights: s.eye_nights, ..Default::default() };
         tr.ev.craters = s.craters.iter().map(|&(x, y, z)| glam::IVec3::new(x, y, z)).collect();
@@ -63,11 +93,24 @@ impl Tr {
         tr.lands.orbs = s.orbs;
         tr.pets.out = s.pets;
         tr.town.pylons = s.pylons.into_iter().map(|(k, (x, y, z))| (k, glam::IVec3::new(x, y, z))).collect();
+        tr.end.pillars = s.pillars;
+        tr.fish.quests_done = s.quests_done;
+        tr.util.perma = s.perma;
+        tr.modes.mode = s.mode.min(2);
+        tr.modes.kills = s.kills.into_iter().collect();
+        tr.modes.rewards = s.bestiary_rewards;
+        for (k, n) in s.vanity.iter().enumerate().take(4) {
+            tr.style.vanity[k] = items.id(n).map(|id| voxel::item::ItemStack::new(id, 1));
+        }
+        for (k, d) in s.dyes.iter().enumerate().take(4) {
+            tr.style.dyes[k] = *d;
+        }
+        tr.style.boxes = s.music_boxes.into_iter().map(|((x, y, z), t)| (glam::IVec3::new(x, y, z), t)).collect();
         tr.town.animals = s.animals.into_iter().map(|(k, (x, y, z))| (k, Vec3::new(x, y, z))).collect();
         tr
     }
 
-    pub fn save(&self, dir: &Path) {
+    pub fn save(&self, dir: &Path, items: &voxel::item::ItemRegistry) {
         let s = Saved {
             eye_nights: self.eye_nights,
             craters: self.ev.craters.iter().map(|c| (c.x, c.y, c.z)).collect(),
@@ -76,6 +119,15 @@ impl Tr {
             orbs: self.lands.orbs,
             pets: self.pets.out.clone(),
             pylons: self.town.pylons.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
+            pillars: self.end.pillars.clone(),
+            quests_done: self.fish.quests_done,
+            perma: self.util.perma,
+            mode: self.modes.mode,
+            kills: self.modes.kills.iter().map(|(k, v)| (k.clone(), *v)).collect(),
+            bestiary_rewards: self.modes.rewards,
+            vanity: self.style.vanity.iter().map(|v| v.map(|s| items.get(s.item).name.clone()).unwrap_or_default()).collect(),
+            dyes: self.style.dyes.to_vec(),
+            music_boxes: self.style.boxes.iter().map(|(p, t)| ((p.x, p.y, p.z), t.clone())).collect(),
             animals: self.town.animals.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
@@ -97,6 +149,13 @@ impl Game {
         self.update_tr_weapons(dt, use_held);
         self.update_tr_pets(dt);
         self.update_tr_town(dt);
+        self.update_endgame(dt);
+        self.update_tr_fishing(dt);
+        self.update_invasions(dt);
+        self.update_tr_utility(dt);
+        self.update_tr_modes();
+        self.update_tr_style();
+        self.update_tr_dungeon(dt);
     }
 
     /// Right click with an item of this file; true when it did something.
@@ -108,6 +167,24 @@ impl Game {
             return Some(r);
         }
         if let Some(r) = self.tr_town_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.endgame_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.tr_fishing_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.invasion_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.tr_utility_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.tr_modes_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.tr_style_use(name) {
             return Some(r);
         }
         match name {
@@ -139,6 +216,8 @@ impl Game {
     /// What a fallen boss of this file opens.
     pub(crate) fn tr_boss_defeated(&mut self, name: &str) {
         self.tr_event_boss_down();
+        self.endgame_boss_defeated(name);
+        self.modes_boss_defeated(name);
         if name == "great_eye" {
             // The eye leaves some of the world's evil ore behind (and its seeds, in Terraria).
             let ore = if crate::tr_world::world_evil(self.seed) == crate::tr_world::Land::Ruin { "umbral_ore" } else { "sanguinite_ore" };
@@ -349,6 +428,16 @@ impl Game {
             "weapons" => self.test_tr_weapons(),
             "pets" | "mounts" | "harpies" | "wings" => self.test_tr_pets(scene),
             "town" | "townshop" => self.test_tr_town(scene),
+            "stations" | "shimmer" => self.test_tr_utility(scene),
+            "relics" | "bestiary" => self.test_tr_modes(scene),
+            "vanity" | "paint" => self.test_tr_style(scene),
+            "dungeon" => self.test_tr_dungeon(),
+            "harvest" | "winter" | "pirates" | "martians" | "crystal" => {
+                self.test_invasion(scene);
+            }
+            "queen2" | "idol" | "duke" | "empress" | "prophet" | "pillars" => {
+                self.test_tr_endgame(scene);
+            }
             s if self.test_tr_event(s) => {}
             _ => log::warn!("unknown MC_TR scene {scene}"),
         }

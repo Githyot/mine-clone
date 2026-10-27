@@ -20,6 +20,9 @@ use crate::Game;
 
 /// (item, seconds of flight, particle tint)
 const WINGS: &[(&str, f32, [f32; 3])] = &[
+    ("empress_wings", 3.6, [1.6, 1.2, 1.8]),
+    ("tide_wings", 3.2, [0.5, 1.4, 1.5]),
+    ("crystal_wings", 3.0, [1.5, 1.0, 1.7]),
     ("flame_wings", 2.8, [2.0, 0.9, 0.3]),
     ("leaf_wings", 2.6, [0.6, 1.6, 0.5]),
     ("frost_wings", 2.6, [0.8, 1.3, 2.0]),

@@ -273,6 +273,9 @@ impl Game {
                 if !mood.is_empty() {
                     self.toast(format!("{dn}: {mood}"), 5.0);
                 }
+                if name == "npc_angler" {
+                    self.angler_talk();
+                }
                 let mut inv = Inventory::new(offers.len());
                 for (k, &(item, count, _)) in offers.iter().enumerate() {
                     if let Some(id) = self.items.id(item) {

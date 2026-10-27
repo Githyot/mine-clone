@@ -63,6 +63,13 @@ mod tr_bosses;
 mod tr_events;
 mod tr_pets;
 mod tr_town;
+mod tr_endgame;
+mod tr_fishing;
+mod tr_invasions;
+mod tr_utility;
+mod tr_modes;
+mod tr_style;
+mod tr_dungeon;
 mod tr_weapons;
 mod tr_world;
 mod glyphs;
@@ -2697,6 +2704,7 @@ impl Game {
         }
         // Monsters and blasts hit harder on harder difficulties.
         let amount = if from.is_some() && !pvp { amount * [0.0, 0.5, 1.0, 1.5][self.settings.difficulty.min(3) as usize] } else { amount };
+        let amount = if from.is_some() && !pvp { amount * self.mode_damage() } else { amount };
         // Dodged (mirror charm, the radiant set): nothing at all.
         if self.rpg_dodge(from) || self.tr_ignores_hit(from) {
             self.prog.next_kind = Default::default();
@@ -4733,6 +4741,17 @@ mod data_tests {
         assert!(reg.id("oak_stairs:5").is_some());
         assert!(items.id("cobblestone_slab").is_some());
         assert!(!recipes.shaped.is_empty());
+    }
+
+    #[test]
+    fn every_structure_file_loads() {
+        // A bad structure (say, a row that isn't a string) would drop every building.
+        let base = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+        let (reg, _, _) = load_game_data(base).unwrap();
+        let s = voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, embedded::TR_STRUCTURES_RON, embedded::MODS_STRUCTURES_RON, embedded::MODS_DIMS_STRUCTURES_RON], &reg).unwrap();
+        for name in ["templo_escamado", "lago_cintilante", "masmorra_blue", "masmorra_pink"] {
+            assert!(s.list.iter().any(|st| st.def.name == name), "{name}");
+        }
     }
 
     #[test]

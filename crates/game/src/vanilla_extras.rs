@@ -74,7 +74,7 @@ pub struct Extras {
     pub burning: f32,
     burn_tick: f32,
     /// The jukebox playing now.
-    playing: Option<IVec3>,
+    pub(crate) playing: Option<IVec3>,
     /// The pitch of each note block that was tuned (0..24).
     notes: HashMap<[i32; 3], u8>,
     /// Every book written in this world, by number (1-based in item stacks).

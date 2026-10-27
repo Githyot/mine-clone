@@ -119,12 +119,35 @@ const fn acc(name: &'static str, desc: &'static str, mods: &'static [M]) -> AccD
 pub const ACCESSORIES: &[AccDef] = &[
     acc("running_boots", "", &[M::Move(0.3)]),
     acc("frost_spark_boots", "", &[M::Move(0.5), M::Immune(&[CHILLED, FROZEN])]),
+    acc("terraspark_boots", "Corre muito, anda sobre a água e a lava não queima", &[M::Move(0.5), M::Immune(&[CHILLED, FROZEN]), M::Lava, M::Fire]),
+    acc("bastion_shield", "Da masmorra: não é empurrado e +2 de defesa", &[M::NoKnock, M::Def(2.0)]),
+    // Only in treasure bags (Especialista and Mestre, tr_modes.rs).
+    acc("jelly_heart", "Das sacolas: pulos mais altos e vida que volta", &[M::Jump(0.2), M::Regen(0.2)]),
+    acc("eye_of_the_watcher", "Das sacolas: mais críticos e mostra criaturas perto", &[M::Crit(ALL_CLASSES, 0.05), M::Info(INFO_RADAR)]),
+    acc("mind_veil", "Das sacolas: às vezes desvia de um golpe", &[M::Dodge(0.08)]),
+    acc("hive_heart", "Das sacolas: um lacaio a mais", &[M::Minions(1)]),
+    acc("frost_core", "Das sacolas: o frio não te prende", &[M::Immune(&[CHILLED, FROZEN]), M::Def(2.0)]),
+    acc("worm_scarf", "Das sacolas: menos dano recebido", &[M::Endure(0.12)]),
+    acc("bone_glove", "Das sacolas: corpo a corpo mais forte e rápido", &[M::Dmg(MELEE, 0.08), M::MeleeSpeed(0.08)]),
+    acc("breaker_heart", "Das sacolas: defesa e vida que volta", &[M::Def(3.0), M::Regen(0.3)]),
+    acc("mech_core", "Das sacolas: todo dano um pouco maior", &[M::Dmg(ALL_CLASSES, 0.06)]),
+    acc("vine_seed", "Das sacolas: a vida volta bem mais depressa", &[M::Regen(0.5)]),
+    acc("gel_crown", "Das sacolas: pulos altos e sem dano de queda", &[M::Jump(0.25), M::NoFall]),
+    acc("sun_core", "Das sacolas: muita defesa", &[M::Def(4.0)]),
+    acc("tide_scale", "Das sacolas: nada rápido e respira mais", &[M::Swim(0.5)]),
+    acc("prism_heart", "Das sacolas: mais rápido e mais críticos", &[M::Move(0.1), M::Crit(ALL_CLASSES, 0.05)]),
+    acc("prophet_eye", "Das sacolas: mais mana e magias mais baratas", &[M::Mana(4.0), M::ManaCost(0.1)]),
+    acc("herald_sigil", "Das sacolas: todo dano e defesa maiores", &[M::Dmg(ALL_CLASSES, 0.1), M::Def(4.0)]),
+    acc("bundle_of_balloons", "Três pulos a mais no ar e pulos mais altos", &[M::Jump(0.3)]),
     acc("cloud_bottle", "Um segundo pulo no ar", &[]),
     acc("lucky_horseshoe", "", &[M::NoFall]),
     acc("wind_cape", "Toque duas vezes A ou D para avançar", &[]),
     acc("shiny_balloon", "", &[M::Jump(0.3)]),
     acc("feather_wings", "Segure Espaço no ar para voar um pouco e planar", &[]),
     acc("angel_wings", "Voa mais tempo e plana", &[M::NoFall]),
+    acc("crystal_wings", "Asas: voam 3 s e planam", &[M::NoFall, M::Move(0.1)]),
+    acc("tide_wings", "Asas: voam 3,2 s e planam", &[M::NoFall, M::Move(0.1), M::Dmg(MELEE, 0.05)]),
+    acc("empress_wings", "Asas: voam 3,6 s e planam", &[M::NoFall, M::Move(0.12), M::Dmg(ALL_CLASSES, 0.05)]),
     acc("fairy_wings", "Asas: voam 2,4 s e planam", &[M::NoFall, M::Move(0.05)]),
     acc("demon_wings", "Asas: voam 2,4 s e planam", &[M::NoFall, M::Dmg(ALL_CLASSES, 0.03)]),
     acc("leaf_wings", "Asas: voam 2,6 s e planam", &[M::NoFall, M::Move(0.05)]),
@@ -261,6 +284,14 @@ pub const SETS: &[SetDef] = &[
     set("necro", "", &[M::Dmg(RANGED, 0.1), M::Crit(RANGED, 0.05)]),
     set("ninja", "", &[M::Move(0.2), M::Crit(ALL_CLASSES, 0.04)]),
     set("meteor", "O Disparador de Meteoro não gasta mana", &[M::Dmg(MAGIC, 0.09), M::Def(1.0)]),
+    set("spectral", "Golpes mágicos curam um pouco", &[M::Dmg(MAGIC, 0.2), M::Mana(6.0), M::Regen(0.4)]),
+    set("sporite", "", &[M::Dmg(RANGED, 0.2), M::Crit(RANGED, 0.1)]),
+    set("beetle", "", &[M::Dmg(MELEE, 0.15), M::MeleeSpeed(0.15), M::Def(4.0)]),
+    set("turtle", "", &[M::Endure(0.15), M::Def(5.0)]),
+    set("solar", "", &[M::Dmg(MELEE, 0.25), M::Crit(MELEE, 0.15), M::Move(0.1), M::Def(3.0)]),
+    set("vortex", "", &[M::Dmg(RANGED, 0.25), M::Crit(RANGED, 0.15), M::Move(0.1)]),
+    set("nebula", "", &[M::Dmg(MAGIC, 0.25), M::Mana(10.0), M::ManaCost(0.15), M::Move(0.1)]),
+    set("stardust", "", &[M::Dmg(SUMMON, 0.25), M::Minions(2), M::Move(0.1)]),
     set("lumite", "", &[M::Dmg(ALL_CLASSES, 0.1), M::Crit(ALL_CLASSES, 0.1), M::Minions(1), M::Move(0.1)]),
 ];
 
@@ -683,6 +714,19 @@ impl Game {
                 s.defense += a.armor as f32;
                 s.move_speed *= a.move_speed;
             }
+        }
+        // Info items in the backpack and the Shimmer's upgrades (tr_utility.rs).
+        s.info |= self.t5.tr.util.inv_info;
+        let perma = self.t5.tr.util.perma;
+        if perma & crate::tr_utility::PERMA_VITAL != 0 {
+            s.regen += 0.25;
+        }
+        if perma & crate::tr_utility::PERMA_ARCANE != 0 {
+            s.apply(&M::Mana(4.0));
+            s.apply(&M::ManaRegen(1.0));
+        }
+        if perma & crate::tr_utility::PERMA_AEGIS != 0 {
+            s.defense += 4.0;
         }
         s.set = self.full_set();
         if let Some(i) = s.set {
@@ -1831,6 +1875,14 @@ const SET_NAMES: &[(&str, &str)] = &[
     ("fossil", "Fóssil"),
     ("necro", "Necro"),
     ("ninja", "Ninja"),
+    ("spectral", "Espectral"),
+    ("sporite", "Esporita"),
+    ("beetle", "Escamada"),
+    ("turtle", "Tartaruga"),
+    ("solar", "Solar"),
+    ("vortex", "Vórtice"),
+    ("nebula", "Nebulosa"),
+    ("stardust", "Pó Estelar"),
 ];
 
 /// Ores from least to most valuable, for the ore finder (by part of the block name).
