@@ -1947,7 +1947,7 @@ impl Game {
                 let sel = self.selected;
                 let mine = self.surv.inv.slots[sel];
                 self.surv.inv.slots[sel] = Some(ItemStack::new(it, 1));
-                held.extend(self.held_item_third_person(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32)));
+                held.extend(self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32)));
                 self.surv.inv.slots[sel] = mine;
             }
         }

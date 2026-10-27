@@ -2584,7 +2584,7 @@ impl Game {
         // The food gets smaller as it is eaten.
         let left = 1.0 - 0.45 * (self.surv.eat / 1.6).clamp(0.0, 1.0);
         // So close to the eye the item would fill the screen at its third-person size.
-        self.held_in_fist(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 0.6 * left, l, Vec3::Y * eat)
+        self.held_in_fist(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 0.6 * left, l, Vec3::Y * eat)
     }
 
     /// Skeletons' bows and the arrows in flight or stuck in blocks.
@@ -2603,7 +2603,7 @@ impl Game {
                     continue;
                 }
                 let p = &def.parts[2];
-                let m = glam::Mat4::from_cols_array_2d(&b.m[2]);
+                let m = glam::Mat4::from_cols_array_2d(&b.forearm(2));
                 let fist = m.transform_point3(Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32 - 10.0, p.pivot.2 as f32 + 1.0));
                 let (_, rot, _) = m.to_scale_rotation_translation();
                 // Held upright in the outstretched arm, string towards the body, seen side-on.

@@ -4,20 +4,20 @@
 
 use std::path::Path;
 
-use glam::{IVec3, Mat4, Quat, Vec3};
+use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
 use crate::embedded;
 use crate::paintings::PaintingDef;
 use crate::renderer::Renderer;
-use voxel::mob::{Anim, Mob, MobDef, MobRegistry, DEATH_TIME};
+use voxel::mob::{Anim, MobDef, MobRegistry, PartDef};
 
 /// The skin layout, in model pixels (mobs.ron's texture coordinates).
 pub const SKIN_W: u32 = 64;
 pub const SKIN_H: u32 = 128;
 /// Texels per model pixel of the base game's skins (64x art: a block is 16 model pixels).
 pub const SKIN_DETAIL: u32 = 4;
-const MAX_PARTS: usize = 16;
+pub(crate) const MAX_PARTS: usize = 16;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -38,6 +38,10 @@ pub struct Bones {
     /// A dye over the model (Lote 11): colour, and the mode in w (0 none, 1 dyed, 2 dyed and
     /// glowing, 3 glowing only).
     pub tint: [f32; 4],
+    /// Knees and elbows, per part: (joint height, joint depth, bend angle, unused) in model
+    /// pixels. Limb meshes are split at the joint (see `joint`), and the shader turns
+    /// everything below it about the joint's X axis, blending over a pixel either side.
+    pub bend: [[f32; 4]; MAX_PARTS],
 }
 
 impl Default for Bones {
@@ -47,18 +51,48 @@ impl Default for Bones {
         m[EYELID_PART] = [[0.0; 4]; 4];
         // And the one before it the player's mouth (see `add_mouth`): folded = closed.
         m[MOUTH_PART] = [[0.0; 4]; 4];
-        Bones { m, light: [1.0, 0.0, 0.0, 0.0], tint: [1.0, 1.0, 1.0, 0.0] }
+        Bones { m, light: [1.0, 0.0, 0.0, 0.0], tint: [1.0, 1.0, 1.0, 0.0], bend: [[0.0; 4]; MAX_PARTS] }
     }
 }
 
+impl Bones {
+    /// Bend part `i` (a leg or arm) at its knee or elbow by `angle` (positive swings the lower
+    /// half back, toward -Z).
+    pub fn set_bend(&mut self, i: usize, p: &PartDef, angle: f32) {
+        if let (Some((y, z)), true) = (joint(p), i < MAX_PARTS) {
+            self.bend[i] = [y, z, angle, 0.0];
+        }
+    }
+
+    /// Where the lower half of part `i` is (the forearm, for something held in the hand).
+    pub fn forearm(&self, i: usize) -> [[f32; 4]; 4] {
+        let [y, z, a, _] = self.bend[i];
+        let m = Mat4::from_cols_array_2d(&self.m[i]);
+        if a == 0.0 {
+            return self.m[i];
+        }
+        let j = Vec3::new(0.0, y, z);
+        (m * Mat4::from_translation(j) * Mat4::from_rotation_x(a) * Mat4::from_translation(-j)).to_cols_array_2d()
+    }
+}
+
+/// The knee or elbow of a limb part: halfway down, in the middle of its depth. Short legs
+/// (chickens, spiders) don't get one.
+pub(crate) fn joint(p: &PartDef) -> Option<(f32, f32)> {
+    if !matches!(p.anim, Anim::Leg(_) | Anim::Arm(_) | Anim::ArmForward(_)) || p.size.1 < 6 {
+        return None;
+    }
+    Some((p.origin.1 as f32 + (p.size.1 / 2) as f32, p.origin.2 as f32 + p.size.2 as f32 * 0.5))
+}
+
 /// Test hook for screenshots: MC_BLINK=1 keeps every mob's eyes shut.
-fn eyes_shut_test() -> bool {
+pub(crate) fn eyes_shut_test() -> bool {
     static SHUT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *SHUT.get_or_init(|| std::env::var("MC_BLINK").is_ok())
 }
 
 /// Part slot of the eyelid quads, for models with fewer parts than that.
-const EYELID_PART: usize = MAX_PARTS - 1;
+pub(crate) const EYELID_PART: usize = MAX_PARTS - 1;
 /// Part slot of the player's mouth (players have six parts; mobs never get a mouth here).
 pub(crate) const MOUTH_PART: usize = MAX_PARTS - 2;
 
@@ -218,9 +252,21 @@ struct MeshBuilder {
     verts: Vec<EntityVertex>,
     indices: Vec<u32>,
     layer: u32,
+    /// Knee/elbow height per part: side faces are cut there so the limb can bend.
+    joints: [Option<f32>; MAX_PARTS],
 }
 
 impl MeshBuilder {
+    fn new(layer: u32, def: Option<&MobDef>) -> MeshBuilder {
+        let mut joints = [None; MAX_PARTS];
+        if let Some(d) = def {
+            for (i, p) in d.parts.iter().enumerate().take(MAX_PARTS) {
+                joints[i] = joint(p).map(|j| j.0);
+            }
+        }
+        MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer, joints }
+    }
+
     fn quad(&mut self, p: [Vec3; 4], uv: [[f32; 2]; 4], n: Vec3, shade: f32, part: u32) {
         let base = self.verts.len() as u32;
         let packed = part | (((shade * 255.0) as u32) << 4);
@@ -239,6 +285,20 @@ impl MeshBuilder {
     fn face(&mut self, f: &Face, part: u32) {
         let (rx, ry, rw, rh) = f.rect;
         let uv = |x: i32, y: i32| [x as f32 / SKIN_W as f32, y as f32 / SKIN_H as f32];
+        // A side of a limb: two quads, cut at the joint.
+        if let Some(jy) = self.joints.get(part as usize).copied().flatten() {
+            let (top, bot) = (f.corner.y, f.corner.y + f.v.y);
+            if f.v.x == 0.0 && f.v.z == 0.0 && f.v.y < 0.0 && jy < top - 0.01 && jy > bot + 0.01 {
+                let s = (top - jy) / (top - bot);
+                let uvf = |x: f32, y: f32| [x / SKIN_W as f32, y / SKIN_H as f32];
+                let (x0, x1, y0, y1) = (rx as f32, (rx + rw) as f32, ry as f32, (ry + rh) as f32);
+                let ym = y0 + (y1 - y0) * s;
+                let mid = f.corner + f.v * s;
+                self.quad([f.corner, f.corner + f.u, mid + f.u, mid], [uvf(x0, y0), uvf(x1, y0), uvf(x1, ym), uvf(x0, ym)], f.n, f.shade, part);
+                self.quad([mid, mid + f.u, f.corner + f.u + f.v, f.corner + f.v], [uvf(x0, ym), uvf(x1, ym), uvf(x1, y1), uvf(x0, y1)], f.n, f.shade, part);
+                return;
+            }
+        }
         self.quad(
             [f.corner, f.corner + f.u, f.corner + f.u + f.v, f.corner + f.v],
             [uv(rx, ry), uv(rx + rw, ry), uv(rx + rw, ry + rh), uv(rx, ry + rh)],
@@ -294,7 +354,7 @@ impl MeshBuilder {
 }
 
 fn build_mesh(def: &MobDef, skin: &Skin, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
-    let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
+    let mut mb = MeshBuilder::new(layer, Some(def));
     for (pi, p) in def.parts.iter().enumerate() {
         let origin = Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32);
         let size = Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32);
@@ -449,7 +509,7 @@ fn add_mouth(mb: &mut MeshBuilder, def: &MobDef) {
 
 /// A painting: a canvas one pixel thick, picture on the front, wood everywhere else.
 fn painting_mesh(p: &PaintingDef, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
-    let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
+    let mut mb = MeshBuilder::new(layer, None);
     let (w, h) = ((p.width * 16) as f32, (p.height * 16) as f32);
     let (iw, ih) = ((p.width * 16) as i32, (p.height * 16) as i32);
     let fs = faces(Vec3::ZERO, Vec3::new(w, h, 1.0), (0, 0), (iw, ih, 1));
@@ -796,7 +856,7 @@ fn armor_mesh(def: &MobDef, piece: usize, layer: u32) -> (Vec<EntityVertex>, Vec
 }
 
 fn armor_mesh_over(def: &MobDef, piece: usize, layer: u32, over: f32) -> (Vec<EntityVertex>, Vec<u32>) {
-    let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
+    let mut mb = MeshBuilder::new(layer, Some(def));
     for (part, origin, size, uv, inflate) in armor_boxes(def, piece) {
         let inflate = inflate + over;
         let tex = (size.x as i32, size.y as i32, size.z as i32);
@@ -811,7 +871,7 @@ fn armor_mesh_over(def: &MobDef, piece: usize, layer: u32, over: f32) -> (Vec<En
 /// Both wings of a pair: the same thin box on the two wing bones, hanging from the shoulder
 /// blade and reaching out along +X (the left bone mirrors it).
 fn wing_mesh(layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
-    let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
+    let mut mb = MeshBuilder::new(layer, None);
     let (w, h) = crate::wings::WING_SIZE;
     for part in [crate::wings::WING_R, crate::wings::WING_L] {
         for f in faces(Vec3::new(0.0, -h + 6.0, -0.5), Vec3::new(w, h, 1.0), (0, 0), (w as i32, h as i32, 1)).iter() {
@@ -824,7 +884,7 @@ fn wing_mesh(layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
 /// A model built from painted boxes (instruments.rs, torch.rs): each face painted with its
 /// material's swatch, the grain running along the longer side.
 fn instrument_mesh(model: Vec<crate::instruments::Piece>, layer: u32) -> (Vec<EntityVertex>, Vec<u32>) {
-    let mut mb = MeshBuilder { verts: Vec::new(), indices: Vec::new(), layer };
+    let mut mb = MeshBuilder::new(layer, None);
     let light = Vec3::new(0.2, 0.6, 0.8).normalize();
     for p in model {
         for b in &p.boxes {
@@ -1137,90 +1197,4 @@ impl EntityRenderer {
             pass.draw_indexed(0..mesh.indices, 0, first..first + count);
         }
     }
-}
-
-/// Part matrices for one mob at this moment.
-pub fn bones_for(mob: &Mob, def: &MobDef, cam_block: IVec3, sky: f32, blk: f32) -> Bones {
-    let mut b = Bones { light: [sky, blk, if mob.hurt_age < 0.3 { 1.0 } else { 0.0 }, 0.0], ..Default::default() };
-    let swell = mob.fuse();
-    if swell > 0.0 {
-        b.light[3] = swell * 0.5 * ((mob.age * 18.0).sin() * 0.5 + 0.5);
-    }
-    let rel = mob.body.pos - cam_block.as_vec3();
-    let mut model = Mat4::from_translation(rel) * Mat4::from_rotation_y(mob.yaw);
-    if !mob.alive() {
-        // Fall over sideways and sink a little.
-        let t = (mob.dead_age / DEATH_TIME).clamp(0.0, 1.0);
-        model = model * Mat4::from_translation(Vec3::new(0.0, -t * 0.4, 0.0)) * Mat4::from_rotation_z(t * std::f32::consts::FRAC_PI_2);
-    }
-    let scale = def.scale * mob.size / 16.0 * (1.0 + swell * 0.3);
-    model = model * Mat4::from_scale(Vec3::splat(scale));
-    // Asleep: legs folded flat, the body resting on the ground.
-    let leg_h = def.parts.iter().filter(|p| matches!(p.anim, Anim::Leg(_))).map(|p| p.size.1 as f32).fold(0.0, f32::max);
-    if mob.sleeping && mob.alive() {
-        model = model * Mat4::from_translation(Vec3::new(0.0, -(leg_h - 1.0).max(0.0), 0.0));
-    }
-    let amp = (mob.walk_speed / def.speed.max(0.1)).min(1.3);
-    let t = mob.walk;
-    let airborne = !mob.body.on_ground && !mob.body.in_water;
-    // Livelier movement (Fresh Animations idea): a bounce in the step, slow breathing, and an
-    // idle head that looks around and tilts now and then.
-    let idle = (1.0 - amp).clamp(0.0, 1.0) * if mob.alive() && !mob.sleeping { 1.0 } else { 0.0 };
-    let ph = mob.age + mob.phase * 3.0;
-    let breathe = (ph * 1.7).sin();
-    if mob.alive() && !airborne {
-        let bob = (t * 2.0).sin().abs() * 0.6 * amp.min(1.0) + breathe * 0.12 * idle;
-        model = model * Mat4::from_translation(Vec3::new(0.0, bob, 0.0));
-    }
-    let look = ((ph * 0.31).sin() * 0.45 + (ph * 0.13).sin() * 0.3) * idle;
-    let tilt = (ph * 0.23).sin().max(0.0).powi(3) * 0.25 * idle;
-    for (i, p) in def.parts.iter().enumerate().take(MAX_PARTS) {
-        let pivot = Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32, p.pivot.2 as f32);
-        let rot = match p.anim {
-            Anim::None => Quat::IDENTITY,
-            Anim::Head => {
-                // Walking: a small nod with each step.
-                let nod = (t * 2.0).sin() * 0.06 * amp.min(1.0) + breathe * 0.02 * idle;
-                Quat::from_rotation_y(mob.head_yaw + look) * Quat::from_rotation_x(mob.head_pitch + nod) * Quat::from_rotation_z(tilt)
-            }
-            Anim::Leg(_) if mob.sleeping && mob.alive() => {
-                // Front legs tuck forward, hind legs back.
-                Quat::from_rotation_x(if p.pivot.2 >= 0 { -std::f32::consts::FRAC_PI_2 } else { std::f32::consts::FRAC_PI_2 })
-            }
-            Anim::Leg(k) => Quat::from_rotation_x((t + k as f32 * std::f32::consts::PI).sin() * 0.8 * amp),
-            Anim::Arm(k) => {
-                let side = if k == 0 { 1.0 } else { -1.0 };
-                Quat::from_rotation_x((t + k as f32 * std::f32::consts::PI + std::f32::consts::PI).sin() * 0.7 * amp + breathe * 0.04 * idle * side)
-                    * Quat::from_rotation_z(side * (0.04 + breathe * 0.03) * idle)
-            }
-            Anim::ArmForward(k) => Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2 + (mob.age * 2.0 + k as f32).sin() * 0.08),
-            Anim::Wing(k) => {
-                let side = if k == 0 { 1.0 } else { -1.0 };
-                let flap = if airborne { (mob.age * 25.0).sin().abs() * 0.9 } else { 0.0 };
-                Quat::from_rotation_z(flap * side)
-            }
-            Anim::SpiderLeg(k) => {
-                let side = if k < 4 { 1.0 } else { -1.0 };
-                let kk = (k % 4) as f32;
-                let fan = (kk - 1.5) * 0.4 * side;
-                let swing = (t * 2.0 + kk * 1.3 + if k < 4 { 0.0 } else { std::f32::consts::PI }).sin() * 0.35 * amp;
-                let lift = ((t * 2.0 + kk * 1.3).cos().max(0.0)) * 0.3 * amp;
-                // The legs reach out and down to the ground; lifting raises the tip.
-                Quat::from_rotation_y(fan + swing) * Quat::from_rotation_z((0.5 - lift) * side)
-            }
-        };
-        let part = Mat4::from_translation(pivot) * Mat4::from_quat(rot) * Mat4::from_translation(-pivot);
-        b.m[i] = (model * part).to_cols_array_2d();
-        // Blinking: every few seconds (each mob on its own beat) for a tenth of a second, and
-        // always while asleep or dead.
-        if p.anim == Anim::Head && def.parts.len() <= EYELID_PART {
-            let period = 3.2 + mob.phase.fract() * 3.0;
-            let beat = (mob.age + mob.phase * 7.0) % period;
-            let double = mob.phase.fract() > 0.7 && (0.25..0.37).contains(&beat);
-            if beat < 0.12 || double || mob.sleeping || !mob.alive() || eyes_shut_test() {
-                b.m[EYELID_PART] = b.m[i];
-            }
-        }
-    }
-    b
 }

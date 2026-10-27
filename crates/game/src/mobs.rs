@@ -4,7 +4,7 @@ use glam::{IVec3, Vec3};
 use voxel::mob::{Kind, Mob, MobEvent, MobRegistry, SpawnRule, DEATH_TIME};
 use voxel::{BlockId, AIR};
 
-use crate::entity::{bones_for, Bones};
+use crate::entity::Bones;
 use crate::world::World;
 use voxel::physics::Terrain;
 
@@ -34,6 +34,8 @@ pub struct Mobs {
     pub others: Vec<(Vec3, bool)>,
     /// It is raining in this dimension: mobs under open sky are wet and don't burn.
     pub raining: bool,
+    /// Smoothed animation for each mob (anim.rs).
+    pub anim: crate::anim::Animator,
 }
 
 /// What happened to the player this tick.
@@ -101,7 +103,7 @@ impl Mobs {
     }
 
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, calm: false, hp_scale: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, calm: false, hp_scale: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false, anim: Default::default() }
     }
 
     fn next_rand(&mut self) -> u64 {
@@ -455,16 +457,22 @@ impl Mobs {
         best
     }
 
+    /// Move every mob's animation on by a frame (render time, not simulation time).
+    pub fn animate(&mut self, player: Vec3, dt: f32) {
+        self.anim.update(&self.reg.defs, &self.list, player, dt);
+    }
+
     /// Bone matrices for every mob within draw distance.
-    pub fn instances(&self, world: &World, cam_block: IVec3, max_dist: f32) -> Vec<(usize, Bones)> {
+    pub fn instances(&mut self, world: &World, cam_block: IVec3, max_dist: f32) -> Vec<(usize, Bones)> {
         let c = cam_block.as_vec3();
+        let anim = &mut self.anim;
         self.list
             .iter()
             .filter(|m| (m.body.pos - c).length() < max_dist)
             .map(|m| {
                 let def = &self.reg.defs[m.def];
                 let l = world.light((m.body.pos + Vec3::Y * (def.height * 0.6)).floor().as_ivec3());
-                (m.def, bones_for(m, def, cam_block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0))
+                (m.def, anim.bones(m, def, m.def, cam_block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0))
             })
             .collect()
     }

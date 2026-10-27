@@ -804,7 +804,7 @@ impl Game {
         let m = self.mobs.list.iter().find(|m| m.net_id == n.mob)?;
         let def = &self.mobs.reg.defs[m.def];
         let l = self.world.light((m.body.pos + Vec3::Y * (def.height * 0.6)).floor().as_ivec3());
-        let b0 = crate::entity::bones_for(m, def, cam_block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
+        let b0 = self.mobs.anim.bones_now(m, def, m.def, cam_block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
         let entry = items.iter_mut().find(|(d, b)| *d == m.def && b.m[0] == b0.m[0] && b.m[1] == b0.m[1])?;
         let play = self.mods.melodies.play_at(n.inst, n.tune, n.t);
         let ib = pose(def, &mut entry.1, n.inst, Some(play))?;

@@ -8,6 +8,7 @@ mod companions;
 mod sentries;
 mod vanity;
 mod wings;
+mod anim;
 mod deep;
 mod keybinds;
 mod lang;
@@ -2103,6 +2104,12 @@ impl Game {
                 });
             }
         }
+        // Mob animation runs on frame time (smooth for guests too), and holds still with the
+        // world in a paused single-player game.
+        if self.world_open && !menus_stop {
+            let adt = if self.args.screenshot.is_some() { 0.0 } else { dt };
+            self.mobs.animate(self.body.pos, adt);
+        }
 
         let sit = self.situation();
         if let Some(a) = self.audio.as_mut() {
@@ -3080,7 +3087,9 @@ impl Game {
                 // Face the camera.
                 let m = self.mobs.list.last_mut().unwrap();
                 let to = self.body.pos - at;
-                m.yaw = to.x.atan2(to.z);
+                // MC_FACE=degrees turns them (90 = side-on, to see the legs move).
+                let turn = std::env::var("MC_FACE").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0).to_radians();
+                m.yaw = to.x.atan2(to.z) + turn;
             }
         }
         // An arrow on its way, frozen in the air, for the test picture.
@@ -4570,9 +4579,9 @@ impl Game {
                 let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
                 let mut bones = self.anim.bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
                 let pv = def.parts[2].pivot;
-                held_third = self.held_item_third_person(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32));
+                held_third = self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32));
                 if let Some((t, mesh)) = self.held_torch().and_then(|t| Some((t, self.entities.torch_mesh(t)?))) {
-                    let (tb, top) = torch::hold(t, bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 1.0, 0.62, self.now, [bones.light[0], 1.0, 0.0, 0.0]);
+                    let (tb, top) = torch::hold(t, bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 1.0, 0.62, self.now, [bones.light[0], 1.0, 0.0, 0.0]);
                     items.push((mesh, tb));
                     torch_top = Some((t, top + block.as_vec3(), 1.0));
                 }
