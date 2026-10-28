@@ -51,6 +51,9 @@ pub struct SceneFx {
     /// Solid blocks around the player (1 = blocks light), for hand light shadows.
     occl: wgpu::Texture,
     occl_view: wgpu::TextureView,
+    /// The material class of each block texture layer (material.rs), for metal and gem blocks
+    /// and ores.
+    mats: wgpu::Buffer,
     /// Corner of the uploaded grid and when it was built (blocks change, so it is refreshed).
     occl_built: Option<(IVec3, std::time::Instant)>,
     /// Settings: shadow level 0..2, water reflections.
@@ -93,6 +96,7 @@ impl SceneFx {
                 entry(2, tex(wgpu::TextureSampleType::Float { filterable: false })),
                 entry(3, tex(wgpu::TextureSampleType::Depth)),
                 entry(4, wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Uint, view_dimension: wgpu::TextureViewDimension::D3, multisampled: false }),
+                entry(5, wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }),
             ],
         });
         let cmp = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -126,8 +130,14 @@ impl SceneFx {
             view_formats: &[],
         });
         let occl_view = occl.create_view(&Default::default());
-        let bg = Self::make_bg(device, &layout, &dummy_depth, &cmp, &dummy_color, &dummy_depth, &occl_view);
-        let bg2 = Self::make_bg(device, &layout, &dummy_depth, &cmp, &dummy_color, &dummy_depth, &occl_view);
+        let mats = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("block materials"),
+            size: (crate::material::BLOCK_LAYERS * 4) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let bg = Self::make_bg(device, &layout, &dummy_depth, &cmp, &dummy_color, &dummy_depth, &occl_view, &mats);
+        let bg2 = Self::make_bg(device, &layout, &dummy_depth, &cmp, &dummy_color, &dummy_depth, &occl_view, &mats);
         SceneFx {
             layout,
             cmp,
@@ -139,6 +149,7 @@ impl SceneFx {
             copy: None,
             occl,
             occl_view,
+            mats,
             occl_built: None,
             level: 0,
             reflections: false,
@@ -148,7 +159,17 @@ impl SceneFx {
         }
     }
 
-    fn make_bg(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, shadow: &wgpu::TextureView, cmp: &wgpu::Sampler, color: &wgpu::TextureView, depth: &wgpu::TextureView, occl: &wgpu::TextureView) -> wgpu::BindGroup {
+    #[allow(clippy::too_many_arguments)]
+    fn make_bg(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        shadow: &wgpu::TextureView,
+        cmp: &wgpu::Sampler,
+        color: &wgpu::TextureView,
+        depth: &wgpu::TextureView,
+        occl: &wgpu::TextureView,
+        mats: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("scene fx"),
             layout,
@@ -158,6 +179,7 @@ impl SceneFx {
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(color) },
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(depth) },
                 wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(occl) },
+                wgpu::BindGroupEntry { binding: 5, resource: mats.as_entire_binding() },
             ],
         })
     }
@@ -193,15 +215,20 @@ impl SceneFx {
         }
         if dirty {
             let sh = self.shadow.as_ref().map(|s| &s.0).unwrap_or(&self.dummy_depth);
-            self.bg_solid = Self::make_bg(device, &self.layout, sh, &self.cmp, &self.dummy_color, &self.dummy_depth, &self.occl_view);
+            self.bg_solid = Self::make_bg(device, &self.layout, sh, &self.cmp, &self.dummy_color, &self.dummy_depth, &self.occl_view, &self.mats);
             self.bg_trans = match &self.copy {
-                Some((_, v, ..)) => Self::make_bg(device, &self.layout, sh, &self.cmp, v, depth, &self.occl_view),
-                None => Self::make_bg(device, &self.layout, sh, &self.cmp, &self.dummy_color, &self.dummy_depth, &self.occl_view),
+                Some((_, v, ..)) => Self::make_bg(device, &self.layout, sh, &self.cmp, v, depth, &self.occl_view, &self.mats),
+                None => Self::make_bg(device, &self.layout, sh, &self.cmp, &self.dummy_color, &self.dummy_depth, &self.occl_view, &self.mats),
             };
         }
     }
 
     /// Whether water reflections run this frame (the main pass is split around a scene copy).
+    /// Block materials, from the texture names in layer order.
+    pub fn set_block_materials(&self, queue: &wgpu::Queue, names: &[String]) {
+        queue.write_buffer(&self.mats, 0, bytemuck::cast_slice(&crate::material::block_table(names)));
+    }
+
     pub fn reflecting(&self) -> bool {
         self.copy.is_some()
     }

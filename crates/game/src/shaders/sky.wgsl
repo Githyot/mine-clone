@@ -112,7 +112,7 @@ fn cloud_at(c: vec2<f32>) -> bool {
 
 // Layered style: how thick the cloud in cell `c` of a layer is (0 = clear sky).
 fn cloud_density(c: vec2<f32>, seed: f32, cover: f32) -> f32 {
-    let t = g.cam_pos.w;
+    let t = g.clouds.w;
     // Slow change of shape: the broad noise drifts a little against the wind, so clouds grow,
     // shrink and split as they travel.
     let n = vnoise(c * 0.11 + vec2<f32>(seed + t * 0.004, seed * 0.7 - t * 0.003)) * 0.55 + vnoise(c * 0.31 + vec2<f32>(17.0 + seed, 3.0)) * 0.3 + hash2(c + seed) * 0.15;
@@ -121,10 +121,11 @@ fn cloud_density(c: vec2<f32>, seed: f32, cover: f32) -> f32 {
 }
 
 // The wind: one direction for every layer (turning very slowly), each layer at its own speed.
+// The distance is added up on the CPU frame by frame (Game::advance_clouds): working it out
+// here from the clock made the clouds race whenever the clock was large, the rain changed or
+// the direction turned.
 fn wind(speed: f32) -> vec3<f32> {
-    let t = g.cam_pos.w;
-    let a = 0.35 + sin(t * 0.0021) * 0.5;
-    return vec3<f32>(cos(a), 0.0, sin(a)) * t * speed * (1.0 + g.weather.x * 0.8);
+    return vec3<f32>(g.clouds.x, 0.0, g.clouds.y) * speed;
 }
 
 // Colour of a cloud face lit by the sky (day, night, sunset, rain, lightning).
@@ -286,7 +287,7 @@ fn fs_clouds(in: SkyOut) -> CloudFrag {
     var tn = CLOUD_MAX * 2.0;
     if (g.extra.x < 0.5) {
         // Classic: one layer drifting west to east.
-        let h = march_layer(g.cam_world.xyz + vec3<f32>(g.cam_pos.w * 0.8, 0.0, 0.0), dir, base, THICK, CELL, 0.0, 0.0, false, 160);
+        let h = march_layer(g.cam_world.xyz + vec3<f32>(g.clouds.z * 0.8, 0.0, 0.0), dir, base, THICK, CELL, 0.0, 0.0, false, 160);
         acc = h.rgba;
         tn = h.t;
     } else {

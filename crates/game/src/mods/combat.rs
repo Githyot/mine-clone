@@ -47,6 +47,15 @@ const GREATSWORD: Weapon = Weapon { reach: 3.8, cooldown: 1.2, sweep: 0.8, two_h
 const SPEAR: Weapon = Weapon { reach: 4.8, cooldown: 0.85, sweep: 0.8, two_handed: true, combo: [at(2, 1.0, 12.0, 1.5), at(2, 1.0, 12.0, 1.5), at(2, 1.45, 16.0, 3.5)] };
 const HALBERD: Weapon = Weapon { reach: 4.3, cooldown: 1.35, sweep: 0.7, two_handed: true, combo: [at(0, 1.0, 45.0, 2.5), at(1, 1.1, 65.0, 2.5), at(2, 1.5, 15.0, 4.5)] };
 
+impl Weapon {
+    /// Damage per second of steady swinging at one monster: the combo's average hit over the
+    /// swing time (balance.rs).
+    #[cfg(test)]
+    pub fn swing_dps(&self, damage: f32) -> f32 {
+        damage * self.combo.iter().map(|a| a.damage).sum::<f32>() / 3.0 / self.cooldown
+    }
+}
+
 /// After this long without a swing the combo starts over.
 const COMBO_WINDOW: f32 = 0.9;
 

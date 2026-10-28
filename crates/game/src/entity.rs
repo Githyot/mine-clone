@@ -112,6 +112,8 @@ pub struct EntityRenderer {
     inst_bg: wgpu::BindGroup,
     inst_buf: wgpu::Buffer,
     inst_cap: usize,
+    /// The material class of each skin layer (material.rs).
+    mat_buf: wgpu::Buffer,
     meshes: Vec<MobMesh>,
     pub particles: crate::particles::ParticleGpu,
     pub items: crate::item_render::ItemGpu,
@@ -995,21 +997,33 @@ impl EntityRenderer {
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&view) },
             ],
         });
+        let storage = |binding: u32, visibility: wgpu::ShaderStages| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility,
+            ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None },
+            count: None,
+        };
         let inst_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("bones"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None },
-                count: None,
-            }],
+            entries: &[storage(0, wgpu::ShaderStages::VERTEX), storage(1, wgpu::ShaderStages::FRAGMENT)],
         });
+        // The material class of every skin layer (material.rs): armour and trims shine, mobs don't.
+        let mut classes = vec![crate::material::NONE; layers as usize];
+        if player.is_some() {
+            for (i, (n, _)) in ARMOR_MATERIALS.iter().enumerate() {
+                classes[armor_layer0 + i] = crate::material::armor_class(n);
+            }
+            for (i, m) in crate::smithing::MATERIALS.iter().enumerate() {
+                classes[trim_layer0 + i] = crate::material::trim_class(m.0);
+            }
+        }
+        let mat_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("skin materials"), contents: bytemuck::cast_slice(&classes), usage: wgpu::BufferUsages::STORAGE });
         let inst_cap = 64;
         let inst_buf = Self::make_inst_buf(device, inst_cap);
-        let inst_bg = Self::make_inst_bg(device, &inst_layout, &inst_buf);
+        let inst_bg = Self::make_inst_bg(device, &inst_layout, &inst_buf, &mat_buf);
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("entity"),
-            source: wgpu::ShaderSource::Wgsl(format!("{}\n{}", include_str!("shaders/common.wgsl"), include_str!("shaders/entity.wgsl")).into()),
+            source: wgpu::ShaderSource::Wgsl(format!("{}\n{}\n{}", include_str!("shaders/common.wgsl"), include_str!("shaders/material.wgsl"), include_str!("shaders/entity.wgsl")).into()),
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("entity"),
@@ -1155,7 +1169,7 @@ impl EntityRenderer {
         }
         let particles = crate::particles::ParticleGpu::new(r);
         let items = crate::item_render::ItemGpu::new(r);
-        EntityRenderer { particles, items, pipelines, shadow_pipeline, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, armor_meshes, trim_meshes, wing_meshes, instrument_meshes, shield_meshes, draws: Vec::new(), shadow_draws: Vec::new(), instance_count: 0 }
+        EntityRenderer { particles, items, pipelines, shadow_pipeline, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, mat_buf, meshes, mob_meshes, armor_meshes, trim_meshes, wing_meshes, instrument_meshes, shield_meshes, draws: Vec::new(), shadow_draws: Vec::new(), instance_count: 0 }
     }
 
     /// Mesh index of an armour piece (0 helmet .. 3 boots) for the item named `item`.
@@ -1204,11 +1218,11 @@ impl EntityRenderer {
         })
     }
 
-    fn make_inst_bg(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, buf: &wgpu::Buffer) -> wgpu::BindGroup {
+    fn make_inst_bg(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, buf: &wgpu::Buffer, mats: &wgpu::Buffer) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("bones"),
             layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: buf.as_entire_binding() }],
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: buf.as_entire_binding() }, wgpu::BindGroupEntry { binding: 1, resource: mats.as_entire_binding() }],
         })
     }
 
@@ -1235,7 +1249,7 @@ impl EntityRenderer {
         if total > self.inst_cap {
             self.inst_cap = total.next_power_of_two();
             self.inst_buf = Self::make_inst_buf(&r.device, self.inst_cap);
-            self.inst_bg = Self::make_inst_bg(&r.device, &self.inst_layout, &self.inst_buf);
+            self.inst_bg = Self::make_inst_bg(&r.device, &self.inst_layout, &self.inst_buf, &self.mat_buf);
         }
         let bones: Vec<Bones> = items.iter().chain(&overlay).chain(&shadow_only).map(|(_, b)| *b).collect();
         r.queue.write_buffer(&self.inst_buf, 0, bytemuck::cast_slice(&bones));
@@ -1265,14 +1279,14 @@ impl EntityRenderer {
     pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, hdr: bool, block_tex: &'a wgpu::BindGroup, fx: &'a wgpu::BindGroup) {
         self.particles.draw(pass, hdr, block_tex);
         self.items.draw(pass, hdr, block_tex);
-        if self.draws.is_empty() {
-            return;
+        if !self.draws.is_empty() {
+            pass.set_pipeline(&self.pipelines[hdr as usize]);
+            pass.set_bind_group(1, &self.skin_bg, &[]);
+            pass.set_bind_group(2, &self.inst_bg, &[]);
+            pass.set_bind_group(3, fx, &[]);
+            self.draw_list(pass, &self.draws);
         }
-        pass.set_pipeline(&self.pipelines[hdr as usize]);
-        pass.set_bind_group(1, &self.skin_bg, &[]);
-        pass.set_bind_group(2, &self.inst_bg, &[]);
-        pass.set_bind_group(3, fx, &[]);
-        self.draw_list(pass, &self.draws);
+        self.items.draw_halos(pass, hdr, block_tex);
     }
 
     /// Into the sun's shadow map (the pass has the globals bound).
