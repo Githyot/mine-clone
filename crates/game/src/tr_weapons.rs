@@ -602,7 +602,8 @@ impl Game {
         let c = cam_block.as_vec3();
         let mut out = Vec::new();
         for s in shots {
-            if matches!(s.fly, Fly::Bullet | Fly::Bolt) {
+            // Sentries have their own 3D models (tr_sentry_models).
+            if matches!(s.fly, Fly::Bullet | Fly::Bolt) || (s.fly == Fly::Sentry && crate::summons::rod_model(WEAPONS[s.def].item).is_some()) {
                 continue;
             }
             let Some(id) = self.items.id(WEAPONS[s.def].item) else { continue };
@@ -618,6 +619,31 @@ impl Game {
                 _ => (0.45, s.age * 6.0, 0.0, 0.0),
             };
             out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [yaw, 1.0, sky, blk], layers: [layer, layer, layer, 0.0], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
+        }
+        out
+    }
+
+    /// The sentries the rods set down, as 3D models (summons.rs) turned to the nearest monster.
+    pub(crate) fn tr_sentry_models(&self, cam_block: IVec3) -> Vec<(usize, crate::entity::Bones)> {
+        let c = cam_block.as_vec3();
+        let mut out = Vec::new();
+        for s in self.t5.tr.wep.shots.iter().filter(|s| s.fly == Fly::Sentry) {
+            let d = &WEAPONS[s.def];
+            let Some(model) = crate::summons::rod_model(d.item) else { continue };
+            let Some(mesh) = self.entities.summon_mesh(model) else { continue };
+            // Its foot: the shot sits a little over the ground.
+            let foot = s.pos - Vec3::Y * 0.6;
+            let eye = s.pos;
+            let aim = self.nearest_hostile(eye, 22.0).map(|k| self.mobs.list[k].body.center() - eye).unwrap_or(Vec3::ZERO);
+            let l = self.world.light((foot + Vec3::Y * 0.5).floor().as_ivec3());
+            let pose = crate::summons::SentryPose {
+                pos: foot - c,
+                aim,
+                t: self.now + foot.x * 0.37,
+                fire: if aim == Vec3::ZERO { 0.0 } else { (1.0 - (d.cd - s.shot_t) / 0.6).clamp(0.0, 1.0) },
+                light: [(l >> 4) as f32 / 15.0, ((l & 15) as f32 / 15.0).max(0.4), 0.0, 0.0],
+            };
+            out.push((mesh, crate::summons::sentry_bones(model, &pose)));
         }
         out
     }
