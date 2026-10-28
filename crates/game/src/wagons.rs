@@ -648,7 +648,10 @@ impl Game {
         }
         // Stuck: creep round in a slow turn until a way opens.
         let target = if !go { 0.0 } else if w.stuck > 0.0 { cruise * 0.4 } else { cruise };
-        w.speed += (target - w.speed).clamp(-dt * 1.5, dt * 0.8);
+        // Heavy going in sand and snow; on ice the wheels slip, slow to start and to stop.
+        let g = voxel::physics::Terrain::ground(&self.world, (w.pos - Vec3::Y * 0.05).floor().as_ivec3());
+        let hold = (g.grip / 8.0).min(1.0);
+        w.speed += (target * g.speed - w.speed).clamp(-dt * 1.5 * hold, dt * 0.8 * hold);
         // Uphill slower.
         let v = w.speed * (1.0 - w.pitch.max(0.0) * 0.8);
         let turn = wrap(w.want_yaw - w.front_yaw).clamp(-0.8 * dt, 0.8 * dt) * (0.3 + v.min(1.0) * 0.7);

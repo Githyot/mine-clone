@@ -115,9 +115,18 @@ impl Game {
         let f = self.forward();
         let f = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
         let side = Vec3::new(-f.z, 0.0, f.x);
-        let sets = [["diamond_helmet", "diamond_chestplate", "diamond_leggings", "diamond_boots", "diamond_sword"], ["golden_helmet", "iron_chestplate", "chainmail_leggings", "leather_boots", "shield"]];
+        let mut sets: Vec<[String; 5]> = vec![
+            ["diamond_helmet", "diamond_chestplate", "diamond_leggings", "diamond_boots", "diamond_sword"].map(String::from),
+            ["golden_helmet", "iron_chestplate", "chainmail_leggings", "leather_boots", "shield"].map(String::from),
+        ];
+        // MC_STAND=iron,golden,... puts up one stand per material, in a row, in its full set.
+        let list = std::env::var("MC_STAND").unwrap_or_default();
+        if list.contains(',') || list.chars().any(|c| c.is_alphabetic()) {
+            sets = list.split(',').map(|m| ["helmet", "chestplate", "leggings", "boots", "sword"].map(|p| format!("{m}_{p}"))).collect();
+        }
+        let (n, gap) = (sets.len() as f32, if sets.len() > 2 { 1.35 } else { 1.6 });
         for (k, set) in sets.iter().enumerate() {
-            let mut at = self.body.pos + f * 3.0 + side * (k as f32 * 1.6 - 0.8);
+            let mut at = self.body.pos + f * (2.6 + n * 0.55) + side * ((k as f32 - (n - 1.0) / 2.0) * gap);
             at.y = at.y.floor();
             while at.y > 1.0 && !self.reg.get(self.world.block_or_air((at - Vec3::Y * 0.5).floor().as_ivec3())).solid {
                 at.y -= 1.0;

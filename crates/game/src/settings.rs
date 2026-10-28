@@ -85,6 +85,10 @@ pub struct Settings {
     pub view_bobbing: bool,
     /// Items on the ground lie flat and still (like the Item Drops mod) instead of floating.
     pub flat_drops: bool,
+    /// Items on the ground show their name (and how many) above them when close.
+    pub drop_labels: bool,
+    /// Items on the ground give off a soft glow, stronger and coloured when enchanted or rare.
+    pub drop_glow: bool,
     /// Animals and monsters spawn in the world.
     pub mobs: bool,
     /// Textures get a little carved relief near the camera.
@@ -103,6 +107,8 @@ pub struct Settings {
     pub shader_quality: ShaderQuality,
     /// Low-detail distant terrain drawn this many blocks past the render distance (0 = off).
     pub lod_distance: i32,
+    /// Distant terrain detail: 0 light (weak computers), 1 normal, 2 high (`lod::DETAILS`).
+    pub lod_detail: u8,
     /// Buildings farther apart in new chunks (Sparse Structures idea).
     pub sparse_structures: bool,
     /// Multiplayer guest: the host's structure spacing, while connected (never saved).
@@ -124,6 +130,9 @@ pub struct Settings {
     /// Block depth (parallax occlusion mapping, as in shader packs): 0 off, then the steps of
     /// `PARALLAX_LEVELS`. Needs the "Bonito" quality.
     pub parallax: u8,
+    /// Material feel of items and armour (material.rs): 0 off, 1 glints and sheen, 2 also
+    /// relief and sparkles. The "Rápido" quality keeps it at 1 at most.
+    pub materials: u8,
     /// Inventory and hotbar animations (Immersive UI idea); off = reduce motion.
     pub ui_animations: bool,
     /// "pt" (Portuguese, the game's own) or "en" (English, through lang.rs).
@@ -163,6 +172,8 @@ impl Default for Settings {
             show_clouds: true,
             view_bobbing: true,
             flat_drops: true,
+            drop_labels: true,
+            drop_glow: true,
             mobs: true,
             gui_scale: 0,
             controller: ControllerSettings::default(),
@@ -170,6 +181,7 @@ impl Default for Settings {
             shader_options: BTreeMap::new(),
             shader_quality: ShaderQuality::Fancy,
             lod_distance: 0,
+            lod_detail: 1,
             sparse_structures: false,
             spread_override: None,
             layered_clouds: false,
@@ -178,6 +190,7 @@ impl Default for Settings {
             taa: false,
             emissive_textures: true,
             parallax: 2,
+            materials: 2,
             ui_animations: true,
             language: "pt".into(),
             subtitles: false,
