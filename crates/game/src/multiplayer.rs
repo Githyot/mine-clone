@@ -1310,6 +1310,10 @@ impl Game {
                     chill: m.chill,
                     wet: m.wet,
                     frozen: m.frozen,
+                    act: m.social.act.code(),
+                    talking: m.social.speaking(),
+                    size: m.size,
+                    grow: m.grow,
                 })
                 .collect();
             h.host.send(*id, &ToGuest::Mobs { dim: my_dim, list: mobs });
@@ -1833,6 +1837,13 @@ impl Game {
                     m.chill = s.chill;
                     m.wet = s.wet;
                     m.frozen = s.frozen;
+                    // Social poses: a chat partner speaks when the host says so.
+                    m.social.act = voxel::mob::Act::from_code(s.act);
+                    m.social.age = 2.0;
+                    m.social.first = s.talking;
+                    m.social.t = 1.0;
+                    m.size = s.size;
+                    m.grow = s.grow;
                     let g = self.guest();
                     g.mob_health.insert(s.id, s.health);
                     g.mob_status.insert(s.id, [s.on_fire, s.chill, s.wet, s.frozen]);
