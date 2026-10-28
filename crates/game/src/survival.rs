@@ -718,7 +718,10 @@ impl Game {
             }
         }
         self.surv.saplings.retain(|(p, _)| *p != pos);
-        if self.surv.spawn == Some(pos + IVec3::Y) && self.reg.get(id).name.ends_with("_bed") {
+        // The other half went with it (World::break_block); the spawn point is over the head.
+        let b = self.reg.get(id);
+        let head = if voxel::bed::is_head(b.variant) { pos } else { pos + IVec3::new(voxel::bed::dir(b.variant)[0], 0, voxel::bed::dir(b.variant)[1]) };
+        if self.is_bed(id) && self.surv.spawn == Some(head + IVec3::Y) {
             self.surv.spawn = None;
             self.toast("Sua cama foi destruída", 2.5);
         }
@@ -940,7 +943,7 @@ impl Game {
         self.surv.exhaustion = 0.0;
         if let Some(p) = self.surv.spawn {
             let bed = self.world.block_or_air(p - IVec3::Y);
-            if self.reg.get(bed).name.ends_with("_bed") {
+            if self.is_bed(bed) {
                 self.body.pos = p.as_vec3() + Vec3::new(0.5, 0.0, 0.5);
             } else {
                 self.surv.spawn = None;
@@ -989,6 +992,10 @@ impl Game {
                 if self.extras_block_use(&name, hit.block) {
                     return true;
                 }
+                if self.is_bed(id) {
+                    self.use_bed(hit.block);
+                    return true;
+                }
                 match name.as_str() {
                     n if n.ends_with("_sign") => return self.edit_sign(hit.block),
                     "command_block" => return self.cmdblock_open(hit.block),
@@ -1022,10 +1029,6 @@ impl Game {
                         }
                         self.open_container(Open::Chest(hit.block));
                         self.sfx(Sfx::Place(Material::Wood));
-                        return true;
-                    }
-                    n if n.ends_with("_bed") => {
-                        self.use_bed(hit.block);
                         return true;
                     }
                     "reforge_table" => return self.t5_use_block("reforge_table"),
@@ -1241,18 +1244,6 @@ impl Game {
                 let f = self.forward();
                 self.spawn_drop(self.body.eye() - Vec3::Y * 0.3, left, f * 3.0);
             }
-        }
-    }
-
-    fn use_bed(&mut self, pos: IVec3) {
-        let above = pos + IVec3::Y;
-        self.surv.spawn = Some(above);
-        let t = self.time_of_day;
-        if (12500.0..23500.0).contains(&t) {
-            self.time_of_day = 0.0;
-            self.toast("Você dormiu. Bom dia!", 3.0);
-        } else {
-            self.toast("Ponto de renascimento definido. Só dá para dormir à noite.", 3.5);
         }
     }
 

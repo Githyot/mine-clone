@@ -934,6 +934,8 @@ for _w in g16.WOODS:
     REGISTRY[f"{_w}_leaves"] = lambda w=_w: leaves(w)
 for _c in g16.WOOL:
     REGISTRY[f"{_c}_wool"] = lambda c=_c: wool(c)
+import beds as _beds  # noqa: E402  (frame, sheet, pillow, blankets)
+REGISTRY.update(_beds.BLOCKS)
 
 
 # ================================================================ batch 2: nether, end, caves, farm

@@ -44,6 +44,7 @@ impl Game {
         self.riding = None;
         self.boating = None;
         self.seat = None;
+        self.sleep = None;
         self.tnt.clear();
         self.bobber = None;
         if let Some(r) = self.renderer.get_mut() {

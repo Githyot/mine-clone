@@ -784,10 +784,21 @@ impl World {
         // A door goes as a whole.
         let wb = self.reg.get(was);
         let was_frame = wb.shape == Shape::Portal || wb.name == "obsidian";
+        let (shape, variant) = (wb.shape, wb.variant);
         if wb.shape == Shape::Door {
             let other = if wb.variant & 8 != 0 { p - IVec3::Y } else { p + IVec3::Y };
             let o = self.block_or_air(other);
             if self.reg.get(o).base == wb.base && o != AIR {
+                self.set_block(other, AIR);
+            }
+        }
+        // So does a bed.
+        if shape == Shape::Bed {
+            let [dx, dz] = voxel::bed::other_half(variant);
+            let other = p + IVec3::new(dx, 0, dz);
+            let o = self.block_or_air(other);
+            let pair = self.reg.get(o).shape == Shape::Bed && self.reg.get(o).variant == variant ^ voxel::bed::HEAD;
+            if pair {
                 self.set_block(other, AIR);
             }
         }

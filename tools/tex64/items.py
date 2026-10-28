@@ -369,3 +369,5 @@ REGISTRY["raw_gold"] = lambda: raw("golden")
 for _g, _c in GEMS.items():
     REGISTRY[_g] = lambda g=_g, c=_c: gem(g, c)
 
+import beds as _beds  # noqa: E402  (each bed's icon is its 3D model)
+REGISTRY.update(_beds.ITEMS)

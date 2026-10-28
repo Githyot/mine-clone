@@ -266,6 +266,8 @@ pub mod flags {
     pub const DEAD: u16 = 512;
     /// A dedicated server's own player: not drawn, not listed, not hit.
     pub const HIDDEN: u16 = 1024;
+    /// Lying in a bed (the bed under the player says which way).
+    pub const SLEEPING: u16 = 2048;
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]

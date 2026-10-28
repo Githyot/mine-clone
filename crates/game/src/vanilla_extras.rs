@@ -345,10 +345,6 @@ impl Game {
                 self.anim.start_swing();
                 true
             }
-            n if n.ends_with("_bed") && n != "red_bed" => {
-                // Every colour of bed sleeps the same.
-                false
-            }
             _ => false,
         }
     }

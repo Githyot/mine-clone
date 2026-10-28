@@ -182,6 +182,7 @@ impl Structures {
                     }
                 }
             }
+            pair_beds(&mut cells, IVec3::new(sx, sy, sz), reg);
             let mut turned: [Vec<BlockId>; 4] = Default::default();
             for (k, t) in turned.iter_mut().enumerate() {
                 *t = (0..reg.blocks.len())
@@ -189,7 +190,7 @@ impl Structures {
                         let b = &reg.blocks[i];
                         // Blocks facing one of four ways turn with the structure (an Oriented
                         // block facing up or down stays as it is).
-                        let turns = matches!(b.shape, Shape::Stairs | Shape::Roof | Shape::Door | Shape::Trapdoor) || b.shape == Shape::Oriented && b.variant & 7 < 4;
+                        let turns = matches!(b.shape, Shape::Stairs | Shape::Roof | Shape::Door | Shape::Trapdoor | Shape::Bed) || b.shape == Shape::Oriented && b.variant & 7 < 4;
                         if k == 0 || !turns {
                             return i as BlockId;
                         }
@@ -211,6 +212,36 @@ impl Structures {
         let plant = reg.blocks.iter().map(|b| b.shape == Shape::Cross || b.name.ends_with("_leaves") || b.name.ends_with("_log") || b.name == "vine").collect();
         let max_side = list.iter().map(|s| s.size.x.max(s.size.z)).max().unwrap_or(0).max(MAX_SIDE);
         Ok(Structures { list, max_side, soft, plant })
+    }
+}
+
+/// Buildings name a bed once, as a single cell: make it a whole bed, the foot there and the
+/// head in the next free cell (a neighbouring bed cell first, then air, then a cell left
+/// as it is), turned toward it.
+fn pair_beds(cells: &mut [Option<BlockId>], size: IVec3, reg: &BlockRegistry) {
+    let at = |x: i32, y: i32, z: i32| (x >= 0 && z >= 0 && x < size.x && z < size.z).then(|| ((y * size.z + z) * size.x + x) as usize);
+    let lone = |c: Option<BlockId>| c.is_some_and(|id| reg.get(id).shape == Shape::Bed && reg.get(id).variant == 0);
+    let mut done = vec![false; cells.len()];
+    for y in 0..size.y {
+        for z in 0..size.z {
+            for x in 0..size.x {
+                let i = at(x, y, z).unwrap();
+                if done[i] || !lone(cells[i]) {
+                    continue;
+                }
+                let id = cells[i].unwrap();
+                // Toward north, east, south, west (the bed variants' facings).
+                let ways = [(0, -1), (1, 0), (0, 1), (-1, 0)];
+                let pick = |ok: &dyn Fn(Option<BlockId>) -> bool| ways.iter().enumerate().find_map(|(f, &(dx, dz))| at(x + dx, y, z + dz).filter(|&j| !done[j] && ok(cells[j])).map(|j| (f as u8, j)));
+                let Some((f, j)) = pick(&|c| lone(c) && c == cells[i]).or_else(|| pick(&|c| c == Some(crate::block::AIR))).or_else(|| pick(&|c| c.is_none())) else {
+                    continue;
+                };
+                cells[i] = Some(reg.variant(id, f));
+                cells[j] = Some(reg.variant(id, f | crate::bed::HEAD));
+                done[i] = true;
+                done[j] = true;
+            }
+        }
     }
 }
 
@@ -601,6 +632,20 @@ mod tests {
             assert!(names.insert(st.def.name.clone()), "two structures called {}", st.def.name);
             assert!(st.size.x <= 64 && st.size.z <= 64 && st.size.y <= 80, "{} is too big", st.def.name);
         }
+    }
+
+    #[test]
+    fn a_lone_bed_becomes_a_whole_bed_and_turns() {
+        let reg = BlockRegistry::from_ron(include_str!("../../../packs/vanilla/blocks.ron")).unwrap();
+        let text = r###"(structures: [(name: "t", biomes: [], spacing: 4, palette: [('b', "red_bed"), ('#', "stone")], layers: [["b.", "##"]])])"###;
+        let st = &Structures::from_ron(text, &reg).unwrap().list[0];
+        let red = reg.id("red_bed").unwrap();
+        // North is outside, so the head goes east, into the air.
+        assert_eq!(st.cell(0, 0, 0, 0), Some(reg.variant(red, 1)));
+        assert_eq!(st.cell(0, 1, 0, 0), Some(reg.variant(red, 1 | crate::bed::HEAD)));
+        // A quarter turn: the foot at (1, 0) points south to its head at (1, 1).
+        assert_eq!(st.cell(1, 1, 0, 0), Some(reg.variant(red, 2)));
+        assert_eq!(st.cell(1, 1, 0, 1), Some(reg.variant(red, 2 | crate::bed::HEAD)));
     }
 
     #[test]
