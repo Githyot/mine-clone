@@ -13,6 +13,8 @@ use crate::renderer::Renderer;
 use crate::world::World;
 
 const MAX: usize = 1500;
+/// Marks a flame as soul fire (its colours are worked out as it burns).
+const SOUL: [f32; 3] = [0.0, 0.0, 1.0];
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -204,6 +206,14 @@ impl Particles {
         let vel = carry + Vec3::new(j.x * 0.25, 0.5 + j.y, j.z * 0.25);
         let p = Particle { pos: at + j * Vec3::new(0.1, 0.06, 0.1), vel, life: life * (0.7 + self.rand() * 0.6), size: size * (0.7 + self.rand() * 0.6), layer: layer as u32, uv: [0.4, 0.4], tint, kind, ..Default::default() };
         self.push(p);
+    }
+
+    /// A lick of pale blue soul fire (the flame colours run cyan to deep blue).
+    pub fn soul_flame(&mut self, at: Vec3, layer: u16, size: f32, life: f32) {
+        self.flame(at, Vec3::ZERO, layer, size, life, false);
+        if let Some(p) = self.list.last_mut() {
+            p.tint = SOUL;
+        }
     }
 
     /// An ember flying up off a fire.
@@ -613,9 +623,10 @@ impl Particles {
                         // White-yellow at the root, orange, then a deep red as it dies; it swells
                         // a little on the way up before shrinking away.
                         let k = (p.life / 0.45).clamp(0.0, 1.0);
-                        let hot = [1.6, 1.35, 0.75];
-                        let mid = [1.5, 0.7, 0.18];
-                        let cold = [0.9, 0.22, 0.06];
+                        let soul = p.tint == SOUL;
+                        let hot = if soul { [0.9, 1.6, 1.7] } else { [1.6, 1.35, 0.75] };
+                        let mid = if soul { [0.25, 1.0, 1.4] } else { [1.5, 0.7, 0.18] };
+                        let cold = if soul { [0.05, 0.3, 0.8] } else { [0.9, 0.22, 0.06] };
                         let (a, b, f) = if k > 0.5 { (mid, hot, (k - 0.5) * 2.0) } else { (cold, mid, k * 2.0) };
                         tint = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
                         s *= 1.0 + (1.0 - k) * 0.6;
