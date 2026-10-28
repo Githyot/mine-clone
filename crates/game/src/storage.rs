@@ -61,7 +61,8 @@ pub(crate) struct StoreLook {
 
 /// Where the shown stacks lie (0..1 across the floor) and how they are turned: back ones
 /// first, where a player standing at the front sees the floor.
-const SPOTS: [(f32, f32, f32); 6] = [(0.46, 0.21, 0.9), (0.15, 0.25, 2.6), (0.83, 0.23, 0.1), (0.21, 0.71, 0.3), (0.77, 0.73, 1.9), (0.5, 0.5, 2.2)];
+/// They stay a flat item's half-length away from the walls.
+const SPOTS: [(f32, f32, f32); 6] = [(0.48, 0.28, 0.9), (0.26, 0.3, 2.6), (0.72, 0.3, 0.1), (0.28, 0.7, 0.3), (0.72, 0.72, 1.9), (0.5, 0.52, 2.2)];
 
 fn still(b: [f32; 6]) -> Part {
     Part { b, pivot: Vec3::splat(8.0), yaw: 0.0, pitch: 0.0, shift: Vec3::ZERO, inset: false }

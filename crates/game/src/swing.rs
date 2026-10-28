@@ -270,7 +270,7 @@ impl Game {
     /// MC_STORE_OPEN=k holds it k of the way open.
     fn chest_test(&mut self, list: &str) {
         let f = self.forward();
-        let ahead = self.body.pos + Vec3::new(f.x, 0.0, f.z).normalize_or_zero() * 2.3;
+        let ahead = self.body.pos + Vec3::new(f.x, 0.0, f.z).normalize_or_zero() * (1.0 / (-self.pitch).tan().max(0.3)).clamp(1.2, 2.3);
         // At the player's feet, on something.
         let p = IVec3::new(ahead.x.floor() as i32, (self.body.pos.y + 0.01).floor() as i32, ahead.z.floor() as i32);
         if !self.reg.get(self.world.block_or_air(p - IVec3::Y)).solid {
