@@ -49,6 +49,9 @@ pub struct Pose {
     /// ledge's top above the feet.
     pub mantle: f32,
     pub ledge: f32,
+    /// Lying on the back in a bed whose head end is this way (the body's yaw, beds.rs);
+    /// `pos` is then where the feet are.
+    pub sleeping: Option<f32>,
 }
 
 /// Smoothed animation state that lives between frames.
@@ -204,6 +207,12 @@ impl Animator {
             root = root * Mat4::from_translation(Vec3::Y * 0.75) * Mat4::from_rotation_x(tilt) * Mat4::from_translation(-Vec3::Y * 0.75);
         }
         root = root * Mat4::from_scale(Vec3::new(1.0 / 16.0, (1.0 - squash) / 16.0, 1.0 / 16.0));
+        if let Some(yaw) = p.sleeping {
+            // On the back: the head end toward -z, the back on the blanket, a little smaller
+            // so the whole body fits on the bed.
+            let k = 0.9 / 16.0;
+            root = Mat4::from_translation(rel) * Mat4::from_rotation_y(yaw) * Mat4::from_translation(Vec3::Y * 2.0 * k) * Mat4::from_rotation_x(-FRAC_PI_2) * Mat4::from_scale(Vec3::splat(k));
+        }
 
         let mut rot = [Quat::IDENTITY; 6];
         let mut shift = [Vec3::ZERO; 6];
@@ -421,6 +430,18 @@ impl Animator {
         // Lying down the head lifts to look ahead instead of at the ground.
         let head_lift = -prone * 1.25;
         rot[HEAD] = Quat::from_rotation_y(head_yaw) * Quat::from_rotation_x(head_lift - p.look_pitch * (1.0 - self.swim * 0.6) * (1.0 - prone * 0.5)) * rot[HEAD];
+        if p.sleeping.is_some() {
+            // Still, arms along the sides, the head resting on the pillow, slow breaths.
+            rot = [Quat::IDENTITY; 6];
+            shift = [Vec3::ZERO; 6];
+            rot[HEAD] = Quat::from_rotation_x(0.3);
+            shift[HEAD] = Vec3::new(0.0, -1.0, 1.0);
+            rot[R_ARM] = Quat::from_rotation_z(-0.06 - breathe * 0.015);
+            rot[L_ARM] = Quat::from_rotation_z(0.06 + breathe * 0.015);
+            rot[R_LEG] = Quat::from_rotation_z(0.03);
+            rot[L_LEG] = Quat::from_rotation_z(-0.03);
+            bend = [0.0, 0.0, -0.15, -0.15, 0.08, 0.08];
+        }
 
         for (i, part) in def.parts.iter().enumerate().take(6) {
             let pivot = Vec3::new(part.pivot.0 as f32, part.pivot.1 as f32, part.pivot.2 as f32);

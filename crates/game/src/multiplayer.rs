@@ -429,6 +429,7 @@ impl Game {
         set(pose.flying, flags::FLYING);
         set(pose.sprinting, flags::SPRINTING);
         set(pose.sitting, flags::SITTING);
+        set(pose.sleeping.is_some(), flags::SLEEPING);
         set(pose.hurt, flags::HURT);
         set(!self.survival, flags::CREATIVE);
         set(self.screen == Screen::Dead, flags::DEAD);
@@ -2053,6 +2054,7 @@ impl Game {
                     burning: s.has(flags::BURNING),
                     hurt: s.has(flags::HURT),
                     sitting: s.has(flags::SITTING),
+                    sleeping: s.has(flags::SLEEPING).then(|| self.bed_under(r.shown)).flatten().map(crate::beds::body_yaw),
                     holding: !s.held.is_empty(),
                     torch: crate::torch::index(&s.held).is_some(),
                     ..Default::default()

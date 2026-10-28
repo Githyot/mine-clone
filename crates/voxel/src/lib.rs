@@ -2,6 +2,7 @@
 //! lighting, meshing, raycasting, physics and saving. Pure CPU code so it can be
 //! tested and benchmarked without a window or GPU.
 
+pub mod bed;
 pub mod block;
 pub mod chunk;
 pub mod gems;

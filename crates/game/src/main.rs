@@ -5,6 +5,7 @@
 
 mod ambient;
 mod ambient_life;
+mod beds;
 mod material;
 mod companions;
 mod options;
@@ -740,6 +741,8 @@ struct Game {
     naming: Option<(usize, String)>,
     /// The chair the player sits on.
     seat: Option<IVec3>,
+    /// Lying in a bed (beds.rs).
+    sleep: Option<beds::Sleep>,
     /// Which dimension is loaded, time spent standing in a portal, and where a trip lands.
     dim: voxel::worldgen::Dim,
     portal_t: f32,
@@ -1163,6 +1166,7 @@ impl Game {
             boating: None,
             naming: None,
             seat: None,
+            sleep: None,
             dim: voxel::worldgen::Dim::Overworld,
             portal_t: 0.0,
             arrival: None,
@@ -2091,6 +2095,10 @@ impl Game {
                     // Test hook: an Etapa 5 scene (terraria.rs, test_t5).
                     self.test_t5(&scene);
                 }
+                if let Ok(what) = std::env::var("MC_BED") {
+                    // Test hook: every colour of bed, or asleep in one (beds.rs).
+                    self.bed_test(&what);
+                }
                 if let Ok(scene) = std::env::var("MC_TR") {
                     // Test hook: the rest of the Terraria side (tr.rs, test_tr).
                     self.test_tr(&scene);
@@ -2323,7 +2331,8 @@ impl Game {
         let was_ground = self.body.on_ground;
         // The camera pass for screenshots holds still.
         if self.args.screenshot.is_none() {
-            if !self.seat_step(input.sneak)
+            if !self.sleep_step(input.sneak, dt)
+                && !self.seat_step(input.sneak)
                 && !self.ride_step(wish, input.sneak)
                 && !self.pilot_step(wish, input.sneak, dt)
                 && !self.boat_step(wish, input.sneak, dt)
@@ -2937,6 +2946,7 @@ impl Game {
             shield_left: !self.held_stack().is_some_and(|s| self.items.get(s.item).name == "shield"),
             mantle: self.body.mantle.map_or(0.0, |m| m.progress().max(1e-3)),
             ledge: self.body.mantle.map_or(0.0, |m| m.ledge - self.body.pos.y),
+            sleeping: self.sleep.map(|s| beds::body_yaw(s.facing)),
         }
     }
 
@@ -3019,6 +3029,7 @@ impl Game {
         if self.health <= 0.0 {
             self.health = 0.0;
             self.prone = false;
+            self.sleep = None;
             self.sfx(Sfx::Death);
             self.set_screen(Screen::Dead);
             self.surv_died();
@@ -3306,6 +3317,8 @@ impl Game {
             Shape::Slab => upper as u8,
             Shape::Stairs | Shape::Roof => facing(f.x, f.z) | if upper { 4 } else { 0 },
             Shape::Door => facing(f.x, f.z),
+            // The head lies away from you, on the far side of the block clicked.
+            Shape::Bed => facing(f.x, f.z),
             Shape::FenceGate => facing(f.x, f.z),
             // A chair turns to face the player who puts it down.
             Shape::Chair => facing(-f.x, -f.z),
@@ -3405,6 +3418,9 @@ impl Game {
                 return self.placed(pos, id);
             }
             return None;
+        }
+        if shape == Shape::Bed {
+            return self.place_bed(pos, id, v);
         }
         let id_v = self.variant_id(id, v);
         // Plants, torches and redstone parts need something under them.
@@ -3950,6 +3966,11 @@ impl Game {
         if self.survival && self.hurt_age < 0.4 {
             let a = ((0.4 - self.hurt_age) / 0.4 * 90.0) as u8;
             self.ui.rect(0.0, 0.0, w, h, [200, 0, 0, a]);
+        }
+        let night = self.sleep_fade();
+        if night > 0.0 {
+            // Falling asleep: the view goes dark.
+            self.ui.rect(0.0, 0.0, w, h, [4, 6, 14, (night * 235.0) as u8]);
         }
         self.draw_immersion_overlay(w, h);
         let haze = self.portal_haze();
@@ -4560,6 +4581,7 @@ impl Game {
         // Eye height eases between standing, sneaking and lying down instead of jumping.
         let stand = if self.body.flying { voxel::physics::EYE_HEIGHT } else { voxel::physics::EYE_HEIGHT - 0.25 * self.crouch };
         let head = self.body.pos + Vec3::Y * (stand + (0.42 - stand) * self.prone_t - self.sink);
+        let head = self.sleep.map(|s| s.eye()).unwrap_or(head);
         let playing_view = self.world_open && !matches!(self.screen, Screen::Loading);
         let third = playing_view && self.camera_mode != 0;
         let mut view_fwd = self.forward();
@@ -4572,6 +4594,7 @@ impl Game {
             let world = &self.world;
             // Lying down, the camera orbits a bit above the body so it clears the ground.
             let pivot = head + Vec3::Y * 0.6 * self.prone_t;
+            let pivot = self.sleep.map(|s| s.middle()).unwrap_or(pivot);
             // Test hook: MC_CAMDIST=blocks for close-ups.
             let far = std::env::var("MC_CAMDIST").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(4.0);
             let dist = raycast(pivot, dir, far, |p| voxel::physics::Terrain::solid(world, p)).map(|h| (h.distance - 0.3).max(0.2)).unwrap_or(far);
@@ -4827,14 +4850,16 @@ impl Game {
                 let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
                 let mut bones = self.anim.bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
                 let pv = def.parts[2].pivot;
-                held_third = self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32));
-                if let Some((t, mesh)) = self.held_torch().and_then(|t| Some((t, self.entities.torch_mesh(t)?))) {
+                // Asleep, the hands are empty.
+                let awake = self.sleep.is_none();
+                held_third = self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32)).filter(|_| awake);
+                if let Some((t, mesh)) = self.held_torch().filter(|_| awake).and_then(|t| Some((t, self.entities.torch_mesh(t)?))) {
                     let (tb, top) = torch::hold(t, bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 1.0, 0.62, self.now, [bones.light[0], 1.0, 0.0, 0.0]);
                     items.push((mesh, tb));
                     torch_top = Some((t, top + block.as_vec3(), 1.0));
                 }
                 // An instrument is held in both hands, in 3D.
-                if let Some((i, play)) = self.held_instrument() {
+                if let Some((i, play)) = self.held_instrument().filter(|_| awake) {
                     if let (Some(ib), Some(mesh)) = (instruments::pose(def, &mut bones, i, play), self.entities.instrument_mesh(i)) {
                         items.push((mesh, ib));
                     }
@@ -4842,7 +4867,7 @@ impl Game {
                 items.extend(self.armor_instances(&bones));
                 items.extend(self.shield_instances(&self.shields_worn(), &bones, Game::arm_pivots(def), self.extras.raise));
                 items.push((pd, bones));
-            } else if self.screen == Screen::Playing && !self.hide_hud {
+            } else if self.screen == Screen::Playing && !self.hide_hud && self.sleep.is_none() {
                 // The arm always shows; a held item sits in its fist (held_item_instance).
                 let l = self.world.light(head.floor().as_ivec3());
                 let light = [(l >> 4) as f32 / 15.0, ((l & 15) as f32 / 15.0).max(self.hand_light_level()), 0.0, 0.0];
