@@ -9,6 +9,7 @@ mod material;
 mod companions;
 mod options;
 mod sentries;
+mod shield;
 mod vanity;
 mod wings;
 mod anim;
@@ -1916,6 +1917,11 @@ impl Game {
                     // Test hook: hold this item (any item name) in the selected slot.
                     self.surv.inv.slots[self.selected] = Some(voxel::item::ItemStack::new(it, 1));
                 }
+                if let Ok(spec) = std::env::var("MC_SHIELD") {
+                    // Test hook: a shield in the off hand, `item[:colour[:design 1..12:colour]]`
+                    // (MC_SHIELD_MAIN puts it in the main hand instead).
+                    self.test_shield(&spec, std::env::var("MC_SHIELD_MAIN").is_ok());
+                }
                 if std::env::var("MC_NOHUD").is_ok() {
                     // Test hook: no HUD, for clean third-person shots.
                     self.hide_hud = true;
@@ -2892,6 +2898,8 @@ impl Game {
             sitting: self.riding.is_some() || self.seat.is_some() || self.mods.aircraft.pilot.is_some() || self.t5.comp.mount.is_some(),
             holding: self.held_stack().is_some(),
             torch: self.held_torch().is_some(),
+            shield_up: if self.shields_worn().iter().any(|(l, m)| l.kind == 0 && matches!(m, shield::Mount::Hand { .. })) { self.extras.raise } else { 0.0 },
+            shield_left: !self.held_stack().is_some_and(|s| self.items.get(s.item).name == "shield"),
             mantle: self.body.mantle.map_or(0.0, |m| m.progress().max(1e-3)),
             ledge: self.body.mantle.map_or(0.0, |m| m.ledge - self.body.pos.y),
         }
@@ -4764,6 +4772,7 @@ impl Game {
             if !third && self.renderer.fx.level > 0 {
                 let bones = self.anim.bones(def, &pose, block, 1.0, 1.0);
                 shadow_only.extend(self.armor_instances(&bones));
+                shadow_only.extend(self.shield_instances(&self.shields_worn(), &bones, Game::arm_pivots(def), self.extras.raise));
                 shadow_only.push((pd, bones));
             }
             if third {
@@ -4783,6 +4792,7 @@ impl Game {
                     }
                 }
                 items.extend(self.armor_instances(&bones));
+                items.extend(self.shield_instances(&self.shields_worn(), &bones, Game::arm_pivots(def), self.extras.raise));
                 items.push((pd, bones));
             } else if self.screen == Screen::Playing && !self.hide_hud {
                 // The arm always shows; a held item sits in its fist (held_item_instance).
@@ -4804,7 +4814,13 @@ impl Game {
                         overlay.push((mesh, tb));
                         torch_top = Some((t, top + block.as_vec3(), 0.5));
                     }
-                    overlay.push((pd, arm));
+                    // A shield in either hand (shield.rs); held in the main hand it takes the
+                    // place of the arm, as in the classic game.
+                    let (shields, main_shield) = self.shield_first_person(eye - block.as_vec3(), light, Vec3::ZERO);
+                    overlay.extend(shields);
+                    if !main_shield {
+                        overlay.push((pd, arm));
+                    }
                 }
             }
         }
@@ -4862,6 +4878,7 @@ impl Game {
                 *mm = (m * glam::Mat4::from_cols_array_2d(mm)).to_cols_array_2d();
             }
             overlay.extend(self.armor_instances(&b));
+            overlay.extend(self.shield_instances(&self.shields_worn(), &b, Game::arm_pivots(def), 0.0));
             overlay.push((pd, b));
             let back = center + f * (world_h * 1.3) - block.as_vec3();
             figure_backdrop = Some(item_render::GpuItem { pos: [back.x, back.y, back.z, world_h * 1.22 * (d + world_h * 1.3) / d], info: [0.0, 0.0, 0.0, 0.0], layers: [0.0; 4], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });

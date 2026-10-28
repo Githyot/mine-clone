@@ -2120,6 +2120,9 @@ impl Game {
         }
         self.t5_details(st, &mut out);
         self.rpg_details(&it.name, &mut out);
+        if let Some(arms) = crate::shield::Look::of(&it.name, st.sockets).and_then(|l| l.describe()) {
+            out.push((arms, [230, 200, 120, 255]));
+        }
         out.extend(self.gem_tooltip(st));
         out
     }
@@ -2144,7 +2147,8 @@ impl Game {
     fn craft_result(&self) -> Option<ItemStack> {
         let n = self.surv.grid_size();
         let grid: Vec<Option<ItemStack>> = (0..n * n).map(|i| self.surv.craft[i]).collect();
-        self.recipes.craft(&grid, n).filter(|r| self.station_ok(r.item))
+        // A shield takes a banner's colour or a dye's design (shield.rs).
+        self.shield_craft(&grid).or_else(|| self.recipes.craft(&grid, n).filter(|r| self.station_ok(r.item)))
     }
 
     pub(crate) fn slot_get(&self, slot: Slot) -> Option<ItemStack> {
@@ -2742,6 +2746,10 @@ impl Game {
         }
         if crate::torch::index(&it.name).is_some() {
             // Torches are 3D models with a live flame (torch.rs).
+            return None;
+        }
+        if crate::shield::Look::of(&it.name, 0).is_some() {
+            // So are shields (shield.rs).
             return None;
         }
         let tool = it.tool.is_some() || it.name.ends_with("_sword") || matches!(it.name.as_str(), "stick" | "blaze_rod" | "breeze_rod" | "bone" | "mace" | "trident") || it.name.ends_with("_rod");

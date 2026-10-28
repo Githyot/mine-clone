@@ -87,7 +87,7 @@ pub fn weapon_of(name: &str, kind: Option<ToolKind>) -> Option<Weapon> {
 }
 
 impl Game {
-    fn held_weapon(&self) -> Option<Weapon> {
+    pub(crate) fn held_weapon(&self) -> Option<Weapon> {
         let st = self.held_stack()?;
         let it = self.items.get(st.item);
         weapon_of(&it.name, it.tool.as_ref().map(|t| t.kind))
@@ -184,7 +184,8 @@ impl Game {
             self.mods.combat.warned = false;
             return;
         }
-        if let Some(st) = self.surv.offhand {
+        // A shield stays: it is slung on the back until the hands are free (shield.rs).
+        if let Some(st) = self.surv.offhand.filter(|s| self.items.get(s.item).name != "shield") {
             let left = self.surv.inv.add(&self.items, st);
             self.surv.offhand = left;
             if !self.mods.combat.warned {
