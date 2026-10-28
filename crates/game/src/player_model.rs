@@ -42,6 +42,9 @@ pub struct Pose {
     pub holding: bool,
     /// A torch in the right hand: held up high ahead, lighting the way (torch.rs).
     pub torch: bool,
+    /// A shield coming up to block: 0..1, and in which hand (shield.rs).
+    pub shield_up: f32,
+    pub shield_left: bool,
     /// Pulling up onto a ledge: 0 = not climbing, else 0..1 through the climb, and the
     /// ledge's top above the feet.
     pub mantle: f32,
@@ -330,6 +333,12 @@ impl Animator {
             let f = self.time * 18.0;
             rot[R_ARM] = Quat::from_rotation_x(-2.4 + f.sin() * 0.6);
             rot[L_ARM] = Quat::from_rotation_x(-2.4 + f.cos() * 0.6);
+        }
+        if p.shield_up > 0.0 {
+            // Blocking: the shield arm comes up in front, turned in across the chest.
+            let (i, side) = if p.shield_left { (L_ARM, 1.0) } else { (R_ARM, -1.0) };
+            let up = Quat::from_rotation_y(-side * 0.45) * Quat::from_rotation_x(-0.95 + arm * 0.15);
+            rot[i] = rot[i].slerp(up, p.shield_up.clamp(0.0, 1.0));
         }
         if self.swing > 0.0 {
             // Hit: the right arm comes down from above, the body twists into it. Combo swings

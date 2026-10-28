@@ -287,6 +287,8 @@ pub struct PlayerState {
     pub armor: [String; 4],
     /// The chest this player has open, so everyone sees its lid up.
     pub chest: Option<[i32; 3]>,
+    /// The shield shown, packed (look, hand or back, up): 0 = none (game's shield.rs).
+    pub shield: u32,
 }
 
 impl PlayerState {

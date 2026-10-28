@@ -82,6 +82,8 @@ pub struct Extras {
     pub book: Option<BookOpen>,
     /// The shield is up this frame.
     pub blocking: bool,
+    /// 0..1, how far the shield has come up (shield.rs).
+    pub raise: f32,
     egg_t: f32,
     climb_t: f32,
     regrow_t: f32,
@@ -134,6 +136,7 @@ impl Extras {
             books: Vec::new(),
             book: None,
             blocking: false,
+            raise: 0.0,
             egg_t: 0.0,
             climb_t: 0.0,
             regrow_t: 0.0,
@@ -189,6 +192,7 @@ fn instrument(below: &str) -> u8 {
 impl Game {
     pub(crate) fn update_extras(&mut self, dt: f32, use_held: bool) {
         self.update_shield(use_held);
+        self.update_shield_raise(dt);
         self.update_fire(dt);
         self.update_jukebox();
         if dt > 0.0 {
@@ -222,7 +226,7 @@ impl Game {
         let off = self.surv.offhand.map(|s| self.items.get(s.item).name.clone()).unwrap_or_default();
         // The shield goes up with the use button, unless the main hand is busy with something
         // it uses itself (food, a bow...).
-        let main_busy = !main.is_empty() && main != "shield" && (self.held_stack().is_some_and(|s| self.items.get(s.item).food.is_some()) || matches!(main.as_str(), "bow" | "crossbow" | "trident" | "fishing_rod"));
+        let main_busy = !main.is_empty() && main != "shield" && (self.held_stack().is_some_and(|s| self.items.get(s.item).food.is_some()) || matches!(main.as_str(), "bow" | "crossbow" | "trident" | "fishing_rod") || self.hands_full());
         self.extras.blocking = self.survival && use_held && self.screen == crate::Screen::Playing && (main == "shield" || off == "shield" && !main_busy);
     }
 
