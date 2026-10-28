@@ -19,6 +19,8 @@
     (name: "emerald_block", display_name: Some("Bloco de Esmeralda"), hardness: 5.0, tool: Some(Pickaxe), tier: 3, textures: (all: Some("emerald_block"))),
     (name: "lapis_block", display_name: Some("Bloco de Lápis-lazúli"), hardness: 3.0, tool: Some(Pickaxe), tier: 2, textures: (all: Some("lapis_block"))),
     (name: "frosted_ice", display_name: Some("Gelo Fosco"), hardness: 0.5, transparency: Translucent, in_inventory: false, drops: Some([]), textures: (all: Some("frosted_ice"))),
+    // Lava under frost magic: a crust that cracks back into lava after a while (elements.rs).
+    (name: "lava_crust", display_name: Some("Crosta de Lava"), hardness: 1.0, light: 4, in_inventory: false, drops: Some([]), tool: Some(Pickaxe), textures: (all: Some("lava_crust"))),
     (name: "slime_block", display_name: Some("Bloco de Slime"), hardness: 0.0, transparency: Translucent, textures: (all: Some("slime_block"))),
     (name: "candle", display_name: Some("Vela"), shape: Torch, transparency: Cutout, solid: false, light: 6, hardness: 0.1, textures: (all: Some("candle"))),
     (name: "soul_lantern", display_name: Some("Lanterna de Almas"), shape: Lantern, transparency: Cutout, light: 10, hardness: 1.5, tool: Some(Pickaxe), textures: (side: Some("soul_lantern"), top: Some("soul_lantern_top"), bottom: Some("soul_lantern_top"))),

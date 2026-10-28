@@ -292,6 +292,11 @@ pub struct Mob {
     /// Seconds left burning (fire spells) and slowed (frost spells).
     pub on_fire: f32,
     pub chill: f32,
+    /// Seconds left soaked (water spells, rain, swimming): fire won't take, frost freezes it
+    /// solid and lightning hurts twice as much.
+    pub wet: f32,
+    /// Seconds left frozen in a block of ice: it can't move or attack.
+    pub frozen: f32,
     /// Rain is falling on it (set by the game each tick): undead don't burn in sunlight then.
     pub rained_on: bool,
     /// Lasting harm the game put on it (Terraria-style debuffs: poison, frostburn, ichor...):
@@ -370,6 +375,8 @@ impl Mob {
             fed: 20.0 + rng.f32() * 40.0,
             on_fire: 0.0,
             chill: 0.0,
+            wet: 0.0,
+            frozen: 0.0,
             rained_on: false,
             debuffs: Vec::new(),
             vuln: 0.0,
@@ -485,6 +492,23 @@ impl Mob {
         }
         self.chill = (self.chill - dt).max(0.0);
         self.body.speed_override = Some(def.speed * if self.chill > 0.0 { 0.4 } else { 1.0 });
+        // Water and rain soak it; a soaked mob doesn't keep burning.
+        if self.body.in_water || self.rained_on {
+            self.wet = self.wet.max(5.0);
+        } else {
+            self.wet = (self.wet - dt).max(0.0);
+        }
+        if self.wet > 0.0 && self.on_fire > 0.0 {
+            self.on_fire = 0.0;
+        }
+        // Frozen solid: it only falls until the ice lets go.
+        if self.frozen > 0.0 {
+            self.frozen = (self.frozen - dt).max(0.0);
+            self.body.vel.x = 0.0;
+            self.body.vel.z = 0.0;
+            self.body.step(world, &Input::default(), dt);
+            return;
+        }
         if def.burns_in_daylight && daylight && sky_light_at_head >= 14 && !self.body.in_water && !self.rained_on {
             self.burn_tick += dt;
             if self.burn_tick > 1.0 {

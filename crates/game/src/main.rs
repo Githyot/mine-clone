@@ -27,6 +27,7 @@ mod selectors;
 mod audio;
 mod backpacks;
 mod controller;
+mod elements;
 mod enchanting;
 mod effects;
 mod progression;
@@ -655,6 +656,8 @@ struct Game {
     /// 20 at the start, up to 40 with life crystals.
     max_health: f32,
     magic: magic::Magic,
+    /// What spells do to the world (elements.rs): spells' blocks that thaw back later.
+    elements: elements::Elements,
     boss: bosses::BossState,
     /// The Terraria side (Etapa 5): accessories, glyph spells, hard mode and its events.
     t5: terraria::Terraria,
@@ -1074,6 +1077,7 @@ impl Game {
             health,
             max_health,
             magic: magic::Magic::new(max_mana),
+            elements: Default::default(),
             boss: bosses::BossState::new(bosses_beaten),
             t5: terraria::Terraria::default(),
             ne: nether_end::NetherEnd::default(),
@@ -1467,6 +1471,7 @@ impl Game {
         self.surv.save(&self.world.save.dir, &self.items);
         self.progress_save();
         self.t5_save();
+        self.elements_save();
         self.prog.save(&level_path_hint(&self.base, &self.world_name), &self.items);
         self.extras.save(&self.world.save.dir, &level_path_hint(&self.base, &self.world_name));
         self.save_mods();
@@ -1878,6 +1883,10 @@ impl Game {
                     // Test hook: a Phase 6 scene (stations, effects, advancements, mobs).
                     self.test_fase6(&scene);
                 }
+                if let Ok(scene) = std::env::var("MC_ELEMENTS") {
+                    // Test hook: a pond and a spell cast into it (elements.rs; MC_PLACE=frames).
+                    self.test_elements(&scene);
+                }
                 if std::env::var("MC_PALE").is_ok() {
                     // Test hook: the pale garden's and resin's new blocks.
                     self.test_pale();
@@ -2029,6 +2038,7 @@ impl Game {
             let use_held = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
             self.surv_update(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
             self.update_magic(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
+            self.update_elements(if self.args.screenshot.is_some() { 0.0 } else { dt });
             self.update_fase6(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
             if sim {
                 self.update_boss(if self.args.screenshot.is_some() { 0.0 } else { dt });
@@ -4572,11 +4582,16 @@ impl Game {
             let place_frames = std::env::var("MC_PLACE").ok().and_then(|v| v.parse::<i32>().ok());
             let k = PLACED.load(std::sync::atomic::Ordering::Relaxed);
             if let (Some(n), true) = (place_frames, k >= 0) {
+                if let Ok(scene) = std::env::var("MC_ELEMENTS") {
+                    self.elements_frame(k, &scene);
+                }
                 capture = true;
                 PLACED.store(k + 1, std::sync::atomic::Ordering::Relaxed);
                 exit_after = k >= n;
             } else if (self.loaded_frames > 30 && self.world.pending_jobs() == 0 && self.lod.is_complete() && self.fluids.time >= self.args.wait as f64) || self.loaded_frames > 1500 {
-                if place_frames.is_some() {
+                if place_frames.is_some() && std::env::var("MC_ELEMENTS").is_ok() {
+                    PLACED.store(0, std::sync::atomic::Ordering::Relaxed);
+                } else if place_frames.is_some() {
                     let name = std::env::var("MC_PLACE_BLOCK").unwrap_or("oak_planks".into());
                     if let (true, Some(hit)) = (name == "break", self.target) {
                         // MC_PLACE_BLOCK=break: break the block aimed at instead.

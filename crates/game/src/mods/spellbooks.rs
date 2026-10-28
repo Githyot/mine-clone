@@ -19,6 +19,7 @@ use voxel::physics::Terrain;
 use winit::keyboard::KeyCode;
 
 use crate::audio::Sfx;
+use crate::elements::El;
 use crate::Game;
 
 /// The low bits of a stack's `damage` that hold a book's number or a scroll's level (the top
@@ -758,6 +759,10 @@ impl Game {
             Form::Beam { range, through } => {
                 let to = self.beam(eye, fwd, range, through, dmg, sp.school, spell, false);
                 self.beam_glow(from, to, col);
+                let end = self.spell_aim(range);
+                if end.distance(eye) < range - 0.5 {
+                    self.element_hit(end, crate::elements::of_school(sp.school), 1.0, 0.5);
+                }
             }
             Form::Cone { range, push } => {
                 let hits: Vec<usize> = self.targets(|c| {
@@ -770,6 +775,10 @@ impl Game {
                     let away = (m.body.pos - eye).normalize_or_zero();
                     m.body.vel += Vec3::new(away.x, 0.3, away.z) * push;
                 }
+                let end = self.spell_aim(range);
+                if end.distance(eye) < range - 0.5 {
+                    self.element_hit(end, crate::elements::of_school(sp.school), 1.5, if sp.cooldown < 0.5 { 0.3 } else { 1.0 });
+                }
                 let n = if sp.cooldown < 0.5 { 6 } else { 30 };
                 for _ in 0..n {
                     let j = Vec3::new(self.surv.rng.f32() - 0.5, self.surv.rng.f32() - 0.5, self.surv.rng.f32() - 0.5) * 0.5;
@@ -779,10 +788,12 @@ impl Game {
             }
             Form::Nova { radius, push } => {
                 let me = self.body.pos;
+                self.element_hit(me + Vec3::Y * 0.2, crate::elements::of_school(sp.school), radius, 2.0);
                 self.nova(me, radius, push, dmg, spell, false);
             }
             Form::Area { radius, lift } => {
                 let at = self.look_spot(24.0);
+                self.element_hit(at, crate::elements::of_school(sp.school), radius, 1.5);
                 self.area(at, radius, lift, dmg, spell, false);
             }
             Form::Strikes => {
@@ -900,13 +911,12 @@ impl Game {
         let undead = def.burns_in_daylight || def.name.contains("skeleton") || def.name.contains("zombie");
         let dmg = if sp.school == 6 && undead { dmg * 2.0 } else { dmg };
         let name = def.display_name.clone();
+        // Fire, frost, lightning on the mob (elements.rs): burning, frozen, soaked twice as hurt.
+        let dmg = dmg * self.element_mob(k, crate::elements::of_school(sp.school), dmg);
         let m = &mut self.mobs.list[k];
         m.hurt(dmg, from);
-        match sp.school {
-            0 => m.on_fire = m.on_fire.max(4.0),
-            1 => m.chill = m.chill.max(3.0),
-            4 => m.chill = m.chill.max(2.5),
-            _ => {}
+        if sp.school == 4 {
+            m.chill = m.chill.max(2.5);
         }
         if sp.id == "ender_orb" && m.alive() {
             // Thrown somewhere else nearby.
@@ -1096,6 +1106,14 @@ impl Game {
                     landed.push((p.pos - step / n as f32, p.spell, None, p.damage, p.hostile));
                     return false;
                 }
+                // Fire, frost and lightning stop on water and lava, and act on it.
+                let el = crate::elements::of_school(SPELLS[p.spell].school);
+                let cell = p.pos.floor().as_ivec3();
+                let before = (p.pos - step / n as f32).floor().as_ivec3();
+                if !p.hostile && matches!(el, El::Fire | El::Frost | El::Shock) && self.world.is_liquid(self.world.block_or_air(cell)) && !self.world.is_liquid(self.world.block_or_air(before)) {
+                    landed.push((p.pos, p.spell, None, p.damage, false));
+                    return false;
+                }
             }
             true
         });
@@ -1120,6 +1138,13 @@ impl Game {
             Form::Bolt { burst, .. } => burst,
             _ => 0.0,
         };
+        let el = crate::elements::of_school(sp.school);
+        if burst > 0.0 {
+            self.element_hit(at, el, burst * 0.8, 2.0);
+            self.blast_world(at, burst);
+        } else {
+            self.element_hit(at, el, 1.3, 1.0);
+        }
         if burst > 0.0 {
             if hostile {
                 let d = self.body.center().distance(at);
@@ -1217,6 +1242,9 @@ impl Game {
                         for k in self.targets(|c| c.distance(ground) < 2.5) {
                             self.spell_hit_mob(k, dmg, ground + Vec3::Y * 8.0, spell);
                         }
+                    }
+                    if !hostile {
+                        self.element_hit(ground, crate::elements::El::Shock, 2.0, 2.5);
                     }
                     self.weather.flash = self.weather.flash.max(0.6);
                     self.sfx(Sfx::Thunder(1.0));

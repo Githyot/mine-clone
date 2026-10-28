@@ -8,6 +8,7 @@ use glam::Vec3;
 use voxel::physics::Terrain;
 
 use crate::audio::Sfx;
+use crate::elements::El;
 use crate::ui::UiBatch;
 use crate::Game;
 
@@ -88,6 +89,15 @@ const SPELLS: &[SpellDef] = &[
     SpellDef { item: "colossus_staff", school: 1, cost: 9.0, cooldown: 0.8, damage: 6.0, speed: 26.0, life: 1.0, shot: Shot::Fan(5) },
     SpellDef { item: "star_tome", school: 5, cost: 9.0, cooldown: 0.5, damage: 9.0, speed: 22.0, life: 2.5, shot: Shot::Stars(4) },
 ];
+
+/// The element a spell carries into the world (elements.rs).
+fn element(sp: &SpellDef) -> El {
+    if sp.item == "water_bolt" {
+        El::Water
+    } else {
+        crate::elements::of_school(sp.school)
+    }
+}
 
 /// What a caster does, for its tooltip.
 pub fn describe(item: &str) -> Option<String> {
@@ -220,6 +230,14 @@ impl Game {
         }
     }
 
+    /// Test pictures: cast the spell of this caster now, ready or not.
+    pub(crate) fn cast_now(&mut self, item: &str) {
+        if let Some(i) = SPELLS.iter().position(|s| s.item == item) {
+            self.magic.cooldown = 0.0;
+            self.try_cast(i);
+        }
+    }
+
     fn try_cast(&mut self, i: usize) {
         let sp = &SPELLS[i];
         if self.magic.cooldown > 0.0 {
@@ -346,14 +364,23 @@ impl Game {
             }
             let step = b.vel * dt;
             let n = (step.length() / 0.25).ceil().max(1.0) as usize;
+            // Fire, frost, water and lightning stop where they meet water or lava (and act
+            // on it); a bolt cast from under water swims on.
+            let wets = !matches!(element(sp), El::Nature | El::Arcane);
             for _ in 0..n {
+                let was_liquid = self.world.is_liquid(self.world.block_or_air(b.pos.floor().as_ivec3()));
                 b.pos += step / n as f32;
                 if let Some(mi) = self.mob_at(b.pos) {
                     hits.push((b.pos, b.spell, Some(mi)));
                     return false;
                 }
-                if self.world.solid(b.pos.floor().as_ivec3()) {
+                let cell = b.pos.floor().as_ivec3();
+                if self.world.solid(cell) {
                     hits.push((b.pos - step / n as f32, b.spell, None));
+                    return false;
+                }
+                if wets && !was_liquid && self.world.is_liquid(self.world.block_or_air(cell)) {
+                    hits.push((b.pos, b.spell, None));
                     return false;
                 }
             }
@@ -415,19 +442,21 @@ impl Game {
     }
 
     pub(crate) fn hurt_mob(&mut self, i: usize, dmg: f32, from: Vec3, school: u8) {
+        self.hurt_mob_el(i, dmg, from, school, crate::elements::of_school(school));
+    }
+
+    /// A spell's hit on a mob: its element sets it burning, slows, soaks or freezes it, and
+    /// can make the hit land harder (elements.rs).
+    pub(crate) fn hurt_mob_el(&mut self, i: usize, dmg: f32, from: Vec3, school: u8, el: El) {
         let mut dmg = dmg * self.magic.power;
         // Magic critical hits (rpg.rs).
         if self.surv.rng.f32() < self.t5.rpg.stats.crit[crate::rpg::MAGIC] {
             dmg *= 1.5;
         }
+        dmg *= self.element_mob(i, el, dmg);
         self.orichalcum_petals(i, dmg);
         let m = &mut self.mobs.list[i];
         m.hurt(dmg, from);
-        match school {
-            0 => m.on_fire = m.on_fire.max(4.0),
-            1 => m.chill = m.chill.max(3.0),
-            _ => {}
-        }
         let def = &self.mobs.reg.defs[m.def];
         self.last_hit = Some((def.display_name.clone(), m.health.max(0.0), m.max_health, self.now + 3.0));
         if school == 4 && self.survival {
@@ -440,6 +469,18 @@ impl Game {
         let sp = &SPELLS[spell];
         let layer = self.glow_layer();
         let eye = self.body.eye();
+        let el = element(sp);
+        // What it does to the blocks where it landed.
+        match sp.shot {
+            Shot::Burst(r) | Shot::Meteor(r) => {
+                self.element_hit(at, el, r * 0.8, if matches!(sp.shot, Shot::Meteor(_)) { 3.0 } else { 2.0 });
+                self.blast_world(at, r);
+            }
+            Shot::Flame => self.element_hit(at, el, 0.8, 0.25),
+            Shot::Fan(_) | Shot::Ring(_) => self.element_hit(at, el, 1.6, 0.8),
+            _ => self.element_hit(at, el, 1.3, 1.0),
+        }
+        let sp = &SPELLS[spell];
         if let Shot::Burst(r) | Shot::Meteor(r) = sp.shot {
             let around: Vec<(usize, f32)> = self
                 .mobs
@@ -451,7 +492,7 @@ impl Game {
                 .filter(|(_, d)| *d < r)
                 .collect();
             for (k, d) in around {
-                self.hurt_mob(k, sp.damage * (1.0 - d / r * 0.6), at, sp.school);
+                self.hurt_mob_el(k, sp.damage * (1.0 - d / r * 0.6), at, sp.school, el);
             }
             for _ in 0..40 {
                 let dir = Vec3::new(self.surv.rng.f32() - 0.5, self.surv.rng.f32() - 0.3, self.surv.rng.f32() - 0.5).normalize_or_zero();
@@ -461,7 +502,7 @@ impl Game {
             return;
         }
         if let Some(k) = mob {
-            self.hurt_mob(k, sp.damage, eye, sp.school);
+            self.hurt_mob_el(k, sp.damage, eye, sp.school, el);
             self.sfx(Sfx::MobHit);
         }
         for _ in 0..8 {
@@ -480,11 +521,12 @@ impl Game {
         let mut p = eye;
         for _ in 0..128 {
             p += fwd * 0.25;
-            if self.mob_at(p).is_some() || self.world.solid(p.floor().as_ivec3()) {
+            if self.mob_at(p).is_some() || self.world.solid(p.floor().as_ivec3()) || self.world.is_liquid(self.world.block_or_air(p.floor().as_ivec3())) {
                 at = p;
                 break;
             }
         }
+        self.element_hit(at, El::Shock, 2.0, 2.5);
         let around: Vec<usize> = self.mobs.list.iter().enumerate().filter(|(_, m)| m.alive() && m.body.center().distance(at) < 2.5).map(|(k, _)| k).collect();
         for k in around {
             self.hurt_mob(k, sp.damage, at + Vec3::Y * 8.0, sp.school);
@@ -645,6 +687,9 @@ impl Game {
                 }
             }
             Shot::Ring(n) => {
+                // The ice spikes freeze the water all around the caster.
+                let feet = self.body.pos + Vec3::Y * 0.2;
+                self.element_hit(feet, element(sp), 4.5, 2.0);
                 let from = self.body.pos + Vec3::Y * 1.0;
                 for k in 0..n {
                     let a = k as f32 / n as f32 * std::f32::consts::TAU;
@@ -727,6 +772,8 @@ impl Game {
             if !self.world.solid(next.floor().as_ivec3()) {
                 v.pos = next;
             }
+            // Its wind drags dropped items in too.
+            self.blow_items(v.pos, 7.0, -dt * 25.0);
             for _ in 0..3 {
                 let a = self.surv.rng.f32() * std::f32::consts::TAU;
                 let r = 0.4 + self.surv.rng.f32() * 1.6;

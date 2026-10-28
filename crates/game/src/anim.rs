@@ -481,6 +481,13 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
     if swell > 0.0 {
         b.light[3] = swell * 0.5 * ((mob.age * 18.0).sin() * 0.5 + 0.5);
     }
+    // Spell states (elements.rs): a frozen mob is cased in ice, a soaked one looks darker.
+    if mob.frozen > 0.0 {
+        b.light[3] = -mob.frozen.min(1.0);
+    }
+    if b.light[2] == 0.0 && mob.wet > 0.0 {
+        b.light[2] = -(mob.wet / 3.0).min(1.0);
+    }
     let alive = mob.alive();
     let sleeping = (mob.sleeping || hook_pose("sleep")) && alive;
     let awake = alive && !sleeping;
