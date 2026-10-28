@@ -3394,6 +3394,11 @@ impl Game {
             put(w, -2, 0, z, "brick_roof:3");
         }
         put(w, 0, 0, 11, "spruce_roof:6");
+        // Stained glass: tints what is behind it.
+        for (i, c) in ["purple", "red", "light_blue"].iter().enumerate() {
+            put(w, -6 + i as i32, 0, 1, &format!("{c}_stained_glass"));
+            put(w, -6 + i as i32, 1, 1, &format!("{c}_stained_glass"));
+        }
         // A spring on a little ledge: it pours off and spreads over the floor.
         for x in 4..=6 {
             put(w, x, 0, 1, "cobblestone");

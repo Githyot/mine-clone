@@ -124,7 +124,9 @@ def upscale(src, name, kind="block"):
     while s > 1:
         big = epx(big)
         s //= 2
-    sprite = (src[..., 3] < 128).any()
+    # See-through designs (stained glass, ice, slime, clouds) keep their part-transparent
+    # fill; only fully clear pixels make a cut-out sprite.
+    sprite = (src[..., 3] < 16).any()
     if sprite:
         big = trim_outlines(src, big, k)
     rng = rng_for("up:" + name)
@@ -138,7 +140,7 @@ def upscale(src, name, kind="block"):
     lab[..., 0] += grain * (0.035 if kind == "block" and not sprite else 0.02)
     out = big.copy()
     out[..., :3] = from_oklab(lab)
-    out[..., 3] = np.where(big[..., 3] > 127, big[..., 3], 0)
+    out[..., 3] = np.where(big[..., 3] >= 16, big[..., 3], 0)
     if kind == "block" and not sprite:
         out = soften(out, "rough")
     return out
