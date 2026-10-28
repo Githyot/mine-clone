@@ -5,6 +5,7 @@
 
 mod ambient;
 mod doors;
+mod material;
 mod companions;
 mod options;
 mod sentries;
@@ -865,6 +866,10 @@ impl Game {
         if let Some(l) = args.lod {
             settings.lod_distance = l.max(0);
         }
+        if let Some(m) = std::env::var("MC_MATERIALS").ok().and_then(|v| v.parse::<u8>().ok()) {
+            // Test hook: the materials option (0 off, 1 simple, 2 full) for comparison shots.
+            settings.materials = m.min(2);
+        }
         if let Some(p) = args.parallax {
             settings.parallax = p.min(3);
         }
@@ -949,7 +954,12 @@ impl Game {
         let pale = pale::Pale::new(&reg);
         let mut extras = vanilla_extras::Extras::new(&reg);
         extras.load(&save.dir, &level_path_hint(&base, &world_name));
-        let entities = renderer.as_ref().map(|r| entity::EntityRenderer::new(r, &mob_reg, &painting_defs, &base, settings.texture_resolution));
+        let entities = renderer.as_ref().map(|r| {
+            let mut e = entity::EntityRenderer::new(r, &mob_reg, &painting_defs, &base, settings.texture_resolution);
+            e.items.set_materials(r, &texture_names);
+            r.fx.set_block_materials(&r.queue, &texture_names);
+            e
+        });
         let mut mobs = mobs::Mobs::new(mob_reg, reg.id_or_air("grass_block"), seed);
         mobs.enabled = settings.mobs;
         mobs.peaceful = settings.difficulty == 0;
@@ -1514,6 +1524,10 @@ impl Game {
         self.textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
         if let Some(r) = self.renderer.get_mut() {
             r.reload_textures(&tex);
+        }
+        if let (Some(r), Some(e)) = (self.renderer.get(), self.entities.get_mut()) {
+            e.items.set_materials(r, &names);
+            r.fx.set_block_materials(&r.queue, &names);
         }
         self.ui.gui = tex.gui.sprites.clone();
         self.lod.set_colors(lod::LodColors::new(&self.reg, &tex));
@@ -3590,6 +3604,17 @@ impl Game {
                 self.world.set_block(q + IVec3::Y * 2, g(ores[(i + 3) as usize]));
             }
         }
+        // MC_MAT=1: a wall of metal and gem blocks and ores in front, for the materials option.
+        if std::env::var("MC_MAT").is_ok() {
+            let top = ["diamond_block", "gold_block", "iron_block", "emerald_block", "copper_block", "netherite_block", "amethyst_block"];
+            let low = ["diamond_ore", "gold_ore", "iron_ore", "emerald_ore", "lapis_ore", "redstone_ore", "deepslate_diamond_ore"];
+            for i in -3..=3 {
+                let q = p + dir * 3 + side * i;
+                let ground = self.world.surface_y(q.x, q.z).unwrap_or(p.y - 1);
+                self.world.set_block(IVec3::new(q.x, ground + 1, q.z), g(low[(i + 3) as usize]));
+                self.world.set_block(IVec3::new(q.x, ground + 2, q.z), g(top[(i + 3) as usize]));
+            }
+        }
         // MC_POM=1: a wall of rough blocks right in front, for the block depth option.
         if std::env::var("MC_POM").is_ok() {
             let wall = ["cobblestone", "stone_bricks", "bricks", "mossy_cobblestone", "deepslate_tiles", "oak_log", "andesite"];
@@ -4542,6 +4567,7 @@ impl Game {
             extra: [self.settings.layered_clouds as u8 as f32, self.settings.emissive_textures as u8 as f32, 0.0, self.season_uniform()],
             pom: self.parallax_uniform(),
             clouds: [self.cloud_wind[0], self.cloud_wind[1], self.cloud_drift, (self.fx_time % 100_000.0) as f32],
+            mat: material::uniform(self.settings.materials, self.settings.shader_quality == ShaderQuality::Fast),
             ..Default::default()
         };
         // A torch in the hand casts shadows (with Sombras on): the blocks around the player.

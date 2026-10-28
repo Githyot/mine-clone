@@ -8,6 +8,9 @@
 @group(2) @binding(3) var scene_depth: texture_depth_2d;
 // Solid blocks around the player (1 = blocks light) for hand light shadows; corner in g.occl.
 @group(2) @binding(4) var occluders: texture_3d<u32>;
+// The material class of each block texture layer (material.rs): metal and gem blocks shine,
+// ores only in their flecks (class + 256).
+@group(2) @binding(5) var<storage, read> block_mat: array<u32>;
 
 struct VOut {
     @builtin(position) clip: vec4<f32>,
@@ -475,7 +478,49 @@ fn fs_solid(in: VOut) -> @location(0) vec4<f32> {
     if (p.weight < 1.0) {
         r = mix(relief(c, p.uv, in, texels), 1.0, p.weight);
     }
+    let mat = select(0u, block_mat[min(in.layer, 2047u)], g.mat.x > 0.5 && in.dist < 48.0);
+    if (mat != 0u) {
+        let fr = MatFrame(px, py, dx, dy);
+        return vec4<f32>(mix(block_material(mat, c, p.uv, r * p.light, in, fr), g.fog_color.rgb, fog_amount(in)), 1.0);
+    }
     return vec4<f32>(shade(c.rgb * r * p.light, in), 1.0);
+}
+
+// Metal and gem blocks catch the light like the items made of them; an ore only in its
+// coloured flecks, which also twinkle like jewels.
+fn block_material(mat: u32, c: vec4<f32>, uv: vec2<f32>, r: f32, in: VOut, fr: MatFrame) -> vec3<f32> {
+    let id = mat & 255u;
+    let plain = glow_pixels(c.rgb, lit(c.rgb * r, in), in);
+    var mask = 1.0;
+    if (mat >= 256u) {
+        // The gem or metal of an ore: its coloured, bright texels, not the stone around them.
+        let hi = max(c.r, max(c.g, c.b));
+        let lo = min(c.r, min(c.g, c.b));
+        mask = smoothstep(0.12, 0.26, hi - lo) * smoothstep(0.25, 0.45, hi);
+        if (mask <= 0.0) {
+            return plain;
+        }
+    }
+    let size = f32(textureDimensions(tex).x);
+    let v = normalize(g.cam_pos.xyz - in.rel);
+    var hx = 0.0;
+    var hy = 0.0;
+    var k = 0.0;
+    if (g.mat.x > 1.5 && in.dist < 14.0) {
+        let w = vec3<f32>(0.3, 0.55, 0.15);
+        let h0 = dot(c.rgb, w);
+        hx = dot(textureSampleLevel(tex, samp, uv + vec2<f32>(1.0 / size, 0.0), in.layer, 0.0).rgb, w) - h0;
+        hy = dot(textureSampleLevel(tex, samp, uv + vec2<f32>(0.0, 1.0 / size), in.layer, 0.0).rgb, w) - h0;
+        k = mat_relief(id) * (1.0 - smoothstep(8.0, 14.0, in.dist));
+    }
+    let n = mat_normal(fr, v, hx, hy, k);
+    // Sparkles differ from block to block: the texel plus the block's place in the world.
+    let wb = floor(in.rel - face_normal((in.kind >> 8u) & 7u) * 0.01 + g.cam_world.xyz - g.cam_pos.xyz);
+    let texel = floor(fract(uv) * size) + vec2<f32>(wb.x * 17.0 + wb.y * 5.0, wb.z * 13.0 - wb.y * 3.0) * size;
+    var hand = g.hand_light.w - length(in.rel - g.hand_light.xyz) / 15.0;
+    let sunlit = sun_visibility(in);
+    let shiny = mat_shade(id, c.rgb * in.color * 1.6, plain, in.rel, n, in.light.x, in.light.y, sunlit, max(hand, 0.0), texel);
+    return mix(plain, shiny, mask);
 }
 
 // Slope of a few travelling waves at a world position (for rippling water). Slow noise bends
