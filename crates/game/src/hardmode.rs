@@ -374,5 +374,5 @@ impl Game {
 pub const SHOPS: &[(&str, &[(&str, u8, u32)])] = &[
     ("npc_tinkerer", &[("running_boots", 1, s(80)), ("cloud_bottle", 1, s(90)), ("shiny_balloon", 1, s(80)), ("climbing_claws", 1, s(60)), ("lucky_horseshoe", 1, g(1)), ("reforge_table", 1, s(60)), ("grappling_hook", 1, s(50)), ("goblin_battle_standard", 1, s(60)), ("claw_glove", 1, s(90)), ("frog_charm", 1, s(80)), ("creature_radar", 1, s(70)), ("battle_tally", 1, s(60)), ("ore_finder", 1, s(80)), ("weather_vane", 1, s(50))]),
     ("npc_mechanic", &[("redstone", 16, s(5)), ("repeater", 2, s(5)), ("piston", 2, s(10)), ("grappling_hook", 1, s(40)), ("rail", 16, s(10)), ("cursed_skull", 1, s(80))]),
-    ("npc_sorceress", &[("parchment", 8, s(5)), ("glyph_book", 1, s(60)), ("mana_crystal", 1, s(60)), ("void_tome", 1, g(1) + s(80)), ("ice_spike_staff", 1, g(1) + s(40)), ("star_tome", 1, g(2) + s(20)), ("bloody_tear", 1, s(40)), ("greater_mana_potion", 2, s(40)), ("arcane_cuffs", 1, g(1) + s(40)), ("imp_staff", 1, g(1) + s(60))]),
+    ("npc_sorceress", &[("parchment", 8, s(5)), ("glyph_book", 1, s(60)), ("mana_crystal", 1, s(60)), ("void_tome", 1, g(1) + s(80)), ("ice_spike_staff", 1, g(1) + s(40)), ("bloody_tear", 1, s(40)), ("greater_mana_potion", 2, s(40)), ("arcane_cuffs", 1, g(1) + s(40)), ("imp_staff", 1, g(1) + s(60))]),
 ];

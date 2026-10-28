@@ -4,6 +4,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod ambient;
+mod material;
 mod companions;
 mod options;
 mod sentries;
@@ -28,6 +29,7 @@ mod audio;
 mod backpacks;
 mod controller;
 mod enchanting;
+mod drop_fx;
 mod effects;
 mod progression;
 mod stations;
@@ -79,6 +81,8 @@ mod tr_comfort;
 mod tr_minis;
 mod tr_journey;
 mod tr_weapons;
+#[cfg(test)]
+mod balance;
 mod tr_world;
 mod glyphs;
 mod hardmode;
@@ -625,6 +629,10 @@ struct Game {
     place_cd: f32,
     target: Option<RayHit>,
     step_dist: f32,
+    /// Distance slid over ice since the last slide sound.
+    slide_dist: f32,
+    /// How far the feet have sunk into sand or snow (the camera eases down by it).
+    sink: f32,
     /// Distance walked through plants since the last rustle.
     rustle_dist: f32,
 
@@ -813,9 +821,15 @@ struct Game {
     shader_scroll: usize,
     lod: lod::Lod,
 
-    start: Instant,
     last: Instant,
     now: f32,
+    /// Clock of the world's moving looks (water, plants, rain, clouds): stops while the
+    /// single-player game is paused.
+    fx_time: f64,
+    /// How far the wind has carried the clouds (blocks at speed 1) and the classic clouds' drift.
+    /// Added up frame by frame so the speed never depends on how long the game has run.
+    cloud_wind: [f32; 2],
+    cloud_drift: f32,
     frame_times: Vec<f32>,
     fps: f32,
     last_frame_info: (usize, usize, usize),
@@ -851,6 +865,10 @@ impl Game {
         }
         if let Some(l) = args.lod {
             settings.lod_distance = l.max(0);
+        }
+        if let Some(m) = std::env::var("MC_MATERIALS").ok().and_then(|v| v.parse::<u8>().ok()) {
+            // Test hook: the materials option (0 off, 1 simple, 2 full) for comparison shots.
+            settings.materials = m.min(2);
         }
         if let Some(p) = args.parallax {
             settings.parallax = p.min(3);
@@ -936,7 +954,12 @@ impl Game {
         let pale = pale::Pale::new(&reg);
         let mut extras = vanilla_extras::Extras::new(&reg);
         extras.load(&save.dir, &level_path_hint(&base, &world_name));
-        let entities = renderer.as_ref().map(|r| entity::EntityRenderer::new(r, &mob_reg, &painting_defs, &base, settings.texture_resolution));
+        let entities = renderer.as_ref().map(|r| {
+            let mut e = entity::EntityRenderer::new(r, &mob_reg, &painting_defs, &base, settings.texture_resolution);
+            e.items.set_materials(r, &texture_names);
+            r.fx.set_block_materials(&r.queue, &texture_names);
+            e
+        });
         let mut mobs = mobs::Mobs::new(mob_reg, reg.id_or_air("grass_block"), seed);
         mobs.enabled = settings.mobs;
         mobs.peaceful = settings.difficulty == 0;
@@ -1055,6 +1078,8 @@ impl Game {
             place_cd: 0.0,
             target: None,
             step_dist: 0.0,
+            slide_dist: 0.0,
+            sink: 0.0,
             rustle_dist: 0.0,
             pads: Controllers::new(),
             key_map: keybinds::KeyMap::default(),
@@ -1181,9 +1206,11 @@ impl Game {
             shader_error: None,
             shader_scroll: 0,
             lod,
-            start: now,
             last: now,
             now: 0.0,
+            fx_time: 0.0,
+            cloud_wind: [0.0; 2],
+            cloud_drift: 0.0,
             frame_times: Vec::new(),
             fps: 0.0,
             last_frame_info: (0, 0, 0),
@@ -1498,6 +1525,10 @@ impl Game {
         if let Some(r) = self.renderer.get_mut() {
             r.reload_textures(&tex);
         }
+        if let (Some(r), Some(e)) = (self.renderer.get(), self.entities.get_mut()) {
+            e.items.set_materials(r, &names);
+            r.fx.set_block_materials(&r.queue, &names);
+        }
         self.ui.gui = tex.gui.sprites.clone();
         self.lod.set_colors(lod::LodColors::new(&self.reg, &tex));
         if let Some(a) = self.audio.as_mut() {
@@ -1700,6 +1731,23 @@ impl Game {
     }
 
 
+    /// Singleplayer: the pause menu (and the option screens opened from it) stop the world.
+    /// With friends in it, it keeps going.
+    fn world_paused(&self) -> bool {
+        self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Friends | Screen::Options | Screen::Controls | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders)
+    }
+
+    /// Moves the clouds with the wind: one direction for every layer, turning very slowly,
+    /// faster in the rain. The shader multiplies this by each layer's speed.
+    fn advance_clouds(&mut self, dt: f32) {
+        self.fx_time += dt as f64;
+        let a = 0.35 + ((self.fx_time * 0.0021).sin() * 0.5) as f32;
+        let k = dt * (1.0 + self.weather.rain * 0.8);
+        self.cloud_wind[0] += a.cos() * k;
+        self.cloud_wind[1] += a.sin() * k;
+        self.cloud_drift += dt;
+    }
+
     fn update(&mut self, dt: f32) {
         self.now += dt;
         self.update_subtitles(dt);
@@ -1730,8 +1778,10 @@ impl Game {
         let sim = self.net_simulates();
         if self.world_open && self.screen != Screen::Loading {
             let shot = self.args.screenshot.is_some();
-            self.weather.update(&self.world, eye, dt, shot);
-            self.windmills_update(dt);
+            // The pause menu stops the weather and the windmills too.
+            let wdt = if self.world_paused() { 0.0 } else { dt };
+            self.weather.update(&self.world, eye, wdt, shot);
+            self.windmills_update(wdt);
             if self.dim != voxel::worldgen::Dim::Overworld {
                 // No weather under the Nether's roof (it carries on at home).
                 self.weather.rain = 0.0;
@@ -1913,6 +1963,10 @@ impl Game {
                     // Test hook: caught partway up a two-block ledge (MC_MANTLE_SHELF: a shelf).
                     self.test_mantle(u.parse().unwrap_or(0.4));
                 }
+                if std::env::var("MC_DROPS").is_ok() {
+                    // Test hook: items on the ground in front, to see their names and glows.
+                    self.test_drops();
+                }
                 if std::env::var("MC_HOUSE").is_ok() {
                     // Test hook: two small houses in front; people move in; MC_SHOP opens a shop.
                     self.test_houses();
@@ -2008,9 +2062,12 @@ impl Game {
 
         // Singleplayer: the pause menu (and the option screens opened from it) stop the world.
         // With friends in it, it keeps going.
-        let paused = self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Friends | Screen::Options | Screen::Controls | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders);
+        let paused = self.world_paused();
         if !paused && self.net.rules.daylight_cycle {
             self.time_of_day = (self.time_of_day + dt * 20.0) % 24000.0;
+        }
+        if !paused {
+            self.advance_clouds(dt);
         }
         if self.args.time.is_some() && self.args.screenshot.is_some() {
             self.time_of_day = self.args.time.unwrap();
@@ -2231,7 +2288,23 @@ impl Game {
             self.body.in_water = self.body.head_in_water || voxel::physics::Terrain::liquid(&self.world, self.body.pos.floor().as_ivec3());
         }
         let moved = (self.body.pos - before) * Vec3::new(1.0, 0.0, 1.0);
-        if self.body.on_ground && was_ground && !self.body.flying {
+        // Feet sliding on ice (stopping, turning, setting off): a soft scrape and ice shavings
+        // instead of footsteps.
+        let sliding = self.body.on_ground && was_ground && !self.body.flying && self.body.ground.slippery() && self.body.slide > 1.2;
+        if sliding {
+            self.slide_dist += moved.length();
+            if self.slide_dist > 1.3 {
+                self.slide_dist = 0.0;
+                let k = (self.body.slide / 6.0).min(1.0);
+                self.sfx_here(Sfx::Fx(sfx_extra::Fx::Slide(k)), 0.3 + 0.25 * k);
+                self.slide_shavings();
+            }
+        } else {
+            self.slide_dist = 1.0;
+        }
+        let sink = if self.body.on_ground && !self.body.flying { self.body.ground.sink } else { 0.0 };
+        self.sink += (sink - self.sink) * (dt * 8.0).min(1.0);
+        if self.body.on_ground && was_ground && !self.body.flying && !sliding {
             self.step_dist += moved.length();
             if self.step_dist > 1.7 {
                 self.step_dist = 0.0;
@@ -2922,6 +2995,18 @@ impl Game {
         // Healing comes from a full stomach (survival.rs).
     }
 
+    /// Whether any of `points` can be seen from the eye, no solid block in between. Names and
+    /// bars over mobs and items use it so they never show through walls or the ground.
+    pub(crate) fn in_sight(&self, points: &[Vec3]) -> bool {
+        let eye = self.body.eye();
+        let world = &self.world;
+        points.iter().any(|&p| {
+            let to = p - eye;
+            let dist = to.length();
+            dist < 0.5 || raycast(eye, to / dist, dist - 0.3, |b| voxel::physics::Terrain::solid(world, b)).is_none()
+        })
+    }
+
     /// A health bar floating over each mob that was hurt lately, with its name.
     fn draw_mob_health_bars(&mut self, w: f32, h: f32) {
         let Some((vp, cam_block)) = self.ui_view_proj else { return };
@@ -2934,7 +3019,7 @@ impl Game {
             let def = &self.mobs.reg.defs[m.def];
             let top = m.body.pos + Vec3::Y * (def.height + 0.45);
             let dist = (top - eye).length();
-            if dist > 24.0 {
+            if dist > 24.0 || !self.in_sight(&[m.body.pos + Vec3::Y * def.height * 0.9, m.body.center()]) {
                 continue;
             }
             let c = vp * (top - cam_block.as_vec3()).extend(1.0);
@@ -3396,6 +3481,11 @@ impl Game {
             put(w, -2, 0, z, "brick_roof:3");
         }
         put(w, 0, 0, 11, "spruce_roof:6");
+        // Stained glass: tints what is behind it.
+        for (i, c) in ["purple", "red", "light_blue"].iter().enumerate() {
+            put(w, -6 + i as i32, 0, 1, &format!("{c}_stained_glass"));
+            put(w, -6 + i as i32, 1, 1, &format!("{c}_stained_glass"));
+        }
         // A spring on a little ledge: it pours off and spreads over the floor.
         for x in 4..=6 {
             put(w, x, 0, 1, "cobblestone");
@@ -3502,6 +3592,17 @@ impl Game {
                     self.world.set_block(q + IVec3::Y * h, g("bookshelf"));
                 }
                 self.world.set_block(q + IVec3::Y * 2, g(ores[(i + 3) as usize]));
+            }
+        }
+        // MC_MAT=1: a wall of metal and gem blocks and ores in front, for the materials option.
+        if std::env::var("MC_MAT").is_ok() {
+            let top = ["diamond_block", "gold_block", "iron_block", "emerald_block", "copper_block", "netherite_block", "amethyst_block"];
+            let low = ["diamond_ore", "gold_ore", "iron_ore", "emerald_ore", "lapis_ore", "redstone_ore", "deepslate_diamond_ore"];
+            for i in -3..=3 {
+                let q = p + dir * 3 + side * i;
+                let ground = self.world.surface_y(q.x, q.z).unwrap_or(p.y - 1);
+                self.world.set_block(IVec3::new(q.x, ground + 1, q.z), g(low[(i + 3) as usize]));
+                self.world.set_block(IVec3::new(q.x, ground + 2, q.z), g(top[(i + 3) as usize]));
             }
         }
         // MC_POM=1: a wall of rough blocks right in front, for the block depth option.
@@ -3795,6 +3896,7 @@ impl Game {
             }
             self.draw_effect_overlays(w, h);
             self.draw_mob_health_bars(w, h);
+            self.draw_drop_labels(w, h);
             self.draw_hunter_marks(w, h);
             self.draw_sign_texts(w, h);
             self.draw_mob_names(w, h);
@@ -4373,7 +4475,7 @@ impl Game {
 
         // Eye height eases between standing, sneaking and lying down instead of jumping.
         let stand = if self.body.flying { voxel::physics::EYE_HEIGHT } else { voxel::physics::EYE_HEIGHT - 0.25 * self.crouch };
-        let head = self.body.pos + Vec3::Y * (stand + (0.42 - stand) * self.prone_t);
+        let head = self.body.pos + Vec3::Y * (stand + (0.42 - stand) * self.prone_t - self.sink);
         let playing_view = self.world_open && !matches!(self.screen, Screen::Loading);
         let third = playing_view && self.camera_mode != 0;
         let mut view_fwd = self.forward();
@@ -4439,7 +4541,7 @@ impl Game {
         let mut effects = self.terrain_effects();
         effects[3] = lod_inner;
         let mut g = Globals {
-            cam_pos: [eye.x - block.x as f32, eye.y - block.y as f32, eye.z - block.z as f32, (self.now % 3600.0) + self.start.elapsed().as_secs_f32() * 0.0],
+            cam_pos: [eye.x - block.x as f32, eye.y - block.y as f32, eye.z - block.z as f32, (self.fx_time % 3600.0) as f32],
             cam_world: [eye.x, eye.y, eye.z, CLOUD_HEIGHT],
             fog_color: [fog_color[0], fog_color[1], fog_color[2], if nether || end || other { 0.0 } else { daylight }],
             fog: [fog_start, fog_end, if underwater { 1.0 } else { 0.0 }, if nether || end || other { 1.0 } else { settings::brightness_lift(self.settings.brightness) }],
@@ -4454,6 +4556,8 @@ impl Game {
             dyn_lights: self.dynamic_lights(eye, block),
             extra: [self.settings.layered_clouds as u8 as f32, self.settings.emissive_textures as u8 as f32, 0.0, self.season_uniform()],
             pom: self.parallax_uniform(),
+            clouds: [self.cloud_wind[0], self.cloud_wind[1], self.cloud_drift, (self.fx_time % 100_000.0) as f32],
+            mat: material::uniform(self.settings.materials, self.settings.shader_quality == ShaderQuality::Fast),
             ..Default::default()
         };
         // A torch in the hand casts shadows (with Sombras on): the blocks around the player.
@@ -4758,7 +4862,13 @@ impl Game {
             self.anim.swing = k;
         }
         if !third && self.screen == Screen::Playing && !self.hide_hud && self.camera_mode == 0 {
-            drops.extend(self.held_item_instance(eye, block));
+            let glint = self.held_stack().is_some_and(|st| enchanting::is_enchanted(&st));
+            drops.extend(self.held_item_instance(eye, block).map(|mut g| {
+                if glint {
+                    g.bmin = drop_fx::ENCH_GLINT;
+                }
+                g
+            }));
         }
         drops.extend(held_third);
         drops.extend(mob_items);
@@ -4787,7 +4897,10 @@ impl Game {
                 });
             }
         }
-        self.entities.items.prepare(&self.renderer, &drops);
+        let halos = self.drop_halos(block);
+        let halo_count = halos.len();
+        drops.extend(halos);
+        self.entities.items.prepare(&self.renderer, &drops, halo_count);
         let grab_backdrop = self.want_backdrop && self.screen == Screen::Loading;
         self.renderer.extra_lines = self.fishing_line(block, third);
         let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds && self.dim == voxel::worldgen::Dim::Overworld && self.body.pos.y > -24.0, Some(&self.entities), Some(&self.lod), &self.ui, capture || grab_backdrop);
@@ -5025,6 +5138,23 @@ mod data_tests {
         for name in ["templo_escamado", "lago_cintilante", "masmorra_blue", "masmorra_pink"] {
             assert!(s.list.iter().any(|st| st.def.name == name), "{name}");
         }
+    }
+
+    #[test]
+    fn ice_sand_and_snow_blocks_have_their_feel() {
+        // The game's own blocks get the ground feel by name: a renamed block would lose it.
+        let base = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+        let (reg, _, _) = load_game_data(base).unwrap();
+        use voxel::physics::Ground;
+        for n in ["ice", "packed_ice", "blue_ice", "frosted_ice"] {
+            let b = reg.get(reg.id(n).unwrap_or_else(|| panic!("{n} missing")));
+            assert!(Ground::of_block(&b.name, b.variant).slippery(), "{n}");
+        }
+        for n in ["sand", "red_sand", "snow", "soul_sand", "slime_block"] {
+            let b = reg.get(reg.id(n).unwrap_or_else(|| panic!("{n} missing")));
+            assert_ne!(Ground::of_block(&b.name, b.variant), Ground::FIRM, "{n}");
+        }
+        assert!(reg.id("snow_layer").is_some());
     }
 
     #[test]
