@@ -35,6 +35,8 @@ mod backpacks;
 mod controller;
 mod elements;
 mod skills;
+mod prof;
+mod presets;
 mod atlas;
 mod enchanting;
 mod drop_fx;
@@ -689,6 +691,8 @@ struct Game {
     /// What spells do to the world (elements.rs): spells' blocks that thaw back later.
     elements: elements::Elements,
     skills: skills::Skills,
+    prof: prof::Prof,
+    presets: presets::PresetState,
     atlas: atlas::Atlas,
     boss: bosses::BossState,
     /// The Terraria side (Etapa 5): accessories, glyph spells, hard mode and its events.
@@ -889,6 +893,8 @@ impl Game {
         let base = base_dir();
         let mut loaded_plugins = plugins::load(&base);
         let settings_path = base.join("settings.ron");
+        // The very first start picks graphics for this computer (presets.rs).
+        let first_run = !settings_path.exists();
         let mut settings = Settings::load(&settings_path);
         settings.controller.fill_missing();
         if let Some(rd) = args.render_distance {
@@ -1137,6 +1143,8 @@ impl Game {
             magic: magic::Magic::new(max_mana),
             elements: Default::default(),
             skills: Default::default(),
+            prof: Default::default(),
+            presets: Default::default(),
             atlas: Default::default(),
             boss: bosses::BossState::new(bosses_beaten),
             t5: terraria::Terraria::default(),
@@ -1265,6 +1273,9 @@ impl Game {
             net: Default::default(),
             voice: Default::default(),
         };
+        if first_run && game.args.screenshot.is_none() && game.args.bench.is_none() && !game.args.server {
+            game.first_run_preset();
+        }
         game.apply_shader();
         if start_dim == voxel::worldgen::Dim::Overworld && game.world.save.dir.join(testworld::MARKER).exists() {
             // A test world is laid out again on opening (testworld.rs).
@@ -1822,16 +1833,19 @@ impl Game {
         let center = ChunkPos::new((eye.x.floor() as i32) >> 4, (eye.z.floor() as i32) >> 4);
         self.world.set_focus(eye.y);
         self.world.update(center, rd);
+        self.prof.mark("mundo: chunks");
         self.swing_update();
         let events = std::mem::take(&mut self.world.events);
         if let Some(r) = self.renderer.get_mut() {
             r.apply_mesh_events(events);
         }
+        self.prof.mark("malhas novas");
         if self.world_open && self.screen == Screen::Playing {
             self.plugins_tick(dt);
         }
         self.net_update(dt);
         self.voice_update(dt);
+        self.prof.mark("rede e voz");
         // A guest in the host's dimension gets the world's own changes from the host.
         let sim = self.net_simulates();
         if self.world_open && self.screen != Screen::Loading {
@@ -2171,28 +2185,36 @@ impl Game {
             self.time_of_day = self.args.time.unwrap();
         }
 
+        self.prof.mark("clima e ambiente");
         if self.is_title_screen() {
             self.update_title(dt);
         }
         if self.args.screenshot.is_none() && !paused {
             self.particles.update(&self.world, dt);
         }
+        self.prof.mark("partículas");
         if self.screen == Screen::Playing || self.screen == Screen::Inventory {
             self.update_player(dt);
             self.update_survival(dt);
         }
+        self.prof.mark("jogador");
         if self.world_open && !paused && self.screen != Screen::Loading {
             let use_held = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
             self.surv_update(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
+            self.prof.mark("sobrevivência");
             self.update_magic(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
+            self.prof.mark("magia");
             self.update_elements(if self.args.screenshot.is_some() { 0.0 } else { dt });
+            self.prof.mark("elementos");
             self.update_fase6(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
+            self.prof.mark("fase 6 e extras");
             if sim {
                 self.update_boss(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_progress(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_skills(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_atlas(dt);
             }
+            self.prof.mark("chefes, progresso, ofícios");
             if sim && self.dim == voxel::worldgen::Dim::Overworld {
                 // Townsfolk live at home.
                 self.update_npcs(if self.args.screenshot.is_some() { 0.0 } else { dt });
@@ -2204,7 +2226,9 @@ impl Game {
                 self.update_test_world();
                 self.stands_update();
             }
+            self.prof.mark("vilas, NPCs, mascotes");
             self.update_mods(if self.args.screenshot.is_some() { 0.0 } else { dt });
+            self.prof.mark("mods");
         }
         let menus_stop = !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Friends | Screen::Controls | Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders);
         if self.world_open && sim && self.screen != Screen::Loading && !menus_stop {
@@ -2216,9 +2240,11 @@ impl Game {
             }
             // Screenshots hold the world still so the picture is stable.
             let mdt = if self.args.screenshot.is_some() { social::film_dt() } else { dt };
+            self.prof.mark("andarilhos");
             self.before_mobs();
             self.mobs.raining = self.dim == voxel::worldgen::Dim::Overworld && self.weather.rain > 0.2;
             let out = self.mobs.update(&self.world, self.body.pos, creative, daylight, mdt);
+            self.prof.mark("mobs: IA");
             self.social_effects(&out);
             for (dmg, from) in out.damage {
                 self.mob_hit_effects(from);
@@ -2258,7 +2284,9 @@ impl Game {
             }
             // After the mobs' own tick: worms, flyers, hard mode, accessories, glyph spells.
             let use_held = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
+            self.prof.mark("mobs: mortes e danos");
             self.update_t5(mdt, use_held && self.screen == Screen::Playing);
+            self.prof.mark("Terraria (vermes, acessórios...)");
             self.fase6_mob_deaths(&out.deaths);
             self.painting_check -= dt;
             if self.painting_check <= 0.0 {
@@ -2277,6 +2305,7 @@ impl Game {
             let adt = if self.args.screenshot.is_some() { social::film_dt() } else { dt };
             self.mobs.animate(self.body.pos, adt);
         }
+        self.prof.mark("mobs: animação");
 
         let sit = self.situation();
         if let Some(a) = self.audio.as_mut() {
@@ -2288,13 +2317,16 @@ impl Game {
             }
         }
 
+        self.prof.mark("música");
         self.update_controller(dt);
+        self.update_presets(dt);
 
         self.autosave += dt;
         if self.autosave > 60.0 && self.screen != Screen::Loading {
             self.autosave = 0.0;
             self.save_all();
         }
+        self.prof.mark("controle e salvar");
     }
 
     fn update_player(&mut self, dt: f32) {
@@ -3875,6 +3907,10 @@ impl Game {
             };
             rows.push(("Disco do PC".into(), disk, if st.disk_read_mbs.is_some() { GOOD } else { LABEL }));
         }
+        // Where the frame goes (prof.rs): the costliest parts of the last two seconds.
+        for (name, ms) in self.prof.recent.clone() {
+            rows.push((format!("  {name}"), format!("{ms:.2} ms"), if ms < 4.0 { GOOD } else if ms < 10.0 { MID } else { BAD }));
+        }
         let gpu_name = self.renderer.adapter_info.name.clone();
         let label_w = rows.iter().map(|r| self.ui.text_width(&r.0, s)).fold(0.0, f32::max) + 8.0 * s;
         let value_w = rows.iter().map(|r| self.ui.text_width(&r.1, s)).fold(0.0, f32::max);
@@ -4600,6 +4636,10 @@ impl Game {
             log::info!("loading: {:.1} fps, {} meshed, {} jobs", self.fps, self.world.meshed_count, self.world.pending_jobs());
         }
         self.last = now;
+        // Whatever ran since the last mark of the previous frame: drawing it and the window.
+        self.prof.mark("desenhar e janela");
+        self.prof.frames += 1;
+        self.prof.roll(raw_dt as f64);
         self.frame_times.push(dt);
         if self.frame_times.len() >= 30 {
             self.fps = self.frame_times.len() as f32 / self.frame_times.iter().sum::<f32>();
@@ -4614,6 +4654,7 @@ impl Game {
                 r.apply_mesh_events(events);
             }
         }
+        self.prof.mark("blocos editados");
         if self.bench_tick(raw_dt) {
             self.save_all();
             std::process::exit(0);
@@ -4808,7 +4849,9 @@ impl Game {
                 }
             }
         }
+        self.prof.mark("câmera, luzes e céu");
         self.draw_ui(lines);
+        self.prof.mark("interface (HUD)");
 
         // Automated screenshots: wait until the view is fully built.
         let mut capture = self.screenshot_request;
@@ -5082,7 +5125,15 @@ impl Game {
         self.entities.items.prepare(&self.renderer, &drops, halo_count);
         let grab_backdrop = self.want_backdrop && self.screen == Screen::Loading;
         self.renderer.extra_lines = self.fishing_line(block, third);
+        self.prof.mark("entidades e itens");
         let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds && self.dim == voxel::worldgen::Dim::Overworld && self.body.pos.y > -24.0, Some(&self.entities), Some(&self.lod), &self.ui, capture || grab_backdrop);
+        self.prof.mark("render: outros");
+        // The renderer's own split; "render: outros" keeps what it doesn't cover.
+        let t = self.renderer.timing;
+        for (k, name) in ["render: preparar buffers", "render: esperar a imagem (GPU)", "render: gravar os passes", "render: enviar e apresentar"].into_iter().enumerate() {
+            self.prof.add(name, t[k]);
+        }
+        self.prof.add("render: outros", -t.iter().sum::<f64>());
         let shot = if grab_backdrop {
             self.want_backdrop = false;
             if let Some((w, h, px)) = &shot {

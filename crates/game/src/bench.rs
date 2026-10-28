@@ -72,6 +72,7 @@ impl Game {
             self.bench.meshed_at_start = self.world.meshed_count;
             self.body.pos.y = HEIGHT;
             self.bench.from = self.body.pos;
+            self.prof.reset();
             log::info!("benchmark: flying for {secs:.0} s");
             return false;
         }
@@ -128,6 +129,12 @@ impl Game {
             self.lod.build_secs * 1000.0 / self.lod.built.max(1) as f64,
             process_mb(),
         );
+        // Where the CPU time of a frame went (prof.rs), costliest first.
+        let mut report = report;
+        report += "CPU per frame (ms):\n";
+        for (name, ms) in self.prof.top(16) {
+            report += &format!("  {ms:7.3}  {name}\n");
+        }
         println!("{report}");
         let dir = self.base.join("bench");
         let _ = std::fs::create_dir_all(&dir);

@@ -117,6 +117,9 @@ struct ScenePipes {
 }
 
 pub struct Renderer {
+    /// Seconds the last frame spent: preparing buffers, waiting for the window's next image,
+    /// recording the passes, and submitting and presenting (the benchmark's CPU table).
+    pub timing: [f64; 4],
     pub surface: wgpu::Surface<'static>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
@@ -566,6 +569,7 @@ impl Renderer {
         });
 
         Renderer {
+            timing: [0.0; 4],
             surface,
             device,
             queue,
@@ -930,6 +934,7 @@ impl Renderer {
         ui: &UiBatch,
         capture: bool,
     ) -> (FrameInfo, Option<(u32, u32, Vec<u8>)>) {
+        let t0 = std::time::Instant::now();
         let aspect = self.config.width as f32 / self.config.height as f32;
         let (sw, sh) = (self.config.width, self.config.height);
         let proj = Mat4::perspective_rh(cam.fov_y, aspect, NEAR, cam.far);
@@ -1108,6 +1113,7 @@ impl Renderer {
             self.queue.write_buffer(&self.ui_buf, 0, bytemuck::cast_slice(&ui.verts));
         }
 
+        let t1 = std::time::Instant::now();
         let frame = match self.surface.get_current_texture() {
             Ok(f) => f,
             Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
@@ -1119,6 +1125,7 @@ impl Renderer {
                 return (FrameInfo { sections_drawn: 0, quads_drawn: 0, lod_drawn: 0, lod_quads: 0 }, None);
             }
         };
+        let t2 = std::time::Instant::now();
         let view = frame.texture.create_view(&Default::default());
         let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
         let fc = globals.fog_color;
@@ -1283,6 +1290,7 @@ impl Renderer {
         } else if capture {
             log::warn!("this display does not allow screenshots (no COPY_SRC on the surface)");
         }
+        let t3 = std::time::Instant::now();
         self.queue.submit([enc.finish()]);
         let shot = readback.and_then(|(buf, bpr, w, h)| {
             let slice = buf.slice(..);
@@ -1308,6 +1316,7 @@ impl Renderer {
             Some((w, h, out))
         });
         frame.present();
+        self.timing = [(t1 - t0).as_secs_f64(), (t2 - t1).as_secs_f64(), (t3 - t2).as_secs_f64(), t3.elapsed().as_secs_f64()];
         let lod_quads = lod_draws.iter().map(|d| d.2 as usize).sum();
         (FrameInfo { sections_drawn: solid_draws.len() + trans_draws.len(), quads_drawn: quads, lod_drawn: lod_draws.len(), lod_quads }, shot)
     }

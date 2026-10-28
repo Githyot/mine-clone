@@ -786,6 +786,14 @@ MODO JORNADA (lado Terraria)
     meio-dia, anoitecer, meia-noite, congelar o tempo, chuva, invencível e quantidade de
     monstros (normal, poucos, nenhum, muitos).
 
+GRÁFICOS PARA O SEU COMPUTADOR
+  Opções > Vídeo > Gráficos muda tudo de uma vez: Mínimo (PC bem fraco, sem placa de vídeo),
+    Leve (vídeo integrado), Equilibrado, Bonito e Ultra (placa de vídeo forte). Mexeu em
+    alguma opção sozinho, o botão mostra Personalizado.
+  Na primeira vez que o jogo abre ele escolhe um para o seu computador. Se ficar lento por
+    meio minuto, ele sugere um mais leve.
+  mine-clone --bench mostra também quanto tempo cada parte do jogo gasta por quadro.
+
 OFÍCIOS (tecla Y)
   Sete ofícios sobem de nível (até 20) com o que você faz no modo sobrevivência:
     Mineração (picareta e pá; minérios dão mais), Lenhador (machado e toras), Lavoura
