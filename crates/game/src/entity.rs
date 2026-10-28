@@ -494,12 +494,19 @@ fn add_eyelids(mb: &mut MeshBuilder, def: &MobDef, skin: &Skin) {
     }
 }
 
+/// Players (voice chat) and town folk (chatting with each other, anim.rs) get a mouth: the
+/// models whose first part is a player-like 8×8×8 head.
+pub(crate) fn has_mouth(def: &MobDef) -> bool {
+    let folk = def.name.starts_with("npc_") || def.name.starts_with("settler_");
+    (def.name == "player" || folk) && def.parts.len() <= MOUTH_PART && def.parts.first().is_some_and(|p| p.size == (8, 8, 8) && p.uv == (0, 0) && p.anim == Anim::Head)
+}
+
 /// The player's mouth, for voice chat: a dark slit on the face (rows 6..7, columns 2..6 of
 /// the head's front), coloured with the skin's own lip pixel in deep shadow. It rides on its
 /// own part slot; `player_model` opens it by stretching that slot downward from its top edge
 /// with the voice, and folds it away while silent.
 fn add_mouth(mb: &mut MeshBuilder, def: &MobDef) {
-    if def.name != "player" || def.parts.len() > MOUTH_PART || def.parts.is_empty() {
+    if !has_mouth(def) {
         return;
     }
     let p = &def.parts[0];

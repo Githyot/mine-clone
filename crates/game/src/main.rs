@@ -104,6 +104,7 @@ mod voice;
 mod mods;
 mod lod;
 mod mobs;
+mod social;
 mod nether_end;
 mod paintings;
 mod particles;
@@ -1878,6 +1879,10 @@ impl Game {
                     // Test hook: a Phase 6 scene (stations, effects, advancements, mobs).
                     self.test_fase6(&scene);
                 }
+                if let Ok(scene) = std::env::var("MC_SOCIAL") {
+                    // Test hook: mobs getting on with each other (social.rs).
+                    self.test_social(&scene);
+                }
                 if std::env::var("MC_PALE").is_ok() {
                     // Test hook: the pale garden's and resin's new blocks.
                     self.test_pale();
@@ -2055,10 +2060,11 @@ impl Game {
                 self.update_wanderers(if self.args.screenshot.is_some() { 0.0 } else { dt }, daylight);
             }
             // Screenshots hold the world still so the picture is stable.
-            let mdt = if self.args.screenshot.is_some() { 0.0 } else { dt };
+            let mdt = if self.args.screenshot.is_some() { social::film_dt() } else { dt };
             self.before_mobs();
             self.mobs.raining = self.dim == voxel::worldgen::Dim::Overworld && self.weather.rain > 0.2;
             let out = self.mobs.update(&self.world, self.body.pos, creative, daylight, mdt);
+            self.social_effects(&out);
             for (dmg, from) in out.damage {
                 self.mob_hit_effects(from);
                 self.rpg_mob_hit(from);
@@ -2113,7 +2119,7 @@ impl Game {
         // Mob animation runs on frame time (smooth for guests too), and holds still with the
         // world in a paused single-player game.
         if self.world_open && !menus_stop {
-            let adt = if self.args.screenshot.is_some() { 0.0 } else { dt };
+            let adt = if self.args.screenshot.is_some() { social::film_dt() } else { dt };
             self.mobs.animate(self.body.pos, adt);
         }
 
@@ -3106,7 +3112,7 @@ impl Game {
         }
         // An arrow on its way, frozen in the air, for the test picture.
         let from = self.body.pos + fwd * 4.0 + side * 1.5 + Vec3::Y * 1.6;
-        self.mobs.arrows.push(mobs::Arrow { pos: from, vel: (-fwd * 0.3 + side * 1.0 + Vec3::Y * 0.1) * 0.001, age: 0.0, stuck: true, damage: 0.0 });
+        self.mobs.arrows.push(mobs::Arrow { pos: from, vel: (-fwd * 0.3 + side * 1.0 + Vec3::Y * 0.1) * 0.001, age: 0.0, stuck: true, damage: 0.0, shooter: 0 });
     }
 
     /// Place a block where the player is aiming. Returns where it went.

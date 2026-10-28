@@ -15,9 +15,9 @@ use std::collections::HashMap;
 use std::f32::consts::{FRAC_PI_2, PI};
 
 use glam::{IVec3, Mat4, Quat, Vec3};
-use voxel::mob::{Anim, Kind, Mob, MobDef, DEATH_TIME};
+use voxel::mob::{Act, Anim, Kind, Mob, MobDef, DEATH_TIME};
 
-use crate::entity::{eyes_shut_test, Bones, EYELID_PART, MAX_PARTS};
+use crate::entity::{eyes_shut_test, Bones, EYELID_PART, MAX_PARTS, MOUTH_PART};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Style {
@@ -273,6 +273,15 @@ pub struct MobAnim {
     attack: f32,
     /// How near the player is, 0 far .. 1 close (tails wag more).
     near: f32,
+    /// Social poses (social.rs), each eased 0..1: in a chat, speaking now, nose to nose,
+    /// being petted, a play bow.
+    chat: f32,
+    talk: f32,
+    nuzzle: f32,
+    petted: f32,
+    bow: f32,
+    /// The chat partner it already waved to.
+    waved: u32,
 }
 
 impl MobAnim {
@@ -353,6 +362,25 @@ impl MobAnim {
         } else if rig.town && d > 10.0 {
             self.greet_cd = self.greet_cd.min(2.0);
         }
+        // Mobs among themselves.
+        let sc = &mob.social;
+        let act = if mob.alive() { sc.act } else { Act::None };
+        let chatting = act == Act::Chat;
+        self.chat += ((chatting as u8 as f32) - self.chat) * k(4.0);
+        self.talk += ((sc.speaking() as u8 as f32) - self.talk) * k(10.0);
+        self.nuzzle += (((act == Act::Nuzzle || act == Act::Mate) && self.amp < 0.3) as u8 as f32 - self.nuzzle) * k(4.0);
+        self.petted += ((act == Act::Petted) as u8 as f32 - self.petted) * k(6.0);
+        let bowing = act == Act::Play && sc.first && sc.age < 0.7;
+        self.bow += (bowing as u8 as f32 - self.bow) * k(10.0);
+        if chatting && self.waved != sc.with && self.amp < 0.3 && mob.body.pos.distance(sc.at) < sc.gap + 0.8 {
+            // Hello first.
+            self.waved = sc.with;
+            self.greet = 1.8;
+            self.greet_cd = self.greet_cd.max(8.0);
+        }
+        if act == Act::Petted || act == Act::Play {
+            self.near = 1.0;
+        }
         self.apply_hooks();
     }
 
@@ -389,6 +417,19 @@ impl MobAnim {
                 self.amp = 0.6;
             }
             "greet" => self.greet = 1.0,
+            "talk" => {
+                self.chat = 1.0;
+                self.talk = 1.0;
+            }
+            "nuzzle" => self.nuzzle = 1.0,
+            "petted" => {
+                self.petted = 1.0;
+                self.near = 1.0;
+            }
+            "bow" => {
+                self.bow = 1.0;
+                self.near = 1.0;
+            }
             "turn" => {
                 self.amp = 1.0;
                 self.turn = 2.5;
@@ -561,6 +602,10 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
         };
         pitch -= swim * 0.22;
         pitch += st.graze * 0.1;
+        // A play bow: chest down, rump up.
+        if style == Style::Quadruped {
+            pitch += st.bow * 0.32;
+        }
         // Recoil from a hit, lunge into a bite.
         pitch -= hurt * 0.22;
         if !matches!(style, Style::Biped) {
@@ -637,16 +682,30 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
     if sleeping {
         nod += 0.3;
     }
+    // Company: talkers bob their head as they speak, listeners nod along; friends lower their
+    // heads nose to nose; a petted animal pushes its head up into the hand.
+    let chat = st.chat * awake as u8 as f32;
+    let talk = st.talk * awake as u8 as f32;
+    let nuzzle = st.nuzzle * awake as u8 as f32;
+    let petted = st.petted * awake as u8 as f32;
+    nod += (clock * 7.0).sin() * 0.05 * talk + (clock * 2.1).sin().max(0.0) * 0.12 * (chat - talk).max(0.0);
+    nod += nuzzle * (0.42 + (clock * 3.0).sin() * 0.06) - petted * 0.3 + st.bow * 0.25 * (style == Style::Quadruped) as u8 as f32;
     if !biped {
         nod += strike * 0.3;
     }
-    let tilt = (clock * 0.23).sin().max(0.0).powi(3) * 0.25 * idle + if rig.shamble { 0.18 + (clock * 0.9).sin() * 0.06 } else { 0.0 };
+    let tilt = (clock * 0.23).sin().max(0.0).powi(3) * 0.25 * idle
+        + if rig.shamble { 0.18 + (clock * 0.9).sin() * 0.06 } else { 0.0 }
+        + (clock * 2.4).sin() * 0.22 * nuzzle
+        + (clock * 1.7).sin() * 0.25 * petted
+        + (clock * 0.8).sin() * 0.1 * (chat - talk).max(0.0);
     let rattle = if rig.rattle && awake { (clock * 37.0).sin() * 0.015 } else { 0.0 };
     let head_q = Quat::from_rotation_y(st.head_yaw + (look * (1.0 - graze)) + lead + rattle) * Quat::from_rotation_x(st.head_pitch * (1.0 - graze) + nod) * Quat::from_rotation_z(tilt + rattle);
     let head_pivot = rig.head.map(|h| rig.pivots[h]).unwrap_or(Vec3::ZERO);
-    // Grazing stretches the neck down and forward.
-    let neck = Vec3::new(0.0, -3.0, 1.0) * graze;
-    let head_local = Mat4::from_translation(head_pivot + neck) * Mat4::from_quat(head_q) * Mat4::from_translation(-head_pivot);
+    // Grazing stretches the neck down and forward (nuzzling a little).
+    let neck = Vec3::new(0.0, -3.0, 1.0) * graze + Vec3::new(0.0, -1.0, 1.2) * nuzzle * (!biped) as u8 as f32;
+    // Babies have big heads.
+    let big = if mob.baby() { 1.0 + 0.4 * (mob.grow / voxel::mob::GROW_TIME).clamp(0.0, 1.0).sqrt() } else { 1.0 };
+    let head_local = Mat4::from_translation(head_pivot + neck) * Mat4::from_quat(head_q) * Mat4::from_scale(Vec3::splat(big)) * Mat4::from_translation(-head_pivot);
 
     let base = model * root;
     for (i, p) in def.parts.iter().enumerate().take(MAX_PARTS) {
@@ -716,10 +775,13 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
                 let mut q = Quat::from_rotation_x(swing + breathe * 0.04 * idle * side) * Quat::from_rotation_z(side * (0.04 + breathe * 0.03) * idle);
                 // Elbows: soft at rest, bending as the arm swings forward, pumping when running.
                 let mut elbow = -(0.12 + (-swing).max(0.0) * 0.5 + run * 0.75);
-                if rig.town && idle > 0.6 && greet <= 0.0 && k == 0 {
-                    // Talking with the hands now and then.
+                if (rig.town || chat > 0.0) && idle > 0.6 && greet <= 0.0 && (k == 0 || talk > 0.0) {
+                    // Talking with the hands now and then (both hands when it's its turn in a
+                    // chat; still while listening).
                     let c = (clock + mob.phase * 4.0) % 9.0;
-                    let g = smooth(c / 0.4).min(smooth((2.6 - c) / 0.4)).max(0.0);
+                    let own = if chat > 0.0 { 0.0 } else { smooth(c / 0.4).min(smooth((2.6 - c) / 0.4)).max(0.0) };
+                    let g = own.max(talk * if k == 0 { 1.0 } else { 0.6 });
+                    let clock = clock + k as f32 * 1.3;
                     if g > 0.0 {
                         let talk = Quat::from_rotation_x(-0.85 + (clock * 3.5).sin() * 0.18) * Quat::from_rotation_y(0.25 + (clock * 2.3).sin() * 0.15);
                         q = q.slerp(talk, g);
@@ -817,8 +879,9 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
                 Quat::from_rotation_y(fan + swing) * Quat::from_rotation_z((0.5 - lift) * side)
             }
             Role::Tail => {
-                let mood = if mob.aggro { 0.15 } else { 0.35 + st.near * 0.65 };
-                let wag = if awake { (clock * rig.wag_rate).sin() * 0.5 * rig.wag * mood * (1.0 - run * 0.7) } else { 0.0 };
+                let mood = if mob.aggro { 0.15 } else { 0.35 + st.near * 0.65 + petted * 0.5 + st.bow * 0.5 };
+                let rate = rig.wag_rate * (1.0 + petted * 0.6 + st.bow * 0.6);
+                let wag = if awake { (clock * rate).sin() * 0.5 * rig.wag * mood * (1.0 - run * 0.7) } else { 0.0 };
                 let sway = (clock * 1.1).sin() * 0.12 * idle;
                 let swish = if style == Style::Swimmer { (clock * (3.0 + amp * 5.0) - 0.8).sin() * (0.25 + amp.min(1.0) * 0.3) } else { 0.0 };
                 let mut lift = (t * 2.0).cos() * 0.08 * amp.min(1.0) + run * 0.18 - if sleeping || !alive { 0.35 } else { 0.0 };
@@ -862,9 +925,18 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
             let period = 3.2 + mob.phase.fract() * 3.0;
             let beat = (st.t + mob.age + mob.phase * 7.0) % period;
             let double = mob.phase.fract() > 0.7 && (0.25..0.37).contains(&beat);
-            if beat < 0.12 || double || sleeping || !alive || eyes_shut_test() {
+            let content = petted > 0.5 || (nuzzle > 0.6 && (clock * 0.7).sin() > 0.2);
+            if beat < 0.12 || double || sleeping || !alive || eyes_shut_test() || content {
                 b.m[EYELID_PART] = b.m[i];
             }
+        }
+        // Speaking: the mouth (town folk have one, see entity::add_mouth) opens and shuts with
+        // the syllables.
+        if i == 0 && talk > 0.03 && def.parts.len() <= MOUTH_PART && crate::entity::has_mouth(def) {
+            let syl = ((clock * 9.0).sin() * 0.5 + 0.5) * (0.6 + 0.4 * (clock * 3.3).sin().abs());
+            let top = p.origin.1 as f32 + 2.0;
+            let open = Mat4::from_translation(Vec3::Y * top) * Mat4::from_scale(Vec3::new(1.0, 0.2 + talk * syl * 1.1, 1.0)) * Mat4::from_translation(-Vec3::Y * top);
+            b.m[MOUTH_PART] = (Mat4::from_cols_array_2d(&b.m[0]) * open).to_cols_array_2d();
         }
     }
     b
