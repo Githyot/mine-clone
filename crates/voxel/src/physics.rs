@@ -35,6 +35,65 @@ pub trait Terrain {
     fn climbable(&self, _p: IVec3) -> bool {
         false
     }
+    /// How the block feels underfoot (ice slides, sand and snow drag).
+    fn ground(&self, _p: IVec3) -> Ground {
+        Ground::FIRM
+    }
+}
+
+/// How the ground under a body feels to walk on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Ground {
+    /// How fast the feet bring the body's speed round to where it wants to go, per second.
+    /// Firm ground answers at once; on ice it is so low that a body takes about two blocks
+    /// to stop and swings wide on turns, like the classic game.
+    pub grip: f32,
+    /// Walking speed on it (sand and snow are heavy going).
+    pub speed: f32,
+    /// How deep the feet sink in, in blocks: the camera settles that much lower.
+    pub sink: f32,
+}
+
+impl Ground {
+    pub const FIRM: Ground = Ground { grip: 20.0, speed: 1.0, sink: 0.0 };
+    /// Ice, packed ice and frosted ice.
+    pub const ICE: Ground = Ground { grip: 2.2, speed: 1.0, sink: 0.0 };
+    /// Blue ice: even less hold, and a bit faster once going.
+    pub const BLUE_ICE: Ground = Ground { grip: 1.6, speed: 1.12, sink: 0.0 };
+    /// Slime: a little bouncy slide.
+    pub const SLIME: Ground = Ground { grip: 7.0, speed: 0.95, sink: 0.03 };
+    pub const SAND: Ground = Ground { grip: 12.0, speed: 0.86, sink: 0.04 };
+    pub const SNOW: Ground = Ground { grip: 11.0, speed: 0.82, sink: 0.08 };
+    pub const SOUL_SAND: Ground = Ground { grip: 9.0, speed: 0.6, sink: 0.12 };
+    pub const MUD: Ground = Ground { grip: 11.0, speed: 0.84, sink: 0.1 };
+
+    /// A layer of snow `layers` deep (1..8): the deeper, the heavier.
+    pub fn snow_layers(layers: u8) -> Ground {
+        let n = layers.clamp(1, 8) as f32;
+        Ground { grip: 15.0 - n * 0.6, speed: 0.97 - n * 0.025, sink: 0.02 + n * 0.012 }
+    }
+
+    /// How a block feels underfoot, from its name (and, for snow layers, its variant).
+    pub fn of_block(name: &str, variant: u8) -> Ground {
+        match name {
+            "ice" | "packed_ice" | "frosted_ice" | "thin_ice" => Ground::ICE,
+            "blue_ice" => Ground::BLUE_ICE,
+            "slime_block" => Ground::SLIME,
+            "snow" | "powder_snow" => Ground::SNOW,
+            "snow_layer" => Ground::snow_layers(variant + 1),
+            // A thin crust of snow over the grass: a little heavier than bare ground.
+            "snowy_grass_block" => Ground { grip: 16.0, speed: 0.94, sink: 0.02 },
+            "soul_sand" => Ground::SOUL_SAND,
+            "mud" => Ground::MUD,
+            n if n == "sand" || n.ends_with("_sand") => Ground::SAND,
+            _ => Ground::FIRM,
+        }
+    }
+
+    /// The body keeps sliding here.
+    pub fn slippery(&self) -> bool {
+        self.grip < 6.0
+    }
 }
 
 /// How fast a body climbs a ladder, and the most it slides down one (blocks per second).
@@ -105,6 +164,11 @@ pub struct Body {
     pub mantle: Option<Mantle>,
     /// Seconds a jump press still counts for catching a ledge after the key is let go.
     pub mantle_buffer: f32,
+    /// The ground last stood on (kept through a jump, so a hop on ice keeps its slide).
+    pub ground: Ground,
+    /// How fast the feet are sliding against where the body wants to go (blocks per second;
+    /// 0 when they hold), for slide sounds and ice shavings.
+    pub slide: f32,
 }
 
 /// Grabbing a ledge up to two blocks high and pulling up onto it, Terraria style: the hands
@@ -178,6 +242,8 @@ impl Body {
             climb_push: false,
             mantle: None,
             mantle_buffer: 0.0,
+            ground: Ground::FIRM,
+            slide: 0.0,
         }
     }
 
@@ -328,6 +394,15 @@ impl Body {
         true
     }
 
+    /// The ground under the feet: a snow layer the feet stand in, else the block below.
+    pub fn ground_under(&self, world: &impl Terrain) -> Ground {
+        let here = world.ground(self.pos.floor().as_ivec3());
+        if here != Ground::FIRM {
+            return here;
+        }
+        world.ground((self.pos - Vec3::Y * 0.05).floor().as_ivec3())
+    }
+
     /// True if the player's box overlaps the given block cell.
     pub fn intersects_block(&self, b: IVec3) -> bool {
         let (lo, hi) = self.aabb();
@@ -351,6 +426,12 @@ impl Body {
             wish = wish.normalize();
         }
         let climbing = !self.flying && !self.in_water && (world.climbable(feet) || world.climbable(feet + IVec3::Y));
+        if self.on_ground {
+            self.ground = self.ground_under(world);
+        } else if self.flying || self.in_water || climbing {
+            self.ground = Ground::FIRM;
+        }
+        self.slide = 0.0;
 
         if self.flying {
             let speed = if input.sprint { FLY_SPEED * 2.0 } else { FLY_SPEED };
@@ -372,11 +453,16 @@ impl Body {
             self.vel.y *= 1.0 - (dt * 2.0).min(1.0);
             self.fall_distance = 0.0;
         } else {
-            let base = self.speed_override.unwrap_or(WALK_SPEED);
+            let g = self.ground;
+            let base = self.speed_override.unwrap_or(WALK_SPEED) * if self.on_ground { g.speed } else { 1.0 };
             let speed = if input.crawl { base * 0.28 } else if input.sneak { base * 0.3 } else if input.sprint { base * 1.3 } else { base };
             let target = wish * speed;
-            // Quick acceleration on the ground, little control in the air.
-            let k = if self.on_ground { (dt * 20.0).min(1.0) } else { (dt * 3.0).min(1.0) };
+            // The ground's grip on the ground (quick, or a long slide on ice), little control
+            // in the air, and no more than the ice gave when hopping off it.
+            let k = if self.on_ground { (dt * g.grip).min(1.0) } else { (dt * g.grip.min(3.0)).min(1.0) };
+            if self.on_ground {
+                self.slide = Vec3::new(target.x - self.vel.x, 0.0, target.z - self.vel.z).length();
+            }
             self.vel.x += (target.x - self.vel.x) * k;
             self.vel.z += (target.z - self.vel.z) * k;
             self.vel.y = (self.vel.y - GRAVITY * dt).max(-TERMINAL_VELOCITY);
@@ -742,5 +828,148 @@ mod tests {
         let input = Input { wish: Vec3::X, jump: true, ..Default::default() };
         run(&mut b, &High, &input, 120);
         assert!((b.pos.y - 12.625).abs() < 1e-3, "{:?}", b.pos);
+    }
+
+    /// A wide open floor at y = 10 made of one kind of ground.
+    struct Floor(Ground);
+    impl Terrain for Floor {
+        fn solid(&self, p: IVec3) -> bool {
+            p.y < 10
+        }
+        fn liquid(&self, _: IVec3) -> bool {
+            false
+        }
+        fn ground(&self, p: IVec3) -> Ground {
+            if p.y == 9 {
+                self.0
+            } else {
+                Ground::FIRM
+            }
+        }
+    }
+
+    const DT: f32 = 1.0 / 60.0;
+
+    /// Walk forward along +x for two seconds, let go, and measure how far the body still goes.
+    fn stopping_distance(g: Ground) -> f32 {
+        let w = Floor(g);
+        let mut b = Body::new(Vec3::new(0.5, 10.0, 0.5));
+        b.on_ground = true;
+        let go = Input { wish: Vec3::X, ..Default::default() };
+        for _ in 0..120 {
+            b.step(&w, &go, DT);
+        }
+        let x = b.pos.x;
+        for _ in 0..600 {
+            b.step(&w, &Input::default(), DT);
+        }
+        b.pos.x - x
+    }
+
+    fn top_speed(g: Ground) -> f32 {
+        let w = Floor(g);
+        let mut b = Body::new(Vec3::new(0.5, 10.0, 0.5));
+        b.on_ground = true;
+        let go = Input { wish: Vec3::X, ..Default::default() };
+        for _ in 0..600 {
+            b.step(&w, &go, DT);
+        }
+        b.vel.x
+    }
+
+    #[test]
+    fn ice_slides_a_long_way_after_letting_go() {
+        let firm = stopping_distance(Ground::FIRM);
+        let ice = stopping_distance(Ground::ICE);
+        let blue = stopping_distance(Ground::BLUE_ICE);
+        assert!(firm < 0.3, "firm ground stops at once ({firm})");
+        assert!(ice > 1.5 && ice < 3.0, "ice slides about two blocks ({ice})");
+        assert!(blue > ice, "blue ice slides farther ({blue} vs {ice})");
+    }
+
+    #[test]
+    fn ice_is_slow_to_get_going_and_to_turn() {
+        let w = Floor(Ground::ICE);
+        let mut b = Body::new(Vec3::new(0.5, 10.0, 0.5));
+        b.on_ground = true;
+        for _ in 0..12 {
+            b.step(&w, &Input { wish: Vec3::X, ..Default::default() }, DT);
+        }
+        assert!(b.vel.x < WALK_SPEED * 0.5, "a fifth of a second in, still slipping ({})", b.vel.x);
+        assert!(b.slide > 1.2, "the feet are sliding ({})", b.slide);
+        for _ in 0..300 {
+            b.step(&w, &Input { wish: Vec3::X, ..Default::default() }, DT);
+        }
+        // Turn hard: for a while the body keeps drifting the old way.
+        for _ in 0..15 {
+            b.step(&w, &Input { wish: Vec3::Z, ..Default::default() }, DT);
+        }
+        assert!(b.vel.x > WALK_SPEED * 0.4, "still drifting along x after the turn ({})", b.vel.x);
+        assert!(b.vel.z < WALK_SPEED * 0.7);
+    }
+
+    #[test]
+    fn sand_and_snow_are_heavy_going() {
+        let firm = top_speed(Ground::FIRM);
+        let sand = top_speed(Ground::SAND);
+        let snow = top_speed(Ground::SNOW);
+        let soul = top_speed(Ground::SOUL_SAND);
+        assert!((firm - WALK_SPEED).abs() < 0.05);
+        assert!(sand < firm * 0.9 && snow < sand && soul < snow, "{firm} {sand} {snow} {soul}");
+        // Ice doesn't slow the walk once going.
+        assert!((top_speed(Ground::ICE) - firm).abs() < 0.1);
+    }
+
+    #[test]
+    fn deeper_snow_is_slower_and_sinks_more() {
+        let a = Ground::snow_layers(1);
+        let b = Ground::snow_layers(8);
+        assert!(b.speed < a.speed && b.sink > a.sink && b.grip < a.grip);
+        assert!(a.speed < 1.0);
+        assert_eq!(Ground::of_block("snow_layer", 7), b);
+    }
+
+    #[test]
+    fn blocks_know_how_they_feel() {
+        for n in ["ice", "packed_ice", "frosted_ice", "blue_ice"] {
+            assert!(Ground::of_block(n, 0).slippery(), "{n}");
+        }
+        for n in ["sand", "red_sand", "suspicious_sand", "soul_sand", "snow", "mud"] {
+            let g = Ground::of_block(n, 0);
+            assert!(!g.slippery() && g.speed < 0.9 && g.sink > 0.0, "{n}");
+        }
+        assert!(Ground::of_block("slime_block", 0).grip < Ground::FIRM.grip);
+        assert_eq!(Ground::of_block("stone", 0), Ground::FIRM);
+        assert_eq!(Ground::of_block("sandstone", 0), Ground::FIRM);
+    }
+
+    #[test]
+    fn a_dropped_thing_skids_over_ice() {
+        let skid = |g: Ground| {
+            let w = Floor(g);
+            let mut b = Body::sized(Vec3::new(0.5, 10.0, 0.5), 0.25, 0.25);
+            b.on_ground = true;
+            b.vel = Vec3::new(4.0, 0.0, 0.0);
+            for _ in 0..600 {
+                b.step(&w, &Input::default(), DT);
+            }
+            b.pos.x - 0.5
+        };
+        assert!(skid(Ground::ICE) > 1.5 && skid(Ground::FIRM) < 0.3);
+    }
+
+    #[test]
+    fn hopping_on_ice_keeps_the_slide() {
+        let w = Floor(Ground::ICE);
+        let mut b = Body::new(Vec3::new(0.5, 10.0, 0.5));
+        b.on_ground = true;
+        for _ in 0..300 {
+            b.step(&w, &Input { wish: Vec3::X, ..Default::default() }, DT);
+        }
+        b.step(&w, &Input { jump: true, ..Default::default() }, DT);
+        while !b.on_ground {
+            b.step(&w, &Input::default(), DT);
+        }
+        assert!(b.vel.x > 1.0, "landed still sliding ({})", b.vel.x);
     }
 }

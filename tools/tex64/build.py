@@ -156,10 +156,12 @@ def main():
         if h == "missing":
             print(f"  missing design: {k}/{nm}")
     if not args.only and not args.skip_entities:
+        import boats
         import entities
         import gui
         entities.main()
         gui.main()
+        boats.main()
     if args.preview:
         os.makedirs(args.preview, exist_ok=True)
         for kind in KINDS:

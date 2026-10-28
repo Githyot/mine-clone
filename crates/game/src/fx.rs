@@ -80,6 +80,11 @@ impl Game {
         self.kick_dust(4 + (k * 14.0) as usize, 0.5 + k * 0.6);
     }
 
+    /// A few shavings of ice kicked up by sliding feet.
+    pub(crate) fn slide_shavings(&mut self) {
+        self.kick_dust(3, 0.3);
+    }
+
     /// Sparks off a hit mob, or a puff of smoke where one died.
     pub(crate) fn mob_hit_fx(&mut self, at: Vec3, height: f32, died: bool) {
         let glow = self.glow_layer();

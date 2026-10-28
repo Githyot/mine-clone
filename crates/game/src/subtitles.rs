@@ -45,6 +45,7 @@ pub(crate) fn caption(s: Sfx) -> Option<&'static str> {
             Fx::Heartbeat => "Coração batendo",
             Fx::Gasp => "Fôlego",
             Fx::Land(k) if k > 0.4 => "Queda",
+            Fx::Slide(_) => "Deslizando no gelo",
             _ => return None,
         },
         _ => return None,
