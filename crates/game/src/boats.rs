@@ -230,10 +230,20 @@ impl Game {
                 }
             } else {
                 b.vel.y -= 20.0 * dt;
-                // On land it drags along the ground.
-                let drag = (1.0 - dt * 8.0).max(0.0);
+                // On land it drags along the ground, and glides fast over ice like the classic
+                // ice-boat roads.
+                let g = self.world.ground((b.pos - Vec3::Y * 0.05).floor().as_ivec3());
+                let rate = if g.slippery() { g.grip * 0.15 } else { 8.0 / g.speed };
+                let drag = (1.0 - dt * rate).max(0.0);
                 b.vel.x *= drag;
                 b.vel.z *= drag;
+                let flat = Vec3::new(b.vel.x, 0.0, b.vel.z);
+                let top = TOP_SPEED * 2.5 * g.speed;
+                if flat.length() > top {
+                    let v = flat.normalize() * top;
+                    b.vel.x = v.x;
+                    b.vel.z = v.z;
+                }
             }
             // Move one axis at a time so it slides along banks.
             for axis in 0..3 {
