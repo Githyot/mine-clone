@@ -1879,10 +1879,6 @@ impl Game {
                     // Test hook: a Phase 6 scene (stations, effects, advancements, mobs).
                     self.test_fase6(&scene);
                 }
-                if let Ok(scene) = std::env::var("MC_SOCIAL") {
-                    // Test hook: mobs getting on with each other (social.rs).
-                    self.test_social(&scene);
-                }
                 if std::env::var("MC_PALE").is_ok() {
                     // Test hook: the pale garden's and resin's new blocks.
                     self.test_pale();
@@ -4582,7 +4578,13 @@ impl Game {
                 PLACED.store(k + 1, std::sync::atomic::Ordering::Relaxed);
                 exit_after = k >= n;
             } else if (self.loaded_frames > 30 && self.world.pending_jobs() == 0 && self.lod.is_complete() && self.fluids.time >= self.args.wait as f64) || self.loaded_frames > 1500 {
-                if place_frames.is_some() {
+                static SOCIAL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                if let Some(scene) = std::env::var("MC_SOCIAL").ok().filter(|_| !SOCIAL.swap(true, std::sync::atomic::Ordering::Relaxed)) {
+                    // Test hook: mobs getting on with each other (social.rs), set up once the
+                    // world around is loaded; then wait for the floor to mesh again.
+                    self.test_social(&scene);
+                    self.loaded_frames = 0;
+                } else if place_frames.is_some() {
                     let name = std::env::var("MC_PLACE_BLOCK").unwrap_or("oak_planks".into());
                     if let (true, Some(hit)) = (name == "break", self.target) {
                         // MC_PLACE_BLOCK=break: break the block aimed at instead.

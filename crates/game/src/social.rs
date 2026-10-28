@@ -80,6 +80,8 @@ enum Order {
     Refresh(usize, Vec3),
     End(usize),
     Birth(usize, usize),
+    /// Caught! The chaser becomes the chased.
+    Tag(usize, usize),
 }
 
 /// What puts each animal in love (Minecraft's breeding foods, and a grazer's default).
@@ -209,13 +211,18 @@ impl Mobs {
                     Some(j) => {
                         let q = list[j].body.pos;
                         let at = if m.social.act == Act::Play && !m.social.first {
+                            // The one being chased runs rings around the chaser, never far.
                             let away = (pos - q).normalize_or(Vec3::new(m.yaw.sin(), 0.0, m.yaw.cos()));
-                            pos + away * 4.0
+                            let round = Vec3::new(away.z, 0.0, -away.x);
+                            q + (away * 2.5 + round * 3.0).normalize() * 3.0
                         } else {
                             q
                         };
                         orders.push(Order::Refresh(i, at));
                         let o = &list[j];
+                        if m.social.act == Act::Play && m.social.first && o.social.act == Act::Play && pos.distance(q) < d.width + 0.5 && m.social.age > 1.0 {
+                            orders.push(Order::Tag(i, j));
+                        }
                         if m.social.act == Act::Mate && o.social.act == Act::Mate && o.social.with == m.net_id && i < j && pos.distance(q) < d.width + 0.9 && m.social.age > 2.0 {
                             orders.push(Order::Birth(i, j));
                         }
@@ -376,6 +383,14 @@ impl Mobs {
                 }
                 Order::Refresh(i, at) => self.list[i].social.at = at,
                 Order::End(i) => self.list[i].social.act = Act::None,
+                Order::Tag(i, j) => {
+                    self.list[i].social.first = false;
+                    self.list[i].social.age = 0.0;
+                    self.list[j].social.first = true;
+                    self.list[j].social.age = 0.0;
+                    self.list[i].social.t += 1.0;
+                    self.list[j].social.t += 1.0;
+                }
                 Order::Birth(i, j) => {
                     let (a, b) = (self.list[i].body.pos, self.list[j].body.pos);
                     let at = (a + b) * 0.5;
@@ -472,7 +487,7 @@ impl crate::Game {
         let glow = self.glow_layer();
         for &h in &out.hearts {
             let j = Vec3::new(self.surv.rng.f32() - 0.5, 0.0, self.surv.rng.f32() - 0.5) * 0.5;
-            self.particles.glow(h + j, Vec3::Y * 0.6, glow, [1.0, 0.32, 0.42], 0.06, 1.1);
+            self.particles.glow(h + j, Vec3::Y * 0.6, glow, [1.0, 0.32, 0.42], 0.09, 1.3);
         }
         for &(def, at) in &out.births {
             self.prog.stats.add("breeds", 1);
@@ -512,6 +527,9 @@ impl crate::Game {
     /// Test hook MC_SOCIAL=vila|fazenda|caca|brincar: a little scene of mobs getting on (or
     /// not) in front of the camera, already MC_SOCIAL_T seconds (default 3) under way.
     pub(crate) fn test_social(&mut self, scene: &str) {
+        if let Ok(floor) = std::env::var("MC_ARENA") {
+            self.test_arena(&floor);
+        }
         let f = self.forward();
         let fwd = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
         let side = Vec3::new(-fwd.z, 0.0, fwd.x);
@@ -541,13 +559,13 @@ impl crate::Game {
         };
         match scene {
             "vila" => {
-                let a = put(self, "npc_guide", 6.0, -3.2);
-                let b = put(self, "npc_merchant", 7.5, -1.0);
+                let a = put(self, "npc_guide", 4.6, -2.4);
+                let b = put(self, "npc_merchant", 6.0, -0.7);
                 pair(self, a, b, Act::Chat, 1.7, 60.0);
-                let c = put(self, "npc_nurse", 6.5, 1.6);
-                let d = put(self, "npc_farmer", 8.0, 3.4);
+                let c = put(self, "npc_nurse", 4.8, 1.0);
+                let d = put(self, "npc_farmer", 6.2, 2.6);
                 pair(self, c, d, Act::Chat, 1.7, 60.0);
-                put(self, "npc_guard", 10.5, 0.2);
+                put(self, "npc_guard", 9.0, 0.2);
             }
             "fazenda" => {
                 let a = put(self, "cow", 6.5, -3.0);
@@ -574,17 +592,17 @@ impl crate::Game {
                 }
             }
             "caca" => {
-                if let Some(w) = put(self, "wolf", 10.0, -3.5) {
+                if let Some(w) = put(self, "wolf", 8.0, -7.0) {
                     self.mobs.list[w].fed = 0.0;
                 }
-                put(self, "sheep", 7.0, -2.0);
-                put(self, "sheep", 7.5, -0.8);
-                put(self, "cat", 6.0, 2.5);
-                put(self, "stalker", 7.5, 3.0);
-                if let Some(s) = put(self, "skeleton", 10.0, 1.0) {
+                put(self, "sheep", 8.0, -2.5);
+                put(self, "sheep", 9.2, -1.5);
+                put(self, "cat", 6.5, 2.0);
+                put(self, "stalker", 7.5, 3.5);
+                if let Some(s) = put(self, "skeleton", 11.0, 0.5) {
                     self.mobs.list[s].aggro = false;
                 }
-                put(self, "wolf_tame", 11.5, 2.0);
+                put(self, "wolf_tame", 12.5, -1.0);
             }
             _ => {
                 let a = put(self, "wolf", 7.0, -2.0);
