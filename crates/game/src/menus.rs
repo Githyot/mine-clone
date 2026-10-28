@@ -116,6 +116,7 @@ impl Game {
         self.redstone = crate::redstone::Redstone::new(self.reg.clone());
         self.riding = None;
         self.seat = None;
+        self.sleep = None;
         self.tnt.clear();
         if let Some(r) = self.renderer.get_mut() {
             r.clear_chunks();

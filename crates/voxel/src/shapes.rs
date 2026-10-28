@@ -35,6 +35,8 @@ pub fn variant_count(shape: Shape) -> u8 {
         Shape::Chair | Shape::Bench | Shape::Shelf | Shape::Ladder => 4,
         Shape::Cake => 7,
         Shape::Sign | Shape::Banner => 8,
+        // Beds: the way the head points | head part 4.
+        Shape::Bed => 8,
         Shape::Lantern | Shape::Bridge => 2,
         Shape::Portal | Shape::Hollow => 3,
         // Rails: shape 0..9 (see `RAIL_ENDS`); powered, detector and activator rails only
@@ -319,6 +321,11 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
             _ => [[0, 0, 0, 16, 16, 2], [0, 0, 14, 16, 16, 16], [0, 0, 2, 2, 16, 14], [14, 0, 2, 16, 16, 14]],
         }),
         Shape::Pot => out.push([3, 0, 3, 13, 6, 13]),
+        Shape::Bed => {
+            for &b in crate::bed::outline(variant, collision) {
+                out.push(rotate(b, f));
+            }
+        }
         Shape::Skull => out.push([4, 0, 4, 12, 8, 12]),
         Shape::Bench => {
             // Drawn running east-west: the seat and a leg at each end.

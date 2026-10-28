@@ -409,6 +409,7 @@ impl MeshTables {
         if t.biome_tints.is_empty() {
             t.biome_tints.push([200, 200, 200]);
         }
+        t.set_models(Vec::new());
         t
     }
 }
@@ -546,9 +547,14 @@ pub fn section_visibility(t: &MeshTables, input: &MeshInput, section: usize) -> 
 /// Mesh one 16-block-tall section of the chunk described by `input`.
 impl MeshTables {
     /// Swap in the resource packs' block models (by block id). Chunks already meshed keep the
-    /// old look until they are meshed again.
-    pub fn set_models(&self, list: Vec<(BlockId, Vec<ModelQuad>)>) {
+    /// old look until they are meshed again. Beds always keep our own model.
+    pub fn set_models(&self, mut list: Vec<(BlockId, Vec<ModelQuad>)>) {
         let mut m = ModelSet { quads: vec![None; self.shape.len()], open: vec![false; self.shape.len()] };
+        for (i, &shape) in self.shape.iter().enumerate() {
+            if shape == Shape::Bed {
+                list.push((i as BlockId, crate::bed::quads(self.variant[i], self.faces[i])));
+            }
+        }
         for (id, quads) in list {
             let i = id as usize;
             if i < m.quads.len() {

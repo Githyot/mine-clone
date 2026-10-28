@@ -378,3 +378,5 @@ for _m in arms.STYLE:
     for _t, _f in arms.ARMOR_ICONS.items():
         REGISTRY[f"{_m}_{_t}"] = lambda m=_m, f=_f: f(m)
 
+import beds as _beds  # noqa: E402  (each bed's icon is its 3D model)
+REGISTRY.update(_beds.ITEMS)
