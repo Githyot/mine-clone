@@ -1009,8 +1009,8 @@ impl Game {
                         self.open_container(Open::Furnace(hit.block));
                         return true;
                     }
-                    n if n == "hopper" || n == "dropper" || n == "dispenser" || n == "crafter" || n.ends_with("_drawer") || n.ends_with("shulker_box") => {
-                        let n = if n == "hopper" { 5 } else if n.ends_with("_drawer") { 18 } else if n.ends_with("shulker_box") { 27 } else { 9 };
+                    n if n == "hopper" || n == "dropper" || n == "dispenser" || n == "crafter" || n.ends_with("_drawer") || n.ends_with("shulker_box") || n == "barrel" || n == "decorated_pot" => {
+                        let n = if n == "hopper" { 5 } else if n.ends_with("_drawer") { 18 } else if n.ends_with("shulker_box") || n == "barrel" { 27 } else if n == "decorated_pot" { 1 } else { 9 };
                         self.surv.containers.entry(hit.block).or_insert_with(|| Container::Chest(Inventory::new(n)));
                         self.open_container(Open::Chest(hit.block));
                         return true;

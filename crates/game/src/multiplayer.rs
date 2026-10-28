@@ -443,10 +443,7 @@ impl Game {
             swing: self.anim.swing,
             held: name(&self.held_stack()),
             armor: std::array::from_fn(|i| name(&self.surv.armor[i])),
-            chest: match self.surv.open {
-                Open::Chest(p) if self.screen == Screen::Inventory => Some(p.to_array()),
-                _ => None,
-            },
+            chest: self.open_store_block().map(|p| p.to_array()),
         }
     }
 

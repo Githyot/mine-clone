@@ -315,6 +315,7 @@
     (name: "mangrove_roots", fuel: 15.0),
     (name: "crafting_table", fuel: 15.0),
     (name: "chest", fuel: 15.0),
+    (name: "barrel", fuel: 15.0),
     (name: "bookshelf", fuel: 15.0),
     (name: "oak_slab", fuel: 7.5),
     (name: "oak_sapling", fuel: 5.0),

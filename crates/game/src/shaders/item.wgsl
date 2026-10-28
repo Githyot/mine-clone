@@ -9,9 +9,9 @@ struct Item {
     // Texture layers: side, top, bottom; w: brightness boost (orbs glow).
     layers: vec4<f32>,
     // x: pitch, y: roll (a held item tilts with the camera), z: a block part's quarter turns,
-    // w: 1 for a chest's parts (its inner faces are dark).
+    // w: the top of open storage's dark inside (0 for none; bmin.w is its floor).
     rot: vec4<f32>,
-    // A part of a block (a swinging door, a chest lid) when piv.w is 1: corners in the block's
+    // A part of a block (a swinging door, a chest lid) when piv.w is 1 (2: a box inside a box): corners in the block's
     // 0..1 frame, and the pivot inside the block that pos stands for.
     bmin: vec4<f32>,
     bmax: vec4<f32>,
@@ -119,21 +119,24 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
     }
     var shade = array<f32, 6>(0.6, 0.6, 1.0, 0.5, 0.8, 0.8);
     o.shade = shade[face] + it.layers.w;
-    if (part && it.rot.w > 0.5) {
-        // Inside an open chest: faces inside the box (not on its outside or rim) are in
-        // shadow, deepest at the floor; the lid's underside is dim.
+    if (part && it.rot.w > 0.05) {
+        // Inside open storage: faces inside the box (not on its outside or rim) are in
+        // shadow, deepest at the floor (bmin.w) and lighter towards the top (rot.w); the
+        // underside of a lid is dim. A box inside a box (piv.w 2, a drawer) keeps its own
+        // sides out of it.
         var inner = false;
+        let edge = select(0.01, 0.07, it.piv.w > 1.5);
         switch face {
-            case 0u, 1u: { inner = inb.x > 0.01 && inb.x < 0.99; }
+            case 0u, 1u: { inner = inb.x > edge && inb.x < 1.0 - edge; }
             case 4u, 5u: { inner = inb.z > 0.01 && inb.z < 0.99; }
-            case 2u: { inner = inb.y < 0.6; }
+            case 2u: { inner = inb.y < it.rot.w - 0.02; }
             default: { inner = inb.y > 0.05; }
         }
         if (inner) {
             if (face == 3u) {
                 o.shade = 0.3;
             } else {
-                let h = clamp((inb.y - 0.0625) / 0.5625, 0.0, 1.0);
+                let h = clamp((inb.y - it.bmin.w) / max(it.rot.w - it.bmin.w, 0.05), 0.0, 1.0);
                 o.shade = mix(0.13, 0.5, h * h) * select(1.0, 0.85, face == 0u || face == 1u);
             }
         }

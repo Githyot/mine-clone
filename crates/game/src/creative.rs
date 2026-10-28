@@ -143,7 +143,7 @@ impl Game {
         if matches!(bl.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate | Shape::Torch) || bl.light > 0 {
             return Some(Tab::Doors);
         }
-        if ["crafting_table", "furnace", "chest", "bookshelf", "ladder", "jukebox"].contains(&name) || name.ends_with("_bed") || matches!(bl.shape, Shape::Chair | Shape::Table | Shape::Bench | Shape::Shelf) {
+        if ["crafting_table", "furnace", "chest", "barrel", "bookshelf", "ladder", "jukebox"].contains(&name) || name.ends_with("_bed") || matches!(bl.shape, Shape::Chair | Shape::Table | Shape::Bench | Shape::Shelf) {
             return Some(Tab::Functional);
         }
         let natural = bl.shape == Shape::Cross
