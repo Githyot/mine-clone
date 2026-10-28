@@ -32,6 +32,7 @@ pub struct OptState {
 /// Every option of the screen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Id {
+    Preset,
     RenderDistance,
     Fov,
     Brightness,
@@ -190,6 +191,11 @@ impl Game {
         match tab {
             Tab::Video => vec![
                 header("Imagem"),
+                self.opt_button(
+                    Id::Preset,
+                    format!("Gráficos: {}", self.current_preset().map(|k| crate::presets::PRESETS[k].name).unwrap_or("Personalizado")),
+                    "Muda tudo de uma vez: Mínimo para PCs bem fracos, Ultra para placas de vídeo fortes.",
+                ),
                 self.slider(Id::RenderDistance, format!("Distância de visão: {} chunks", st.render_distance), "Quantos chunks em volta são carregados e desenhados."),
                 self.slider(
                     Id::Fov,
@@ -332,6 +338,7 @@ impl Game {
             self.sfx(Sfx::Click);
         }
         match id {
+            Id::Preset => self.next_preset(),
             Id::GuiScale => self.settings.gui_scale = (self.settings.gui_scale + 1) % 5,
             Id::Vsync => {
                 self.settings.vsync = !self.settings.vsync;
