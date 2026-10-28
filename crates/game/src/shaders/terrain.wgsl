@@ -8,6 +8,9 @@
 @group(2) @binding(3) var scene_depth: texture_depth_2d;
 // Solid blocks around the player (1 = blocks light) for hand light shadows; corner in g.occl.
 @group(2) @binding(4) var occluders: texture_3d<u32>;
+// The material class of each block texture layer (material.rs): metal and gem blocks shine,
+// ores only in their flecks (class + 256).
+@group(2) @binding(5) var<storage, read> block_mat: array<u32>;
 
 struct VOut {
     @builtin(position) clip: vec4<f32>,
@@ -28,6 +31,36 @@ fn light_curve(l: f32) -> f32 {
     return (1.0 - x) / (x * 3.0 + 1.0);
 }
 
+// How far a waving vertex moves in the wind. Leaves sway a little as a whole. Rooted plants
+// (wave + liquid flags) keep their base on the ground and bend: the offset grows with the height
+// in the plant, so a stack (sugar cane, kelp, bamboo) bends as one stem, the lower part barely and
+// the top the most. `stack` bit 0: stands on another plant, bit 1: carries one; `h` is the height
+// in this block (0 at the foot, 1 at the top).
+fn wind_offset(wp: vec3<f32>, flags: u32, stack: u32, h: f32) -> vec3<f32> {
+    let t = g.cam_pos.w;
+    let gust = 1.0 + (g.effects.x - 1.0) * 0.5 * (sin(t * 0.37 + wp.x * 0.05) * 0.5 + 0.5);
+    if ((flags & 3u) != 3u) {
+        let a = 0.025 * g.effects.x * gust;
+        return vec3<f32>(sin(t * 1.6 + wp.x * 0.7 + wp.z * 0.4 + wp.y * 0.3) * a, 0.0, cos(t * 1.2 + wp.z * 0.6 + wp.x * 0.3) * a);
+    }
+    // One phase per plant column, so all four corners of the top lean together.
+    let c = floor(wp.xz);
+    let lo = select(0.0, 0.3, (stack & 1u) != 0u);
+    let hi = select(1.0, 0.3, (stack & 2u) != 0u);
+    let k = mix(lo, hi, h) * 0.1 * g.effects.x * gust;
+    // The shared wind (game/src/wind.rs): its direction turns slowly and gusts travel along it,
+    // so the plants lean the same way the falling leaves drift. A lean with the wind that rises
+    // with each gust, plus a small flutter of every plant across it.
+    let wa = 0.7 + 0.35 * sin(t * 0.013) + 0.2 * sin(t * 0.031 + 1.0);
+    let dir = vec2<f32>(cos(wa), sin(wa));
+    let ph = t - dot(c, dir) / 6.0;
+    let along = 0.35 + 0.45 * sin(ph * 1.3) * (0.7 + 0.3 * sin(ph * 0.37)) + sin(t * 2.3 + c.x * 0.83 - c.y * 0.61) * 0.15;
+    let across = sin(t * 1.9 + c.y * 0.47 - c.x * 0.29) * 0.22;
+    let d = (dir * along + vec2<f32>(-dir.y, dir.x) * across) * k;
+    // Bending, not stretching: the top drops a little as it leans.
+    return vec3<f32>(d.x, -dot(d, d) * 0.6, d.y);
+}
+
 @vertex
 fn vs_main(@location(0) w: vec3<u32>, @location(1) origin: vec3<f32>) -> VOut {
     var shades = array<f32, 6>(0.6, 0.6, 1.0, 0.5, 0.8, 0.8);
@@ -43,12 +76,9 @@ fn vs_main(@location(0) w: vec3<u32>, @location(1) origin: vec3<f32>) -> VOut {
     let t = g.cam_pos.w;
     if ((flags & 1u) != 0u) {
         // Leaves and plants sway gently in the wind (shader packs can make it stronger).
-        let a = 0.025 * g.effects.x;
-        let gust = 1.0 + (g.effects.x - 1.0) * 0.5 * (sin(t * 0.37 + wp.x * 0.05) * 0.5 + 0.5);
-        p.x += sin(t * 1.6 + wp.x * 0.7 + wp.z * 0.4 + wp.y * 0.3) * a * gust;
-        p.z += cos(t * 1.2 + wp.z * 0.6 + wp.x * 0.3) * a * gust;
+        p += wind_offset(wp, flags, ao, 1.0 - uv.y);
     }
-    if ((flags & 2u) != 0u && face == 2u && g.effects.y > 0.5) {
+    if ((flags & 3u) == 2u && face == 2u && g.effects.y > 0.5) {
         // Water surface bobs a little; it stays at or below its normal height.
         p.y += (sin(t * 1.7 + wp.x * 0.9 + wp.z * 0.5) + sin(t * 1.1 - wp.z * 0.8 + wp.x * 0.3)) * 0.018 - 0.04;
     }
@@ -69,7 +99,8 @@ fn vs_main(@location(0) w: vec3<u32>, @location(1) origin: vec3<f32>) -> VOut {
     }
     out.layer = layer;
     let tint = vec3<f32>(f32((w.z >> 8u) & 255u), f32((w.z >> 16u) & 255u), f32((w.z >> 24u) & 255u)) / 200.0;
-    out.color = tint * shades[face] * ao_curve[ao];
+    // Rooted plants use the ao bits for their stack, not for shade.
+    out.color = tint * shades[face] * select(ao_curve[ao], 1.0, (flags & 3u) == 3u);
     if (((w.z >> 8u) & 1u) == 1u) {
         // Foliage (odd red tint): it turns with the seasons.
         out.color *= season_tint(tint);
@@ -447,7 +478,49 @@ fn fs_solid(in: VOut) -> @location(0) vec4<f32> {
     if (p.weight < 1.0) {
         r = mix(relief(c, p.uv, in, texels), 1.0, p.weight);
     }
+    let mat = select(0u, block_mat[min(in.layer, 2047u)], g.mat.x > 0.5 && in.dist < 48.0);
+    if (mat != 0u) {
+        let fr = MatFrame(px, py, dx, dy);
+        return vec4<f32>(mix(block_material(mat, c, p.uv, r * p.light, in, fr), g.fog_color.rgb, fog_amount(in)), 1.0);
+    }
     return vec4<f32>(shade(c.rgb * r * p.light, in), 1.0);
+}
+
+// Metal and gem blocks catch the light like the items made of them; an ore only in its
+// coloured flecks, which also twinkle like jewels.
+fn block_material(mat: u32, c: vec4<f32>, uv: vec2<f32>, r: f32, in: VOut, fr: MatFrame) -> vec3<f32> {
+    let id = mat & 255u;
+    let plain = glow_pixels(c.rgb, lit(c.rgb * r, in), in);
+    var mask = 1.0;
+    if (mat >= 256u) {
+        // The gem or metal of an ore: its coloured, bright texels, not the stone around them.
+        let hi = max(c.r, max(c.g, c.b));
+        let lo = min(c.r, min(c.g, c.b));
+        mask = smoothstep(0.12, 0.26, hi - lo) * smoothstep(0.25, 0.45, hi);
+        if (mask <= 0.0) {
+            return plain;
+        }
+    }
+    let size = f32(textureDimensions(tex).x);
+    let v = normalize(g.cam_pos.xyz - in.rel);
+    var hx = 0.0;
+    var hy = 0.0;
+    var k = 0.0;
+    if (g.mat.x > 1.5 && in.dist < 14.0) {
+        let w = vec3<f32>(0.3, 0.55, 0.15);
+        let h0 = dot(c.rgb, w);
+        hx = dot(textureSampleLevel(tex, samp, uv + vec2<f32>(1.0 / size, 0.0), in.layer, 0.0).rgb, w) - h0;
+        hy = dot(textureSampleLevel(tex, samp, uv + vec2<f32>(0.0, 1.0 / size), in.layer, 0.0).rgb, w) - h0;
+        k = mat_relief(id) * (1.0 - smoothstep(8.0, 14.0, in.dist));
+    }
+    let n = mat_normal(fr, v, hx, hy, k);
+    // Sparkles differ from block to block: the texel plus the block's place in the world.
+    let wb = floor(in.rel - face_normal((in.kind >> 8u) & 7u) * 0.01 + g.cam_world.xyz - g.cam_pos.xyz);
+    let texel = floor(fract(uv) * size) + vec2<f32>(wb.x * 17.0 + wb.y * 5.0, wb.z * 13.0 - wb.y * 3.0) * size;
+    var hand = g.hand_light.w - length(in.rel - g.hand_light.xyz) / 15.0;
+    let sunlit = sun_visibility(in);
+    let shiny = mat_shade(id, c.rgb * in.color * 1.6, plain, in.rel, n, in.light.x, in.light.y, sunlit, max(hand, 0.0), texel);
+    return mix(plain, shiny, mask);
 }
 
 // Slope of a few travelling waves at a world position (for rippling water). Slow noise bends
@@ -578,13 +651,13 @@ fn fs_translucent(in: VOut) -> @location(0) vec4<f32> {
     if (c.a < 0.02) {
         discard;
     }
-    if ((in.kind & 2u) != 0u && ((in.kind >> 8u) & 7u) == 2u) {
+    if ((in.kind & 3u) == 2u && ((in.kind >> 8u) & 7u) == 2u) {
         c = water_texture(in, c, wx, wdx, wdy);
     }
     let fog = fog_amount(in);
     var rgb = lit(c.rgb, in);
     var a = c.a;
-    let water_top = (in.kind & 2u) != 0u && ((in.kind >> 8u) & 7u) == 2u;
+    let water_top = (in.kind & 3u) == 2u && ((in.kind >> 8u) & 7u) == 2u;
     if (water_top && g.effects.y > 0.5 && g.fog.z < 0.5) {
         // Rippling water: a wavy normal shifts the brightness, reflects the sky at grazing
         // angles and catches the sun.
@@ -625,10 +698,15 @@ struct ShadowOut {
 
 @vertex
 fn vs_shadow(@location(0) w: vec3<u32>, @location(1) origin: vec3<f32>) -> ShadowOut {
-    let p = vec3<f32>(f32(w.x & 1023u), f32((w.x >> 10u) & 1023u), f32((w.x >> 20u) & 1023u)) / 16.0 + origin;
+    var p = vec3<f32>(f32(w.x & 1023u), f32((w.x >> 10u) & 1023u), f32((w.x >> 20u) & 1023u)) / 16.0 + origin;
     var out: ShadowOut;
-    out.clip = g.shadow_mat * vec4<f32>(p, 1.0);
     out.uv = vec2<f32>(f32(w.y & 31u), f32((w.y >> 5u) & 31u)) / 16.0;
+    let flags = w.y >> 25u;
+    if ((flags & 1u) != 0u) {
+        // Shadows move with the plants that cast them.
+        p += wind_offset(p + g.cam_world.xyz - g.cam_pos.xyz, flags, (w.x >> 30u) & 3u, 1.0 - out.uv.y);
+    }
+    out.clip = g.shadow_mat * vec4<f32>(p, 1.0);
     if (((w.y >> 25u) & 4u) != 0u) {
         // Merged quads are always full blocks of opaque texture: any uv will do.
         out.uv = vec2<f32>(0.5, 0.5);
