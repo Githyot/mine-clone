@@ -42,6 +42,9 @@ pub struct Pose {
     pub holding: bool,
     /// A torch in the right hand: held up high ahead, lighting the way (torch.rs).
     pub torch: bool,
+    /// A shield coming up to block: 0..1, and in which hand (shield.rs).
+    pub shield_up: f32,
+    pub shield_left: bool,
     /// Pulling up onto a ledge: 0 = not climbing, else 0..1 through the climb, and the
     /// ledge's top above the feet.
     pub mantle: f32,
@@ -59,6 +62,8 @@ pub struct Animator {
     land: f32,
     swim: f32,
     lean: f32,
+    /// 0..1 how far into a sprint: the body leans forward into the run.
+    sprint: f32,
     /// Attack swing 0..1 (0 = not swinging).
     pub swing: f32,
     /// How the weapon moves (Better Combat idea, see `mods/combat.rs`): 0 chop down from
@@ -147,6 +152,8 @@ impl Animator {
         }
         self.was_ground = p.on_ground || p.in_water || p.flying;
         self.land = (self.land - dt * 4.0).max(0.0);
+        let running = p.sprinting && speed > 3.0 && !p.in_water && !p.flying && p.crawling < 0.5 && !p.sitting;
+        self.sprint += ((running as u8 as f32) - self.sprint) * (dt * if running { 5.0 } else { 7.0 }).min(1.0);
         let under = p.head_in_water && !p.flying;
         self.underwater += ((under as u8 as f32) - self.underwater) * (dt * 6.0).min(1.0);
         // Slow treading strokes when still, quicker ones when swimming along.
@@ -181,6 +188,11 @@ impl Animator {
         // shifts from foot to foot.
         let step = if p.on_ground && !p.sitting && p.crawling < 0.5 && !p.in_water { a.min(1.2) } else { 0.0 };
         root = root * Mat4::from_translation(Vec3::new(0.0, t.cos().abs() * (0.04 + p.sprinting as u8 as f32 * 0.03) * step, 0.0)) * Mat4::from_rotation_z(t.sin() * 0.02 * step);
+        // Sprinting: the whole body leans forward from the feet into the run, sinking a touch.
+        let run = self.sprint;
+        if run > 0.001 {
+            root = root * Mat4::from_rotation_x(run * 0.26) * Mat4::from_translation(Vec3::new(0.0, -run * 0.05, 0.0));
+        }
         let squash = self.land * 0.12;
         root = root * Mat4::from_translation(Vec3::new(0.0, -crouch * 0.18 - squash * 0.5, 0.0));
         // Lying down: the body tips flat and sinks to the ground.
@@ -201,7 +213,7 @@ impl Animator {
         rot[R_LEG] = Quat::from_rotation_x(leg);
         rot[L_LEG] = Quat::from_rotation_x(-leg);
         // Arms swing against the legs, a little outward; idle breathing sways them.
-        let arm = -leg * 0.85;
+        let arm = -leg * (0.85 + run * 0.45);
         let sway = 0.04 + breathe * 0.03 * idle;
         // Holding something, the right arm swings half as far and stays raised 18° forward.
         let r_arm = if p.torch {
@@ -213,10 +225,11 @@ impl Animator {
         };
         rot[R_ARM] = Quat::from_rotation_x(r_arm + breathe * 0.03 * idle) * Quat::from_rotation_z(-sway);
         rot[L_ARM] = Quat::from_rotation_x(-arm - breathe * 0.03 * idle) * Quat::from_rotation_z(sway);
-        if p.sprinting && a > 0.8 {
-            // Running: arms pump harder and the body leans in.
-            rot[BODY] = Quat::from_rotation_x(0.12);
-            rot[HEAD] = Quat::from_rotation_x(0.0);
+        if run > 0.001 {
+            // Running: the chest drives forward over the hips, the head stays up looking ahead,
+            // arms pump hard and the knees come up high.
+            rot[BODY] = Quat::from_rotation_x(0.16 * run);
+            rot[HEAD] = Quat::from_rotation_x(-0.32 * run);
         }
         if airborne && self.swim < 0.5 {
             if self.air_time < 0.5 && !p.in_water {
@@ -312,6 +325,12 @@ impl Animator {
             rot[R_ARM] = Quat::from_rotation_x(-2.4 + f.sin() * 0.6);
             rot[L_ARM] = Quat::from_rotation_x(-2.4 + f.cos() * 0.6);
         }
+        if p.shield_up > 0.0 {
+            // Blocking: the shield arm comes up in front, turned in across the chest.
+            let (i, side) = if p.shield_left { (L_ARM, 1.0) } else { (R_ARM, -1.0) };
+            let up = Quat::from_rotation_y(-side * 0.45) * Quat::from_rotation_x(-0.95 + arm * 0.15);
+            rot[i] = rot[i].slerp(up, p.shield_up.clamp(0.0, 1.0));
+        }
         if self.swing > 0.0 {
             // Hit: the right arm comes down from above, the body twists into it. Combo swings
             // cut across, thrust ahead or come up from below instead.
@@ -343,7 +362,7 @@ impl Animator {
         // A knee folds while its foot swings forward.
         bend[R_LEG] = (-t.cos()).max(0.0) * knee_k + 0.04 * a.min(1.0);
         bend[L_LEG] = t.cos().max(0.0) * knee_k + 0.04 * a.min(1.0);
-        let pump = if p.sprinting && a > 0.8 { 0.9 } else { 0.0 };
+        let pump = 1.0 * run;
         bend[R_ARM] = -(0.1 + pump + (-arm).max(0.0) * 0.45 + if p.holding { 0.3 } else { 0.0 });
         bend[L_ARM] = -(0.1 + pump + arm.max(0.0) * 0.45);
         if airborne && self.swim < 0.5 {

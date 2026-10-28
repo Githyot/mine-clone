@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a message changes shape. Host and guest must match.
-pub const PROTOCOL: u32 = 6;
+pub const PROTOCOL: u32 = 7;
 
 /// Default UDP port for hosted worlds.
 pub const DEFAULT_PORT: u16 = 24454;
@@ -35,6 +35,14 @@ pub enum ToHost {
         mob: u32,
         amount: f32,
         from: [f32; 3],
+    },
+    /// A guest's spell set a mob the host runs burning, slowed, soaked or frozen (seconds).
+    MobStatus {
+        mob: u32,
+        fire: f32,
+        chill: f32,
+        wet: f32,
+        frozen: f32,
     },
     /// A chest, furnace or other container the guest changed. `data` is the game's own text
     /// form (None = removed).
@@ -285,6 +293,8 @@ pub struct PlayerState {
     pub armor: [String; 4],
     /// The chest this player has open, so everyone sees its lid up.
     pub chest: Option<[i32; 3]>,
+    /// The shield shown, packed (look, hand or back, up): 0 = none (game's shield.rs).
+    pub shield: u32,
 }
 
 impl PlayerState {
@@ -320,6 +330,16 @@ pub struct MobState {
     pub sleeping: bool,
     pub aggro: bool,
     pub on_fire: f32,
+    /// Spell states (elements.rs): slowed, soaked, frozen solid.
+    pub chill: f32,
+    pub wet: f32,
+    pub frozen: f32,
+    /// Its social act (voxel::mob::Act::code), whether it has the word in a chat, and how big
+    /// it is (babies; seconds left to grow up).
+    pub act: u8,
+    pub talking: bool,
+    pub size: f32,
+    pub grow: f32,
 }
 
 /// FNV-1a over a list of names: same content on both sides gives the same number.

@@ -371,7 +371,7 @@ mob("seahorse", "Cavalo-Marinho", sh, ((232, 188, 74), (138, 90, 16)), health=3,
 # ================================================================================ SWAMPS
 leech = worm(4, (2, 2, 3), look("leechhead", ["#1a1410", "#2a2018", "#3c2e22"], eyes=((200, 40, 30), None)), look("leechbody", ["#1e1a12", "#2e2a1c", "#423a26"], pattern="rings"))
 mob("leech", "Sanguessuga", leech, ((46, 40, 28), (160, 40, 30)), kind="Hostile", health=4, speed=1.4, size=(0.3, 0.2), group=(1, 3), weight=7,
-    aquatic=True, attack=1.0, waters=["swamp", "lake"], xp=1, motion='(style: Some("swimmer"))')
+    aquatic=True, attack=1.0, waters=["swamp", "lake"], xp=1, motion='(style: Some("serpent"))')
 
 cat_l = fl("catfish", ["#22201a", "#34302a", "#4a4438", "#62594a", "#7a705c"], pattern="skin", belly=["#c8c0a8", "#d8d0b8"], spots=["#1a1812"])
 cat_f = fl("catfishfin", ["#2a2620", "#3e382e", "#524a3c"], pattern="fin", eye=None)
@@ -395,7 +395,7 @@ for k in range(1, 5):
     eel.box((2, 2, 4), (-1, 0, -4 * k), eel_body)
 eel.box((1, 3, 3), (0, -1, -19), eel_body)
 mob("cave_eel", "Enguia das Cavernas", eel, ((30, 50, 60), (120, 240, 220)), kind="Hostile", health=14, speed=2.2, size=(0.35, 0.3), group=(1, 1), weight=5,
-    aquatic=True, attack=3.0, waters=["cave"], xp=4, motion='(style: Some("swimmer"))')
+    aquatic=True, attack=3.0, waters=["cave"], xp=4, motion='(style: Some("serpent"))')
 
 # ------------------------------------------------------------------------------- painting
 

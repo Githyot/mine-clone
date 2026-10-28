@@ -17,6 +17,7 @@ mod ecologics;
 mod end;
 mod nether;
 mod otherside;
+pub mod showcase;
 mod variants;
 mod waters;
 pub use caves::CaveBiome;
@@ -605,6 +606,8 @@ pub struct Generator {
     deep: deep::DeepNoise,
     deep_pal: deep::DeepPalette,
     deep_loot: Vec<Vec<crate::structures::LootDef>>,
+    /// The test world's layout: flat ground with everything set out on it (showcase.rs).
+    pub showcase: Option<std::sync::Arc<showcase::Showcase>>,
 }
 
 const BANDS: usize = 48;
@@ -708,10 +711,14 @@ impl Generator {
             deep: deep::DeepNoise::new(seed),
             deep_pal: deep::DeepPalette::new(reg, seed),
             deep_loot: deep::deep_loot(),
+            showcase: None,
         }
     }
 
     fn column(&self, wx: i32, wz: i32) -> Column {
+        if let Some(sc) = &self.showcase {
+            return Column { height: sc.floor, biome: Biome::Plains, variant: Biome::Plains };
+        }
         if self.dim == Dim::Nether {
             let b = self.nether_biome(wx, wz);
             return Column { height: NETHER_ROOF, biome: b, variant: b };
@@ -960,6 +967,9 @@ impl Generator {
     pub fn surface(&self, wx: i32, wz: i32) -> Surface {
         let p = &self.pal;
         let col = self.column(wx, wz);
+        if let Some(sc) = &self.showcase {
+            return Surface { height: sc.floor, biome: Biome::Plains, top: sc.grass, liquid: None, trees: None };
+        }
         if self.dim == Dim::Nether {
             return Surface { height: NETHER_ROOF, biome: col.biome, top: p.bedrock, liquid: None, trees: None };
         }
@@ -1030,6 +1040,9 @@ impl Generator {
     /// Local sections `lo..hi` of a chunk's depths, made on their own (see `Chunk::deep_lo`).
     pub fn deep_sections(&self, pos: ChunkPos, lo: usize, hi: usize) -> Vec<crate::chunk::PalettedSection> {
         let mut c = Chunk::new(pos);
+        if let Some(sc) = &self.showcase {
+            return vec![crate::chunk::PalettedSection::filled(sc.stone); hi.saturating_sub(lo)];
+        }
         if self.dim == Dim::Overworld {
             self.generate_deep(&mut c, pos, lo, hi);
         }
@@ -1043,6 +1056,9 @@ impl Generator {
 
     /// A new chunk with its depths generated down to local section `deep_lo`.
     pub fn generate_band(&self, pos: ChunkPos, deep_lo: usize) -> Chunk {
+        if let Some(sc) = &self.showcase {
+            return self.generate_showcase(sc, pos);
+        }
         if self.dim == Dim::Nether {
             return self.generate_nether(pos);
         }
@@ -1142,6 +1158,12 @@ impl Generator {
 
     pub fn with_spread(mut self, percent: i32) -> Self {
         self.spread = percent.max(50);
+        self
+    }
+
+    /// Make the test world instead (only for the overworld).
+    pub fn with_showcase(mut self, sc: Option<std::sync::Arc<showcase::Showcase>>) -> Self {
+        self.showcase = sc;
         self
     }
 
@@ -1800,6 +1822,9 @@ impl Generator {
 
     /// A good spawn point: a land column near the origin.
     pub fn find_spawn(&self) -> (i32, i32, i32) {
+        if let Some(sc) = &self.showcase {
+            return (0, sc.floor + 1, -6);
+        }
         for r in 0..200 {
             for (dx, dz) in [(r, 0), (-r, 0), (0, r), (0, -r)] {
                 let x = dx * 8;

@@ -248,6 +248,7 @@ impl Game {
         }
         let name = self.mobs.reg.defs[m.def].display_name.clone();
         let frac = (m.health / m.max_health).clamp(0.0, 1.0);
+        let pos = m.body.pos + Vec3::Y;
         let s = self.ui.scale;
         let bw = 182.0 * s;
         let x = (w - bw) / 2.0;
@@ -260,5 +261,6 @@ impl Game {
         self.ui.rect(x, y, bw * frac, s, [130, 220, 110, 255]);
         // The half-way mark where it turns angry.
         self.ui.rect(x + bw * 0.5 - s * 0.5, y - s, s, 7.0 * s, [230, 230, 230, 255]);
+        self.boss_pointer(pos, w, y);
     }
 }

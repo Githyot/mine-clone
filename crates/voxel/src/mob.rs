@@ -264,6 +264,65 @@ pub enum MobEvent {
     Died { pos: Vec3 },
 }
 
+/// What a mob is doing with another creature (or the player) right now. The game's social
+/// director (game/src/social.rs) hands these out; `Mob::tick` walks the mob to `Social::at`
+/// and the animator poses it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Act {
+    #[default]
+    None,
+    /// Walk up and talk: town folk greet, then take turns speaking.
+    Chat,
+    /// Nose to nose with a friend (or the player's hand): grooming, nuzzling.
+    Nuzzle,
+    /// Romping: chasing a playmate or running from it.
+    Play,
+    /// Keep near `at` (a baby after its parent, a herd animal after its herd).
+    Follow,
+    /// In love: go to the partner.
+    Mate,
+    /// Being petted by the player: stand still, eyes shut, tail going.
+    Petted,
+}
+
+impl Act {
+    const ALL: [Act; 7] = [Act::None, Act::Chat, Act::Nuzzle, Act::Play, Act::Follow, Act::Mate, Act::Petted];
+
+    pub fn code(self) -> u8 {
+        Self::ALL.iter().position(|a| *a == self).unwrap_or(0) as u8
+    }
+
+    pub fn from_code(c: u8) -> Act {
+        Self::ALL.get(c as usize).copied().unwrap_or(Act::None)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Social {
+    pub act: Act,
+    /// Seconds left of this act, and seconds since it began.
+    pub t: f32,
+    pub age: f32,
+    /// Where to go (refreshed by the director while the act lasts).
+    pub at: Vec3,
+    /// How close to get before standing still.
+    pub gap: f32,
+    /// The other mob's network id (0: the player or a place).
+    pub with: u32,
+    /// Talks first in a chat (the other answers).
+    pub first: bool,
+}
+
+impl Social {
+    /// Chatting and this mob has the word now (turns of about 1.7 seconds, after the hello).
+    pub fn speaking(&self) -> bool {
+        self.act == Act::Chat && self.age > 1.8 && (((self.age - 1.8) / 1.7) as i32 % 2 == 0) == self.first
+    }
+}
+
+/// How long a baby takes to grow up (seconds).
+pub const GROW_TIME: f32 = 600.0;
+
 #[derive(Clone, Debug)]
 pub struct Mob {
     pub def: usize,
@@ -304,6 +363,11 @@ pub struct Mob {
     /// Seconds left burning (fire spells) and slowed (frost spells).
     pub on_fire: f32,
     pub chill: f32,
+    /// Seconds left soaked (water spells, rain, swimming): fire won't take, frost freezes it
+    /// solid and lightning hurts twice as much.
+    pub wet: f32,
+    /// Seconds left frozen in a block of ice: it can't move or attack.
+    pub frozen: f32,
     /// Rain is falling on it (set by the game each tick): undead don't burn in sunlight then.
     pub rained_on: bool,
     /// Lasting harm the game put on it (Terraria-style debuffs: poison, frostburn, ichor...):
@@ -340,6 +404,25 @@ pub struct Mob {
     water_floor: f32,
     water_top: f32,
     water_probe: f32,
+    /// On show in the test world: stands where it was put, no AI (like a NoAI tag).
+    pub still: bool,
+    /// Who it is with and what they're doing (see `Act`).
+    pub social: Social,
+    /// Seconds of being frightened of `scare_from` (a cat for a creeper, a wolf for a sheep):
+    /// it runs, whatever its kind, and doesn't fight meanwhile.
+    pub scare: f32,
+    pub scare_from: Vec3,
+    /// Seconds of a grudge against the mob `foe` (net id): it fights that one like prey.
+    pub grudge: f32,
+    pub foe: u32,
+    /// The last mob that hurt it (net id; 0 for the player), for packs and guards to answer.
+    pub hurt_by: u32,
+    /// Seconds left in love (fed its food), and before it can breed again.
+    pub love: f32,
+    pub breed_cd: f32,
+    /// A baby: seconds left until grown (0 for adults), and its parent's net id.
+    pub grow: f32,
+    pub parent: u32,
 }
 
 static NEXT_NET_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
@@ -407,6 +490,8 @@ impl Mob {
             fed: 20.0 + rng.f32() * 40.0,
             on_fire: 0.0,
             chill: 0.0,
+            wet: 0.0,
+            frozen: 0.0,
             rained_on: false,
             debuffs: Vec::new(),
             vuln: 0.0,
@@ -427,6 +512,17 @@ impl Mob {
             water_floor: pos.y - 1.0,
             water_top: pos.y + 1.0,
             water_probe: 0.0,
+            still: false,
+            social: Social::default(),
+            scare: 0.0,
+            scare_from: pos,
+            grudge: 0.0,
+            foe: 0,
+            hurt_by: 0,
+            love: 0.0,
+            breed_cd: 0.0,
+            grow: 0.0,
+            parent: 0,
         }
     }
 
@@ -448,6 +544,9 @@ impl Mob {
         self.panic = 5.0;
         self.panic_from = from;
         self.sleeping = false;
+        // The player, unless a mob's attack says otherwise right after.
+        self.hurt_by = 0;
+        self.social.act = Act::None;
         self.health <= 0.0
     }
 
@@ -466,6 +565,50 @@ impl Mob {
     /// Looking for something to hunt?
     pub fn hungry(&self, def: &MobDef) -> bool {
         !def.prey.is_empty() && self.fed <= 0.0 && !self.sleeping && self.alive()
+    }
+
+    /// Goes after `prey` this tick: hungry, or settling a grudge.
+    pub fn hunting(&self, def: &MobDef) -> bool {
+        (self.hungry(def) || self.grudge > 0.0) && self.alive()
+    }
+
+    pub fn baby(&self) -> bool {
+        self.grow > 0.0
+    }
+
+    /// Start (or refresh) a social act.
+    pub fn begin(&mut self, act: Act, at: Vec3, gap: f32, secs: f32, with: u32) {
+        if self.social.act != act || self.social.with != with {
+            self.social = Social { act, t: secs, age: 0.0, at, gap, with, first: false };
+        } else {
+            self.social.at = at;
+        }
+    }
+
+    /// Free for something new: awake, calm, not busy with anyone.
+    pub fn idle_now(&self) -> bool {
+        self.alive() && !self.sleeping && !self.aggro && self.scare <= 0.0 && self.panic <= 0.0 && self.social.act == Act::None && self.prey.is_none() && !self.ridden && !self.ghost
+    }
+
+    /// Get a fright from something at `from`: run from it for `secs`.
+    pub fn frighten(&mut self, from: Vec3, secs: f32) {
+        self.scare = self.scare.max(secs);
+        self.scare_from = from;
+        self.sleeping = false;
+        self.wander = None;
+        if self.social.act != Act::Play {
+            self.social.act = Act::None;
+        }
+    }
+
+    /// A baby: smaller, with a smaller box, growing up over `GROW_TIME`.
+    pub fn make_baby(&mut self, def: &MobDef, parent: u32) {
+        self.grow = GROW_TIME;
+        self.parent = parent;
+        self.size = 0.5;
+        self.body.half_width = def.width * 0.25;
+        self.body.height = def.height * 0.5;
+        self.fed = 1e9;
     }
 
     /// One simulation step.
@@ -487,10 +630,38 @@ impl Mob {
         self.attack_cd -= dt;
         self.fed -= dt;
         self.panic -= dt;
+        self.scare = (self.scare - dt).max(0.0);
+        self.grudge = (self.grudge - dt).max(0.0);
+        self.love = (self.love - dt).max(0.0);
+        self.breed_cd = (self.breed_cd - dt).max(0.0);
+        if self.social.act != Act::None {
+            self.social.t -= dt;
+            self.social.age += dt;
+            if self.social.t <= 0.0 || !self.alive() {
+                self.social.act = Act::None;
+            }
+        }
+        if self.grow > 0.0 {
+            self.grow = (self.grow - dt).max(0.0);
+            // Babies stay small most of their childhood, then shoot up.
+            let k = 1.0 - (self.grow / GROW_TIME);
+            self.size = 0.5 + 0.5 * k * k;
+            self.body.half_width = def.width / 2.0 * self.size;
+            self.body.height = def.height * self.size;
+            if self.grow <= 0.0 {
+                self.fed = 20.0 + self.rng.f32() * 40.0;
+            }
+        }
         if !self.alive() {
             self.dead_age += dt;
             // Keep falling while the death animation plays.
             self.body.step(world, &Input::default(), dt);
+            return;
+        }
+        if self.still {
+            self.on_fire = 0.0;
+            self.debuffs.clear();
+            self.body.vel = Vec3::ZERO;
             return;
         }
         if self.ghost {
@@ -525,6 +696,23 @@ impl Mob {
         }
         self.chill = (self.chill - dt).max(0.0);
         self.body.speed_override = Some(def.speed * if self.chill > 0.0 { 0.4 } else { 1.0 });
+        // Water and rain soak it; a soaked mob doesn't keep burning.
+        if self.body.in_water || self.rained_on {
+            self.wet = self.wet.max(5.0);
+        } else {
+            self.wet = (self.wet - dt).max(0.0);
+        }
+        if self.wet > 0.0 && self.on_fire > 0.0 {
+            self.on_fire = 0.0;
+        }
+        // Frozen solid: it only falls until the ice lets go.
+        if self.frozen > 0.0 {
+            self.frozen = (self.frozen - dt).max(0.0);
+            self.body.vel.x = 0.0;
+            self.body.vel.z = 0.0;
+            self.body.step(world, &Input::default(), dt);
+            return;
+        }
         if def.burns_in_daylight && daylight && sky_light_at_head >= 14 && !self.body.in_water && !self.rained_on {
             self.burn_tick += dt;
             if self.burn_tick > 1.0 {
@@ -554,9 +742,12 @@ impl Mob {
         if def.kind == Kind::Neutral && (dist > 20.0 || player_creative) {
             self.aggro = false;
         }
-        let fights = self.aggro && !player_creative && def.kind != Kind::Passive;
+        let scared = self.scare > 0.0;
+        // A score to settle with another mob comes before the player.
+        let feud = self.grudge > 0.0 && self.prey.is_some();
+        let fights = self.aggro && !player_creative && def.kind != Kind::Passive && !scared && !feud;
         let flee_player = def.flee_range > 0.0 && dist < def.flee_range && !player_creative;
-        let panicking = self.panic > 0.0 && def.kind == Kind::Passive;
+        let panicking = (self.panic > 0.0 && def.kind == Kind::Passive) || scared;
         if fights || flee_player || panicking || !daylight {
             self.sleeping = false;
         }
@@ -603,7 +794,7 @@ impl Mob {
                 self.attack_age = 0.0;
                 out.push(MobEvent::Hit { damage: def.attack, from: self.body.center() });
             }
-        } else if let Some(prey) = self.prey.filter(|_| self.hungry(def)) {
+        } else if let Some(prey) = self.prey.filter(|_| self.hunting(def) && !scared) {
             // Hunting: run the prey down and bite it.
             self.fuse = 0.0;
             run = true;
@@ -622,7 +813,7 @@ impl Mob {
             self.fuse = 0.0;
             run = true;
             self.wander = None;
-            let threat = if panicking { self.panic_from } else { player };
+            let threat = if scared { self.scare_from } else if panicking { self.panic_from } else { player };
             let mut away = self.body.pos - threat;
             away.y = 0.0;
             let away = if away.length_squared() < 1e-4 { Vec3::new(self.yaw.sin(), 0.0, self.yaw.cos()) } else { away.normalize() };
@@ -639,6 +830,43 @@ impl Mob {
             if self.sleep_t <= 0.0 || (dist < 3.0 && !player_creative) {
                 self.sleeping = false;
                 self.idle = 1.0 + self.rng.f32() * 2.0;
+            }
+        } else if self.social.act != Act::None {
+            // With company (social.rs): go to them, then stay facing them.
+            self.fuse = 0.0;
+            let sc = self.social;
+            let d = Vec3::new(sc.at.x - self.body.pos.x, 0.0, sc.at.z - self.body.pos.z);
+            let far = d.length();
+            match sc.act {
+                Act::Play => {
+                    run = true;
+                    if far > 0.8 {
+                        wish = d / far;
+                        self.yaw = turn_towards(self.yaw, d.x.atan2(d.z), dt * 8.0);
+                    }
+                    if self.body.on_ground && self.rng.chance(dt * 0.6) {
+                        jump = true;
+                    }
+                }
+                Act::Follow => {
+                    if far > sc.gap {
+                        run = far > sc.gap * 3.0;
+                        wish = d / far * if run { 1.0 } else { 0.8 };
+                        self.yaw = turn_towards(self.yaw, d.x.atan2(d.z), dt * 5.0);
+                    }
+                }
+                _ if far > sc.gap => {
+                    wish = d / far * 0.8;
+                    self.yaw = turn_towards(self.yaw, d.x.atan2(d.z), dt * 5.0);
+                }
+                _ => {
+                    if far > 0.05 {
+                        self.yaw = turn_towards(self.yaw, d.x.atan2(d.z), dt * 5.0);
+                    }
+                    self.head_yaw = turn_towards(self.head_yaw, 0.0, dt * 4.0);
+                    let up = sc.at.y + 0.6 - (self.body.pos.y + def.height * self.size * 0.85);
+                    self.head_pitch = turn_towards(self.head_pitch, (-up / far.max(0.5)).atan().clamp(-0.6, 0.6), dt * 4.0);
+                }
             }
         } else {
             self.fuse = 0.0;
@@ -924,6 +1152,49 @@ mod tests {
             let burned = ev.iter().any(|e| matches!(e, MobEvent::Burning));
             assert_eq!(burned, !rain, "rain={rain}");
         }
+    }
+
+    #[test]
+    fn a_frightened_creeper_runs_instead_of_chasing() {
+        let reg = vanilla();
+        let c = reg.id("stalker").unwrap();
+        let def = &reg.defs[c];
+        let mut m = Mob::new(c, def, Vec3::new(0.5, 10.0, 0.5), 2);
+        let player = Vec3::new(6.0, 10.0, 0.5);
+        let mut ev = Vec::new();
+        for _ in 0..100 {
+            m.frighten(Vec3::new(2.0, 10.0, 0.5), 1.0);
+            m.tick(def, &Flat, player, false, 0, false, 0.02, &mut ev);
+        }
+        assert!(m.body.pos.x < -0.5, "{}", m.body.pos.x);
+        assert!(!ev.iter().any(|e| matches!(e, MobEvent::Explode { .. })));
+    }
+
+    #[test]
+    fn chatting_mobs_walk_up_and_take_turns() {
+        let reg = vanilla();
+        let z = reg.id("cow").unwrap();
+        let def = &reg.defs[z];
+        let mut m = Mob::new(z, def, Vec3::new(0.5, 10.0, 0.5), 2);
+        let far = Vec3::new(500.0, 10.0, 0.5);
+        m.begin(Act::Nuzzle, Vec3::new(6.0, 10.0, 0.5), 1.0, 10.0, 7);
+        let mut ev = Vec::new();
+        for _ in 0..300 {
+            m.tick(def, &Flat, far, false, 15, true, 0.02, &mut ev);
+        }
+        assert!((m.body.pos.x - 5.0).abs() < 0.8, "{}", m.body.pos.x);
+        assert_eq!(m.social.act, Act::Nuzzle);
+        let mut a = Social { act: Act::Chat, first: true, ..Default::default() };
+        let mut b = Social { act: Act::Chat, ..Default::default() };
+        let mut turns = (0, 0);
+        for k in 0..100 {
+            a.age = k as f32 * 0.1;
+            b.age = a.age;
+            assert!(!(a.speaking() && b.speaking()));
+            turns.0 += a.speaking() as u32;
+            turns.1 += b.speaking() as u32;
+        }
+        assert!(turns.0 > 20 && turns.1 > 20, "{turns:?}");
     }
 
     fn vanilla() -> MobRegistry {

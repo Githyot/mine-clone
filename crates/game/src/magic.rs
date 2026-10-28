@@ -8,6 +8,7 @@ use glam::Vec3;
 use voxel::physics::Terrain;
 
 use crate::audio::Sfx;
+use crate::elements::El;
 use crate::ui::UiBatch;
 use crate::Game;
 
@@ -60,34 +61,70 @@ struct SpellDef {
 const SPELLS: &[SpellDef] = &[
     SpellDef { item: "ruby_wand", school: 0, cost: 3.0, cooldown: 0.4, damage: 4.0, speed: 26.0, life: 1.2, shot: Shot::Bolt },
     SpellDef { item: "sapphire_wand", school: 1, cost: 3.0, cooldown: 0.4, damage: 4.0, speed: 26.0, life: 1.2, shot: Shot::Bolt },
-    SpellDef { item: "topaz_wand", school: 2, cost: 2.0, cooldown: 0.22, damage: 3.0, speed: 40.0, life: 0.8, shot: Shot::Bolt },
+    SpellDef { item: "topaz_wand", school: 2, cost: 2.0, cooldown: 0.22, damage: 2.5, speed: 40.0, life: 0.8, shot: Shot::Bolt },
     SpellDef { item: "amethyst_wand", school: 3, cost: 4.0, cooldown: 0.5, damage: 5.0, speed: 16.0, life: 2.5, shot: Shot::Homing },
     SpellDef { item: "emerald_wand", school: 4, cost: 3.0, cooldown: 0.45, damage: 4.0, speed: 24.0, life: 1.2, shot: Shot::Bolt },
     SpellDef { item: "fire_staff", school: 0, cost: 8.0, cooldown: 1.0, damage: 10.0, speed: 14.0, life: 2.5, shot: Shot::Burst(3.0) },
     SpellDef { item: "frost_staff", school: 1, cost: 8.0, cooldown: 0.9, damage: 4.0, speed: 24.0, life: 1.0, shot: Shot::Fan(5) },
     SpellDef { item: "thunder_tome", school: 5, cost: 10.0, cooldown: 1.2, damage: 12.0, speed: 0.0, life: 0.0, shot: Shot::Strike },
-    SpellDef { item: "guardian_staff", school: 4, cost: 6.0, cooldown: 0.6, damage: 6.0, speed: 26.0, life: 1.2, shot: Shot::Fan(3) },
+    SpellDef { item: "guardian_staff", school: 4, cost: 6.0, cooldown: 0.6, damage: 5.2, speed: 26.0, life: 1.2, shot: Shot::Fan(3) },
     // Not a held item: the warship's cannon (mods/aircraft.rs) fires these.
     SpellDef { item: "@warship_cannon", school: 0, cost: 0.0, cooldown: 0.0, damage: 8.0, speed: 34.0, life: 1.6, shot: Shot::Burst(2.5) },
-    SpellDef { item: "flame_tome", school: 0, cost: 1.0, cooldown: 0.08, damage: 1.5, speed: 12.0, life: 0.35, shot: Shot::Flame },
+    SpellDef { item: "flame_tome", school: 0, cost: 1.0, cooldown: 0.08, damage: 0.9, speed: 12.0, life: 0.35, shot: Shot::Flame },
     SpellDef { item: "blink_scroll", school: 3, cost: 6.0, cooldown: 1.0, damage: 0.0, speed: 0.0, life: 0.0, shot: Shot::Blink(14.0) },
     SpellDef { item: "heal_scroll", school: 4, cost: 8.0, cooldown: 2.0, damage: 6.0, speed: 0.0, life: 0.0, shot: Shot::Heal },
     SpellDef { item: "ward_tome", school: 1, cost: 10.0, cooldown: 4.0, damage: 10.0, speed: 0.0, life: 0.0, shot: Shot::Ward },
     SpellDef { item: "chain_tome", school: 2, cost: 7.0, cooldown: 0.8, damage: 6.0, speed: 0.0, life: 0.0, shot: Shot::Chain(4) },
-    SpellDef { item: "meteor_staff", school: 0, cost: 14.0, cooldown: 1.6, damage: 18.0, speed: 30.0, life: 3.0, shot: Shot::Meteor(4.5) },
-    SpellDef { item: "spirit_staff", school: 3, cost: 12.0, cooldown: 3.0, damage: 4.0, speed: 0.0, life: 20.0, shot: Shot::Spirits(3) },
-    SpellDef { item: "ice_spike_staff", school: 1, cost: 10.0, cooldown: 1.2, damage: 7.0, speed: 22.0, life: 0.8, shot: Shot::Ring(14) },
+    SpellDef { item: "meteor_staff", school: 0, cost: 14.0, cooldown: 1.4, damage: 40.0, speed: 30.0, life: 3.0, shot: Shot::Meteor(4.5) },
+    SpellDef { item: "spirit_staff", school: 3, cost: 12.0, cooldown: 3.0, damage: 8.0, speed: 0.0, life: 20.0, shot: Shot::Spirits(3) },
+    SpellDef { item: "ice_spike_staff", school: 1, cost: 10.0, cooldown: 1.0, damage: 10.0, speed: 22.0, life: 0.8, shot: Shot::Ring(14) },
     SpellDef { item: "void_tome", school: 3, cost: 14.0, cooldown: 2.5, damage: 2.0, speed: 6.0, life: 4.0, shot: Shot::Vortex },
     SpellDef { item: "hive_staff", school: 4, cost: 5.0, cooldown: 0.35, damage: 4.0, speed: 16.0, life: 2.5, shot: Shot::Homing },
     SpellDef { item: "water_bolt", school: 1, cost: 5.0, cooldown: 0.4, damage: 6.0, speed: 20.0, life: 3.0, shot: Shot::Bolt },
     SpellDef { item: "demon_scythe", school: 3, cost: 9.0, cooldown: 0.7, damage: 8.0, speed: 12.0, life: 2.5, shot: Shot::Fan(2) },
-    SpellDef { item: "ruin_thorn", school: 3, cost: 5.0, cooldown: 0.5, damage: 5.0, speed: 22.0, life: 1.0, shot: Shot::Fan(3) },
+    SpellDef { item: "ruin_thorn", school: 3, cost: 5.0, cooldown: 0.5, damage: 4.3, speed: 22.0, life: 1.0, shot: Shot::Fan(3) },
     SpellDef { item: "blight_rod", school: 4, cost: 7.0, cooldown: 0.9, damage: 6.0, speed: 14.0, life: 2.5, shot: Shot::Burst(2.0) },
-    SpellDef { item: "sun_stone_staff", school: 0, cost: 12.0, cooldown: 0.8, damage: 22.0, speed: 20.0, life: 2.0, shot: Shot::Burst(4.0) },
-    SpellDef { item: "meteor_blaster", school: 0, cost: 4.0, cooldown: 0.22, damage: 4.0, speed: 36.0, life: 1.0, shot: Shot::Bolt },
-    SpellDef { item: "colossus_staff", school: 1, cost: 9.0, cooldown: 0.8, damage: 6.0, speed: 26.0, life: 1.0, shot: Shot::Fan(5) },
+    SpellDef { item: "sun_stone_staff", school: 0, cost: 12.0, cooldown: 0.8, damage: 35.0, speed: 20.0, life: 2.0, shot: Shot::Burst(4.0) },
+    SpellDef { item: "meteor_blaster", school: 0, cost: 4.0, cooldown: 0.22, damage: 3.5, speed: 36.0, life: 1.0, shot: Shot::Bolt },
+    SpellDef { item: "colossus_staff", school: 1, cost: 9.0, cooldown: 0.8, damage: 7.0, speed: 26.0, life: 1.0, shot: Shot::Fan(5) },
     SpellDef { item: "star_tome", school: 5, cost: 9.0, cooldown: 0.5, damage: 9.0, speed: 22.0, life: 2.5, shot: Shot::Stars(4) },
+    // The balance sheet (plan/balanceamento.md): the deep worm's and the ice golem's staffs.
+    SpellDef { item: "worm_staff", school: 4, cost: 7.0, cooldown: 0.8, damage: 11.0, speed: 18.0, life: 2.0, shot: Shot::Burst(2.5) },
+    SpellDef { item: "blizzard_staff", school: 1, cost: 5.0, cooldown: 0.35, damage: 9.0, speed: 24.0, life: 2.0, shot: Shot::Homing },
 ];
+
+/// The element a spell carries into the world (elements.rs).
+fn element(sp: &SpellDef) -> El {
+    if sp.item == "water_bolt" {
+        El::Water
+    } else {
+        crate::elements::of_school(sp.school)
+    }
+}
+
+/// Damage per second on one monster and mana per second of a caster held down, for the
+/// balance sheet (balance.rs). Fans put part of their bolts on one monster, homing stars
+/// nearly all of them; the spirits stay 20 s and strike every 0.9 s. None for the spells that
+/// don't hurt (blink, heal, ward) and the warship's cannon.
+#[cfg(test)]
+pub(crate) fn sustained_dps(item: &str) -> Option<(f32, f32)> {
+    let sp = SPELLS.iter().find(|s| s.item == item && !s.item.starts_with('@'))?;
+    let hits = match sp.shot {
+        Shot::Blink(_) | Shot::Heal | Shot::Ward => return None,
+        Shot::Fan(n) => 1.0 + (n as f32 - 1.0) * 0.35,
+        Shot::Stars(n) => n as f32 * 0.9,
+        Shot::Spirits(n) => return Some((n as f32 * sp.damage / 0.9, sp.cost / sp.life)),
+        Shot::Vortex => sp.life / VORTEX_TICK,
+        _ => 1.0,
+    };
+    Some((sp.damage * hits / sp.cooldown, sp.cost / sp.cooldown))
+}
+
+/// Every caster, for balance.rs to check that each one has a stage.
+#[cfg(test)]
+pub(crate) fn all_casters() -> impl Iterator<Item = &'static str> {
+    SPELLS.iter().map(|s| s.item).filter(|i| !i.starts_with('@'))
+}
 
 /// What a caster does, for its tooltip.
 pub fn describe(item: &str) -> Option<String> {
@@ -110,6 +147,9 @@ pub struct Spirit {
     cd: f32,
     damage: f32,
 }
+
+/// Seconds between the void orb's bites.
+const VORTEX_TICK: f32 = 0.4;
 
 /// The void book's orb: drifts slowly, pulls monsters in and hurts the ones at its heart.
 pub struct Vortex {
@@ -217,6 +257,14 @@ impl Game {
         let fire: Vec<Vec3> = self.mobs.list.iter().filter(|m| m.alive() && m.on_fire > 0.0).map(|m| m.body.center()).collect();
         for c in fire {
             self.particles.glow(c, Vec3::Y * 1.5, layer, color(0), 0.09, 0.4);
+        }
+    }
+
+    /// Test pictures: cast the spell of this caster now, ready or not.
+    pub(crate) fn cast_now(&mut self, item: &str) {
+        if let Some(i) = SPELLS.iter().position(|s| s.item == item) {
+            self.magic.cooldown = 0.0;
+            self.try_cast(i);
         }
     }
 
@@ -346,14 +394,23 @@ impl Game {
             }
             let step = b.vel * dt;
             let n = (step.length() / 0.25).ceil().max(1.0) as usize;
+            // Fire, frost, water and lightning stop where they meet water or lava (and act
+            // on it); a bolt cast from under water swims on.
+            let wets = !matches!(element(sp), El::Nature | El::Arcane);
             for _ in 0..n {
+                let was_liquid = self.world.is_liquid(self.world.block_or_air(b.pos.floor().as_ivec3()));
                 b.pos += step / n as f32;
                 if let Some(mi) = self.mob_at(b.pos) {
                     hits.push((b.pos, b.spell, Some(mi)));
                     return false;
                 }
-                if self.world.solid(b.pos.floor().as_ivec3()) {
+                let cell = b.pos.floor().as_ivec3();
+                if self.world.solid(cell) {
                     hits.push((b.pos - step / n as f32, b.spell, None));
+                    return false;
+                }
+                if wets && !was_liquid && self.world.is_liquid(self.world.block_or_air(cell)) {
+                    hits.push((b.pos, b.spell, None));
                     return false;
                 }
             }
@@ -415,19 +472,21 @@ impl Game {
     }
 
     pub(crate) fn hurt_mob(&mut self, i: usize, dmg: f32, from: Vec3, school: u8) {
+        self.hurt_mob_el(i, dmg, from, school, crate::elements::of_school(school));
+    }
+
+    /// A spell's hit on a mob: its element sets it burning, slows, soaks or freezes it, and
+    /// can make the hit land harder (elements.rs).
+    pub(crate) fn hurt_mob_el(&mut self, i: usize, dmg: f32, from: Vec3, school: u8, el: El) {
         let mut dmg = dmg * self.magic.power;
         // Magic critical hits (rpg.rs).
         if self.surv.rng.f32() < self.t5.rpg.stats.crit[crate::rpg::MAGIC] {
             dmg *= 1.5;
         }
+        dmg *= self.element_mob(i, el, dmg);
         self.orichalcum_petals(i, dmg);
         let m = &mut self.mobs.list[i];
         m.hurt(dmg, from);
-        match school {
-            0 => m.on_fire = m.on_fire.max(4.0),
-            1 => m.chill = m.chill.max(3.0),
-            _ => {}
-        }
         let def = &self.mobs.reg.defs[m.def];
         self.last_hit = Some((def.display_name.clone(), m.health.max(0.0), m.max_health, self.now + 3.0));
         if school == 4 && self.survival {
@@ -440,6 +499,18 @@ impl Game {
         let sp = &SPELLS[spell];
         let layer = self.glow_layer();
         let eye = self.body.eye();
+        let el = element(sp);
+        // What it does to the blocks where it landed.
+        match sp.shot {
+            Shot::Burst(r) | Shot::Meteor(r) => {
+                self.element_hit(at, el, r * 0.8, if matches!(sp.shot, Shot::Meteor(_)) { 3.0 } else { 2.0 });
+                self.blast_world(at, r);
+            }
+            Shot::Flame => self.element_hit(at, el, 0.8, 0.25),
+            Shot::Fan(_) | Shot::Ring(_) => self.element_hit(at, el, 1.6, 0.8),
+            _ => self.element_hit(at, el, 1.3, 1.0),
+        }
+        let sp = &SPELLS[spell];
         if let Shot::Burst(r) | Shot::Meteor(r) = sp.shot {
             let around: Vec<(usize, f32)> = self
                 .mobs
@@ -451,7 +522,7 @@ impl Game {
                 .filter(|(_, d)| *d < r)
                 .collect();
             for (k, d) in around {
-                self.hurt_mob(k, sp.damage * (1.0 - d / r * 0.6), at, sp.school);
+                self.hurt_mob_el(k, sp.damage * (1.0 - d / r * 0.6), at, sp.school, el);
             }
             for _ in 0..40 {
                 let dir = Vec3::new(self.surv.rng.f32() - 0.5, self.surv.rng.f32() - 0.3, self.surv.rng.f32() - 0.5).normalize_or_zero();
@@ -461,7 +532,7 @@ impl Game {
             return;
         }
         if let Some(k) = mob {
-            self.hurt_mob(k, sp.damage, eye, sp.school);
+            self.hurt_mob_el(k, sp.damage, eye, sp.school, el);
             self.sfx(Sfx::MobHit);
         }
         for _ in 0..8 {
@@ -480,11 +551,12 @@ impl Game {
         let mut p = eye;
         for _ in 0..128 {
             p += fwd * 0.25;
-            if self.mob_at(p).is_some() || self.world.solid(p.floor().as_ivec3()) {
+            if self.mob_at(p).is_some() || self.world.solid(p.floor().as_ivec3()) || self.world.is_liquid(self.world.block_or_air(p.floor().as_ivec3())) {
                 at = p;
                 break;
             }
         }
+        self.element_hit(at, El::Shock, 2.0, 2.5);
         let around: Vec<usize> = self.mobs.list.iter().enumerate().filter(|(_, m)| m.alive() && m.body.center().distance(at) < 2.5).map(|(k, _)| k).collect();
         for k in around {
             self.hurt_mob(k, sp.damage, at + Vec3::Y * 8.0, sp.school);
@@ -645,6 +717,9 @@ impl Game {
                 }
             }
             Shot::Ring(n) => {
+                // The ice spikes freeze the water all around the caster.
+                let feet = self.body.pos + Vec3::Y * 0.2;
+                self.element_hit(feet, element(sp), 4.5, 2.0);
                 let from = self.body.pos + Vec3::Y * 1.0;
                 for k in 0..n {
                     let a = k as f32 / n as f32 * std::f32::consts::TAU;
@@ -727,6 +802,8 @@ impl Game {
             if !self.world.solid(next.floor().as_ivec3()) {
                 v.pos = next;
             }
+            // Its wind drags dropped items in too.
+            self.blow_items(v.pos, 7.0, -dt * 25.0);
             for _ in 0..3 {
                 let a = self.surv.rng.f32() * std::f32::consts::TAU;
                 let r = 0.4 + self.surv.rng.f32() * 1.6;
@@ -737,7 +814,7 @@ impl Game {
             v.tick -= dt;
             let hit = v.tick <= 0.0;
             if hit {
-                v.tick = 0.4;
+                v.tick = VORTEX_TICK;
             }
             for k in 0..self.mobs.list.len() {
                 let m = &self.mobs.list[k];

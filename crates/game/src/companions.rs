@@ -447,10 +447,16 @@ impl Game {
                 self.t5.rpg.stats = self.compute_stats();
                 self.target = None;
                 let side = flat.cross(Vec3::Y);
-                let staffs = ["ember_tower_staff", "frost_crystal_staff"];
+                // MC_SENTRIES=all: every kind (and a fourth slot for them).
+                let all = std::env::var("MC_SENTRIES").is_ok();
+                let staffs: &[&str] = if all { &["ember_tower_staff", "frost_crystal_staff", "storm_totem_staff", "ballista_cane"] } else { &["ember_tower_staff", "frost_crystal_staff"] };
                 for (k, s) in staffs.iter().enumerate() {
-                    self.sentry_use(s);
-                    let at = self.body.pos + flat * 4.0 + side * (k as f32 * 2.4 - 1.2);
+                    if all {
+                        self.t5.sentries.push(crate::sentries::Sentry::test(crate::sentries::sentry_of(s).unwrap_or(0)));
+                    } else {
+                        self.sentry_use(s);
+                    }
+                    let at = self.body.pos + flat * if all { 6.0 } else { 4.0 } + side * (k as f32 * 2.4 - (staffs.len() - 1) as f32 * 1.2);
                     let y = ground(self, at);
                     if let Some(st) = self.t5.sentries.last_mut() {
                         st.pos = Vec3::new(at.x.floor() + 0.5, y, at.z.floor() + 0.5);
@@ -461,8 +467,17 @@ impl Game {
                     let y = ground(self, at);
                     self.mobs.spawn(n, Vec3::new(at.x, y, at.z));
                 }
-                for _ in 0..30 {
-                    self.update_sentries(0.05);
+                if all {
+                    // More than the slots allow: no updates (they'd send the extra home); aim
+                    // them by hand, each caught just after a shot.
+                    let aim = Vec3::new(at.x, ground(self, at) + 1.0, at.z);
+                    for st in self.t5.sentries.iter_mut() {
+                        st.test_aim(aim, 0.15);
+                    }
+                } else {
+                    for _ in 0..30 {
+                        self.update_sentries(0.05);
+                    }
                 }
             }
             _ => log::warn!("MC_LOTE11: unknown scene {scene}"),
