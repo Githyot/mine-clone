@@ -59,6 +59,9 @@ pub struct Globals {
     /// Hand light shadows: xyz corner of the solid-block grid relative to the camera's block,
     /// w: 1 when on.
     pub occl: [f32; 4],
+    /// Material feel of items and armour (material.rs): x 0 off, 1 glints, 2 also relief and
+    /// sparkles.
+    pub mat: [f32; 4],
 }
 
 #[repr(C)]
@@ -288,7 +291,7 @@ impl Renderer {
         let ([block_view, block_view2], texture_size) = Self::upload_blocks(&device, &queue, textures);
         let tex_bg = Self::make_tex_bg(&device, &tex_layout, &block_view, &block_view2, &sampler);
 
-        let terrain = shader(&device, "terrain", include_str!("shaders/terrain.wgsl"));
+        let terrain = shader(&device, "terrain", concat!(include_str!("shaders/material.wgsl"), "\n", include_str!("shaders/terrain.wgsl")));
         let sky = shader(&device, "sky", include_str!("shaders/sky.wgsl"));
         let lines = shader(&device, "lines", include_str!("shaders/lines.wgsl"));
         let lod = shader(&device, "lod", include_str!("shaders/lod.wgsl"));

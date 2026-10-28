@@ -27,6 +27,8 @@ pub struct ItemGpu {
     pipelines: [wgpu::RenderPipeline; 2],
     layout: wgpu::BindGroupLayout,
     buf: wgpu::Buffer,
+    /// The material class of each texture layer (material.rs).
+    mats: wgpu::Buffer,
     bg: wgpu::BindGroup,
     cap: usize,
     count: u32,
@@ -37,16 +39,24 @@ impl ItemGpu {
         let device = &r.device;
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("items"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None },
-                count: None,
-            }],
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None },
+                    count: None,
+                },
+            ],
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("item"),
-            source: wgpu::ShaderSource::Wgsl(format!("{}\n{}", include_str!("shaders/common.wgsl"), include_str!("shaders/item.wgsl")).into()),
+            source: wgpu::ShaderSource::Wgsl(format!("{}\n{}\n{}", include_str!("shaders/common.wgsl"), include_str!("shaders/material.wgsl"), include_str!("shaders/item.wgsl")).into()),
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("item"),
@@ -80,8 +90,9 @@ impl ItemGpu {
         let pipelines = [make(r.config.format), make(crate::post::HDR)];
         let cap = 64;
         let buf = Self::make_buf(device, cap);
-        let bg = Self::make_bg(device, &layout, &buf);
-        ItemGpu { pipelines, layout, buf, bg, cap, count: 0 }
+        let mats = Self::make_mats(device, &[crate::material::NONE]);
+        let bg = Self::make_bg(device, &layout, &buf, &mats);
+        ItemGpu { pipelines, layout, buf, mats, bg, cap, count: 0 }
     }
 
     fn make_buf(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
@@ -92,8 +103,23 @@ impl ItemGpu {
         })
     }
 
-    fn make_bg(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, buf: &wgpu::Buffer) -> wgpu::BindGroup {
-        device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("items"), layout, entries: &[wgpu::BindGroupEntry { binding: 0, resource: buf.as_entire_binding() }] })
+    fn make_mats(device: &wgpu::Device, classes: &[u32]) -> wgpu::Buffer {
+        device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("item materials"), contents: bytemuck::cast_slice(classes), usage: wgpu::BufferUsages::STORAGE })
+    }
+
+    fn make_bg(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, buf: &wgpu::Buffer, mats: &wgpu::Buffer) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("items"),
+            layout,
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: buf.as_entire_binding() }, wgpu::BindGroupEntry { binding: 1, resource: mats.as_entire_binding() }],
+        })
+    }
+
+    /// The material class of every texture layer, from the texture names in layer order
+    /// (material.rs). Set again when the textures are reloaded.
+    pub fn set_materials(&mut self, r: &Renderer, names: &[String]) {
+        self.mats = Self::make_mats(&r.device, &crate::material::texture_table(names));
+        self.bg = Self::make_bg(&r.device, &self.layout, &self.buf, &self.mats);
     }
 
     pub fn prepare(&mut self, r: &Renderer, data: &[GpuItem]) {
@@ -104,7 +130,7 @@ impl ItemGpu {
         if data.len() > self.cap {
             self.cap = data.len().next_power_of_two();
             self.buf = Self::make_buf(&r.device, self.cap);
-            self.bg = Self::make_bg(&r.device, &self.layout, &self.buf);
+            self.bg = Self::make_bg(&r.device, &self.layout, &self.buf, &self.mats);
         }
         r.queue.write_buffer(&self.buf, 0, bytemuck::cast_slice(data));
     }

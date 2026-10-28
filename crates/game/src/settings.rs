@@ -124,6 +124,9 @@ pub struct Settings {
     /// Block depth (parallax occlusion mapping, as in shader packs): 0 off, then the steps of
     /// `PARALLAX_LEVELS`. Needs the "Bonito" quality.
     pub parallax: u8,
+    /// Material feel of items and armour (material.rs): 0 off, 1 glints and sheen, 2 also
+    /// relief and sparkles. The "Rápido" quality keeps it at 1 at most.
+    pub materials: u8,
     /// Inventory and hotbar animations (Immersive UI idea); off = reduce motion.
     pub ui_animations: bool,
     /// "pt" (Portuguese, the game's own) or "en" (English, through lang.rs).
@@ -178,6 +181,7 @@ impl Default for Settings {
             taa: false,
             emissive_textures: true,
             parallax: 2,
+            materials: 2,
             ui_animations: true,
             language: "pt".into(),
             subtitles: false,

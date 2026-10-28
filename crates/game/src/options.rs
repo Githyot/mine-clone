@@ -49,6 +49,7 @@ pub enum Id {
     Taa,
     Emissive,
     Relief,
+    Materials,
     Lod,
     Drops,
     Master,
@@ -232,6 +233,15 @@ impl Game {
                 self.opt_button(Id::Taa, format!("Suavização TAA: {}{}", onoff(st.taa), needs_pack), "Bordas suaves. Precisa de um shader ligado."),
                 self.opt_button(Id::Emissive, format!("Minérios brilhantes: {}", onoff(st.emissive_textures)), "Os pontos coloridos dos minérios brilham no escuro."),
                 self.opt_button(Id::Relief, format!("Relevo nas texturas: {}", onoff(st.relief)), "Um leve relevo esculpido nas texturas perto da câmera."),
+                self.opt_button(
+                    Id::Materials,
+                    format!(
+                        "Materiais: {}{}",
+                        crate::material::LEVELS[st.materials.min(2) as usize],
+                        if st.materials > 1 && st.shader_quality == ShaderQuality::Fast { " (Simples no Rápido)" } else { "" }
+                    ),
+                    "Brilho do diamante e dos metais, relevo em itens e armaduras. Simples: só o brilho.",
+                ),
                 self.slider(
                     Id::Lod,
                     match st.lod_distance {
@@ -320,6 +330,7 @@ impl Game {
             Id::Taa => return shader_row(self, ShaderRow::Taa),
             Id::Emissive => return shader_row(self, ShaderRow::Emissive),
             Id::Relief => self.settings.relief = !self.settings.relief,
+            Id::Materials => self.settings.materials = (self.settings.materials.min(2) + 1) % 3,
             Id::ViewBobbing => self.settings.view_bobbing = !self.settings.view_bobbing,
             Id::Drops => self.settings.flat_drops = !self.settings.flat_drops,
             Id::TextureRes => {
