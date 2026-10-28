@@ -190,7 +190,7 @@ impl Game {
         false
     }
 
-    fn count_alive(&self, names: &[&str]) -> usize {
+    pub(crate) fn count_alive(&self, names: &[&str]) -> usize {
         self.mobs.list.iter().filter(|m| m.alive() && names.contains(&self.mobs.reg.defs[m.def].name.as_str())).count()
     }
 

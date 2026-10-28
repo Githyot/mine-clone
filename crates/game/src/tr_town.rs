@@ -33,6 +33,9 @@ pub(crate) const NPCS: &[(&str, &str)] = &[
     ("npc_steampunker", "a Engenheira a Vapor vem depois de um chefe mecânico."),
     ("npc_cyborg", "o Ciborgue vem depois da Rainha das Vinhas."),
     ("npc_princess", "a Princesa vem quando a vila tem 14 moradores."),
+    ("npc_mycologist", "o Micólogo vem no modo difícil, quando você carrega um cogumelo."),
+    ("npc_winter_elder", "o Velho do Inverno vem em dezembro, ou depois da Rainha do Gelo."),
+    ("npc_tax_collector", "o Coletor de Impostos vem no modo difícil, depois que você liberta uma alma atormentada do Submundo com pó de purificação."),
 ];
 
 /// Shops of this file's town folk: (mob, goods: item, count, price in copper).
@@ -52,6 +55,8 @@ pub(crate) const SHOPS: &[(&str, &[(&str, u8, u32)])] = &[
     ("npc_steampunker", &[("piston", 4, s(20)), ("observer", 2, s(20)), ("rail", 16, s(20)), ("powered_rail", 6, s(30)), ("minecart", 1, s(30)), ("clock", 1, s(20)), ("copper_ingot", 10, s(10))]),
     ("npc_cyborg", &[("firework_rocket", 16, s(10)), ("tnt", 4, s(20)), ("meteor_shot", 50, s(20)), ("redstone", 16, s(10)), ("rapid_gun", 1, s(180))]),
     ("npc_princess", &[("cake", 1, s(20)), ("golden_apple", 1, s(60)), ("diamond", 1, s(60)), ("gold_block", 1, s(120)), ("music_disc_first_light", 1, s(80))]),
+    ("npc_mycologist", &[("glow_mushroom", 4, s(10)), ("brown_mushroom", 6, s(10)), ("red_mushroom", 6, s(10)), ("mushroom_stew", 1, s(10)), ("sporite_ingot", 2, s(60)), ("jungle_spore", 4, s(10))]),
+    ("npc_winter_elder", &[("present", 1, s(30)), ("cookie", 8, s(10)), ("snow", 16, s(10)), ("spruce_sapling", 4, s(10)), ("firework_rocket", 8, s(10)), ("candle", 4, s(10))]),
 ];
 
 /// Odd goods the peddler may bring (six a visit).
@@ -111,6 +116,9 @@ const MOODS: &[(&str, &str, &[&str], &[&str])] = &[
     ("npc_steampunker", "desert", &["npc_cyborg", "npc_painter"], &["npc_dryad"]),
     ("npc_cyborg", "snow", &["npc_steampunker", "npc_pirate"], &["npc_zoologist"]),
     ("npc_princess", "forest", &["npc_tailor", "npc_party_girl"], &[]),
+    ("npc_mycologist", "cave", &["npc_guide", "npc_witch_doctor"], &["npc_dryad"]),
+    ("npc_winter_elder", "snow", &["npc_party_girl", "npc_princess"], &["npc_pirate"]),
+    ("npc_tax_collector", "forest", &["npc_merchant", "npc_party_girl"], &["npc_angler", "npc_princess"]),
 ];
 
 const PYLONS: &[&str] = &["forest", "desert", "snow", "jungle", "ocean", "cave"];
@@ -163,6 +171,9 @@ impl Game {
             "npc_steampunker" => ["mech_eye", "mech_worm", "mech_skull"].iter().any(|b| beaten(b)),
             "npc_cyborg" => beaten("vine_queen"),
             "npc_princess" => people >= 14,
+            "npc_mycologist" => self.t5.hard.on && self.carries(|n| n.ends_with("mushroom")),
+            "npc_tax_collector" => self.t5.hard.on && self.t5.tr.minis.tax_freed,
+            "npc_winter_elder" => crate::tr_minis::holiday() == crate::tr_minis::Holiday::Christmas || beaten("ice_queen"),
             _ => false,
         }
     }

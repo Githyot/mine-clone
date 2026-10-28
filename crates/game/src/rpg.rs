@@ -120,6 +120,7 @@ pub const ACCESSORIES: &[AccDef] = &[
     acc("running_boots", "", &[M::Move(0.3)]),
     acc("frost_spark_boots", "", &[M::Move(0.5), M::Immune(&[CHILLED, FROZEN])]),
     acc("terraspark_boots", "Corre muito, anda sobre a água e a lava não queima", &[M::Move(0.5), M::Immune(&[CHILLED, FROZEN]), M::Lava, M::Fire]),
+    acc("moon_charm", "À noite: +10% de dano e +10% de velocidade", &[]),
     acc("bastion_shield", "Da masmorra: não é empurrado e +2 de defesa", &[M::NoKnock, M::Def(2.0)]),
     // Only in treasure bags (Especialista and Mestre, tr_modes.rs).
     acc("jelly_heart", "Das sacolas: pulos mais altos e vida que volta", &[M::Jump(0.2), M::Regen(0.2)]),
@@ -291,6 +292,7 @@ pub const SETS: &[SetDef] = &[
     set("fossil", "", &[M::Dmg(RANGED, 0.1), M::Crit(RANGED, 0.05)]),
     set("necro", "", &[M::Dmg(RANGED, 0.1), M::Crit(RANGED, 0.05)]),
     set("ninja", "", &[M::Move(0.2), M::Crit(ALL_CLASSES, 0.04)]),
+    set("gladiator", "", &[M::Dmg(MELEE, 0.08), M::Crit(MELEE, 0.05), M::Def(1.0)]),
     set("meteor", "O Disparador de Meteoro não gasta mana", &[M::Dmg(MAGIC, 0.09), M::Def(1.0)]),
     set("spectral", "Golpes mágicos curam um pouco", &[M::Dmg(MAGIC, 0.2), M::Mana(6.0), M::Regen(0.4)]),
     set("sporite", "", &[M::Dmg(RANGED, 0.2), M::Crit(RANGED, 0.1)]),
@@ -549,7 +551,7 @@ impl Default for Stats {
 }
 
 impl Stats {
-    fn apply(&mut self, m: &M) {
+    pub(crate) fn apply(&mut self, m: &M) {
         match *m {
             M::Def(v) => self.defense += v,
             M::Dmg(c, v) if c == ALL_CLASSES => self.dmg.iter_mut().for_each(|d| *d += v),
@@ -787,6 +789,7 @@ impl Game {
         if self.has_effect(COZY_FIRE) {
             s.regen += 0.25;
         }
+        self.comfort_stats(&mut s);
         if self.has_effect(FIRE_RESISTANCE) {
             s.fire_immune = true;
         }
@@ -1016,12 +1019,15 @@ impl Game {
         }
         let glow = self.glow_layer();
         let mut sparks = Vec::new();
+        // Hunting banners near (tr_comfort.rs): those kinds take more damage.
+        let hunt = &self.t5.tr.comfort.hunt;
         for m in self.mobs.list.iter_mut() {
+            let base = if hunt.get(m.def).copied().unwrap_or(false) { 0.5 } else { 0.0 };
             if m.debuffs.is_empty() {
-                m.vuln = 0.0;
+                m.vuln = base;
                 continue;
             }
-            let mut vuln = 0.0;
+            let mut vuln = base;
             let mut dot = 0.0;
             for d in m.debuffs.iter_mut() {
                 d.1 -= dt;
@@ -1886,6 +1892,7 @@ const SET_NAMES: &[(&str, &str)] = &[
     ("verdite", "Verdita"),
     ("lumite", "Lumita"),
     ("meteor", "Meteoro"),
+    ("gladiator", "Gladiador"),
     ("umbral", "Sombraço"),
     ("sanguinite", "Sanguinita"),
     ("hive", "Abelha"),

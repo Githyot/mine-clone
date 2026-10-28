@@ -717,6 +717,63 @@ A MASMORRA E A TINA DE TINGIR (lado Terraria)
   Tina de Tingir (tábuas + balde de água): clique com um corante na mão para tingir toda a
     armadura ou roupa que você veste. Com a mão vazia a tinta sai.
 
+CONFORTO EM CASA (lado Terraria)
+  Lanterna de Coração (lanterna + cristal de vida): perto dela a vida volta mais depressa.
+  Estrela no Pote (frasco + estrela caída): perto dela a mana volta mais depressa.
+  Vela d'Água e Poção de Batalha: muito mais monstros. Vela da Paz e Poção Calmante: menos.
+  Clique numa estação para um bônus de 10 minutos: Bola de Cristal (magia e mana), Pedra de
+    Amolar (armas de perto), Caixa de Munição (às vezes não gasta munição), Mesa de Guerra e
+    Mesa Enfeitiçada (um lacaio a mais cada uma).
+  Relógio de Sol Encantado: clique e o tempo corre rápido até a manhã (uma vez por dia).
+  Estandarte de Caça: a cada 50 monstros do mesmo tipo abatidos você ganha um. Com qualquer
+    estandarte pendurado a até 48 blocos, os tipos que você já caçou levam 50% mais dano.
+  Ao morrer fica uma lápide onde você caiu; a mensagem diz onde.
+  No inventário: O organiza a mochila e X guarda nos baús perto (até 8 blocos) tudo o que
+    eles já têm.
+
+MINI-CHEFES, TROFÉUS E DATAS FESTIVAS (lado Terraria)
+  No modo difícil, à noite, aparecem Lobisomens que saltam em você (muitos na lua cheia,
+    uma noite em oito). Às vezes deixam o Amuleto da Lua (à noite: mais dano e velocidade).
+  Nas cavernas pode haver uma Garota Perdida... chegue perto e ela vira uma Ninfa.
+  Na lua de sangue do modo difícil vem o Palhaço, que joga bombas. Na neve, à noite ou na
+    chuva, o Golem de Gelo atira gelo. Na invasão goblin do modo difícil, o Invocador
+    Goblin chama espíritos.
+  Chave da Noite (9 almas da noite) ou da Luz (9 almas da luz): use olhando para um baú
+    vazio no modo difícil e ele vira um Mímico, com tesouros raros.
+  Chefes às vezes deixam um Troféu (uma flâmula para pendurar).
+  Moradores novos: o Micólogo (modo difícil, com um cogumelo na mochila) e o Velho do
+    Inverno (em dezembro, ou depois da Rainha do Gelo).
+  Coletor de Impostos: no modo difícil, uma Alma Atormentada vaga pelo Submundo. Jogue
+    pó de purificação perto dela (até 6 blocos) para libertá-la; depois ela pode se mudar
+    para a vila. A cada minuto ele junta 10 cobres por morador (até 10 de ouro); fale com
+    ele para receber o dinheiro.
+  De 10 de outubro a 1 de novembro os monstros às vezes deixam Sacos de Gostosuras; de 15
+    a 31 de dezembro, Presentes.
+
+ESPADAS DO FIM, SENTINELAS, GLADIADOR E MONTARIAS (lado Terraria)
+  Lâmina da Noite: Espada de Sombraço (ou de Sanguinita) + Katana Azul + Lâmina da Colmeia +
+    Espada de Magmarita. Lâmina Radiante: barras radiantes como uma espada.
+  A Mariposa do Eclipse às vezes deixa a Espada do Herói Partida: com ela e as almas viram
+    as versões Verdadeiras; as duas Verdadeiras juntas fazem a Lâmina Telúrica.
+  O Arauto Celestial às vezes deixa a Ira Celeste (chuva de estrelas). A Lâmina do Ápice
+    junta Telúrica, Ira Celeste, Sabre Estelar, Lâmina Nebulosa, Espada Encantada e lumita.
+  Sentinelas (cristais etéreos da Defesa do Cristal): Armadilha Explosiva e Aura de Raios;
+    a Sentinela de Chamas agora atira também. Cada tipo fica de pé ao mesmo tempo.
+  Nas cavernas de mármore aparecem Hoplitas, que às vezes deixam a armadura de Gladiador.
+  Montarias novas: Cenoura Felpuda (coelho que salta alto; vem nos Sacos de Gostosuras ou
+    cenoura dourada + pé de coelho), Sela de Tartaruga (rápida na água) e Chave do Disco
+    (do Disco Voador: voa sem limite, Espaço sobe).
+
+MODO JORNADA (lado Terraria)
+  Altar da Pesquisa (ouro, livro, diamante, tijolos de pedra): na primeira vez ele pergunta
+    se o mundo vira Mundo Jornada (para sempre). Depois, clique com uma pilha na mão para
+    pesquisar: 1 ferramenta ou armadura, 10 poções, 50 de qualquer outra coisa. Item
+    pesquisado: agache (Shift) e clique para ganhar uma pilha cheia, quantas vezes quiser.
+    Com a mão vazia mostra quantos itens você já pesquisou.
+  Pedra dos Poderes (só no Mundo Jornada): agachado escolhe o poder, clique usa: amanhecer,
+    meio-dia, anoitecer, meia-noite, congelar o tempo, chuva, invencível e quantidade de
+    monstros (normal, poucos, nenhum, muitos).
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

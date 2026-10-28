@@ -27,6 +27,8 @@ pub struct Mobs {
     pub calm: bool,
     /// World difficulty (tr_modes.rs): monsters spawn with this much more health.
     pub hp_scale: f32,
+    /// Candles and potions (tr_comfort.rs): more or fewer monsters at once.
+    pub spawn_mult: f32,
     /// Blocks each mob may spawn on (from `MobDef::ground`), resolved on first use.
     ground: Vec<Vec<BlockId>>,
     /// Multiplayer: the other players in this dimension (where, creative), so monsters hunt
@@ -103,7 +105,7 @@ impl Mobs {
     }
 
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, calm: false, hp_scale: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false, anim: Default::default() }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, calm: false, hp_scale: 1.0, spawn_mult: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false, anim: Default::default() }
     }
 
     fn next_rand(&mut self) -> u64 {
@@ -139,12 +141,13 @@ impl Mobs {
     fn natural_spawn(&mut self, world: &World, player: Vec3, daylight: f32) {
         let passive = self.list.iter().filter(|m| self.reg.defs[m.def].kind != Kind::Hostile).count();
         let hostile = self.list.len() - passive;
+        let max_hostile = ((MAX_HOSTILE as f32 * self.spawn_mult) as usize).max(1);
         // The Nether: everything lives in its caves, in the dark, and only its own creatures.
         // The End: always dark, on the islands' tops. Overworld creatures stay home.
         let nether = matches!(world.gen.dim, voxel::worldgen::Dim::Nether | voxel::worldgen::Dim::Otherside);
         if world.gen.dim == voxel::worldgen::Dim::Overworld && player.y < -16.0 {
             // The deep world has its own monsters, near the player's own depth.
-            if hostile < MAX_HOSTILE && !self.peaceful {
+            if hostile < max_hostile && !self.peaceful {
                 self.deep_spawn(world, player);
             }
             return;
@@ -195,7 +198,7 @@ impl Mobs {
                         && match d.spawn {
                             SpawnRule::Grass => animals && !water && self.ground[*i].contains(&below),
                             SpawnRule::Water => animals && water,
-                            SpawnRule::Dark => dark && !water && hostile < MAX_HOSTILE && !self.peaceful && !self.calm && (self.reg.defs[*i].ground.is_empty() || self.ground[*i].contains(&below)),
+                            SpawnRule::Dark => dark && !water && hostile < max_hostile && !self.peaceful && !self.calm && (self.reg.defs[*i].ground.is_empty() || self.ground[*i].contains(&below)),
                             SpawnRule::Never => false,
                         }
                 })
@@ -313,7 +316,7 @@ impl Mobs {
         }
         self.spawn_cd -= dt;
         if self.spawn_cd <= 0.0 {
-            self.spawn_cd = 1.0;
+            self.spawn_cd = 1.0 / self.spawn_mult.clamp(0.25, 4.0);
             self.natural_spawn(world, player, daylight);
             for k in 0..self.others.len() {
                 let p = self.others[k].0;

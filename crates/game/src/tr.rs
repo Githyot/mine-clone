@@ -59,6 +59,23 @@ struct Saved {
     music_boxes: Vec<((i32, i32, i32), String)>,
     #[serde(default)]
     dyes: Vec<Option<u8>>,
+    /// Heart lanterns, candles, banners placed (tr_comfort.rs).
+    #[serde(default)]
+    comfort: Vec<((i32, i32, i32), u8)>,
+    /// Journey research (tr_journey.rs).
+    #[serde(default)]
+    journey: bool,
+    #[serde(default)]
+    research: Vec<(String, u32)>,
+    #[serde(default)]
+    journey_god: bool,
+    #[serde(default)]
+    journey_spawn: usize,
+    /// The tax collector (tr_minis.rs).
+    #[serde(default)]
+    tax_freed: bool,
+    #[serde(default)]
+    tax_owed: u64,
 }
 
 #[derive(Default)]
@@ -76,6 +93,9 @@ pub struct Tr {
     pub(crate) modes: crate::tr_modes::Modes,
     pub(crate) style: crate::tr_style::Style,
     pub(crate) dungeon: crate::tr_dungeon::Dungeon,
+    pub(crate) comfort: crate::tr_comfort::Comfort,
+    pub(crate) minis: crate::tr_minis::Minis,
+    pub(crate) journey: crate::tr_journey::Journey,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -106,6 +126,13 @@ impl Tr {
             tr.style.dyes[k] = *d;
         }
         tr.style.boxes = s.music_boxes.into_iter().map(|((x, y, z), t)| (glam::IVec3::new(x, y, z), t)).collect();
+        tr.journey.on = s.journey;
+        tr.journey.research = s.research.into_iter().collect();
+        tr.journey.god = s.journey_god;
+        tr.journey.spawn = s.journey_spawn;
+        tr.minis.tax_freed = s.tax_freed;
+        tr.minis.tax_owed = s.tax_owed;
+        tr.comfort.placed = s.comfort.into_iter().map(|((x, y, z), k)| (glam::IVec3::new(x, y, z), k)).collect();
         tr.town.animals = s.animals.into_iter().map(|(k, (x, y, z))| (k, Vec3::new(x, y, z))).collect();
         tr
     }
@@ -129,6 +156,13 @@ impl Tr {
             dyes: self.style.dyes.to_vec(),
             music_boxes: self.style.boxes.iter().map(|(p, t)| ((p.x, p.y, p.z), t.clone())).collect(),
             animals: self.town.animals.iter().map(|(k, p)| (k.clone(), (p.x, p.y, p.z))).collect(),
+            comfort: self.comfort.placed.iter().map(|(p, k)| ((p.x, p.y, p.z), *k)).collect(),
+            journey: self.journey.on,
+            research: self.journey.research.iter().map(|(k, v)| (k.clone(), *v)).collect(),
+            journey_god: self.journey.god,
+            journey_spawn: self.journey.spawn,
+            tax_freed: self.minis.tax_freed,
+            tax_owed: self.minis.tax_owed,
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
@@ -156,6 +190,9 @@ impl Game {
         self.update_tr_modes();
         self.update_tr_style();
         self.update_tr_dungeon(dt);
+        self.update_tr_comfort(dt);
+        self.update_tr_minis(dt);
+        self.update_tr_journey();
     }
 
     /// Right click with an item of this file; true when it did something.
@@ -185,6 +222,12 @@ impl Game {
             return Some(r);
         }
         if let Some(r) = self.tr_style_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.tr_comfort_use(name) {
+            return Some(r);
+        }
+        if let Some(r) = self.tr_minis_use(name) {
             return Some(r);
         }
         match name {
@@ -218,6 +261,7 @@ impl Game {
         self.tr_event_boss_down();
         self.endgame_boss_defeated(name);
         self.modes_boss_defeated(name);
+        self.minis_boss_defeated(name);
         if name == "great_eye" {
             // The eye leaves some of the world's evil ore behind (and its seeds, in Terraria).
             let ore = if crate::tr_world::world_evil(self.seed) == crate::tr_world::Land::Ruin { "umbral_ore" } else { "sanguinite_ore" };
@@ -432,6 +476,8 @@ impl Game {
             "relics" | "bestiary" => self.test_tr_modes(scene),
             "vanity" | "paint" => self.test_tr_style(scene),
             "dungeon" => self.test_tr_dungeon(),
+            "comfort" => self.test_tr_comfort(),
+            "minis" => self.test_tr_minis(),
             "harvest" | "winter" | "pirates" | "martians" | "crystal" => {
                 self.test_invasion(scene);
             }

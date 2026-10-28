@@ -75,6 +75,9 @@ mod tr_utility;
 mod tr_modes;
 mod tr_style;
 mod tr_dungeon;
+mod tr_comfort;
+mod tr_minis;
+mod tr_journey;
 mod tr_weapons;
 mod tr_world;
 mod glyphs;
@@ -1592,6 +1595,8 @@ impl Game {
             KeyCode::KeyF if self.screen == Screen::Playing && self.survival => self.quick_hook(),
             KeyCode::KeyC if matches!(self.screen, Screen::Playing | Screen::Inventory) => self.t5.rpg.sheet = !self.t5.rpg.sheet,
             KeyCode::KeyR if self.screen == Screen::Inventory && self.survival => self.surv.want_recipe = true,
+            KeyCode::KeyO if self.screen == Screen::Inventory && self.survival => self.sort_backpack(),
+            KeyCode::KeyX if self.screen == Screen::Inventory && self.survival => self.quick_stack(),
             KeyCode::KeyU if self.screen == Screen::Inventory && self.survival => {
                 self.surv.want_recipe = true;
                 self.surv.uses_pending = true;
@@ -3308,6 +3313,8 @@ impl Game {
     fn placed(&mut self, pos: IVec3, id: BlockId) -> Option<IVec3> {
         self.place_cd = 0.22;
         self.plugins_block(pos, id, true);
+        let name = self.reg.get(id).name.clone();
+        self.comfort_placed(pos, &name);
         self.anim.start_swing();
         self.pads.rumble(0.0, 0.35, 0.05);
         let m = Material::of(&self.reg.get(id).name);

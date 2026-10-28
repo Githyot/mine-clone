@@ -250,6 +250,7 @@ impl Game {
                 let at = self.mobs.list[i].body.pos;
                 self.guide_talk(at, &dn);
             }
+            "npc_tax_collector" => self.tax_talk(&dn),
             "npc_guard" => self.toast(format!("{dn}: Fico de olho nos monstros por aqui. Durma tranquilo!"), 4.0),
             "npc_nurse" => {
                 let missing = self.max_health - self.health;

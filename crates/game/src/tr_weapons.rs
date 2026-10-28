@@ -90,7 +90,32 @@ const WEAPONS: &[WDef] = &[
     w("vortex_beater", Wk::Gun(1, 0.03), 9.0, 0.09, 90.0, None),
     w("nebula_blade", Wk::Beam(false), 18.0, 0.35, 40.0, None),
     w("stardust_yoyo", Wk::Yoyo(14.0), 22.0, 0.0, 34.0, None),
+    // Lote 14 (second round): the late swords and more sentries.
+    w("night_edge", Wk::Beam(false), 6.0, 0.45, 32.0, None),
+    w("radiant_blade", Wk::Beam(false), 8.0, 0.45, 34.0, None),
+    w("true_night_edge", Wk::Beam(false), 12.0, 0.4, 36.0, Some((POISON, 3.0))),
+    w("true_radiant_blade", Wk::Beam(false), 13.0, 0.4, 36.0, None),
+    w("terra_blade", Wk::Beam(false), 18.0, 0.32, 44.0, None),
+    w("celestial_wrath", Wk::Beam(true), 24.0, 0.3, 50.0, None),
+    w("apex_blade", Wk::Beam(true), 32.0, 0.18, 56.0, None),
+    w("explosive_trap_rod", Wk::Sentry, 16.0, 2.0, 30.0, Some((MOB_BURN, 3.0))),
+    w("lightning_aura_rod", Wk::Sentry, 4.0, 0.35, 60.0, None),
+    w("flame_sentry_rod", Wk::Sentry, 7.0, 0.8, 36.0, Some((MOB_BURN, 4.0))),
 ];
+
+/// The colour of a sword's beam.
+fn beam_tint(item: &str) -> [f32; 3] {
+    match item {
+        "night_edge" => [1.2, 0.5, 2.0],
+        "radiant_blade" | "true_radiant_blade" => [2.2, 1.8, 0.7],
+        "true_night_edge" => [0.8, 1.8, 1.0],
+        "terra_blade" => [0.6, 2.2, 0.7],
+        "celestial_wrath" => [2.0, 0.8, 2.0],
+        "apex_blade" => [1.2, 1.8, 2.4],
+        "star_saber" | "prism_saber" => [2.0, 1.8, 0.8],
+        _ => [0.7, 1.1, 2.2],
+    }
+}
 
 /// How much harder an ore bow hits than the plain bow (None: not one of them).
 pub fn bow_power(name: &str) -> Option<f32> {
@@ -284,14 +309,15 @@ impl Game {
                 self.sfx(Sfx::Place(Material::Cloth));
             }
             Wk::Sentry => {
-                // One sentry at a time: the old one goes when a new one is set down.
-                self.t5.tr.wep.shots.retain(|s| s.fly != Fly::Sentry);
+                // One sentry of each kind: the old one goes when a new one is set down.
+                self.t5.tr.wep.shots.retain(|s| !(s.fly == Fly::Sentry && s.def == i));
                 let ahead = self.body.pos + Vec3::new(f.x, 0.0, f.z).normalize_or_zero() * 2.0;
                 let y = self.world.surface_y(ahead.x.floor() as i32, ahead.z.floor() as i32).map_or(ahead.y, |y| (y as f32 + 1.0).min(self.body.pos.y + 3.0));
                 self.add_shot(Fly::Sentry, i, Vec3::new(ahead.x, y + 0.6, ahead.z), Vec3::ZERO, 120.0, SUMMON);
                 self.anim.start_swing();
                 self.sfx(Sfx::Place(Material::Wood));
-                self.toast("Balista posta (2 minutos)", 1.5);
+                let label = format!("{} (2 minutos)", self.items.id(d.item).map(|id| self.items.get(id).display_name.clone()).unwrap_or_default());
+                self.toast(label, 1.5);
             }
             _ => {}
         }
@@ -307,13 +333,13 @@ impl Game {
             let from = target + Vec3::new(r.f32() * 8.0 - 4.0, 22.0, r.f32() * 8.0 - 4.0);
             self.add_shot(Fly::Bolt, i, from, (target - from).normalize_or_zero() * d.speed, 1.5, MELEE);
             if let Some(s) = self.t5.tr.wep.shots.last_mut() {
-                s.tint = [2.0, 1.8, 0.8];
+                s.tint = beam_tint(d.item);
                 s.pierce = 2;
             }
         } else {
             self.add_shot(Fly::Bolt, i, self.body.eye() + f * 0.8, f * d.speed, 0.7, MELEE);
             if let Some(s) = self.t5.tr.wep.shots.last_mut() {
-                s.tint = [0.7, 1.1, 2.2];
+                s.tint = beam_tint(d.item);
                 s.pierce = 3;
             }
         }
@@ -508,7 +534,7 @@ impl Game {
                         if let Some(k) = self.nearest_hostile(eye, 22.0) {
                             let to = self.mobs.list[k].body.center() - eye;
                             let dmg = d.dmg;
-                            keep.push(TrShot { fly: Fly::Bolt, def: s.def, pos: eye, vel: to.normalize_or_zero() * d.speed, age: 0.0, life: 1.0, dmg, class: SUMMON, pierce: 0, hits: Vec::new(), back: false, tint: [1.6, 1.3, 0.8], shot_t: 0.0 });
+                            keep.push(TrShot { fly: Fly::Bolt, def: s.def, pos: eye, vel: to.normalize_or_zero() * d.speed, age: 0.0, life: 1.0, dmg, class: SUMMON, pierce: 0, hits: Vec::new(), back: false, tint: if d.item == "lightning_aura_rod" { [0.8, 1.4, 2.4] } else { s.tint }, shot_t: 0.0 });
                             self.sfx(Sfx::Place(Material::Cloth));
                         }
                     }

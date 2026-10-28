@@ -4132,6 +4132,587 @@ def dungeon_layout(seed):
     return [["".join(r) for r in layer] for layer in grid], sink
 
 
+# ==============================================================================================
+# Lote 12 (second round): comfort at home. The heart lantern and the star in a bottle (life and
+# mana come back faster near them), the water candle and the peace candle (more or fewer
+# monsters), the stations that give a buff for ten minutes (crystal ball, sharpening stone,
+# ammo box, war table, bewitching table), the enchanted sundial, the hunting banner, and the
+# battle and calming potions
+# ==============================================================================================
+
+SRC16 = ROOT / "tools" / "tex64" / "src16" / "block"
+
+
+def recolor(name, p, keep_dark=True):
+    """One of our own 16x16 blocks, its colours mapped by brightness onto palette `p`."""
+    im = np.asarray(Image.open(SRC16 / f"{name}.png").convert("RGBA")).astype(float)
+    out = gt.canvas()
+    lum = (im[..., 0] * 0.3 + im[..., 1] * 0.59 + im[..., 2] * 0.11) / 255.0
+    cols = np.array(p, dtype=float)
+    for y in range(N):
+        for x in range(N):
+            if im[y, x, 3] < 8:
+                out[y, x, 3] = 0
+                continue
+            v = lum[y, x]
+            if keep_dark and v < 0.18:
+                out[y, x, :3] = im[y, x, :3]
+            else:
+                out[y, x, :3] = cols[min(int(v * len(cols)), len(cols) - 1)]
+            out[y, x, 3] = im[y, x, 3]
+    return out
+
+
+CANDLE = [
+    "................",
+    "................",
+    ".......a........",
+    "......aba.......",
+    ".......a........",
+    ".......5........",
+    "......1221......",
+    "......1231......",
+    "......1231......",
+    "......1231......",
+    "......1231......",
+    "......1231......",
+    "......1221......",
+    "....11111111....",
+    "....12222221....",
+    "....11111111....",
+]
+BANNER_EMBLEM = [
+    "................",
+    "................",
+    "................",
+    "................",
+    "......1..1......",
+    ".....1a11a1.....",
+    ".....1aaaa1.....",
+    "....1aaaaaa1....",
+    "....1a1aa1a1....",
+    "....1aaaaaa1....",
+    ".....1aaaa1.....",
+    "......1aa1......",
+    ".......11.......",
+    "................",
+    "................",
+    "................",
+]
+POTIONS_COMFORT = [
+    ("battle_potion", "Poção de Batalha", pal("#c8d2dc", "#7a1a1a", "#c43a2a", "#f8a080")),
+    ("calming_potion", "Poção Calmante", pal("#c8d2dc", "#1a4a7a", "#4a8ac4", "#c0e0ff")),
+]
+
+
+def items_comfort():
+    out = [(n, d, icon2(POTION, p, FLASK), "max_stack: Some(16)") for n, d, p in POTIONS_COMFORT]
+    return out
+
+
+def block_defs_comfort():
+    return [
+        '(name: "heart_lantern", display_name: Some("Lanterna de Coração"), tier: 1, shape: Lantern, transparency: Cutout, light: 14, hardness: 2.0, tool: Some(Pickaxe), textures: (side: Some("heart_lantern"), top: Some("heart_lantern_top"), bottom: Some("heart_lantern_top")))',
+        '(name: "star_bottle", display_name: Some("Estrela no Pote"), tier: 1, shape: Lantern, transparency: Cutout, light: 13, hardness: 1.0, textures: (side: Some("star_bottle"), top: Some("star_bottle_top"), bottom: Some("star_bottle_top")))',
+        '(name: "water_candle", display_name: Some("Vela d\'Água"), shape: Torch, transparency: Cutout, solid: false, light: 6, hardness: 0.3, textures: (all: Some("water_candle")))',
+        '(name: "peace_candle", display_name: Some("Vela da Paz"), shape: Torch, transparency: Cutout, solid: false, light: 6, hardness: 0.3, textures: (all: Some("peace_candle")))',
+        '(name: "crystal_ball", display_name: Some("Bola de Cristal"), transparency: Cutout, light: 9, hardness: 1.5, tool: Some(Pickaxe), textures: (top: Some("crystal_ball_top"), side: Some("crystal_ball_side"), bottom: Some("crystal_ball_bottom")))',
+        '(name: "sharpening_station", display_name: Some("Pedra de Amolar"), hardness: 2.5, tool: Some(Pickaxe), textures: (top: Some("sharpening_station_top"), side: Some("sharpening_station_side"), bottom: Some("sharpening_station_bottom")))',
+        '(name: "ammo_box", display_name: Some("Caixa de Munição"), hardness: 1.5, tool: Some(Axe), textures: (top: Some("ammo_box_top"), side: Some("ammo_box_side"), bottom: Some("ammo_box_bottom")))',
+        '(name: "war_table", display_name: Some("Mesa de Guerra"), shape: Table, transparency: Cutout, hardness: 2.0, tool: Some(Axe), textures: (top: Some("war_table_top"), side: Some("war_table_side"), bottom: Some("war_table_side")))',
+        '(name: "bewitching_table", display_name: Some("Mesa Enfeitiçada"), shape: Table, transparency: Cutout, light: 5, hardness: 2.0, tool: Some(Axe), textures: (top: Some("bewitching_table_top"), side: Some("bewitching_table_side"), bottom: Some("bewitching_table_side")))',
+        '(name: "enchanted_sundial", display_name: Some("Relógio de Sol Encantado"), light: 7, hardness: 4.0, tool: Some(Pickaxe), textures: (top: Some("enchanted_sundial_top"), side: Some("enchanted_sundial_side"), bottom: Some("enchanted_sundial_bottom")))',
+        '(name: "hunt_banner", display_name: Some("Estandarte de Caça"), shape: Banner, solid: false, transparency: Cutout, hardness: 1.0, tool: Some(Axe), textures: (all: Some("hunt_banner")))',
+    ]
+
+
+def blocks_comfort():
+    out = {}
+    heart = pal("#3a0a12", "#7a1424", "#b82a3a", "#e85a6a", "#ffb0b8")
+    star = pal("#3a2a08", "#8a6a10", "#d4aa18", "#f8e070", "#fffbe0")
+    out["heart_lantern"] = recolor("lantern", heart)
+    out["heart_lantern_top"] = recolor("lantern_top", heart)
+    out["star_bottle"] = recolor("lantern", star)
+    out["star_bottle_top"] = recolor("lantern_top", star)
+    out["water_candle"] = from_map(CANDLE, {**pmap(pal("#14284a", "#2a4a8a", "#4a7ac4", "#a8d0f0", "#6ab4ff")), **pmap(pal("#5ab4f0", "#e0f4ff"), "ab")})
+    out["peace_candle"] = from_map(CANDLE, {**pmap(pal("#6a2a4a", "#b45a8a", "#e08ab4", "#f8c8e0", "#ffd0e8")), **pmap(pal("#f8a0c8", "#fff0f8"), "ab")})
+
+    def ball_side(x, y):
+        d = ((x - 7.5) ** 2 + (y - 6.5) ** 2) ** 0.5
+        if y >= 12:
+            return 0.25 + 0.1 * (x % 3 == 0)
+        return 0.95 if d < 2 else (0.75 - d * 0.05 if d < 6.5 else 0.08)
+
+    stand = pal("#2a1a0a", "#5a3a1a", "#8a5a2a", "#c48a4a")
+    glass = pal("#1a1a4a", "#3a3aa0", "#6a6ae0", "#b0b0ff", "#ffffff")
+    cb = block_noise(160, ball_side, glass)
+    for y in range(12, N):
+        for x in range(N):
+            cb[y, x, :3] = np.array(stand[(x + y) % 3 + 1])
+    for y in range(N):
+        for x in range(N):
+            if y < 12 and ((x - 7.5) ** 2 + (y - 6.5) ** 2) ** 0.5 >= 6.5:
+                cb[y, x, 3] = 0
+    out["crystal_ball_side"] = cb
+    out["crystal_ball_top"] = block_noise(161, lambda x, y: 0.9 - (((x - 7.5) ** 2 + (y - 7.5) ** 2) ** 0.5) * 0.08, glass)
+    out["crystal_ball_bottom"] = block_noise(162, lambda x, y: 0.5, stand)
+
+    stone = pal("#3a3a40", "#5a5a64", "#7a7a86", "#a0a0ac", "#d0d0d8")
+    wood = pal("#3a2410", "#5a3a1a", "#7a5428", "#a0743a", "#c49a5a")
+    out["sharpening_station_top"] = block_noise(163, lambda x, y: 0.6 + 0.3 * (6 <= y <= 9) - 0.4 * (min(x, y, 15 - x, 15 - y) == 0), stone)
+    ss = block_noise(164, lambda x, y: (0.85 - abs(((x - 7.5) ** 2 + (y - 5.5) ** 2) ** 0.5 - 4) * 0.15) if y < 11 else 0.45 + 0.1 * (x % 4 == 0), stone, spots=0.05)
+    for y in range(11, N):
+        for x in range(N):
+            ss[y, x, :3] = np.array(wood[(x // 4 + y) % 4 + 1])
+    out["sharpening_station_side"] = ss
+    out["sharpening_station_bottom"] = block_noise(165, lambda x, y: 0.5, wood)
+
+    olive = pal("#1e2412", "#3a4422", "#56663a", "#748a52", "#98ac70")
+    brass = pal("#5a3a08", "#a07c16", "#d4aa18", "#f4ca28")
+    ab = block_noise(166, lambda x, y: 0.15 if min(x, y, 15 - x, 15 - y) == 0 or y == 4 else 0.55 + 0.1 * (x % 5 == 0), olive)
+    for x in range(6, 10):
+        for y in range(5, 8):
+            ab[y, x, :3] = np.array(brass[2 + (y == 5)])
+    out["ammo_box_side"] = ab
+    out["ammo_box_top"] = block_noise(167, lambda x, y: 0.15 if min(x, y, 15 - x, 15 - y) == 0 else 0.6 - 0.2 * (y in (7, 8)), olive)
+    out["ammo_box_bottom"] = block_noise(168, lambda x, y: 0.4, olive)
+
+    def map_top(x, y):
+        rim = min(x, y, 15 - x, 15 - y) == 0
+        river = abs(y - (6 + 3 * np.sin(x / 3))) < 1
+        return 0.2 if rim else (0.35 if river else 0.75 + 0.1 * ((x * 7 + y * 3) % 5 == 0))
+
+    parch = pal("#3a2a12", "#2a5a8a", "#8a7444", "#c4ac74", "#e8d8a8")
+    wt = block_noise(169, map_top, parch)
+    for (x, y) in [(4, 4), (11, 10), (8, 12)]:
+        wt[y, x, :3] = [180, 30, 30]
+    out["war_table_top"] = wt
+    out["war_table_side"] = block_noise(170, lambda x, y: 0.45 + 0.15 * (x % 4 == 0), wood)
+
+    def bewitch_top(x, y):
+        d = ((x - 7.5) ** 2 + (y - 7.5) ** 2) ** 0.5
+        ring = abs(d - 5.5) < 0.8
+        star = (abs(x - 7.5) < 0.8 or abs(y - 7.5) < 0.8) and d < 5
+        return 0.95 if ring or star else 0.35 + 0.1 * ((x + y) % 4 == 0)
+
+    out["bewitching_table_top"] = block_noise(171, bewitch_top, pal("#1a0a2a", "#3a1a5a", "#6a3a9a", "#a06ad4", "#e0c0ff"))
+    out["bewitching_table_side"] = block_noise(172, lambda x, y: 0.4 + 0.15 * (x % 4 == 0), pal("#1a0e14", "#2e1a24", "#46283a", "#5e3a50", "#7a5068"))
+
+    def dial_top(x, y):
+        d = ((x - 7.5) ** 2 + (y - 7.5) ** 2) ** 0.5
+        tick = d > 5 and d < 6.6 and (round(np.degrees(np.arctan2(y - 7.5, x - 7.5))) % 45 < 12)
+        gnomon = abs(x - y) < 0.8 and d < 5
+        return 0.95 if gnomon else (0.15 if tick else (0.7 if d < 7 else 0.3))
+
+    sand = pal("#4a3a1a", "#8a7444", "#c4ac74", "#e8d8a8", "#fff4d0")
+    out["enchanted_sundial_top"] = block_noise(173, dial_top, sand)
+    out["enchanted_sundial_side"] = block_noise(174, lambda x, y: 0.2 if y in (0, 3) else 0.55 + 0.1 * ((x + y) % 5 == 0), sand)
+    out["enchanted_sundial_bottom"] = block_noise(175, lambda x, y: 0.5, sand)
+
+    hb = recolor("red_banner", pal("#2a1608", "#5a2a10", "#8a4418", "#b8662a", "#e0904a"))
+    em = from_map(BANNER_EMBLEM, {**pmap(pal("#2a1a0a")), **pmap(pal("#f0d080"), "a")})
+    for y in range(N):
+        for x in range(N):
+            if em[y, x, 3] > 0 and hb[y, x, 3] > 0:
+                hb[y, x, :3] = em[y, x, :3]
+    out["hunt_banner"] = hb
+    return out
+
+
+SHAPED_COMFORT = [
+    ([" G ", "GSG", "BBB"], {"G": "glass", "S": "fallen_star", "B": "gold_ingot"}, "crystal_ball", 1),
+    (["III", "IGI"], {"I": "iron_ingot", "G": "grindstone"}, "sharpening_station", 1),
+    (["PIP", "PGP", "PPP"], {"P": "oak_planks", "I": "iron_ingot", "G": "gunpowder"}, "ammo_box", 1),
+    (["MMM", "P P"], {"M": "map", "P": "oak_planks"}, "war_table", 1),
+    (["BKB", "P P"], {"B": "bone", "K": "book", "P": "oak_planks"}, "bewitching_table", 1),
+    (["SCS", "GGG"], {"S": "fallen_star", "C": "clock", "G": "gold_ingot"}, "enchanted_sundial", 1),
+]
+SHAPELESS_COMFORT = [
+    (["lantern", "life_crystal"], "heart_lantern", 1),
+    (["glass_bottle", "fallen_star"], "star_bottle", 1),
+    (["beeswax", "string", "ink_sac"], "water_candle", 1),
+    (["beeswax", "string", "pink_dye"], "peace_candle", 1),
+    (["glass_bottle", "rotten_flesh", "spider_eye"], "battle_potion", 1),
+    (["glass_bottle", "pink_dye", "sugar"], "calming_potion", 1),
+]
+
+
+# ==============================================================================================
+# Lote 13 (second round): the mini-bosses (werewolf, nymph hiding as a lost girl, clown, ice
+# golem, goblin summoner, the land mimics woken with a key), the bosses' trophies, two more
+# town folk (the mycologist and the winter elder) and the holidays (treat bags in October,
+# presents in December)
+# ==============================================================================================
+
+PERSON_L13 = {
+    # name: (display, kind, hp, attack, scale, speed, colours)
+    "werewolf": ("Lobisomem", "Hostile", 260, 14, 1.15, 3.2, dict(PSKIN=pal("#3a2e24", "#4a3a2e", "#5a4838", "#6a5644", "#7a6450"), PHAIR=pal("#2a221a", "#3a2e24", "#4a3a2e", "#5a4838", "#6a5644"), PTUNIC=pal("#3a2e24", "#4a3a2e", "#5a4838", "#6a5644", "#7a6450"), PTROUSER=pal("#2a2a3a", "#343446", "#3e3e52", "#48485e"), PLEATHER=pal("#2a221a", "#3a2e24", "#4a3a2e", "#5a4838"), PIRIS=(240, 200, 40))),
+    "lost_girl": ("Garota Perdida", "Passive", 30, 0, 0.9, 1.2, dict(PSKIN=SKIN_LIGHT, PHAIR=pal("#c49a3a", "#d4aa4a", "#e4ba5a", "#f0ca6a", "#f8da7a"), PTUNIC=pal("#3a5a8a", "#446698", "#4e72a6", "#587eb4", "#628ac2"), PTROUSER=pal("#c8c0b0", "#d4ccbc", "#e0d8c8", "#ece4d4"), PLEATHER=pal("#5a3a1a", "#6a4420", "#7a4e26", "#8a582c"), PIRIS=(60, 120, 200))),
+    "nymph": ("Ninfa", "Hostile", 220, 14, 0.95, 3.0, dict(PSKIN=pal("#5a8a6a", "#6a9a7a", "#7aaa8a", "#8aba9a", "#9acaaa"), PHAIR=pal("#1a4a2a", "#225a34", "#2a6a3e", "#327a48", "#3a8a52"), PTUNIC=pal("#2a5a3a", "#346a46", "#3e7a52", "#488a5e", "#529a6a"), PTROUSER=pal("#1a3a2a", "#224434", "#2a4e3e", "#325848"), PLEATHER=pal("#c4a020", "#d4b02a", "#e4c034", "#f0d03e"), PIRIS=(255, 60, 40))),
+    "clown": ("Palhaço", "Hostile", 300, 12, 1.0, 2.6, dict(PSKIN=pal("#dcdce4", "#e6e6ee", "#f0f0f6", "#f8f8fc", "#ffffff"), PHAIR=pal("#c41420", "#e02028", "#f03a3a", "#ff5a4a", "#ff7a6a"), PTUNIC=pal("#2a80c4", "#3a90d4", "#f4ca28", "#4aa0e4", "#f8da40"), PTROUSER=pal("#e04a9a", "#ec5aaa", "#f46aba", "#fa7aca"), PLEATHER=pal("#c41420", "#e02028", "#f03a3a", "#ff5a4a"), PIRIS=(20, 20, 20))),
+    "ice_golem": ("Golem de Gelo", "Hostile", 900, 18, 1.9, 1.6, dict(PSKIN=pal("#5a8aaa", "#7aaac4", "#9ac4dc", "#bad8ec", "#daecf8"), PHAIR=pal("#4a7a9a", "#6a9ab4", "#8ab4cc", "#aacce0", "#cae0f0"), PTUNIC=pal("#4a7a9a", "#6a9ab4", "#8ab4cc", "#aacce0", "#cae0f0"), PTROUSER=pal("#3a6a8a", "#5a8aa4", "#7aa4bc", "#9abcd0"), PLEATHER=pal("#2a5a7a", "#3a6a8a", "#4a7a9a", "#5a8aaa"), PIRIS=(120, 230, 255))),
+    "tortured_soul": ("Alma Atormentada", "Passive", 60, 0, 1.0, 0.8, dict(PSKIN=pal("#5a6a7a", "#6e7e8e", "#8494a4", "#9aaaba", "#b0c0d0"), PHAIR=pal("#2a3440", "#36424e", "#42505c", "#4e5e6a", "#5a6c78"), PTUNIC=pal("#2a3440", "#36424e", "#42505c", "#4e5e6a", "#5a6c78"), PTROUSER=pal("#1e262e", "#262e38", "#2e3842", "#36424c"), PLEATHER=pal("#1e262e", "#262e38", "#2e3842", "#36424c"), PIRIS=(160, 220, 255))),
+    "goblin_summoner": ("Invocador Goblin", "Hostile", 420, 12, 1.0, 1.8, dict(PSKIN=pal("#4a5a3a", "#566844", "#62764e", "#6e8458", "#7a9262"), PHAIR=pal("#141414", "#1c1c1c", "#242424", "#2c2c2c", "#343434"), PTUNIC=pal("#3a1a5a", "#46206e", "#522682", "#5e2c96", "#6a32aa"), PTROUSER=pal("#1e1a26", "#262030", "#2e263a", "#362c44"), PLEATHER=pal("#c45ad4", "#d46ae0", "#e47aec", "#f08af8"), PIRIS=(255, 120, 255))),
+}
+TOWN_L13 = [
+    ("npc_mycologist", "Micólogo", pal("#3a6aa0", "#4a7ab4", "#5a8ac8", "#6a9adc", "#7aaaf0"), pal("#2a4a8a", "#3a5aa0", "#4a6ab4", "#5a7ac8", "#6a8adc"), pal("#c8c0b0", "#d4ccbc", "#e0d8c8", "#ece4d4", "#f8f0e0"), pal("#3a4a6a", "#44547a", "#4e5e8a", "#58689a"), pal("#5a3a1a", "#6a4420", "#7a4e26", "#8a582c"), (60, 140, 230)),
+    ("npc_tax_collector", "Coletor de Impostos", SKIN_LIGHT, pal("#8a8a8a", "#9a9a9a", "#aaaaaa", "#bababa", "#cacaca"), pal("#1a1a24", "#22222e", "#2a2a38", "#323242", "#3a3a4c"), pal("#141418", "#1c1c22", "#24242c", "#2c2c36"), pal("#c49a10", "#d4aa18", "#e4ba20", "#f4ca28"), (70, 70, 90)),
+    ("npc_winter_elder", "Velho do Inverno", SKIN_LIGHT, pal("#dcdce4", "#e6e6ee", "#f0f0f6", "#f8f8fc", "#ffffff"), pal("#8a1a1a", "#a02020", "#b82828", "#cc3030", "#e03838"), pal("#8a1a1a", "#a02020", "#b82828", "#cc3030"), pal("#141414", "#1c1c1c", "#242424", "#2c2c2c"), (60, 100, 160)),
+]
+MIMIC_PARTS = """[
+            (size: (14, 9, 12), origin: (-7, 2, -6), uv: (0, 0)),
+            (size: (14, 4, 12), origin: (-7, 11, -6), uv: (0, 21), anim: Head, pivot: (0, 11, 6)),
+            (size: (1, 2, 1), origin: (-5, 9, -6), uv: (56, 0), anim: Head, pivot: (0, 11, 6)),
+            (size: (1, 2, 1), origin: (-2, 9, -6), uv: (56, 0), anim: Head, pivot: (0, 11, 6)),
+            (size: (1, 2, 1), origin: (1, 9, -6), uv: (56, 0), anim: Head, pivot: (0, 11, 6)),
+            (size: (1, 2, 1), origin: (4, 9, -6), uv: (56, 0), anim: Head, pivot: (0, 11, 6)),
+            (size: (2, 2, 2), origin: (-5, 0, -4), uv: (48, 0), anim: Leg(0), pivot: (-4, 2, -3)),
+            (size: (2, 2, 2), origin: (3, 0, 2), uv: (48, 0), anim: Leg(1), pivot: (4, 2, 3)),
+        ]"""
+MIMICS_L13 = [
+    # name, display, wood, trim, drops
+    ("mimic_ruin", "Mímico da Ruína", pal("#1a0e2a", "#2e1a46", "#4a2a6a", "#6a3e8a", "#8a5aaa"), pal("#5a5a6a", "#7a7a8a", "#a0a0b0"), [("soul_of_night", 5, 10, 1.0), ("demon_scythe", 1, 1, 0.3), ("umbral_flail", 1, 1, 0.3), ("dark_shard", 1, 2, 0.4)]),
+    ("mimic_blight", "Mímico da Chaga", pal("#3a0a12", "#5a1420", "#7a2030", "#9a3040", "#ba4050"), pal("#c4a060", "#e0c080", "#f8e0a8"), [("soul_of_night", 5, 10, 1.0), ("sanguinite_flail", 1, 1, 0.3), ("blight_rod", 1, 1, 0.3), ("blight_tissue", 3, 6, 0.5)]),
+    ("mimic_prism", "Mímico do Prisma", pal("#4a2a5a", "#6a4a8a", "#9a7ac4", "#c4a8e8", "#f0e0ff"), pal("#c49a10", "#f4ca28", "#fff0a0"), [("soul_of_light", 5, 10, 1.0), ("crystal_yoyo", 1, 1, 0.3), ("prism_saber", 1, 1, 0.3), ("pixie_dust", 4, 8, 0.6)]),
+]
+MINI_DROPS = {
+    "werewolf": [("moon_charm", 1, 1, 0.12), ("leather", 1, 3, 0.6)],
+    "nymph": [("gold_ingot", 2, 4, 0.8), ("lucky_horseshoe", 1, 1, 0.2)],
+    "clown": [("party_kit", 1, 1, 0.1), ("confetti", 4, 8, 0.6), ("gunpowder", 2, 5, 0.6)],
+    "ice_golem": [("frost_shard", 4, 8, 1.0), ("blizzard_staff", 1, 1, 0.12), ("frost_core", 1, 1, 0.05)],
+    "goblin_summoner": [("soul_of_night", 2, 4, 0.8), ("dark_shard", 1, 2, 0.5)],
+    "lost_girl": [],
+    "tortured_soul": [],
+}
+
+
+def drops_ron(drops):
+    return "[" + ", ".join(f'(item: "{i}", min: {a}, max: {b}, chance: {c})' for i, a, b, c in drops) + "]"
+
+
+def mobs_l13():
+    out = ["    // Lote 13 (second round): mini-bosses, the land mimics, two more town folk."]
+    for name, (disp, kind, hp, atk, scale, speed, _) in PERSON_L13.items():
+        out.append(f"""    (
+        name: "{name}", display_name: "{disp}", kind: {kind}, health: {hp}, speed: {speed}, attack: {atk},
+        drops: {drops_ron(MINI_DROPS[name])}, xp: {min(250, hp // 10)},
+        width: {round(0.6 * scale, 2)}, height: {round(1.95 * scale, 2)}, spawn: Never, scale: {scale},
+        parts: {PERSON_PARTS},
+        layers: {PERSON_LAYERS},
+    ),""")
+    for name, disp, _, _, drops in MIMICS_L13:
+        out.append(f"""    (
+        name: "{name}", display_name: "{disp}", kind: Hostile, health: 1400, speed: 3.4, attack: 20,
+        drops: {drops_ron(drops)}, xp: 120,
+        width: 0.9, height: 1.0, spawn: Never, scale: 1.4, hops: true,
+        parts: {MIMIC_PARTS},
+        layers: [],
+    ),""")
+    for name, display, *_ in TOWN_L13:
+        out.append(f"""    (
+        name: "{name}", display_name: "{display}", kind: Passive, health: 40, speed: 2.0,
+        xp: 0,
+        width: 0.6, height: 1.95, spawn: Never, attack: 0, town: true,
+        parts: {PERSON_PARTS},
+        layers: {PERSON_LAYERS},
+    ),""")
+    return out
+
+
+def skins_l13():
+    out = {}
+    for name, v in PERSON_L13.items():
+        col = v[6]
+        out[name] = (g.ROLES["player"], g.townsfolk(name, g.PAINTERS["player"], col), g.townsfolk(name, g.OVERLAYS["player"], col))
+    teeth = shade(pal("#c8c0a8", "#e0dac8", "#f4f0e4", "#ffffff"))
+    for name, _, wood, trim, _ in MIMICS_L13:
+        out[name] = (["body", "lid", "tooth", "tooth", "tooth", "tooth", "leg", "leg"], zoned({"tooth": teeth, "leg": shade(trim), "lid": eyes_on(bands(wood, 3), (255, 230, 120), (1,)), "*": bands(wood, 3)}), None)
+    for name, _, skin, hair, tunic, trouser, leather, iris in TOWN_L13:
+        colours = dict(PSKIN=skin, PHAIR=hair, PTUNIC=tunic, PTROUSER=trouser, PLEATHER=leather, PIRIS=iris)
+        out[name] = (g.ROLES["player"], g.townsfolk(name, g.PAINTERS["player"], colours), g.townsfolk(name, g.OVERLAYS["player"], colours))
+    return out
+
+
+MOON_ICON = [
+    "................",
+    "......1111......",
+    "....11222211....",
+    "...1223333221...",
+    "..12333aa33321..",
+    "..1233a..a3321..",
+    ".12333a..a33321.",
+    ".123333aa333321.",
+    ".12333333333321.",
+    "..123333333321..",
+    "..122333333221..",
+    "...1122222211...",
+    ".....111111.....",
+    "......5..5......",
+    ".......55.......",
+    "................",
+]
+
+
+def items_l13():
+    gold = pal("#5a3a08", "#a07c16", "#d4aa18", "#f4ca28", "#fff0a0")
+    return [
+        ("key_of_night", "Chave da Noite", icon(KEY_ICON, pal("#1a0e2a", "#3a1a5a", "#6a3a9a", "#a87ad4", "#e0c8ff")), "max_stack: Some(8)"),
+        ("key_of_light", "Chave da Luz", icon(KEY_ICON, pal("#4a3a5a", "#8a7aa0", "#c4b0e0", "#eee0ff", "#ffffff")), "max_stack: Some(8)"),
+        ("moon_charm", "Amuleto da Lua", icon2(MOON_ICON, pal("#2a2a3a", "#6a6a8a", "#b0b0d0", "#e8e8f8", "#c49a10"), pal("#1a1a2a")), "max_stack: Some(1)"),
+        ("goodie_bag", "Saco de Gostosuras", icon2(BAG, pal("#3a1a04", "#7a3a08", "#c46010", "#f08a20", "#ffc060"), pal("#1a1a1a", "#3a3a3a", "#5a5a5a")), "max_stack: Some(16)"),
+        ("present", "Presente", icon2(BAG, pal("#3a0a0a", "#7a1414", "#b82020", "#e03838", "#ff8080"), gold), "max_stack: Some(16)"),
+    ]
+
+
+def block_defs_l13():
+    names = boss_names()
+    return [
+        f'(name: "trophy_{b}", display_name: Some("Troféu: {names[b]}"), shape: Banner, solid: false, transparency: Cutout, hardness: 1.0, tool: Some(Axe), textures: (all: Some("trophy_{b}")))'
+        for b, _, _ in BOSSES_L10
+    ]
+
+
+TROPHY_EMBLEM = [
+    "................",
+    "................",
+    "................",
+    "....11111111....",
+    "...1aaaaaaaa1...",
+    "...1abbbbbba1...",
+    "...1abccccba1...",
+    "...1abccccba1...",
+    "...1abbbbbba1...",
+    "...1aaaaaaaa1...",
+    "....11111111....",
+    "......1aa1......",
+    ".......11.......",
+    "................",
+    "................",
+    "................",
+]
+
+
+def blocks_l13():
+    out = {}
+    for b, p, _ in BOSSES_L10:
+        img = recolor("red_banner", p)
+        em = from_map(TROPHY_EMBLEM, {**pmap(pal("#2a1a08")), **pmap([pal("#c49a10")[0], p[4], p[2]], "abc")})
+        for y in range(N):
+            for x in range(N):
+                if em[y, x, 3] > 0 and img[y, x, 3] > 0:
+                    img[y, x, :3] = em[y, x, :3]
+        out[f"trophy_{b}"] = img
+    return out
+
+
+SHAPED_L13 = []
+SHAPELESS_L13 = [
+    (["soul_of_night"] * 9, "key_of_night", 1),
+    (["soul_of_light"] * 9, "key_of_light", 1),
+]
+
+
+# ==============================================================================================
+# Lote 14 (second round): the late swords (Night's Edge line up to the Telluric Blade, and the
+# Herald's blades), more sentries, the gladiator set from the marble caves' hoplites, and three
+# more mounts (bunny, turtle, flying saucer)
+# ==============================================================================================
+
+SWORDS_L14 = [
+    # name, display, colours, tier, damage
+    ("night_edge", "Lâmina da Noite", pal("#1a0e2a", "#3a1a5a", "#6a3a9a", "#a87ad4", "#e0c8ff"), 3, 9.0),
+    ("radiant_blade", "Lâmina Radiante", pal("#5a4a10", "#a08a20", "#e0c040", "#f8e888", "#fffbe0"), 4, 11.0),
+    ("true_night_edge", "Lâmina da Noite Verdadeira", pal("#0e2a1a", "#2a1a5a", "#5a3aa0", "#7ae0a0", "#e0fff0"), 4, 13.0),
+    ("true_radiant_blade", "Lâmina Radiante Verdadeira", pal("#5a2a10", "#a06a20", "#f0b040", "#ffe8a0", "#ffffff"), 4, 14.0),
+    ("terra_blade", "Lâmina Telúrica", pal("#0e3a14", "#1e6a26", "#3aa040", "#9af07a", "#f0fff0"), 5, 17.0),
+    ("celestial_wrath", "Ira Celeste", pal("#3a0e3a", "#7a2a8a", "#c45ad4", "#f8a8f0", "#ffffff"), 5, 21.0),
+    ("apex_blade", "Lâmina do Ápice", pal("#1a1a3a", "#3a4a8a", "#6a9ae0", "#c0f0ff", "#ffffff"), 5, 26.0),
+]
+GLADIATOR = pal("#5a3a08", "#8a6420", "#c49a3a", "#e8c86a", "#fff0b0")
+
+
+def items_l14():
+    stack1 = "max_stack: Some(1)"
+    out = []
+    for name, disp, p, tier, dmg in SWORDS_L14:
+        gi.MATERIALS[name] = p
+        out.append((name, disp, gi.tool(name, "sword"), f"max_stack: Some(1), tool: Some((kind: Sword, tier: {tier}, speed: 12.0, damage: {dmg}, durability: {800 + 400 * tier}))"))
+    gi.MATERIALS["broken_hero"] = pal("#3a3a40", "#5a5a64", "#8a8a96", "#b0b0bc", "#d8d8e0")
+    out.append(("broken_hero_sword", "Espada do Herói Partida", gi.tool("broken_hero", "sword"), ""))
+    out += [
+        ("explosive_trap_rod", "Cajado da Armadilha Explosiva", icon2(SENTRY, pal("#3a0e08", "#7a2210", "#c4461a", "#f08a3a", "#ffd080"), WOOD), stack1),
+        ("lightning_aura_rod", "Cajado da Aura de Raios", icon2(SENTRY, pal("#0e1a3a", "#2a4a8a", "#5a8ae0", "#a8d0ff", "#ffffff"), WOOD), stack1),
+        ("fluffy_carrot", "Cenoura Felpuda", icon2(CARROT_ICON, pal("#5a2a04", "#a04a08", "#e07a18", "#f8b84a", "#fff0a0"), pal("#2a5a1a", "#4a9a2a", "#e8e8f0")), stack1),
+        ("turtle_saddle", "Sela de Tartaruga", icon2(SADDLE_ICON, pal("#1a3a14", "#2a5a1e", "#4a8a2e", "#7ab44a", "#b4e07a"), pal("#3a2410", "#7a4a24", "#b08a52")), stack1),
+        ("star_key", "Chave do Disco", icon(KEY_ICON, pal("#1a3a2a", "#2a6a4a", "#4aa07a", "#7ad4a8", "#e8fff4")), stack1),
+    ]
+    gi.ARMOR_MATERIALS["gladiator"] = GLADIATOR
+    names = {"helmet": "Elmo", "chestplate": "Peitoral", "leggings": "Saiote", "boots": "Sandálias"}
+    pts = [2, 4, 3, 2]
+    for slot, k in enumerate(gi.ARMOR_KINDS):
+        out.append((f"gladiator_{k}", f"{names[k]} de Gladiador", gi.armor("gladiator", k), f"armor: Some((slot: {slot}, points: {pts[slot]}, durability: {260 + 30 * pts[slot]}))"))
+    return out
+
+
+CARROT_ICON = [
+    "................",
+    "...........b.a..",
+    "..........bab...",
+    "...........ab...",
+    "..........1a....",
+    ".........123....",
+    "........1233....",
+    ".......12343....",
+    "......12343.....",
+    ".....12343......",
+    "....1234c3......",
+    "...1234c3.......",
+    "..12343c........",
+    "..1233..........",
+    "..11............",
+    "................",
+]
+SADDLE_ICON = [
+    "................",
+    "................",
+    "................",
+    "....11111111....",
+    "...1222222221...",
+    "..122333333221..",
+    ".12233444433221.",
+    ".12334455443321.",
+    ".12334444443321.",
+    "..123333333321..",
+    "...1aa1111aa1...",
+    "...1ab1..1ab1...",
+    "...1ab1..1ab1...",
+    "...1cc1..1cc1...",
+    "...1111..1111...",
+    "................",
+]
+
+
+def mobs_l14():
+    out = ["    // Lote 14 (second round): the hoplite of the marble caves, three more mounts."]
+    hop = dict(PSKIN=pal("#b8b0a0", "#ccc4b4", "#ddd6c8", "#ece6da", "#f8f4ec"), PHAIR=GLADIATOR, PTUNIC=pal("#7a1a1a", "#8e2222", "#a22a2a", "#b63232", "#ca3a3a"), PTROUSER=pal("#b8b0a0", "#ccc4b4", "#ddd6c8", "#ece6da"), PLEATHER=GLADIATOR, PIRIS=(20, 10, 0))
+    PERSON_L13["hoplite"] = ("Hoplita", "Hostile", 70, 8, 1.0, 2.6, hop)
+    MINI_DROPS["hoplite"] = [("bone", 1, 3, 0.8), ("gladiator_helmet", 1, 1, 0.08), ("gladiator_chestplate", 1, 1, 0.08), ("gladiator_leggings", 1, 1, 0.08), ("gladiator_boots", 1, 1, 0.08)]
+    out.append(f"""    (
+        name: "hoplite", display_name: "Hoplita", kind: Hostile, health: 70, speed: 2.6, attack: 8,
+        drops: {drops_ron(MINI_DROPS["hoplite"])}, xp: 10,
+        width: 0.6, height: 1.95, spawn: Never, scale: 1.0,
+        parts: {PERSON_PARTS},
+        layers: {PERSON_LAYERS},
+    ),""")
+    import re as _re
+    vanilla = (PACK / "mobs.ron").read_text()
+
+    def parts_of(name):
+        m = _re.search(r'name: "' + name + r'".*?parts: (\[.*?\n\s*\])', vanilla, _re.S)
+        return m.group(1)
+
+    mounts = [
+        ("mount_bunny", "Coelho de Montaria", parts_of("rabbit"), 3.2, 5.5, 1.2, 1.4, ", hops: true"),
+        ("mount_turtle", "Tartaruga de Montaria", parts_of("turtle"), 1.4, 2.8, 1.5, 0.9, ""),
+        ("mount_ufo", "Disco de Montaria", SAUCER_PARTS, 1.6, 6.0, 1.8, 1.0, ""),
+    ]
+    for name, disp, parts, scale, speed, w, h, extra in mounts:
+        out.append(f"""    (
+        name: "{name}", display_name: "{disp}", kind: Passive, health: 200, speed: {speed}, attack: 0,
+        drops: [], xp: 0,
+        width: {w}, height: {h}, spawn: Never, scale: {scale}{extra},
+        parts: {parts},
+        layers: [],
+    ),""")
+    return out
+
+
+def skins_l14():
+    hop = PERSON_L13["hoplite"][6]
+    out = {"hoplite": (g.ROLES["player"], g.townsfolk("hoplite", g.PAINTERS["player"], hop), g.townsfolk("hoplite", g.OVERLAYS["player"], hop))}
+    fur = shade(pal("#c8c0b4", "#dcd6cc", "#ece8e0", "#f8f6f2", "#ffffff"))
+    out["mount_bunny"] = (["body", "head", "ear", "ear", "tail", "leg", "leg", "leg", "leg"], zoned({"head": eyes_on(fur, (200, 60, 80), (1,)), "tail": shade(pal("#ffffff")), "*": fur}), None)
+    shell = bands(pal("#1a3a14", "#2a5a1e", "#4a8a2e", "#7ab44a", "#b4e07a"), 3)
+    skin = shade(pal("#3a6a2a", "#4a8a34", "#6aa84a", "#8ac46a", "#b0e08a"))
+    out["mount_turtle"] = (["shell", "belly", "head", "leg", "leg", "leg", "leg"], zoned({"shell": shell, "head": eyes_on(skin, (20, 20, 20), (1,)), "*": skin}), None)
+    METAL = pal("#3a3e48", "#4c515c", "#646a78", "#7e8492", "#9aa0ae")
+    out["mount_ufo"] = (["disc", "dome"], zoned({"disc": bands(METAL, 3), "dome": shade(pal("#2a4a8a", "#4a7ac4", "#7ab0f0", "#b0d8ff", "#e8f4ff"))}), None)
+    return out
+
+
+SHAPED_L14 = [
+    ([" I ", " I ", " S "], {"I": "radiant_ingot", "S": "stick"}, "radiant_blade", 1),
+]
+SHAPELESS_L14 = [
+    (["umbral_sword", "blue_katana", "hive_blade", "magmarite_sword"], "night_edge", 1),
+    (["sanguinite_sword", "blue_katana", "hive_blade", "magmarite_sword"], "night_edge", 1),
+    (["night_edge", "broken_hero_sword", "soul_of_fright", "soul_of_might", "soul_of_sight"], "true_night_edge", 1),
+    (["radiant_blade", "broken_hero_sword", "verdite_ingot", "verdite_ingot", "verdite_ingot"], "true_radiant_blade", 1),
+    (["true_night_edge", "true_radiant_blade"], "terra_blade", 1),
+    (["terra_blade", "celestial_wrath", "star_saber", "nebula_blade", "enchanted_sword", "lumite_ingot"], "apex_blade", 1),
+    (["ether_crystal", "ether_crystal", "ether_crystal", "ether_crystal", "ether_crystal", "tnt", "stick"], "explosive_trap_rod", 1),
+    (["ether_crystal", "ether_crystal", "ether_crystal", "ether_crystal", "ether_crystal", "copper_ingot", "glowstone_dust", "stick"], "lightning_aura_rod", 1),
+    (["saddle", "turtle_scute", "turtle_scute"], "turtle_saddle", 1),
+    (["golden_carrot", "rabbit_foot"], "fluffy_carrot", 1),
+]
+
+
+# ==============================================================================================
+# Lote 15 (second round): Journey research. The research altar takes items to research them
+# (and gives copies of what is researched); the stone of powers sets the time, the rain,
+# invincibility and how many monsters come
+# ==============================================================================================
+
+def block_defs_l15():
+    return [
+        '(name: "research_altar", display_name: Some("Altar da Pesquisa"), light: 9, hardness: 4.0, tool: Some(Pickaxe), textures: (top: Some("research_altar_top"), side: Some("research_altar_side"), bottom: Some("research_altar_bottom")))',
+        '(name: "power_stone", display_name: Some("Pedra dos Poderes"), light: 11, hardness: 4.0, tool: Some(Pickaxe), textures: (top: Some("power_stone_top"), side: Some("power_stone_side"), bottom: Some("research_altar_bottom")))',
+    ]
+
+
+def blocks_l15():
+    stone = pal("#2a2a34", "#44445a", "#64648a", "#8a8ab4", "#c0c0e8")
+    gold = pal("#5a3a08", "#a07c16", "#d4aa18", "#f4ca28", "#fff0a0")
+    sky = pal("#0a2a4a", "#1a4a8a", "#3a8ad4", "#8ad0ff", "#ffffff")
+
+    def altar_top(x, y):
+        d = ((x - 7.5) ** 2 + (y - 7.5) ** 2) ** 0.5
+        return 0.95 if d < 2.2 else (0.55 if abs(d - 5) < 0.7 else (0.15 if min(x, y, 15 - x, 15 - y) == 0 else 0.35))
+
+    def altar_side(x, y):
+        rim = y in (0, 1, 14, 15)
+        rune = 4 <= y <= 11 and (x + y) % 6 == 0 and 2 < x < 13
+        return 0.85 if rune else (0.6 if rim else 0.35 + 0.1 * ((x * 3 + y) % 5 == 0))
+
+    out = {}
+    top = block_noise(180, altar_top, stone)
+    for y in range(N):
+        for x in range(N):
+            if ((x - 7.5) ** 2 + (y - 7.5) ** 2) ** 0.5 < 2.2:
+                top[y, x, :3] = gold[3]
+    out["research_altar_top"] = top
+    out["research_altar_side"] = block_noise(181, altar_side, stone)
+    out["research_altar_bottom"] = block_noise(182, lambda x, y: 0.4, stone)
+
+    def power_top(x, y):
+        dx, dy = abs(x - 7.5), abs(y - 7.5)
+        return 0.95 - 0.08 * (dx + dy) if dx + dy < 6 else 0.2
+
+    out["power_stone_top"] = block_noise(183, power_top, sky)
+    ps = block_noise(184, altar_side, stone)
+    for y in range(4, 12):
+        for x in range(6, 10):
+            ps[y, x, :3] = sky[3 if 6 <= y <= 9 else 2]
+    out["power_stone_side"] = ps
+    return out
+
+
+SHAPED_L15 = [
+    (["GBG", "SDS", "SSS"], {"G": "gold_ingot", "B": "book", "D": "diamond", "S": "stone_bricks"}, "research_altar", 1),
+    (["GSG", "SDS", "SSS"], {"G": "gold_ingot", "S": "stone_bricks", "D": "fallen_star"}, "power_stone", 1),
+]
+
+
 def write_skins(skins):
     parsed, layers = g.parse_mobs(str(OUT / "mobs.ron"))
     assert set(parsed) == set(skins), sorted(set(parsed) ^ set(skins))
@@ -4148,18 +4729,18 @@ def write_skins(skins):
 
 
 def main():
-    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8() + items_l9() + items_l10() + items_l11() + items_l12()
-    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7 + BLOCKS_L9 + block_defs_l10() + BLOCKS_L11 + block_defs_l12()
-    mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6() + mobs_l7() + mobs_l8()
-    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9 + SHAPED_L10 + SHAPED_L11 + SHAPED_L12, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9 + SHAPELESS_L10 + SHAPELESS_L11 + SHAPELESS_L12, SMELTING_L2 + SMELTING_L3)
+    items = items_l1() + items_l2() + items_l3() + items_l4() + items_l5() + items_l6() + items_l7() + items_l8() + items_l9() + items_l10() + items_l11() + items_l12() + items_comfort() + items_l13() + items_l14()
+    blocks = BLOCKS_L1 + BLOCKS_L2 + BLOCKS_L3 + BLOCKS_L6 + BLOCKS_L7 + BLOCKS_L9 + block_defs_l10() + BLOCKS_L11 + block_defs_l12() + block_defs_comfort() + block_defs_l13() + block_defs_l15()
+    mobs = mobs_l1() + mobs_l2() + mobs_l3() + mobs_l5() + mobs_l6() + mobs_l7() + mobs_l8() + mobs_l13() + mobs_l14()
+    write_data(items, blocks, mobs, SHAPED_L1 + SHAPED_L2 + SHAPED_L3 + SHAPED_L4 + SHAPED_L5 + SHAPED_L7 + SHAPED_L8 + SHAPED_L9 + SHAPED_L10 + SHAPED_L11 + SHAPED_L12 + SHAPED_COMFORT + SHAPED_L13 + SHAPED_L14 + SHAPED_L15, SHAPELESS_L1 + SHAPELESS_L2 + SHAPELESS_L3 + SHAPELESS_L4 + SHAPELESS_L5 + SHAPELESS_L7 + SHAPELESS_L8 + SHAPELESS_L9 + SHAPELESS_L10 + SHAPELESS_L11 + SHAPELESS_L12 + SHAPELESS_COMFORT + SHAPELESS_L13 + SHAPELESS_L14, SMELTING_L2 + SMELTING_L3)
     structures_l3()
-    skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6(), **skins_l7(), **skins_l8()})
+    skins = write_skins({**skins_l1(), **skins_l2(), **skins_l3(), **skins_l5(), **skins_l6(), **skins_l7(), **skins_l8(), **skins_l13(), **skins_l14()})
     pics = []
     for name, _, img, _ in items:
         im = gt.to_image(img)
         im.save(os.path.join(gi.ITEM_DIR, name + ".png"))
         pics.append(im)
-    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7(), **blocks_l9(), **blocks_l10(), **blocks_l11(), **blocks_l12()}
+    all_blocks = {**blocks_l1(), **blocks_l2(), **blocks_l3(), **blocks_l6(), **blocks_l7(), **blocks_l9(), **blocks_l10(), **blocks_l11(), **blocks_l12(), **blocks_comfort(), **blocks_l13(), **blocks_l15()}
     for name, img in all_blocks.items():
         im = gt.to_image(img)
         im.save(os.path.join(gi.BLOCK_DIR, name + ".png"))

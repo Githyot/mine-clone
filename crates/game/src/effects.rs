@@ -81,6 +81,17 @@ pub const COZY_FIRE: u8 = 68;
 pub const BUILDER: u8 = 69;
 pub const WARMTH: u8 = 70;
 pub const INFERNO: u8 = 71;
+// Comfort at home (tr_comfort.rs).
+pub const HEART_LAMP: u8 = 72;
+pub const STAR_BOTTLE: u8 = 73;
+pub const CLAIRVOYANCE: u8 = 74;
+pub const SHARPENED: u8 = 75;
+pub const AMMO_BOX: u8 = 76;
+pub const STRATEGIST: u8 = 77;
+pub const BEWITCHED: u8 = 78;
+pub const BATTLE: u8 = 79;
+pub const CALM: u8 = 80;
+pub const HUNTING: u8 = 81;
 
 /// Name, colour (for the icon, particles and the potion), harmful.
 pub fn info(id: u8) -> (&'static str, [u8; 3], bool) {
@@ -156,11 +167,21 @@ pub fn info(id: u8) -> (&'static str, [u8; 3], bool) {
         BUILDER => ("Construtor", [180, 140, 100], false),
         WARMTH => ("Aquecido", [255, 170, 110], false),
         INFERNO => ("Inferno", [255, 90, 30], false),
+        HEART_LAMP => ("Lanterna de Coração", [232, 70, 90], false),
+        STAR_BOTTLE => ("Estrela no Pote", [248, 224, 112], false),
+        CLAIRVOYANCE => ("Clarividência", [120, 120, 240], false),
+        SHARPENED => ("Afiado", [176, 176, 190], false),
+        AMMO_BOX => ("Caixa de Munição", [150, 170, 90], false),
+        STRATEGIST => ("Estrategista", [196, 160, 100], false),
+        BEWITCHED => ("Enfeitiçado", [170, 110, 220], false),
+        BATTLE => ("Batalha", [200, 50, 40], false),
+        CALM => ("Calmaria", [90, 150, 220], false),
+        HUNTING => ("Estandarte de Caça", [220, 150, 70], false),
         _ => ("?", [200, 200, 200], false),
     }
 }
 
-pub const ALL: u8 = 71;
+pub const ALL: u8 = 81;
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Active {
@@ -830,13 +851,13 @@ pub fn draw_effect_icon(ui: &mut crate::ui::UiBatch, id: u8, c: [u8; 3], x: f32,
             px(ui, 2.0, 2.0, 12.0, 3.0, col);
             px(ui, 7.0, 4.0, 2.0, 10.0, dark);
         }
-        STRENGTH | WEAKNESS | WRATH | RAGE | TITAN => {
+        STRENGTH | WEAKNESS | WRATH | RAGE | TITAN | SHARPENED | BATTLE | HUNTING => {
             // A sword.
             px(ui, 7.0, 0.0, 2.0, 10.0, col);
             px(ui, 4.0, 10.0, 8.0, 2.0, dark);
             px(ui, 7.0, 12.0, 2.0, 3.0, dark);
         }
-        INSTANT_HEALTH | REGENERATION | HEALTH_BOOST | ABSORPTION | INSTANT_DAMAGE | LIFEFORCE | POTION_SICKNESS | WELL_FED => {
+        INSTANT_HEALTH | REGENERATION | HEALTH_BOOST | ABSORPTION | INSTANT_DAMAGE | LIFEFORCE | POTION_SICKNESS | WELL_FED | HEART_LAMP => {
             // A heart.
             px(ui, 2.0, 3.0, 5.0, 5.0, col);
             px(ui, 9.0, 3.0, 5.0, 5.0, col);
@@ -850,7 +871,7 @@ pub fn draw_effect_icon(ui: &mut crate::ui::UiBatch, id: u8, c: [u8; 3], x: f32,
             px(ui, 4.0, 5.0, 8.0, 2.0, col);
             px(ui, 5.0, 3.0, 6.0, 2.0, col);
         }
-        RESISTANCE | FIRE_RESISTANCE | IRONSKIN | ENDURANCE | BROKEN_ARMOR | ICHOR => {
+        RESISTANCE | FIRE_RESISTANCE | IRONSKIN | ENDURANCE | BROKEN_ARMOR | ICHOR | CALM => {
             // A shield.
             px(ui, 3.0, 2.0, 10.0, 8.0, col);
             px(ui, 5.0, 10.0, 6.0, 2.0, col);
@@ -882,7 +903,7 @@ pub fn draw_effect_icon(ui: &mut crate::ui::UiBatch, id: u8, c: [u8; 3], x: f32,
             px(ui, 3.0, 8.0, 10.0, 5.0, col);
             px(ui, 6.0, 9.0, 4.0, 4.0, dark);
         }
-        MANA_REGEN | MAGIC_POWER | MANA_SICKNESS | SILENCED | SUMMONING => {
+        MANA_REGEN | MAGIC_POWER | MANA_SICKNESS | SILENCED | SUMMONING | STAR_BOTTLE | CLAIRVOYANCE | STRATEGIST | BEWITCHED => {
             // A star.
             px(ui, 7.0, 1.0, 2.0, 14.0, col);
             px(ui, 1.0, 6.0, 14.0, 3.0, col);
@@ -898,7 +919,7 @@ pub fn draw_effect_icon(ui: &mut crate::ui::UiBatch, id: u8, c: [u8; 3], x: f32,
             px(ui, 3.0, 11.0, 2.0, 2.0, col);
             px(ui, 11.0, 11.0, 2.0, 2.0, col);
         }
-        ARCHERY | THORNS => {
+        ARCHERY | THORNS | AMMO_BOX => {
             // An arrow.
             for k in 0..10 {
                 px(ui, 2.0 + k as f32, 12.0 - k as f32, 2.0, 2.0, col);
