@@ -198,6 +198,7 @@
     (name: "red_wool", display_name: Some("Lã Vermelha"), hardness: 0.8, drops: None),
     (name: "black_wool", display_name: Some("Lã Preta"), hardness: 0.8, drops: None),
     (name: "chest", display_name: Some("Baú"), hardness: 2.5, tool: Some(Axe), textures: (top: Some("chest_top"), side: Some("chest_side"), front: Some("chest_front"), bottom: Some("chest_top"))),
+    (name: "barrel", display_name: Some("Barril"), hardness: 2.5, tool: Some(Axe), textures: (top: Some("barrel_top"), side: Some("barrel_side"), bottom: Some("barrel_bottom"))),
     (name: "white_bed", display_name: Some("Cama Branca"), hardness: 0.2, height: Some(9), shape: Bed, transparency: Cutout, textures: (top: Some("bed_blanket_white"), side: Some("bed_frame"), front: Some("bed_pillow"), bottom: Some("bed_sheet"))),
     (name: "orange_bed", display_name: Some("Cama Laranja"), hardness: 0.2, height: Some(9), shape: Bed, transparency: Cutout, textures: (top: Some("bed_blanket_orange"), side: Some("bed_frame"), front: Some("bed_pillow"), bottom: Some("bed_sheet"))),
     (name: "magenta_bed", display_name: Some("Cama Magenta"), hardness: 0.2, height: Some(9), shape: Bed, transparency: Cutout, textures: (top: Some("bed_blanket_magenta"), side: Some("bed_frame"), front: Some("bed_pillow"), bottom: Some("bed_sheet"))),

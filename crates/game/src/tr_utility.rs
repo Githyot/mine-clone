@@ -577,3 +577,8 @@ mod tests {
         assert!(missing.is_empty(), "{missing:?}");
     }
 }
+
+/// Where the piggy bank's (0) or the safe's (1) contents are kept.
+pub(crate) fn bank_pos(which: i32) -> IVec3 {
+    IVec3::new(BANK_X, 0, which)
+}

@@ -24,6 +24,7 @@ mod server;
 mod plugins;
 mod nature;
 mod bench;
+mod storage;
 mod swing;
 mod stands;
 mod testworld;
