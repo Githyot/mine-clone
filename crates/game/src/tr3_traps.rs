@@ -679,11 +679,14 @@ impl Game {
         let side = flat.cross(Vec3::Y);
         let spot = |g: &Game, d: f32, s: f32| {
             let p = g.body.pos + flat * d + side * s;
-            let (x, z) = (p.x.floor() as i32, p.z.floor() as i32);
-            IVec3::new(x, g.world.surface_y(x, z).unwrap_or(p.y as i32 - 1) + 1, z)
+            IVec3::new(p.x.floor() as i32, g.body.pos.y.floor() as i32, p.z.floor() as i32)
         };
         let set = |g: &mut Game, p: IVec3, n: &str| {
             if let Some(id) = g.reg.id(n) {
+                g.world.set_block(p - IVec3::Y, g.reg.id_or_air("stone"));
+                for up in 1..4 {
+                    g.world.set_block(p + IVec3::Y * up, voxel::AIR);
+                }
                 g.world.set_block(p, id);
                 g.tr3_placed(p, n);
             }

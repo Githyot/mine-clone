@@ -893,7 +893,7 @@ impl Game {
             let n = EMOTES.len();
             let cell = 14.0 * px;
             let x0 = w / 2.0 - n as f32 * cell / 2.0;
-            let y0 = h - 70.0 * s;
+            let y0 = h * 0.3;
             self.ui.rect(x0 - 4.0 * px, y0 - cell - 14.0 * px, n as f32 * cell + 8.0 * px, cell + 22.0 * px, [0, 0, 0, 140]);
             for i in 0..n {
                 let x = x0 + i as f32 * cell + cell / 2.0;
@@ -919,8 +919,7 @@ impl Game {
         let side = flat.cross(Vec3::Y);
         let spot = |g: &Game, d: f32, s: f32| {
             let p = g.body.pos + flat * d + side * s;
-            let (x, z) = (p.x.floor() as i32, p.z.floor() as i32);
-            IVec3::new(x, g.world.surface_y(x, z).unwrap_or(p.y as i32 - 1) + 1, z)
+            IVec3::new(p.x.floor() as i32, g.body.pos.y.floor() as i32, p.z.floor() as i32)
         };
         match scene {
             "world3" => {
@@ -930,6 +929,7 @@ impl Game {
                 for (i, n) in names.iter().enumerate() {
                     let p = spot(self, 4.0, -4.0 + i as f32);
                     if let Some(id) = self.reg.id(n) {
+                        self.world.set_block(p - IVec3::Y, self.reg.id_or_air("stone"));
                         self.world.set_block(p, id);
                     }
                 }
@@ -937,6 +937,7 @@ impl Game {
                 for (i, n) in row2.iter().enumerate() {
                     let p = spot(self, 7.0, -6.0 + i as f32);
                     if let Some(id) = self.reg.id(n) {
+                        self.world.set_block(p - IVec3::Y, self.reg.id_or_air("stone"));
                         self.world.set_block(p, id);
                         self.tr3_placed(p, n);
                     }
