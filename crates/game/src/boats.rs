@@ -186,16 +186,26 @@ impl Game {
 
     /// Float, drift and crawl every boat along.
     pub(crate) fn update_boats(&mut self, dt: f32) {
-        // Test hook: a few boats on the water in front, the player in the first.
-        if std::env::var("MC_BOAT").is_ok() && self.surv.boats.is_empty() {
+        // Test hook: a few boats on the water in front, the player in the first. MC_BOAT=all: one
+        // boat of every wood in a row, nobody aboard.
+        if let (Ok(v), true) = (std::env::var("MC_BOAT"), self.surv.boats.is_empty()) {
             let me = self.body.pos;
-            for k in 0..3 {
-                let p = me + Vec3::new(k as f32 * 2.0 - 2.0, 0.0, -4.0 - k as f32);
+            let all = ["oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "cherry", "mangrove", "pale_oak"];
+            let woods: &[&str] = if v == "all" { &all } else { &["oak", "birch", "cherry"] };
+            for (k, w) in woods.iter().enumerate() {
+                let p = if v == "all" {
+                    me + Vec3::new((k % 3) as f32 * 2.2 - 2.2, 0.0, -4.0 - (k / 3) as f32 * 2.6)
+                } else {
+                    me + Vec3::new(k as f32 * 2.0 - 2.0, 0.0, -4.0 - k as f32)
+                };
                 let c = p.floor().as_ivec3();
                 let y = (0..40).map(|d| c.y - d).find(|&y| self.water_at(IVec3::new(c.x, y, c.z))).unwrap_or(c.y);
-                self.surv.boats.push(Boat::new(Vec3::new(p.x, y as f32 + 0.95, p.z), 0.6 * k as f32, ["oak_boat", "birch_boat", "cherry_boat"][k]));
+                let yaw = if v == "all" { 0.5 } else { 0.6 * k as f32 };
+                self.surv.boats.push(Boat::new(Vec3::new(p.x, y as f32 + 0.95, p.z), yaw, &format!("{w}_boat")));
             }
-            self.boating = Some(0);
+            if v != "all" {
+                self.boating = Some(0);
+            }
         }
         if self.surv.boats.is_empty() || dt == 0.0 {
             return;
@@ -273,11 +283,15 @@ impl Game {
 
     /// Boat models for the entity renderer.
     pub(crate) fn boat_instances(&self, cam_block: IVec3) -> Vec<(usize, crate::entity::Bones)> {
-        let Some(def) = self.mobs.reg.id("boat") else { return Vec::new() };
+        let reg = &self.mobs.reg;
+        let Some(plain) = reg.id("boat") else { return Vec::new() };
         self.surv
             .boats
             .iter()
             .map(|b| {
+                // Each wood has its own model and skin ("boat_oak", ...; tools/tex64/boats.py).
+                let wood = b.item.strip_suffix("_boat").unwrap_or(&b.item);
+                let def = reg.id(&format!("boat_{wood}")).unwrap_or(plain);
                 let l = self.world.light((b.pos + Vec3::Y * 0.5).floor().as_ivec3());
                 let mut bones = crate::entity::Bones { light: [(l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0, if b.hurt < 0.25 { 1.0 } else { 0.0 }, 0.0], ..Default::default() };
                 let m = Mat4::from_translation(b.pos - Vec3::Y * 0.2 - cam_block.as_vec3()) * Mat4::from_rotation_y(b.yaw) * Mat4::from_scale(Vec3::splat(1.0 / 16.0));

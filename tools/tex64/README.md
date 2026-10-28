@@ -29,6 +29,8 @@ After merging branches that both touched textures: take either side's PNGs and r
 | `style.py` | The style guide as code: light, ramps, contrast limits, tileable noise. |
 | `blocks.py` | Hand-made 64x64 blocks (`REGISTRY`). |
 | `items.py` | Hand-made items: tools and weapons for every metal, armour icons, ingots, raw ores, gems. |
+| `woods.py` | Every wood's own grain: board layout, figure, knots/pores/rays, bark, end grain, doors, trapdoors. |
+| `boats.py` | One boat per wood: its skin (the wood's planks) and its model in `mobs.ron`, each with a trait of its own. |
 | `upscale.py` | 16x16 design -> 64x64 (Scale4x, thin outlines, light and grain, soft contrast). |
 | `entities.py` | Mob skins at 4x. Opacity stays exactly the design's so boxes and 3D layers keep their shape. |
 | `gui.py` | Hotbar, selection, crosshair, hearts, hunger, armour, air, experience bar, armour slots. |
