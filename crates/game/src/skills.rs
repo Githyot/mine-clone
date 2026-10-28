@@ -80,7 +80,7 @@ impl Skill {
         }
     }
 
-    fn index(self) -> usize {
+    pub fn index(self) -> usize {
         ALL.iter().position(|&s| s == self).unwrap_or(0)
     }
 }
@@ -333,7 +333,7 @@ impl Game {
     }
 
     /// The line above the hotbar and, with Y, the page of crafts.
-    pub(crate) fn draw_skills(&mut self, w: f32, h: f32, hy: f32) {
+    pub(crate) fn draw_skills(&mut self, w: f32, hy: f32) {
         if self.skills.world != self.world_name {
             return;
         }

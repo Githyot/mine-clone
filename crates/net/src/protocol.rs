@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a message changes shape. Host and guest must match.
-pub const PROTOCOL: u32 = 7;
+pub const PROTOCOL: u32 = 8;
 
 /// Default UDP port for hosted worlds.
 pub const DEFAULT_PORT: u16 = 24454;
@@ -135,6 +135,9 @@ pub enum ToGuest {
     /// The host's plugins (file name, bytes), sent just before `Welcome`: they run on the
     /// guest too, for their items and windows.
     Plugins(Vec<(String, Vec<u8>)>),
+    /// A share of a craft's experience (the game's `skills.rs`, by index) for helping a
+    /// friend nearby: a monster the group fought died.
+    SkillShare { skill: u8, xp: u32 },
 }
 
 /// The world's scoreboard and teams (`/placar`, `/equipe`), kept by the host in
@@ -381,6 +384,8 @@ mod tests {
         assert_eq!(got[2], ([7, 8, 9], "stone"));
         let s = ToHost::State(PlayerState { pos: [1.0, 2.0, 3.0], held: "torch".into(), ..Default::default() });
         assert_eq!(decode::<ToHost>(&encode(&s)), Some(s));
+        let share = ToGuest::SkillShare { skill: 4, xp: 5 };
+        assert_eq!(decode::<ToGuest>(&encode(&share)), Some(share));
     }
 
     #[test]

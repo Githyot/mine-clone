@@ -794,6 +794,8 @@ OFÍCIOS (tecla Y)
   Cada nível dá um pequeno bônus: cavar e cortar mais rápido, chance de minério, tora ou
     colheita a mais, peixe mordendo antes, mais dano, poções mais longas, menos fome.
   Ao ganhar experiência aparece "+N Ofício" acima da barra. Y abre a página com todos.
+  Jogando com amigos: quando um monstro morre, quem está a até 32 blocos e na mesma equipe
+    (ou todos sem equipe) ganha um pouco de Combate também, mesmo sem ter dado o golpe.
 
 ATLAS
   Livro + mapa na mesa = Atlas. Com ele em qualquer lugar do inventário, a terra em volta

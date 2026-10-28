@@ -4061,7 +4061,7 @@ impl Game {
             self.draw_hotbar_items(hx, hy, cell);
             self.draw_boss_bar(w);
             self.draw_progress(w, h);
-            self.draw_skills(w, h, hy);
+            self.draw_skills(w, hy);
             self.draw_t5_hud(w, h);
             self.draw_mods_hud(w, h);
             if self.survival {
