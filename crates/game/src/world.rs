@@ -11,7 +11,7 @@ use std::thread;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use glam::{IVec2, IVec3, Vec3};
 use voxel::block::Shape;
-use voxel::chunk::{split_xz, Chunk, ChunkPos, CHUNK_HEIGHT};
+use voxel::chunk::{local_y, split_xz, Chunk, ChunkPos, BASE_SECTION, CHUNK_HEIGHT, MIN_Y, SECTIONS};
 use voxel::light::compute_light;
 use voxel::mesh::{mesh_section, MeshInput, MeshTables, SectionMesh, VIS_ALL};
 use voxel::physics::Terrain;
@@ -21,15 +21,23 @@ use voxel::{BlockId, BlockRegistry, AIR};
 
 type Neighbours = [Option<Arc<Chunk>>; 9];
 
+/// Local sections `lo..hi` that are lit and drawn (see `World::set_focus`).
+type Band = (usize, usize);
+
 enum Job {
-    Generate(ChunkPos),
-    Light(ChunkPos, u32, Neighbours),
-    Mesh(ChunkPos, u32, Neighbours),
+    /// Make (or load) a chunk with its depths down to this local section.
+    Generate(ChunkPos, usize),
+    /// Generate local sections `lo..hi` of a chunk's depths (someone is going down there).
+    Deepen(ChunkPos, usize, usize),
+    Light(ChunkPos, u32, Neighbours, Band),
+    /// The blocks left out (a door that is swinging is drawn on its own meanwhile).
+    Mesh(ChunkPos, u32, Neighbours, Vec<IVec3>, Band),
 }
 
 enum Done {
     Generated(ChunkPos, Chunk),
-    Lit(ChunkPos, u32, Vec<u8>),
+    Deepened(ChunkPos, usize, usize, Vec<voxel::chunk::PalettedSection>),
+    Lit(ChunkPos, u32, Vec<u8>, Band),
     Meshed(ChunkPos, u32, Vec<(usize, SectionMesh)>),
 }
 
@@ -44,12 +52,15 @@ struct Slot {
     mesh_done: u32,
     mesh_pending: bool,
     urgent: bool,
+    deep_pending: bool,
 }
 
 /// A mesh change the renderer must apply.
 pub enum MeshEvent {
     /// Replace all sections of the chunk (sections not listed are empty).
     Set(ChunkPos, Vec<(usize, SectionMesh)>),
+    /// Replace only these sections of an already drawn chunk (None = now empty).
+    Sections(ChunkPos, Vec<(usize, Option<SectionMesh>)>),
     Remove(ChunkPos),
 }
 
@@ -77,11 +88,42 @@ pub struct World {
     solid: Vec<bool>,
     /// Collision height of each block (1.0 except slabs, beds).
     top: Vec<f32>,
+    /// Ladders and vines.
+    climb: Vec<bool>,
+    /// Blocks that stand in water (kelp): bodies swim through them.
+    wet: Vec<bool>,
     pub meshed_count: usize,
+    /// What the mesh workers draw with (shared with them; resource pack models swap inside).
+    pub tables: Arc<MeshTables>,
+    /// The dedicated server draws nothing: lit chunks count as meshed without building meshes.
+    pub headless: bool,
     /// Multiplayer: every block change, for the network to pass on (None = not recording).
     pub net_log: Option<Vec<(IVec3, BlockId)>>,
     /// Multiplayer host: other players' chunks, kept loaded and lit (not meshed) around them.
     pub extra_centers: Vec<(ChunkPos, i32)>,
+    /// Doors, trapdoors and gates that just opened or closed: (where, before, after), for
+    /// their swing (`swing.rs`).
+    pub swings: Vec<(IVec3, BlockId, BlockId)>,
+    /// Blocks the chunk meshes leave out while they are drawn moving.
+    hidden: HashSet<IVec3>,
+    /// Blocks the player just placed or broke, whose sections are meshed on the spot.
+    edits: Vec<IVec3>,
+    /// The sections lit and drawn: a band around the player's height, so a 1024-block world
+    /// costs no more light and mesh work than a 256-block one.
+    pub band: Band,
+    /// Blocks with a turning model drawn over them (windmill sails), by block id.
+    spins: Vec<bool>,
+    /// Where those blocks are in the loaded chunks, kept up to date as chunks come and go and
+    /// blocks change, so drawing them never has to search the world.
+    pub spinners: HashMap<ChunkPos, Vec<IVec3>>,
+}
+
+/// The band for a player in local section `ps`: about a hundred blocks below, more above (all the
+/// way up to the sky near the surface, where mountains far away show).
+fn band_for(ps: usize) -> Band {
+    let lo = ps.saturating_sub(7) / 4 * 4;
+    let hi = (ps + 13) / 4 * 4;
+    (lo, if hi >= BASE_SECTION + 2 { SECTIONS } else { hi.min(SECTIONS) })
 }
 
 impl World {
@@ -105,19 +147,20 @@ impl World {
                         },
                     };
                     let out = match job {
-                        Job::Generate(pos) => {
-                            let c = save.load_chunk(&reg, pos).unwrap_or_else(|| gen.generate(pos));
-                            Done::Generated(pos, c)
-                        }
-                        Job::Light(pos, ver, n) => {
+                        Job::Generate(pos, lo) => Done::Generated(pos, load_or_generate(&save, &gen, &reg, pos, lo)),
+                        Job::Deepen(pos, lo, hi) => Done::Deepened(pos, lo, hi, gen.deep_sections(pos, lo, hi)),
+                        Job::Light(pos, ver, n, band) => {
                             let refs: [Option<&Chunk>; 9] = std::array::from_fn(|i| n[i].as_deref());
-                            Done::Lit(pos, ver, compute_light(&reg, refs))
+                            Done::Lit(pos, ver, compute_light(&reg, refs, band.0, band.1), band)
                         }
-                        Job::Mesh(pos, ver, n) => {
+                        Job::Mesh(pos, ver, n, hidden, band) => {
                             let refs: [Option<&Chunk>; 9] = std::array::from_fn(|i| n[i].as_deref());
-                            let input = MeshInput::new(refs);
+                            let mut input = MeshInput::band(refs, band.0, band.1);
+                            for h in hidden {
+                                input.hide(h.x - pos.x * 16, h.y, h.z - pos.y * 16);
+                            }
                             let mut v = Vec::new();
-                            for s in 0..16 {
+                            for s in band.0..band.1 {
                                 if input.section_has_blocks(s) {
                                     let m = mesh_section(&tables, &input, s);
                                     // Empty but closed-off sections still matter for cave culling.
@@ -140,7 +183,11 @@ impl World {
         let fluid = reg.blocks.iter().map(|b| if b.base == water && water != AIR { 1 } else if b.base == lava && lava != AIR { 2 } else { 0 }).collect();
         let solid = reg.blocks.iter().map(|b| b.solid && b.shape != Shape::Liquid && b.shape != Shape::Invisible).collect();
         let top = reg.blocks.iter().map(|b| b.height as f32 / 16.0).collect();
+        let climb = reg.blocks.iter().map(|b| b.shape == Shape::Ladder || matches!(b.name.as_str(), "vine" | "weeping_vines" | "twisting_vines" | "scaffolding" | "cave_vines")).collect();
+        let wet = reg.blocks.iter().map(|b| b.waterlogged).collect();
+        let spins = reg.blocks.iter().map(|b| reg.blocks[b.base as usize].name == "windmill_sails").collect();
         World {
+            tables,
             reg,
             gen,
             save,
@@ -159,9 +206,67 @@ impl World {
             changed: Vec::new(),
             solid,
             top,
+            climb,
+            wet,
             meshed_count: 0,
+            headless: false,
             net_log: None,
             extra_centers: Vec::new(),
+            swings: Vec::new(),
+            hidden: HashSet::new(),
+            edits: Vec::new(),
+            band: band_for(BASE_SECTION + 4),
+            spins,
+            spinners: HashMap::new(),
+        }
+    }
+
+    /// Follow the player's height: when they get near the edge of the lit band, move it and
+    /// light and draw every chunk again for the new band (old meshes stay until then).
+    pub fn set_focus(&mut self, y: f32) {
+        let ps = local_y((y.floor() as i32).clamp(MIN_Y, CHUNK_HEIGHT as i32 - 1)) / 16;
+        let (lo, hi) = self.band;
+        let near_bottom = lo > 0 && ps < lo + 3;
+        let near_top = hi < SECTIONS && ps + 4 > hi;
+        if !near_bottom && !near_top {
+            return;
+        }
+        let band = band_for(ps);
+        if band == self.band {
+            return;
+        }
+        self.band = band;
+        for s in self.slots.values_mut() {
+            if s.chunk.is_some() {
+                s.light_ver += 1;
+            }
+        }
+    }
+
+    /// Note down the turning blocks of a chunk that just arrived.
+    fn find_spinners(&mut self, c: &Chunk) {
+        self.spinners.remove(&c.pos);
+        let spins = &self.spins;
+        if !spins.iter().any(|&b| b) {
+            return;
+        }
+        let mut found = Vec::new();
+        for (si, sec) in c.sections.iter().enumerate() {
+            if sec.is_empty() || !sec.may_contain(|b| spins[b as usize]) {
+                continue;
+            }
+            for y in si * 16..si * 16 + 16 {
+                for z in 0..16 {
+                    for x in 0..16 {
+                        if spins[c.get_local(x, y, z) as usize] {
+                            found.push(IVec3::new(c.pos.x * 16 + x as i32, y as i32 + MIN_Y, c.pos.y * 16 + z as i32));
+                        }
+                    }
+                }
+            }
+        }
+        if !found.is_empty() {
+            self.spinners.insert(c.pos, found);
         }
     }
 
@@ -180,6 +285,20 @@ impl World {
             out[i] = Some(self.slots.get(&p)?.chunk.clone()?);
         }
         Some(out)
+    }
+
+    /// The lowest local section of the depths chunks need right now (the band and a margin).
+    fn deep_target(&self) -> usize {
+        self.band.0.saturating_sub(2)
+    }
+
+    /// The chunk and its neighbours have their depths made as far down as lighting looks.
+    fn deep_ready(&self, pos: ChunkPos) -> bool {
+        let need = self.band.0.saturating_sub(1);
+        (0..9).all(|i| {
+            let p = pos + IVec2::new(i % 3 - 1, i / 3 - 1);
+            self.slots.get(&p).and_then(|s| s.chunk.as_ref()).is_none_or(|c| c.deep_lo <= need)
+        })
     }
 
     fn all_lit(&self, pos: ChunkPos) -> bool {
@@ -213,23 +332,71 @@ impl World {
                     if let Some(s) = self.slots.get_mut(&pos) {
                         // A chunk that came over the network meanwhile wins.
                         if s.chunk.is_none() {
-                            s.chunk = Some(Arc::new(c));
+                            let c = Arc::new(c);
+                            s.chunk = Some(c.clone());
+                            s.gen_pending = false;
+                            self.find_spinners(&c);
+                        } else {
+                            s.gen_pending = false;
                         }
-                        s.gen_pending = false;
                     }
                 }
-                Done::Lit(pos, ver, light) => {
+                Done::Deepened(pos, lo, hi, secs) => {
+                    let Some(s) = self.slots.get_mut(&pos) else { continue };
+                    s.deep_pending = false;
+                    let Some(c) = s.chunk.as_mut() else { continue };
+                    if c.deep_lo != hi {
+                        continue;
+                    }
+                    let c = Arc::make_mut(c);
+                    for (k, sec) in secs.into_iter().enumerate() {
+                        c.sections[lo + k] = sec;
+                    }
+                    c.deep_lo = lo;
+                    for i in 0..9 {
+                        let p = pos + IVec2::new(i % 3 - 1, i / 3 - 1);
+                        if let Some(n) = self.slots.get_mut(&p) {
+                            if n.chunk.is_some() {
+                                n.light_ver += 1;
+                            }
+                        }
+                    }
+                }
+                Done::Lit(pos, ver, light, band) => {
                     let Some(s) = self.slots.get_mut(&pos) else { continue };
                     s.light_pending = false;
                     if ver != s.light_ver {
                         continue;
                     }
-                    if let Some(c) = s.chunk.as_mut() {
-                        Arc::make_mut(c).light = light;
+                    // Only chunks whose mesh sees light that changed are remeshed: an edit out in
+                    // the open often changes none (the edit itself asks for its own chunks).
+                    let first = s.light_done == 0;
+                    let old = s.chunk.as_ref().map(|c| (&c.light, (c.light_lo, c.light_hi)));
+                    let (lo, hi) = match old {
+                        Some((old, ob)) if !first && ob == band && old.len() == light.len() => light_change(old, &light),
+                        _ => Some(([0, 0], [15, 15])),
+                    }
+                    .map_or((IVec2::ONE, IVec2::NEG_ONE), |(a, b)| (IVec2::from(a), IVec2::from(b)));
+                    if lo.x <= hi.x {
+                        if let Some(c) = s.chunk.as_mut() {
+                            let c = Arc::make_mut(c);
+                            c.light = light;
+                            (c.light_lo, c.light_hi) = band;
+                        }
                     }
                     s.light_done = ver;
                     for i in 0..9 {
-                        let p = pos + IVec2::new(i % 3 - 1, i / 3 - 1);
+                        let o = IVec2::new(i % 3 - 1, i / 3 - 1);
+                        // The neighbour's mesh border is our edge row facing it.
+                        let near = |o: i32, lo: i32, hi: i32| match o {
+                            -1 => lo == 0,
+                            1 => hi == 15,
+                            _ => true,
+                        };
+                        if lo.x > hi.x || !near(o.x, lo.x, hi.x) || !near(o.y, lo.y, hi.y) {
+                            continue;
+                        }
+                        let p = pos + o;
                         if let Some(n) = self.slots.get_mut(&p) {
                             if n.mesh_done == n.mesh_ver {
                                 n.mesh_ver += 1;
@@ -253,14 +420,14 @@ impl World {
         }
 
         // Relight chunks touched by an edit right away, whatever else is queued.
-        let urgent: Vec<ChunkPos> = self.slots.iter().filter(|(_, s)| s.urgent && !s.light_pending).map(|(p, _)| *p).collect();
+        let urgent: Vec<ChunkPos> = self.slots.iter().filter(|(p, s)| s.urgent && !s.light_pending && self.deep_ready(**p)).map(|(p, _)| *p).collect();
         for p in urgent {
             if let Some(n) = self.neighbours(p) {
                 let s = self.slots.get_mut(&p).unwrap();
                 s.urgent = false;
                 s.light_pending = true;
                 self.in_flight += 1;
-                let _ = self.urgent_jobs.send(Job::Light(p, s.light_ver, n));
+                let _ = self.urgent_jobs.send(Job::Light(p, s.light_ver, n, self.band));
             }
         }
 
@@ -289,23 +456,32 @@ impl World {
             }
             let p = center + self.spiral[k];
             let d2 = r2(p);
+            let deep_to = self.deep_target();
             let slot = self.slots.entry(p).or_insert_with(|| Slot { light_ver: 1, mesh_ver: 1, ..Default::default() });
             if slot.chunk.is_none() {
                 if !slot.gen_pending {
                     slot.gen_pending = true;
                     self.in_flight += 1;
-                    let _ = self.jobs.send(Job::Generate(p));
+                    let _ = self.jobs.send(Job::Generate(p, deep_to));
                 }
                 continue;
             }
+            // The depths the band reaches into are made the first time they are needed.
+            let have = slot.chunk.as_ref().map_or(0, |c| c.deep_lo);
+            if have > deep_to && !slot.deep_pending {
+                slot.deep_pending = true;
+                self.in_flight += 1;
+                let _ = self.jobs.send(Job::Deepen(p, deep_to, have));
+                continue;
+            }
             // 3. Light chunks whose neighbours exist.
-            if d2 <= lim(radius + 1) && slot.light_done != slot.light_ver && !slot.light_pending {
+            if d2 <= lim(radius + 1) && slot.light_done != slot.light_ver && !slot.light_pending && self.deep_ready(p) {
                 if let Some(n) = self.neighbours(p) {
                     let s = self.slots.get_mut(&p).unwrap();
                     s.light_pending = true;
                     let urgent = std::mem::take(&mut s.urgent);
                     self.in_flight += 1;
-                    let job = Job::Light(p, s.light_ver, n);
+                    let job = Job::Light(p, s.light_ver, n, self.band);
                     let _ = if urgent { self.urgent_jobs.send(job) } else { self.jobs.send(job) };
                 }
             }
@@ -326,17 +502,17 @@ impl World {
                     if !slot.gen_pending {
                         slot.gen_pending = true;
                         self.in_flight += 1;
-                        let _ = self.jobs.send(Job::Generate(p));
+                        let _ = self.jobs.send(Job::Generate(p, self.band.0.saturating_sub(2)));
                     }
                     continue;
                 }
-                if off.x * off.x + off.y * off.y <= lim(r) && slot.light_done != slot.light_ver && !slot.light_pending {
+                if off.x * off.x + off.y * off.y <= lim(r) && slot.light_done != slot.light_ver && !slot.light_pending && self.deep_ready(p) {
                     if let Some(n) = self.neighbours(p) {
                         let s = self.slots.get_mut(&p).unwrap();
                         s.light_pending = true;
                         s.urgent = false;
                         self.in_flight += 1;
-                        let _ = self.jobs.send(Job::Light(p, s.light_ver, n));
+                        let _ = self.jobs.send(Job::Light(p, s.light_ver, n, self.band));
                     }
                 }
             }
@@ -359,11 +535,20 @@ impl World {
             if !self.all_lit(p) {
                 continue;
             }
+            if self.headless {
+                let s = self.slots.get_mut(&p).unwrap();
+                if s.mesh_done == 0 {
+                    self.meshed_count += 1;
+                }
+                s.mesh_done = s.mesh_ver;
+                continue;
+            }
             let n = self.neighbours(p).unwrap();
             let s = self.slots.get_mut(&p).unwrap();
             s.mesh_pending = true;
             self.in_flight += 1;
-            let job = Job::Mesh(p, s.mesh_ver, n);
+            let hidden: Vec<IVec3> = self.hidden.iter().copied().filter(|h| (h.x.div_euclid(16) - p.x).abs() <= 1 && (h.z.div_euclid(16) - p.y).abs() <= 1).collect();
+            let job = Job::Mesh(p, s.mesh_ver, n, hidden, self.band);
             let _ = if urgent { self.urgent_jobs.send(job) } else { self.jobs.send(job) };
         }
 
@@ -379,7 +564,7 @@ impl World {
         let far: Vec<ChunkPos> = self.slots.keys().copied().filter(|&p| r2(p) > unload && !near_other(p)).collect();
         for p in far {
             let s = self.slots.get(&p).unwrap();
-            if s.gen_pending || s.light_pending || s.mesh_pending {
+            if s.gen_pending || s.light_pending || s.mesh_pending || s.deep_pending {
                 continue;
             }
             if self.unsaved.remove(&p) {
@@ -392,12 +577,14 @@ impl World {
                 self.events.push(MeshEvent::Remove(p));
             }
             self.slots.remove(&p);
+            self.spinners.remove(&p);
         }
     }
 
     /// Put in a whole chunk (sent by a multiplayer host), relighting and remeshing around it.
     pub fn replace_chunk(&mut self, chunk: Chunk) {
         let cp = chunk.pos;
+        self.find_spinners(&chunk);
         let slot = self.slots.entry(cp).or_insert_with(|| Slot { light_ver: 1, mesh_ver: 1, ..Default::default() });
         slot.chunk = Some(Arc::new(chunk));
         self.unsaved.insert(cp);
@@ -406,6 +593,7 @@ impl World {
             if let Some(s) = self.slots.get_mut(&n) {
                 if s.chunk.is_some() {
                     s.light_ver += 1;
+                    s.mesh_ver += 1;
                     s.urgent = true;
                 }
             }
@@ -417,11 +605,11 @@ impl World {
     }
 
     pub fn block(&self, p: IVec3) -> Option<BlockId> {
-        if p.y < 0 || p.y >= CHUNK_HEIGHT as i32 {
+        if p.y < MIN_Y || p.y >= CHUNK_HEIGHT as i32 {
             return Some(AIR);
         }
         let (cp, x, z) = split_xz(p.x, p.z);
-        Some(self.chunk(cp)?.get(x, p.y as usize, z))
+        Some(self.chunk(cp)?.get_w(x, p.y, z))
     }
 
     pub fn block_or_air(&self, p: IVec3) -> BlockId {
@@ -429,23 +617,44 @@ impl World {
     }
 
     pub fn light(&self, p: IVec3) -> u8 {
-        if p.y < 0 || p.y >= CHUNK_HEIGHT as i32 {
+        if p.y >= CHUNK_HEIGHT as i32 {
             return 0xF0;
         }
+        if p.y < MIN_Y {
+            return 0;
+        }
         let (cp, x, z) = split_xz(p.x, p.z);
-        self.chunk(cp).map(|c| c.light_at(x, p.y as usize, z)).unwrap_or(0xF0)
+        self.chunk(cp).map(|c| c.light_w(x, p.y, z)).unwrap_or(0xF0)
     }
 
     /// Change a block and schedule relighting/remeshing. Returns false if the chunk isn't loaded.
     pub fn set_block(&mut self, p: IVec3, id: BlockId) -> bool {
-        if p.y < 0 || p.y >= CHUNK_HEIGHT as i32 {
+        if p.y < MIN_Y || p.y >= CHUNK_HEIGHT as i32 {
             return false;
         }
         let (cp, x, z) = split_xz(p.x, p.z);
         let Some(slot) = self.slots.get_mut(&cp) else { return false };
         let Some(c) = slot.chunk.as_mut() else { return false };
+        // Depths not made yet stay as they are until they are.
+        if local_y(p.y) < c.deep_lo * 16 {
+            return false;
+        }
         let c = Arc::make_mut(c);
-        c.set(x, p.y as usize, z, id);
+        let was = c.get_w(x, p.y, z);
+        c.set_w(x, p.y, z, id);
+        if self.spins[was as usize] != self.spins[id as usize] {
+            let list = self.spinners.entry(cp).or_default();
+            list.retain(|&q| q != p);
+            if self.spins[id as usize] {
+                list.push(p);
+            }
+        }
+        if was != id && self.swings.len() < 64 {
+            let (a, b) = (self.reg.get(was), self.reg.get(id));
+            if a.base == b.base && a.variant ^ b.variant == 4 && matches!(a.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate) {
+                self.swings.push((p, was, id));
+            }
+        }
         c.modified = true;
         if let Some(log) = self.net_log.as_mut() {
             log.push((p, id));
@@ -460,10 +669,110 @@ impl World {
                 if s.chunk.is_some() {
                     s.light_ver += 1;
                     s.urgent = true;
+                    // Remesh the chunks whose mesh border holds the block; a mesh still in
+                    // flight is thrown away when it comes back.
+                    let (dx, dz) = (p.x - n.x * 16, p.z - n.y * 16);
+                    if (-1..=16).contains(&dx) && (-1..=16).contains(&dz) {
+                        s.mesh_ver += 1;
+                    }
                 }
             }
         }
         true
+    }
+
+    /// Show the change at `p` in this very frame: its sections are meshed on the main thread at
+    /// the next `remesh_edits` (with the old light; the workers bring the new light soon after).
+    pub fn mesh_now(&mut self, p: IVec3) {
+        if self.edits.len() < 8 && !self.edits.contains(&p) {
+            self.edits.push(p);
+        }
+    }
+
+    /// Mesh the sections around the blocks given to `mesh_now`, a few at most, so placing or
+    /// breaking a block never waits for the workers.
+    pub fn remesh_edits(&mut self) {
+        let edits = std::mem::take(&mut self.edits);
+        if edits.is_empty() || self.headless {
+            return;
+        }
+        // Sections touched, by chunk (a block on an edge shows in its neighbours' meshes too).
+        let mut todo: Vec<(ChunkPos, Vec<usize>)> = Vec::new();
+        for &p in &edits {
+            for d in [IVec3::ZERO, IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z] {
+                let q = p + d;
+                if q.y < MIN_Y || q.y >= CHUNK_HEIGHT as i32 {
+                    continue;
+                }
+                let cp = split_xz(q.x, q.z).0;
+                let s = local_y(q.y) >> 4;
+                if !(self.band.0..self.band.1).contains(&s) {
+                    continue;
+                }
+                if !self.slots.get(&cp).is_some_and(|s| s.mesh_done > 0) {
+                    continue;
+                }
+                match todo.iter_mut().find(|t| t.0 == cp) {
+                    Some(t) if !t.1.contains(&s) => t.1.push(s),
+                    Some(_) => {}
+                    None => todo.push((cp, vec![s])),
+                }
+            }
+        }
+        for (cp, secs) in todo {
+            let Some(n) = self.neighbours(cp) else { continue };
+            let refs: [Option<&Chunk>; 9] = std::array::from_fn(|i| n[i].as_deref());
+            let (lo, hi) = (*secs.iter().min().unwrap(), *secs.iter().max().unwrap());
+            let mut input = MeshInput::new_sections(refs, lo, hi);
+            for h in &self.hidden {
+                input.hide(h.x - cp.x * 16, h.y, h.z - cp.y * 16);
+            }
+            for &p in &edits {
+                if self.block_or_air(p) == AIR {
+                    input.guess_light(p.x - cp.x * 16, p.y, p.z - cp.y * 16);
+                }
+            }
+            let out = secs
+                .into_iter()
+                .map(|s| {
+                    let m = input.section_has_blocks(s).then(|| mesh_section(&self.tables, &input, s));
+                    (s, m.filter(|m| !m.is_empty() || m.vis != VIS_ALL))
+                })
+                .collect();
+            self.events.push(MeshEvent::Sections(cp, out));
+        }
+    }
+
+    /// Leave a block out of the chunk meshes (or put it back), remeshing the chunks it touches.
+    pub fn set_hidden(&mut self, p: IVec3, hide: bool) {
+        let changed = if hide { self.hidden.insert(p) } else { self.hidden.remove(&p) };
+        if !changed {
+            return;
+        }
+        let mut cps = Vec::new();
+        for d in [IVec3::ZERO, IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z] {
+            let cp = split_xz(p.x + d.x, p.z + d.z).0;
+            if !cps.contains(&cp) {
+                cps.push(cp);
+            }
+        }
+        for cp in cps {
+            if let Some(s) = self.slots.get_mut(&cp) {
+                if s.mesh_done > 0 {
+                    // A mesh still in flight is thrown away when it comes back.
+                    s.mesh_ver += 1;
+                }
+            }
+        }
+    }
+
+    /// Mesh every loaded chunk again (the block models changed).
+    pub fn remesh_all(&mut self) {
+        for s in self.slots.values_mut() {
+            if s.mesh_done > 0 {
+                s.mesh_ver += 1;
+            }
+        }
     }
 
     /// Remove a block; sand and gravel above it fall down.
@@ -491,7 +800,7 @@ impl World {
             }
             // Drop it to the first supporting block.
             let mut dest = above - IVec3::Y;
-            while dest.y > 0 && self.block_or_air(dest - IVec3::Y) == AIR {
+            while dest.y > MIN_Y && self.block_or_air(dest - IVec3::Y) == AIR {
                 dest.y -= 1;
             }
             self.set_block(above, AIR);
@@ -517,7 +826,7 @@ impl World {
     /// Place a gravity block so it lands on the ground.
     pub fn place_block(&mut self, mut p: IVec3, id: BlockId) -> bool {
         if self.reg.get(id).gravity {
-            while p.y > 0 && matches!(self.block(p - IVec3::Y), Some(AIR)) {
+            while p.y > MIN_Y && matches!(self.block(p - IVec3::Y), Some(AIR)) {
                 p.y -= 1;
             }
         }
@@ -526,6 +835,11 @@ impl World {
 
     pub fn is_liquid(&self, id: BlockId) -> bool {
         self.fluid[id as usize] != 0
+    }
+
+    /// Stands in water (kelp): leaves water behind when broken.
+    pub fn is_wet(&self, id: BlockId) -> bool {
+        self.wet[id as usize]
     }
 
     /// 1 water, 2 lava, 0 anything else (any level of flow counts).
@@ -557,6 +871,38 @@ impl World {
     }
 }
 
+/// A saved chunk, or a new one from the seed. Chunks saved before the deep world get their
+/// depths generated under them (and lose the old bedrock floor at y 0).
+pub fn load_or_generate(save: &WorldSave, gen: &Generator, reg: &BlockRegistry, pos: ChunkPos, deep_lo: usize) -> Chunk {
+    let Some(mut c) = save.load_chunk(reg, pos) else { return gen.generate_band(pos, deep_lo) };
+    fill_legacy(gen, reg, &mut c);
+    c
+}
+
+pub fn fill_legacy(gen: &Generator, reg: &BlockRegistry, c: &mut Chunk) {
+    if c.legacy {
+        let pos = c.pos;
+        let fresh = gen.generate(pos);
+        c.deep_lo = fresh.deep_lo;
+        let bedrock = reg.id_or_air("bedrock");
+        for s in 0..BASE_SECTION {
+            c.sections[s] = fresh.sections[s].clone();
+        }
+        if gen.dim == voxel::worldgen::Dim::Overworld && bedrock != AIR {
+            for y in 0..5 {
+                for z in 0..16 {
+                    for x in 0..16 {
+                        if c.get(x, y, z) == bedrock {
+                            c.set(x, y, z, fresh.get(x, y, z));
+                        }
+                    }
+                }
+            }
+        }
+        c.legacy = false;
+    }
+}
+
 impl Terrain for World {
     fn solid(&self, p: IVec3) -> bool {
         match self.block(p) {
@@ -566,7 +912,10 @@ impl Terrain for World {
         }
     }
     fn liquid(&self, p: IVec3) -> bool {
-        self.block(p).is_some_and(|id| self.fluid[id as usize] == 1)
+        self.block(p).is_some_and(|id| self.fluid[id as usize] == 1 || self.wet[id as usize])
+    }
+    fn climbable(&self, p: IVec3) -> bool {
+        self.block(p).is_some_and(|id| self.climb[id as usize])
     }
     fn top(&self, p: IVec3) -> f32 {
         self.block(p).map(|id| self.top[id as usize]).unwrap_or(1.0)
@@ -637,4 +986,23 @@ impl World {
         }
         c
     }
+}
+
+/// The x/z bounds of the columns where two light arrays of a chunk differ (None: the same).
+fn light_change(old: &[u8], new: &[u8]) -> Option<([i32; 2], [i32; 2])> {
+    let (mut lo, mut hi) = ([16, 16], [-1, -1]);
+    // One layer is 256 columns (x | z << 4): equal layers are skipped whole.
+    for (a, b) in old.chunks(256).zip(new.chunks(256)) {
+        if a == b {
+            continue;
+        }
+        for (i, (x, y)) in a.iter().zip(b).enumerate() {
+            if x != y {
+                let (cx, cz) = ((i & 15) as i32, (i >> 4) as i32);
+                lo = [lo[0].min(cx), lo[1].min(cz)];
+                hi = [hi[0].max(cx), hi[1].max(cz)];
+            }
+        }
+    }
+    (hi[0] >= 0).then_some((lo, hi))
 }

@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use glam::{IVec2, IVec3, Mat4, Vec3, Vec4};
 use wgpu::util::DeviceExt;
+use voxel::chunk::MIN_Y;
 use winit::window::Window;
 
 use crate::post::{PostFx, PostUniform, HDR};
@@ -18,7 +19,7 @@ use crate::textures::{mip_chain, TextureSet};
 use crate::ui::{UiBatch, UiVertex};
 use crate::world::MeshEvent;
 use voxel::chunk::ChunkPos;
-use voxel::mesh::Vertex;
+use voxel::mesh::{SectionMesh, Vertex};
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Default)]
@@ -52,6 +53,9 @@ pub struct Globals {
     pub extra: [f32; 4],
     /// x, y: screen size in pixels; z: near plane; w: far plane (set by the renderer).
     pub screen: [f32; 4],
+    /// Block depth (parallax occlusion mapping): x depth in blocks (0 = off), y most steps
+    /// per pixel, z distance in blocks where it has faded out, w self-shadows 0/1.
+    pub pom: [f32; 4],
     /// Hand light shadows: xyz corner of the solid-block grid relative to the camera's block,
     /// w: 1 when on.
     pub occl: [f32; 4],
@@ -115,6 +119,8 @@ pub struct Renderer {
     pub tex_layout: wgpu::BindGroupLayout,
     tex_bg: wgpu::BindGroup,
     block_view: wgpu::TextureView,
+    /// Texture layers past `LAYERS_PER_ARRAY` (GPUs take at most 2048 per array).
+    block_view2: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
     pipes: [ScenePipes; 2],
     pub post: PostFx,
@@ -148,6 +154,9 @@ pub struct Renderer {
     depth_changed: bool,
 }
 
+/// Layers in one texture array (the most GPUs allow); later layers go in a second array. The
+/// shaders that read item sprites pick the array with the same number.
+pub const LAYERS_PER_ARRAY: usize = 2048;
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 /// Near clipping plane (blocks).
 const NEAR: f32 = 0.05;
@@ -253,6 +262,16 @@ impl Renderer {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -266,8 +285,8 @@ impl Renderer {
             mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let (block_view, texture_size) = Self::upload_blocks(&device, &queue, textures);
-        let tex_bg = Self::make_tex_bg(&device, &tex_layout, &block_view, &sampler);
+        let ([block_view, block_view2], texture_size) = Self::upload_blocks(&device, &queue, textures);
+        let tex_bg = Self::make_tex_bg(&device, &tex_layout, &block_view, &block_view2, &sampler);
 
         let terrain = shader(&device, "terrain", include_str!("shaders/terrain.wgsl"));
         let sky = shader(&device, "sky", include_str!("shaders/sky.wgsl"));
@@ -463,6 +482,16 @@ impl Renderer {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let font_tex = device.create_texture_with_data(
@@ -482,7 +511,7 @@ impl Renderer {
         );
         let font_view = font_tex.create_view(&Default::default());
         let gui_view = Self::upload_gui(&device, &queue, &textures.gui);
-        let ui_tex_bg = Self::make_ui_bg(&device, &ui_tex_layout, &font_view, &block_view, &gui_view, &sampler);
+        let ui_tex_bg = Self::make_ui_bg(&device, &ui_tex_layout, &font_view, &block_view, &block_view2, &gui_view, &sampler);
         let ui_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("ui"),
             bind_group_layouts: &[&globals_layout, &ui_tex_layout],
@@ -538,6 +567,7 @@ impl Renderer {
             tex_layout,
             tex_bg,
             block_view,
+            block_view2,
             sampler,
             pipes,
             post,
@@ -620,13 +650,14 @@ impl Renderer {
         })
     }
 
-    fn make_tex_bg(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, view: &wgpu::TextureView, sampler: &wgpu::Sampler) -> wgpu::BindGroup {
+    pub fn make_tex_bg(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, view: &wgpu::TextureView, view2: &wgpu::TextureView, sampler: &wgpu::Sampler) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("blocks"),
             layout,
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(view2) },
             ],
         })
     }
@@ -636,6 +667,7 @@ impl Renderer {
         layout: &wgpu::BindGroupLayout,
         font: &wgpu::TextureView,
         blocks: &wgpu::TextureView,
+        blocks2: &wgpu::TextureView,
         gui: &wgpu::TextureView,
         sampler: &wgpu::Sampler,
     ) -> wgpu::BindGroup {
@@ -647,6 +679,7 @@ impl Renderer {
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(blocks) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(sampler) },
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(gui) },
+                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(blocks2) },
             ],
         })
     }
@@ -672,46 +705,54 @@ impl Renderer {
         tex.create_view(&Default::default())
     }
 
-    fn upload_blocks(device: &wgpu::Device, queue: &wgpu::Queue, t: &TextureSet) -> (wgpu::TextureView, u32) {
-        let layers = t.layers.len().max(1) as u32;
+    /// The texture layers go into two arrays: the first `LAYERS_PER_ARRAY` (every block texture
+    /// is among them, so the terrain only ever reads the first) and the rest (item sprites, cracks).
+    fn upload_blocks(device: &wgpu::Device, queue: &wgpu::Queue, t: &TextureSet) -> ([wgpu::TextureView; 2], u32) {
         let levels = t.size.trailing_zeros() + 1;
-        let tex = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("block textures"),
-            size: wgpu::Extent3d { width: t.size, height: t.size, depth_or_array_layers: layers },
-            mip_level_count: levels,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        for (layer, pixels) in t.layers.iter().enumerate() {
-            for (level, data) in mip_chain(pixels, t.size, levels).iter().enumerate() {
-                let s = (t.size >> level).max(1);
-                queue.write_texture(
-                    wgpu::TexelCopyTextureInfo {
-                        texture: &tex,
-                        mip_level: level as u32,
-                        origin: wgpu::Origin3d { x: 0, y: 0, z: layer as u32 },
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    data,
-                    wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(4 * s), rows_per_image: Some(s) },
-                    wgpu::Extent3d { width: s, height: s, depth_or_array_layers: 1 },
-                );
+        let split = t.layers.len().min(LAYERS_PER_ARRAY);
+        let make = |layers: &[Vec<u8>], label: &str| {
+            let n = layers.len().max(1) as u32;
+            let tex = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: wgpu::Extent3d { width: t.size, height: t.size, depth_or_array_layers: n },
+                mip_level_count: levels,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            for (layer, pixels) in layers.iter().enumerate() {
+                for (level, data) in mip_chain(pixels, t.size, levels).iter().enumerate() {
+                    let s = (t.size >> level).max(1);
+                    queue.write_texture(
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &tex,
+                            mip_level: level as u32,
+                            origin: wgpu::Origin3d { x: 0, y: 0, z: layer as u32 },
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        data,
+                        wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(4 * s), rows_per_image: Some(s) },
+                        wgpu::Extent3d { width: s, height: s, depth_or_array_layers: 1 },
+                    );
+                }
             }
-        }
-        let view = tex.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
-        (view, t.size)
+            tex.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() })
+        };
+        let first = make(&t.layers[..split], "block textures");
+        let second = make(&t.layers[split..], "more textures");
+        ([first, second], t.size)
     }
 
     /// Swap in new block textures (resource pack change) without restarting.
     pub fn reload_textures(&mut self, t: &TextureSet) {
-        let (view, size) = Self::upload_blocks(&self.device, &self.queue, t);
-        self.tex_bg = Self::make_tex_bg(&self.device, &self.tex_layout, &view, &self.sampler);
+        let ([view, view2], size) = Self::upload_blocks(&self.device, &self.queue, t);
+        self.tex_bg = Self::make_tex_bg(&self.device, &self.tex_layout, &view, &view2, &self.sampler);
         let gui = Self::upload_gui(&self.device, &self.queue, &t.gui);
-        self.ui_tex_bg = Self::make_ui_bg(&self.device, &self.ui_tex_layout, &self.font_view, &view, &gui, &self.sampler);
+        self.ui_tex_bg = Self::make_ui_bg(&self.device, &self.ui_tex_layout, &self.font_view, &view, &view2, &gui, &self.sampler);
         self.block_view = view;
+        self.block_view2 = view2;
         self.texture_size = size;
     }
 
@@ -750,49 +791,67 @@ impl Renderer {
                     }
                 }
                 MeshEvent::Set(p, meshes) => {
-                    let mut v = Vec::with_capacity(meshes.len());
-                    for (s, m) in meshes {
-                        let mut mk = |verts: &[Vertex], label: &str| -> Option<(wgpu::Buffer, u32)> {
-                            if verts.is_empty() {
-                                return None;
-                            }
-                            let quads = (verts.len() / 4) as u32;
-                            if quads > self.quad_cap {
-                                self.quad_cap = quads.next_power_of_two();
-                                self.quad_ibuf = Self::make_quad_ibuf(&self.device, self.quad_cap);
-                            }
-                            let b = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                                label: Some(label),
-                                contents: bytemuck::cast_slice(verts),
-                                usage: wgpu::BufferUsages::VERTEX,
-                            });
-                            Some((b, quads))
-                        };
-                        let solid = mk(&m.solid, "section solid");
-                        let translucent = mk(&m.translucent, "section translucent");
-                        v.push(GpuSection { section: s, vis: m.vis, solid, translucent });
-                    }
+                    let v: Vec<GpuSection> = meshes.into_iter().map(|(s, m)| self.upload_section(s, m)).collect();
                     self.vram_bytes += v.iter().map(section_bytes).sum::<u64>();
                     if let Some(old) = self.chunks.insert(p, v) {
                         self.vram_bytes -= old.iter().map(section_bytes).sum::<u64>();
+                    }
+                }
+                MeshEvent::Sections(p, meshes) => {
+                    if !self.chunks.contains_key(&p) {
+                        continue;
+                    }
+                    for (s, m) in meshes {
+                        let new = m.map(|m| self.upload_section(s, m));
+                        let v = self.chunks.get_mut(&p).unwrap();
+                        if let Some(i) = v.iter().position(|g| g.section == s) {
+                            self.vram_bytes -= section_bytes(&v.remove(i));
+                        }
+                        if let Some(g) = new {
+                            self.vram_bytes += section_bytes(&g);
+                            v.push(g);
+                        }
                     }
                 }
             }
         }
     }
 
+    fn upload_section(&mut self, section: usize, m: SectionMesh) -> GpuSection {
+        let mut mk = |verts: &[Vertex], label: &str| -> Option<(wgpu::Buffer, u32)> {
+            if verts.is_empty() {
+                return None;
+            }
+            let quads = (verts.len() / 4) as u32;
+            if quads > self.quad_cap {
+                self.quad_cap = quads.next_power_of_two();
+                self.quad_ibuf = Self::make_quad_ibuf(&self.device, self.quad_cap);
+            }
+            let b = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(label),
+                contents: bytemuck::cast_slice(verts),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+            Some((b, quads))
+        };
+        let solid = mk(&m.solid, "section solid");
+        let translucent = mk(&m.translucent, "section translucent");
+        GpuSection { section, vis: m.vis, solid, translucent }
+    }
+
     /// Cave culling: walk from the camera's section outwards, entering a neighbour only through
     /// faces the current section connects with open blocks and never turning back. Sections
     /// never reached are behind rock. Returns a grid of `reach` chunks around the camera.
     fn cave_visible(&self, cam: &Camera, reach: i32, visible: &dyn Fn(Vec3, Vec3) -> bool) -> Option<Vec<bool>> {
-        let csy = cam.block.y >> 4;
-        if !self.cave_cull || !(0..16).contains(&csy) {
+        const NS: i32 = voxel::chunk::SECTIONS as i32;
+        let csy = (cam.block.y - MIN_Y) >> 4;
+        if !self.cave_cull || !(0..NS).contains(&csy) {
             return None;
         }
         let (ccx, ccz) = (cam.block.x >> 4, cam.block.z >> 4);
         let n = 2 * reach + 1;
-        let index = |dx: i32, sy: i32, dz: i32| (((dx + reach) * n + dz + reach) * 16 + sy) as usize;
-        let mut seen = vec![false; (n * n * 16) as usize];
+        let index = |dx: i32, sy: i32, dz: i32| (((dx + reach) * n + dz + reach) * NS + sy) as usize;
+        let mut seen = vec![false; (n * n * NS) as usize];
         let vis_of = |dx: i32, sy: i32, dz: i32| -> u64 {
             match self.chunks.get(&IVec2::new(ccx + dx, ccz + dz)) {
                 Some(v) => v.iter().find(|s| s.section == sy as usize).map_or(voxel::mesh::VIS_ALL, |s| s.vis),
@@ -814,10 +873,10 @@ impl Renderer {
                     continue;
                 }
                 let (nx, ny, nz) = (x + sx, y + sy, z + sz);
-                if nx.abs() > reach || nz.abs() > reach || !(0..16).contains(&ny) || seen[index(nx, ny, nz)] {
+                if nx.abs() > reach || nz.abs() > reach || !(0..NS).contains(&ny) || seen[index(nx, ny, nz)] {
                     continue;
                 }
-                let o = Vec3::new(((ccx + nx) * 16 - cam.block.x) as f32, (ny * 16 - cam.block.y) as f32, ((ccz + nz) * 16 - cam.block.z) as f32);
+                let o = Vec3::new(((ccx + nx) * 16 - cam.block.x) as f32, (ny * 16 + MIN_Y - cam.block.y) as f32, ((ccz + nz) * 16 - cam.block.z) as f32);
                 if !visible(o, o + Vec3::splat(16.0)) {
                     continue;
                 }
@@ -917,13 +976,13 @@ impl Renderer {
                 continue;
             }
             for s in sections {
-                let origin = Vec3::new(cx, (s.section as i32 * 16 - cam.block.y) as f32, cz);
+                let origin = Vec3::new(cx, (s.section as i32 * 16 + MIN_Y - cam.block.y) as f32, cz);
                 if !visible(origin, origin + Vec3::splat(16.0)) {
                     continue;
                 }
                 if let Some(seen) = &seen {
                     let (dx, dz) = (pos.x - (cam.block.x >> 4), pos.y - (cam.block.z >> 4));
-                    if dx.abs() <= reach && dz.abs() <= reach && !seen[(((dx + reach) * (2 * reach + 1) + dz + reach) * 16) as usize + s.section] {
+                    if dx.abs() <= reach && dz.abs() <= reach && !seen[(((dx + reach) * (2 * reach + 1) + dz + reach) * voxel::chunk::SECTIONS as i32) as usize + s.section] {
                         continue;
                     }
                 }
@@ -968,7 +1027,7 @@ impl Renderer {
                     continue;
                 }
                 for s in sections {
-                    let y = (s.section as i32 * 16 - cam.block.y) as f32;
+                    let y = (s.section as i32 * 16 + MIN_Y - cam.block.y) as f32;
                     // Far below the camera nothing it casts can reach the lit area.
                     if y + 16.0 < -reach * 1.5 {
                         continue;

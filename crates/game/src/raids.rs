@@ -2,18 +2,17 @@
 //! raiders come at it in three waves from the dark around it. Each wave comes when the last
 //! one is beaten. Marauders shoot, brutes hit hard and invokers throw spells; they go for the
 //! townsfolk when you aren't near, and the town guard fights back. Beat all three waves for
-//! a pile of emeralds. At dawn whatever is left of the raid gives up.
+//! a pile of coins. At dawn whatever is left of the raid gives up.
 
 use glam::Vec3;
-use voxel::item::ItemStack;
 use voxel::worldgen::Dim;
 
 use crate::audio::Sfx;
 use crate::Game;
 
-const RAIDERS: [&str; 3] = ["marauder", "brute", "invoker"];
+const RAIDERS: [&str; 4] = ["marauder", "brute", "invoker", "ravager"];
 /// Who comes in each wave: (mob, how many).
-const WAVES: [&[(&str, u32)]; 3] = [&[("marauder", 3)], &[("marauder", 3), ("brute", 1)], &[("marauder", 3), ("brute", 2), ("invoker", 1)]];
+const WAVES: [&[(&str, u32)]; 3] = [&[("marauder", 3)], &[("marauder", 3), ("brute", 1)], &[("marauder", 3), ("brute", 2), ("invoker", 1), ("ravager", 1)]];
 
 #[derive(Default)]
 pub struct Raid {
@@ -109,10 +108,8 @@ impl Game {
         }
         self.raid.center = None;
         self.toast("A vila resistiu à invasão! Os moradores agradecem.", 5.0);
-        if let Some(em) = self.items.id("emerald") {
-            let n = 4 + (self.surv.rng.f32() * 5.0) as u8;
-            self.pop_drop(self.body.pos + Vec3::Y, ItemStack::new(em, n));
-        }
+        let reward = crate::money::GOLD + (self.surv.rng.f32() * 50.0) as u64 * crate::money::SILVER;
+        self.drop_coins(self.body.pos + Vec3::Y, reward);
         self.sfx(Sfx::Xp);
     }
 }

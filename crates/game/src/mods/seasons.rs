@@ -140,7 +140,7 @@ impl Game {
         for _ in 0..n.min(40) {
             let x = me.x + self.surv.rng.range(-40, 41);
             let z = me.z + self.surv.rng.range(-40, 41);
-            let biome = self.world.gen.biome_at(x, z);
+            let biome = self.world.gen.base_biome_at(x, z);
             if matches!(biome, Biome::Snowy | Biome::Taiga) || tropical(biome) {
                 continue;
             }
@@ -186,7 +186,7 @@ impl Game {
             if !self.reg.get(id).name.ends_with("_leaves") || self.world.block_or_air(p - IVec3::Y) != AIR {
                 continue;
             }
-            if tropical(self.world.gen.biome_at(p.x, p.z)) {
+            if tropical(self.world.gen.base_biome_at(p.x, p.z)) {
                 continue;
             }
             let (layer, _) = self.block_look(id);
@@ -197,7 +197,7 @@ impl Game {
     /// Crops grow best in their own seasons. Out of season they grow slowly, and not at all
     /// in the cold, unless a glass roof makes a greenhouse over them. False skips this tick.
     pub(crate) fn season_lets_grow(&self, p: IVec3, crop: BlockId, r: u32) -> bool {
-        if self.dim != Dim::Overworld || !self.settings_seasons() || tropical(self.world.gen.biome_at(p.x, p.z)) {
+        if self.dim != Dim::Overworld || !self.settings_seasons() || tropical(self.world.gen.base_biome_at(p.x, p.z)) {
             return true;
         }
         let name = &self.reg.get(crop).name;

@@ -148,6 +148,38 @@ pub struct MobDef {
     /// the bank, and flops about when stranded. See `Mob::aquatic_steer`.
     #[serde(default = "d_false")]
     pub aquatic: bool,
+    /// Hints for the procedural animation (game/src/anim.rs). Everything it leaves out is
+    /// worked out from the model, the mob's size and what kind of creature it is.
+    #[serde(default)]
+    pub motion: MotionDef,
+    /// Copper it drops when it dies (money.rs works it out from its health and attack if unset).
+    #[serde(default)]
+    pub coins: Option<u32>,
+}
+
+/// How a mob moves, for the animation. All optional.
+#[derive(Deserialize, Clone, Debug, Default)]
+pub struct MotionDef {
+    /// Body plan: "biped", "quadruped", "bird", "spider", "hopper", "flyer", "swimmer", "floater".
+    #[serde(default)]
+    pub style: Option<String>,
+    /// 0 light and quick .. 1 big and heavy (slower, rolling steps, small bounce).
+    #[serde(default)]
+    pub heavy: Option<f32>,
+    /// How much the tail wags (dogs 1, cats 0.3).
+    #[serde(default)]
+    pub wag: Option<f32>,
+    /// Lowers its head to graze now and then while standing.
+    #[serde(default)]
+    pub graze: Option<bool>,
+    /// Extra bounce in the step (1 = normal).
+    #[serde(default)]
+    pub bounce: Option<f32>,
+    /// Parts to treat as tails or ears, when guessing from the model gets them wrong.
+    #[serde(default)]
+    pub tails: Vec<usize>,
+    #[serde(default)]
+    pub ears: Vec<usize>,
 }
 
 fn d_range() -> f32 {
@@ -231,6 +263,8 @@ pub struct Mob {
     pub max_health: f32,
     /// Seconds since last hurt (for the red flash and the health bar).
     pub hurt_age: f32,
+    /// Seconds since it last struck, bit or shot (drives the attack animation).
+    pub attack_age: f32,
     /// Walk cycle phase.
     pub walk: f32,
     pub walk_speed: f32,
@@ -258,6 +292,12 @@ pub struct Mob {
     /// Seconds left burning (fire spells) and slowed (frost spells).
     pub on_fire: f32,
     pub chill: f32,
+    /// Rain is falling on it (set by the game each tick): undead don't burn in sunlight then.
+    pub rained_on: bool,
+    /// Lasting harm the game put on it (Terraria-style debuffs: poison, frostburn, ichor...):
+    /// effect id and seconds left. The game ticks them; `vuln` is how much more a hit hurts.
+    pub debuffs: Vec<(u8, f32)>,
+    pub vuln: f32,
     /// Where a town NPC lives; it wanders near here.
     pub home: Option<Vec3>,
     /// Wears a saddle (horses and the like), and has the player on its back.
@@ -278,6 +318,11 @@ pub struct Mob {
     rng: Rng,
     /// Unique for the life of the program: how multiplayer names this mob.
     pub net_id: u32,
+    /// Drawn this much bigger than its kind (a giant bee to ride, a little fox pet).
+    pub size: f32,
+    /// Summoned by an item (pets and Terraria mounts): nothing can hurt or hit it, it hunts
+    /// nothing and the game moves it.
+    pub ghost: bool,
 }
 
 static NEXT_NET_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
@@ -304,6 +349,7 @@ impl Mob {
             health: def.health,
             max_health: def.health,
             hurt_age: 100.0,
+            attack_age: 100.0,
             walk: 0.0,
             walk_speed: 0.0,
             age: 0.0,
@@ -324,6 +370,9 @@ impl Mob {
             fed: 20.0 + rng.f32() * 40.0,
             on_fire: 0.0,
             chill: 0.0,
+            rained_on: false,
+            debuffs: Vec::new(),
+            vuln: 0.0,
             home: None,
             saddled: false,
             ridden: false,
@@ -336,6 +385,8 @@ impl Mob {
             fire_tick: 0.0,
             rng,
             net_id: NEXT_NET_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            size: 1.0,
+            ghost: false,
         }
     }
 
@@ -345,10 +396,10 @@ impl Mob {
 
     /// Returns true if the mob died from this hit.
     pub fn hurt(&mut self, damage: f32, from: Vec3) -> bool {
-        if !self.alive() {
+        if !self.alive() || self.ghost {
             return false;
         }
-        self.health -= damage;
+        self.health -= damage * (1.0 + self.vuln);
         self.hurt_age = 0.0;
         let dir = self.body.pos - from;
         self.body.knockback(dir, 6.0);
@@ -392,6 +443,7 @@ impl Mob {
     ) {
         self.age += dt;
         self.hurt_age += dt;
+        self.attack_age += dt;
         self.attack_cd -= dt;
         self.fed -= dt;
         self.panic -= dt;
@@ -399,6 +451,12 @@ impl Mob {
             self.dead_age += dt;
             // Keep falling while the death animation plays.
             self.body.step(world, &Input::default(), dt);
+            return;
+        }
+        if self.ghost {
+            // The game moves summoned pets and mounts itself.
+            self.on_fire = 0.0;
+            self.debuffs.clear();
             return;
         }
         let to_player = player - self.body.pos;
@@ -427,7 +485,7 @@ impl Mob {
         }
         self.chill = (self.chill - dt).max(0.0);
         self.body.speed_override = Some(def.speed * if self.chill > 0.0 { 0.4 } else { 1.0 });
-        if def.burns_in_daylight && daylight && sky_light_at_head >= 14 && !self.body.in_water {
+        if def.burns_in_daylight && daylight && sky_light_at_head >= 14 && !self.body.in_water && !self.rained_on {
             self.burn_tick += dt;
             if self.burn_tick > 1.0 {
                 self.burn_tick = 0.0;
@@ -445,6 +503,11 @@ impl Mob {
             self.aggro = true;
         }
         if hostile && dist > 28.0 {
+            self.aggro = false;
+        }
+        // A monster forgets a player it can't hurt (creative), so nothing that reads `aggro`
+        // keeps it coming.
+        if def.kind == Kind::Hostile && player_creative {
             self.aggro = false;
         }
         // A neutral animal calms down once the player is gone (or can't be hurt).
@@ -488,6 +551,7 @@ impl Mob {
                 }
                 if self.attack_cd <= 0.0 && dist < def.range {
                     self.attack_cd = 2.0 + self.rng.f32();
+                    self.attack_age = 0.0;
                     let hit = self.rng.chance((1.0 - dist / 22.0).clamp(0.2, 0.85));
                     let from = self.body.pos + Vec3::Y * (def.height * 0.75);
                     out.push(MobEvent::Shoot { damage: def.attack, from, at: player, hit });
@@ -496,6 +560,7 @@ impl Mob {
                 wish = flat.normalize_or_zero();
             } else if self.attack_cd <= 0.0 {
                 self.attack_cd = 1.0;
+                self.attack_age = 0.0;
                 out.push(MobEvent::Hit { damage: def.attack, from: self.body.center() });
             }
         } else if let Some(prey) = self.prey.filter(|_| self.hungry(def)) {
@@ -509,6 +574,7 @@ impl Mob {
                 wish = d.normalize_or_zero();
             } else if self.attack_cd <= 0.0 {
                 self.attack_cd = 1.0;
+                self.attack_age = 0.0;
                 out.push(MobEvent::Bite { damage: def.attack.max(2.0) });
             }
         } else if flee_player || panicking {
@@ -735,6 +801,44 @@ mod tests {
         }
         assert!(m.body.pos.x > 5.0, "{}", m.body.pos.x);
         assert!(ev.iter().any(|e| matches!(e, MobEvent::Hit { .. })));
+    }
+
+    #[test]
+    fn monsters_leave_a_creative_player_alone() {
+        let reg = vanilla();
+        let player = Vec3::new(4.0, 10.0, 0.5);
+        for name in ["zombie", "skeleton", "stalker", "spider"] {
+            let z = reg.id(name).unwrap();
+            let def = &reg.defs[z];
+            let mut m = Mob::new(z, def, Vec3::new(0.5, 10.0, 0.5), 1);
+            // Already angry (spawned by a trial spawner, say) when the player is in creative.
+            m.aggro = true;
+            let mut ev = Vec::new();
+            for _ in 0..400 {
+                m.tick(def, &Flat, player, true, 0, false, 0.02, &mut ev);
+            }
+            assert!(!m.aggro, "{name} still angry");
+            assert!(!ev.iter().any(|e| matches!(e, MobEvent::Hit { .. } | MobEvent::Shoot { .. } | MobEvent::Explode { .. })), "{name} attacked");
+            assert_eq!(m.fuse, 0.0, "{name}");
+        }
+    }
+
+    #[test]
+    fn zombie_burns_in_sun_but_not_in_rain() {
+        let reg = vanilla();
+        let z = reg.id("zombie").unwrap();
+        let def = &reg.defs[z];
+        let far = Vec3::new(500.0, 10.0, 0.5);
+        for rain in [false, true] {
+            let mut m = Mob::new(z, def, Vec3::new(0.5, 10.0, 0.5), 3);
+            let mut ev = Vec::new();
+            for _ in 0..200 {
+                m.rained_on = rain;
+                m.tick(def, &Flat, far, false, 15, true, 0.02, &mut ev);
+            }
+            let burned = ev.iter().any(|e| matches!(e, MobEvent::Burning));
+            assert_eq!(burned, !rain, "rain={rain}");
+        }
     }
 
     fn vanilla() -> MobRegistry {

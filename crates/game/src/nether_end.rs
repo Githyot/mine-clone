@@ -145,7 +145,7 @@ impl NetherEnd {
 }
 
 impl Game {
-    fn ne_mob_at(&self, p: Vec3, friendly_only: bool) -> Option<usize> {
+    pub(crate) fn ne_mob_at(&self, p: Vec3, friendly_only: bool) -> Option<usize> {
         self.mobs.list.iter().position(|m| {
             if !m.alive() {
                 return false;
@@ -427,7 +427,7 @@ impl Game {
 
     fn update_piglins(&mut self, dt: f32) {
         self.ne.piglin_t -= dt;
-        if self.ne.piglin_t > 0.0 || !self.survival {
+        if self.ne.piglin_t > 0.0 || !self.hunted() {
             return;
         }
         self.ne.piglin_t = 0.5;
@@ -666,8 +666,9 @@ impl Game {
     fn update_wither(&mut self, dt: f32) {
         let Some(i) = self.mobs.list.iter().position(|m| m.alive() && self.mobs.reg.defs[m.def].name == WITHER) else { return };
         let me = self.body.pos;
+        let hunted = self.hunted();
         let m = &mut self.mobs.list[i];
-        m.aggro = true;
+        m.aggro = hunted;
         let (pos, health, max) = (m.body.pos, m.health, m.max_health);
         // Waking up: it grows in power for ten seconds, untouchable, then blasts the ground.
         if self.ne.wither_wake > 0.0 {
@@ -694,7 +695,7 @@ impl Game {
         }
         // Its side heads spit extra skulls when angry.
         self.ne.wither_t += dt;
-        if self.ne.wither_t > 2.6 && health < max * 0.5 && self.survival {
+        if self.ne.wither_t > 2.6 && health < max * 0.5 && hunted {
             self.ne.wither_t = 0.0;
             let from = pos + Vec3::Y * 3.0;
             let at = me + Vec3::Y;
@@ -741,7 +742,7 @@ impl Game {
         }
         let crystals = self.live_crystals();
         let me = self.body.pos;
-        let creative = !self.survival;
+        let creative = !self.hunted();
         let glow = self.glow_layer();
         let b = &mut self.ne.dragon;
         b.t += dt;

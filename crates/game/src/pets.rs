@@ -11,7 +11,7 @@ use voxel::physics::Input;
 
 use crate::Game;
 
-const MOUNTS: [&str; 4] = ["horse", "donkey", "llama", "camel"];
+const MOUNTS: [&str; 7] = ["horse", "donkey", "llama", "camel", "pig", "mule", "skeleton_horse"];
 /// (wild, tamed, the food that tames it, chance per try)
 const TAMES: [(&str, &str, &[&str], f32); 2] = [("wolf", "wolf_tame", &["bone"], 0.33), ("cat", "cat_tame", &["cod", "salmon", "raw_cod", "raw_salmon"], 0.33)];
 
@@ -20,6 +20,11 @@ pub struct PetSave {
     pub name: String,
     pub pos: [f32; 3],
     pub saddled: bool,
+    /// Which way it faces, and what an armor stand wears (stands.rs).
+    #[serde(default)]
+    pub yaw: f32,
+    #[serde(default)]
+    pub gear: Vec<Option<voxel::item::ItemStack>>,
 }
 
 pub fn load(dir: &Path) -> Vec<PetSave> {
@@ -30,7 +35,7 @@ impl Game {
     fn is_pet(&self, i: usize) -> bool {
         let m = &self.mobs.list[i];
         let n = self.mobs.reg.defs[m.def].name.as_str();
-        n.ends_with("_tame") || m.saddled
+        n.ends_with("_tame") || m.saddled || matches!(n, "armor_stand" | "snow_golem" | "allay")
     }
 
     pub(crate) fn save_pets(&self) {
@@ -38,7 +43,8 @@ impl Game {
             .filter(|&i| self.mobs.list[i].alive() && self.is_pet(i))
             .map(|i| {
                 let m = &self.mobs.list[i];
-                PetSave { name: self.mobs.reg.defs[m.def].name.clone(), pos: m.body.pos.to_array(), saddled: m.saddled }
+                let gear = self.stands.gear.get(&m.net_id).map(|g| g.0.to_vec()).unwrap_or_default();
+                PetSave { name: self.mobs.reg.defs[m.def].name.clone(), pos: m.body.pos.to_array(), saddled: m.saddled, yaw: m.yaw, gear }
             })
             .chain(self.pets_waiting.iter().cloned())
             .collect();
@@ -109,6 +115,8 @@ impl Game {
     /// The player on a mount: it runs where they steer. True while riding.
     pub(crate) fn mount_step(&mut self, wish: Vec3, jump: bool, sneak: bool, dt: f32) -> bool {
         let Some(i) = self.mobs.list.iter().position(|m| m.ridden) else { return false };
+        // A pig only goes where a carrot on a stick points it.
+        let wish = self.pig_steer(wish);
         let alive = self.mobs.list[i].alive();
         let f = self.forward();
         let m = &mut self.mobs.list[i];
@@ -140,6 +148,18 @@ impl Game {
             return;
         }
         let me = self.body.pos;
+        // Pets left far behind wait in the save instead of vanishing with the wild ones.
+        let mut k = 0;
+        while k < self.mobs.list.len() {
+            let m = &self.mobs.list[k];
+            if m.alive() && !m.ridden && m.body.pos.distance(me) > 120.0 && self.is_pet(k) {
+                let m = self.mobs.list.remove(k);
+                let gear = self.stands.gear.remove(&m.net_id).map(|g| g.0.to_vec()).unwrap_or_default();
+                self.pets_waiting.push(PetSave { name: self.mobs.reg.defs[m.def].name.clone(), pos: m.body.pos.to_array(), saddled: m.saddled, yaw: m.yaw, gear });
+            } else {
+                k += 1;
+            }
+        }
         let mut k = 0;
         while k < self.pets_waiting.len() {
             let p = Vec3::from(self.pets_waiting[k].pos);
@@ -148,6 +168,15 @@ impl Game {
                 if self.mobs.spawn(&pet.name, p) {
                     if let Some(m) = self.mobs.list.last_mut() {
                         m.saddled = pet.saddled;
+                        m.yaw = pet.yaw;
+                        if pet.gear.iter().any(|g| g.is_some()) {
+                            let mut gear: crate::stands::Gear = Default::default();
+                            for (i, g) in pet.gear.iter().take(5).enumerate() {
+                                gear[i] = *g;
+                            }
+                            let (id, pos) = (m.net_id, m.body.pos);
+                            self.stands.gear.insert(id, (gear, pos));
+                        }
                     }
                 }
             } else {

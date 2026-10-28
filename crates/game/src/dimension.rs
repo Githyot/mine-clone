@@ -46,13 +46,16 @@ impl Game {
         self.seat = None;
         self.tnt.clear();
         self.bobber = None;
-        self.renderer.clear_chunks();
+        if let Some(r) = self.renderer.get_mut() {
+            r.clear_chunks();
+        }
         self.mobs.list.clear();
         self.mobs.arrows.clear();
         self.nether_end_loaded();
         self.target = None;
         self.mining = None;
         self.paintings = paintings::load(&save.dir, &self.painting_defs);
+        self.extras.load(&save.dir, &crate::level_path_hint(&self.base, &self.world_name));
         let there = crate::survival::Survival::load(&save.dir, &self.items);
         if carry {
             self.surv.containers = there.containers;
@@ -171,6 +174,11 @@ impl Game {
     /// Standing in a portal for a few seconds takes the player to the other dimension.
     pub(crate) fn portal_step(&mut self, dt: f32) {
         if self.mod_portal_step(dt) {
+            return;
+        }
+        if self.dim != Dim::End && self.body.pos.y < voxel::chunk::MIN_Y as f32 - 24.0 && self.survival {
+            // Under the bottom of the world.
+            self.damage(4.0 * dt * 10.0, None);
             return;
         }
         if self.dim == Dim::End && self.body.pos.y < -24.0 {

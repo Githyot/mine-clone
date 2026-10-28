@@ -802,8 +802,8 @@ def stronghold():
 
 
 def windmill():
-    """A windmill (Towns and Towers idea): a cobblestone base, a plank cap and four sails of
-    wool on fence arms over the north side."""
+    """A windmill (Towns and Towers idea): a cobblestone base, a plank cap and turning sails
+    over the north side."""
     W, D, H = 9, 6, 13
     layers = [grid(W, D) for _ in range(H)]
     for y in range(H):
@@ -823,18 +823,9 @@ def windmill():
     layers[3][1][4] = "G"
     layers[1][2][3] = "c"
     layers[1][4][5] = "K"
-    # Sails on the north face: a cross of fence arms with wool panels.
-    hub = (4, 6)  # x, y
-    layers[hub[1]][0][hub[0]] = "L"
-    for k in range(1, 5):
-        for (dx, dy) in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-            x, y = hub[0] + dx * k, hub[1] + dy * k
-            if 0 <= x < W and 1 <= y < H:
-                layers[y][0][x] = "f"
-                # The sail beside each arm, turning the same way round.
-                sx, sy = x + dy, y - dx
-                if 0 <= sx < W and 1 <= sy < H and k >= 2:
-                    layers[sy][0][sx] = "W"
+    # The sails on the north face: a hub block whose sails the game draws turning in the
+    # wind (windmill.rs), facing north (variant 0) and turned with the structure.
+    layers[6][0][4] = "H"
     return {
         "name": "moinho",
         "biomes": ["Plains", "Savanna", "Cherry Grove"],
@@ -842,7 +833,7 @@ def windmill():
         "chance": 0.35,
         "foundation": "cobblestone",
         "palette": {"C": "cobblestone", "P": "oak_planks", "s": "oak_slab", "G": "glass_pane", "d": "oak_door:2", "u": "oak_door:10",
-                    "c": "chest", "K": "crafting_table", "L": "oak_log", "f": "oak_fence", "W": "white_wool"},
+                    "c": "chest", "K": "crafting_table", "H": "windmill_sails"},
         "layers": [rows(l) for l in layers],
         "loot": [("", "oak_sapling", 1, 3, 0.5), ("", "apple", 1, 4, 0.5), ("", "string", 1, 4, 0.4), ("", "iron_ingot", 1, 2, 0.3)],
     }
@@ -1030,6 +1021,10 @@ def mineshaft():
         layers[3][z][x] = "h"
     layers[1][2][11] = "c"
     layers[1][13][22] = "c"
+    # A cave spider spawner in the north-south tunnel, wrapped in webs.
+    layers[1][17][12] = "S"
+    for (x, z) in ((11, 16), (13, 18), (12, 18)):
+        layers[2][z][x] = "w"
     return {
         "name": "mina_abandonada",
         "biomes": ["Plains", "Forest", "Birch Forest", "Taiga", "Dark Forest", "Mountains", "Snowy Plains", "Savanna", "Desert",
@@ -1037,7 +1032,7 @@ def mineshaft():
         "spacing": 10,
         "chance": 0.35,
         "sink": 28,
-        "palette": {"P": "oak_planks", "D": "cobblestone", "f": "oak_fence", "r": "rail", "w": "cobweb", "h": "lantern:1", "c": "chest"},
+        "palette": {"P": "oak_planks", "D": "cobblestone", "f": "oak_fence", "r": "rail", "w": "cobweb", "h": "lantern:1", "c": "chest", "S": "spawner"},
         "layers": [rows(l) for l in layers],
         "loot": [("", "raw_iron", 2, 6, 0.6), ("", "coal", 3, 10, 0.7), ("", "redstone", 2, 8, 0.5), ("", "rail", 4, 12, 0.5),
                  ("", "torch", 4, 12, 0.6), ("", "diamond", 1, 2, 0.15), ("", "gold_ingot", 1, 3, 0.35), ("", "bread", 1, 3, 0.4)],
@@ -1453,6 +1448,10 @@ def ron(structs):
         out.append(f'        chance: {s["chance"]},')
         if s.get("sink"):
             out.append(f'        sink: {s["sink"]},')
+        if s.get("rough"):
+            out.append(f'        rough: {s["rough"]},')
+        if s.get("mobs"):
+            out.append("        mobs: [" + ", ".join(f'("{m}", {n})' for m, n in s["mobs"]) + "],")
         if s.get("piece_only"):
             out.append("        piece_only: true,")
         if s.get("pieces"):
@@ -1473,6 +1472,8 @@ def ron(structs):
     out.append("])")
     return "\n".join(out) + "\n"
 
+
+from lote3_structures import buried_treasure, ocean_ruin, woodland_mansion  # noqa: E402
 
 structs = [
     house("oak_planks", "oak_log", "oak_roof", ["Plains", "Forest"], "casa_de_carvalho"),
@@ -1506,6 +1507,10 @@ structs = [
     bastion(),
     end_city(),
     end_ship(),
+    woodland_mansion(),
+    ocean_ruin("pedra"),
+    ocean_ruin("areia"),
+    buried_treasure(),
 ]
 OUT.write_text(ron(structs))
 print(f"wrote {OUT} ({len(structs)} structures)")

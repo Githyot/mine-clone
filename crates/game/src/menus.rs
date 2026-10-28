@@ -11,7 +11,7 @@ use voxel::worldgen::{Biome, Generator};
 use crate::audio::Sfx;
 use crate::ui::{GRAY, WHITE, YELLOW};
 use crate::world::World;
-use crate::{level_path_hint, paintings, textures, Game, Screen, RENDER_DISTANCES};
+use crate::{level_path_hint, paintings, textures, Game, Screen};
 
 pub struct WorldEntry {
     pub name: String,
@@ -26,6 +26,8 @@ pub struct NewWorldForm {
     pub name: String,
     pub seed: String,
     pub survival: bool,
+    /// World difficulty (tr_modes.rs): 0 Normal, 1 Especialista, 2 Mestre.
+    pub mode: u8,
     /// 0 = name field, 1 = seed field.
     pub field: usize,
 }
@@ -107,7 +109,9 @@ impl Game {
         self.riding = None;
         self.seat = None;
         self.tnt.clear();
-        self.renderer.clear_chunks();
+        if let Some(r) = self.renderer.get_mut() {
+            r.clear_chunks();
+        }
         self.world_name = name.to_string();
         self.seed = seed;
         let (sx, sy, sz) = gen.find_spawn();
@@ -126,7 +130,7 @@ impl Game {
         self.mobs.list.clear();
         self.target = None;
         // What belongs to the world itself: life and mana crystals, bosses beaten, town folk.
-        self.max_health = level.as_ref().map(|l| l.max_health.clamp(20.0, 40.0)).unwrap_or(20.0);
+        self.max_health = level.as_ref().map(|l| l.max_health.clamp(20.0, 50.0)).unwrap_or(20.0);
         self.magic.max_mana = level.as_ref().map(|l| l.max_mana).unwrap_or(20.0);
         self.boss = crate::bosses::BossState::new(level.as_ref().map(|l| l.bosses.clone()).unwrap_or_default());
         self.town = crate::npcs::Town::new(level.as_ref().map(|l| l.npcs.iter().map(|(n, h)| crate::npcs::NpcSave { name: n.clone(), home: *h }).collect()).unwrap_or_default());
@@ -154,6 +158,7 @@ impl Game {
         self.paintings = paintings::load(&save.dir, &self.painting_defs);
         self.surv = crate::survival::Survival::load(&save.dir, &self.items);
         self.prog = crate::progression::Prog::load(&save.dir);
+        self.extras.load(&save.dir, &crate::level_path_hint(&self.base, &self.world_name));
         let dim = level.as_ref().map(|l| voxel::worldgen::Dim::from_u8(l.dim)).unwrap_or_default();
         if dim != voxel::worldgen::Dim::Overworld {
             self.load_dim(dim, false);
@@ -188,7 +193,7 @@ impl Game {
 
     pub(crate) fn is_title_screen(&self) -> bool {
         matches!(self.screen, Screen::Title | Screen::Worlds | Screen::CreateWorld | Screen::Multiplayer)
-            || (!self.world_open && matches!(self.screen, Screen::Options | Screen::Packs))
+            || (!self.world_open && matches!(self.screen, Screen::Options | Screen::Packs | Screen::Keys | Screen::Voice))
     }
 
     fn click_sound(&mut self) {
@@ -267,7 +272,7 @@ impl Game {
                     self.packs = textures::list_resource_packs(&self.base.join("resourcepacks"));
                     self.set_screen(Screen::Packs);
                 }
-                10 => self.set_screen(Screen::Options),
+                10 => self.open_options(),
                 _ => {
                     self.settings.save(&self.base.join("settings.ron"));
                     std::process::exit(0);
@@ -345,7 +350,7 @@ impl Game {
                     while self.worlds.iter().any(|w| w.name == format!("Mundo {n}")) {
                         n += 1;
                     }
-                    self.new_world = NewWorldForm { name: format!("Mundo {n}"), seed: String::new(), survival: true, field: 0 };
+                    self.new_world = NewWorldForm { name: format!("Mundo {n}"), seed: String::new(), survival: true, mode: 0, field: 0 };
                     self.set_screen(Screen::CreateWorld);
                 }
                 _ => self.set_screen(Screen::Title),
@@ -382,6 +387,11 @@ impl Game {
             hit = Some(0);
         }
         y += fh + 2.0 * s;
+        let diff = format!("Dificuldade: {}", crate::tr_modes::MODE_NAMES[self.new_world.mode.min(2) as usize]);
+        if self.ui.button(x, y, fw, fh, &diff, mouse) && self.clicked {
+            hit = Some(3);
+        }
+        y += fh + 2.0 * s;
         let hint = if self.new_world.survival { "Vida, fome de aventura e monstros à noite." } else { "Voe, todos os blocos, sem dano." };
         let hs = (s / 2.0).floor().max(1.0);
         let tw = self.ui.text_width(hint, hs);
@@ -398,6 +408,7 @@ impl Game {
             self.click_sound();
             match i {
                 0 => self.new_world.survival = !self.new_world.survival,
+                3 => self.new_world.mode = (self.new_world.mode + 1) % 3,
                 1 => self.create_world(),
                 _ => self.set_screen(Screen::Worlds),
             }
@@ -416,6 +427,12 @@ impl Game {
             final_name = format!("{name} ({n})");
             n += 1;
         }
+        if self.new_world.mode > 0 {
+            // The Terraria side reads it on the first frame in the world (tr.rs).
+            let dir = level_path_hint(&self.base, &final_name);
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::write(dir.join("tr.ron"), format!("(mode: {})", self.new_world.mode));
+        }
         let seed = parse_seed(&self.new_world.seed);
         let survival = self.new_world.survival;
         self.open_world(&final_name, seed, Some(survival));
@@ -430,6 +447,14 @@ impl Game {
             return;
         }
         self.creative_type(text);
+        if self.screen == Screen::Sign && self.extras.book.is_some() {
+            self.book_type(text);
+            return;
+        }
+        if self.screen == Screen::Sign && self.cmdblocks.edit.is_some() {
+            self.cmdblock_type(text);
+            return;
+        }
         if self.screen == Screen::Sign {
             self.naming_type(text);
             self.sign_type(text);
@@ -457,122 +482,6 @@ impl Game {
             KeyCode::Enter | KeyCode::NumpadEnter => self.create_world(),
             _ => {}
         }
-    }
-
-    /// Options shared by the title screen and the pause menu.
-    pub(crate) fn options_labels(&self) -> Vec<String> {
-        let st = &self.settings;
-        let onoff = |b: bool| if b { "Sim" } else { "Não" };
-        let custom = self.audio.as_ref().map(|a| a.custom_track_count()).unwrap_or(0);
-        vec![
-            "Concluído".to_string(),
-            format!("Campo de visão: {:.0}", st.fov),
-            format!("Distância de visão: {} chunks", st.render_distance),
-            format!("Sensibilidade do mouse: {:.0}%", st.mouse_sensitivity / 0.12 * 100.0),
-            format!("Inverter mouse: {}", onoff(st.invert_mouse)),
-            format!("Música: {} ({} suas)", st.music_mode.label(), custom),
-            format!("Volume da música: {:.0}%", st.music_volume * 100.0),
-            format!("Volume dos sons: {:.0}%", st.sound_volume * 100.0),
-            format!("Nuvens: {}", onoff(st.show_clouds)),
-            format!("VSync: {}", onoff(st.vsync)),
-            format!("Mobs: {}", onoff(st.mobs)),
-            format!("Tamanho da interface: {}", if st.gui_scale == 0 { "Automático".to_string() } else { st.gui_scale.to_string() }),
-            format!("Balanço da visão: {}", onoff(st.view_bobbing)),
-            format!("Itens no chão: {}", if st.flat_drops { "Deitados" } else { "Flutuando" }),
-            format!("Construções: {}", if st.sparse_structures { "Espaçadas" } else { "Normais" }),
-            format!("Resolução das texturas: {}x", st.texture_resolution),
-            format!("Animações da interface: {}", onoff(st.ui_animations)),
-            "Controle...".to_string(),
-            "Pacotes de textura...".to_string(),
-        ]
-    }
-
-    pub(crate) fn draw_options(&mut self, w: f32, h: f32, mouse: (f32, f32)) {
-        let s = self.ui.scale;
-        let labels = self.options_labels();
-        let bw = 150.0 * s;
-        let bh = 20.0 * s;
-        let gap = 4.0 * s;
-        let rows = (labels.len() - 1).div_ceil(2);
-        let total_h = (rows + 1) as f32 * (bh + gap);
-        let y0 = ((h - total_h) / 2.0).max(22.0 * s);
-        self.ui.text_centered(w / 2.0, y0 - 14.0 * s, "Opções", WHITE);
-        let mut hit = None;
-        for (i, l) in labels.iter().enumerate().skip(1) {
-            let k = i - 1;
-            let x = w / 2.0 - bw - gap / 2.0 + (k % 2) as f32 * (bw + gap);
-            let y = y0 + (k / 2) as f32 * (bh + gap);
-            if self.ui.button(x, y, bw, bh, l, mouse) && self.clicked {
-                hit = Some(i);
-            }
-        }
-        let y = y0 + rows as f32 * (bh + gap) + gap;
-        if self.ui.button(w / 2.0 - 100.0 * s, y, 200.0 * s, bh, &labels[0], mouse) && self.clicked {
-            hit = Some(0);
-        }
-        if let Some(i) = hit {
-            self.options_button(i);
-        }
-    }
-
-    fn options_button(&mut self, i: usize) {
-        self.click_sound();
-        let cycle = |v: f32, steps: &[f32]| -> f32 { steps.iter().copied().find(|&x| x > v + 1e-3).unwrap_or(steps[0]) };
-        let st = &mut self.settings;
-        match i {
-            0 => {
-                let back = if self.world_open { Screen::Paused } else { Screen::Title };
-                self.set_screen(back);
-            }
-            1 => st.fov = cycle(st.fov, &[50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0]),
-            2 => {
-                let cur = RENDER_DISTANCES.iter().position(|&d| d >= st.render_distance).unwrap_or(0);
-                st.render_distance = RENDER_DISTANCES[(cur + 1) % RENDER_DISTANCES.len()];
-            }
-            3 => st.mouse_sensitivity = cycle(st.mouse_sensitivity, &[0.06, 0.09, 0.12, 0.15, 0.18, 0.24]),
-            4 => st.invert_mouse = !st.invert_mouse,
-            5 => {
-                st.music_mode = st.music_mode.next();
-                if let Some(a) = self.audio.as_mut() {
-                    a.reload_tracks();
-                }
-            }
-            6 => st.music_volume = cycle(st.music_volume, &[0.0, 0.2, 0.4, 0.6, 0.8, 1.0]),
-            7 => st.sound_volume = cycle(st.sound_volume, &[0.0, 0.2, 0.4, 0.6, 0.8, 1.0]),
-            8 => st.show_clouds = !st.show_clouds,
-            9 => {
-                st.vsync = !st.vsync;
-                let v = st.vsync;
-                self.renderer.set_vsync(v);
-            }
-            10 => {
-                st.mobs = !st.mobs;
-                self.mobs.enabled = st.mobs;
-            }
-            11 => st.gui_scale = (st.gui_scale + 1) % 5,
-            12 => st.view_bobbing = !st.view_bobbing,
-            13 => st.flat_drops = !st.flat_drops,
-            14 => st.sparse_structures = !st.sparse_structures,
-            15 => {
-                st.texture_resolution = match st.texture_resolution {
-                    16 => 32,
-                    32 => 64,
-                    64 => 128,
-                    _ => 16,
-                };
-                self.reload_textures();
-            }
-            16 => st.ui_animations = !st.ui_animations,
-            17 => {
-                self.options_back = self.screen;
-                self.set_screen(Screen::Controls);
-            }
-            _ => {
-                self.packs = textures::list_resource_packs(&self.base.join("resourcepacks"));
-                self.set_screen(Screen::Packs);
-            }
-        }
-        self.settings.save(&self.base.join("settings.ron"));
     }
 
     pub(crate) fn draw_packs(&mut self, w: f32, h: f32, mouse: (f32, f32)) {
@@ -612,7 +521,7 @@ impl Game {
         }
         if back {
             self.click_sound();
-            self.set_screen(if self.world_open { Screen::Paused } else { Screen::Title });
+            self.set_screen(Screen::Options);
         }
     }
 
@@ -621,7 +530,8 @@ impl Game {
         let to = match self.screen {
             Screen::Worlds | Screen::Multiplayer => Screen::Title,
             Screen::CreateWorld => Screen::Worlds,
-            Screen::Options | Screen::Packs => {
+            Screen::Voice | Screen::Packs | Screen::Keys => Screen::Options,
+            Screen::Options => {
                 if self.world_open {
                     Screen::Paused
                 } else {

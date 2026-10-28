@@ -94,10 +94,19 @@ pub struct Survival {
     pub cursor: Option<ItemStack>,
     pub craft: [Option<ItemStack>; 9],
     pub open: Open,
-    /// The open shop: goods, their prices in emeralds and the seller's name.
+    /// The open shop: goods, their prices in copper and the seller's name.
     pub shop: Inventory,
-    pub shop_prices: Vec<u8>,
+    pub shop_prices: Vec<u32>,
     pub shop_name: String,
+    /// What the open settler buys, and for how much each (money.rs).
+    pub shop_want: Option<(ItemId, u64)>,
+    /// First offer row shown, and whether the mouse is over the offer list.
+    pub shop_scroll: usize,
+    pub shop_hover: bool,
+    /// The wallet, in copper (money.rs).
+    pub money: u64,
+    /// Coins just picked up and until when they show beside the hotbar.
+    pub money_flash: (u64, f32),
     pub hunger: f32,
     pub saturation: f32,
     pub exhaustion: f32,
@@ -170,6 +179,11 @@ impl Survival {
             shop: Inventory::new(0),
             shop_prices: Vec::new(),
             shop_name: String::new(),
+            shop_want: None,
+            shop_scroll: 0,
+            shop_hover: false,
+            money: 0,
+            money_flash: (0, 0.0),
             hunger: 20.0,
             saturation: 5.0,
             exhaustion: 0.0,
@@ -296,6 +310,9 @@ struct Saved {
     /// Boats: where, which way and which wood.
     #[serde(default)]
     boats: Vec<([f32; 3], f32, String)>,
+    /// The wallet, in copper.
+    #[serde(default)]
+    money: u64,
 }
 
 fn save_stacks(items: &ItemRegistry, inv: &Inventory) -> Vec<SavedStack> {
@@ -338,6 +355,7 @@ impl Survival {
                 .iter()
                 .map(|c| (c.pos.to_array(), c.yaw, c.items.iter().map(|s| Some(save_stack(items, s))).collect()))
                 .collect(),
+            money: self.money,
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
@@ -379,6 +397,7 @@ impl Survival {
         sv.boats = s.boats.iter().map(|(p, yaw, item)| crate::boats::Boat::new(Vec3::from(*p), *yaw, item)).collect();
         sv.saplings = s.saplings.into_iter().map(|(p, t)| (IVec3::from(p), t)).collect();
         sv.offhand = load_stacks(items, std::slice::from_ref(&s.offhand), 1).slots[0];
+        sv.money = s.money;
         sv
     }
 }
@@ -400,7 +419,7 @@ pub fn item_icon(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRegistry,
         crate::enchanting::draw_glint(ui, x, y, size, crate::progression::clock_now());
     }
     let s = ui.scale;
-    let durability = it.tool.as_ref().map(|t| t.durability).or(it.armor.map(|a| a.durability));
+    let durability = it.max_wear();
     if let Some(dur) = durability {
         if stack.wear() > 0 {
             let k = 1.0 - stack.wear() as f32 / dur as f32;
@@ -510,6 +529,9 @@ pub(crate) enum Slot {
     Offhand,
     /// Worn accessories (Etapa 5).
     Acc(usize),
+    /// Lote 11: armour worn for looks, and dyes (vanity.rs).
+    Vanity(usize),
+    Dye(usize),
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -529,7 +551,9 @@ impl Game {
 
     /// Armor takes a share of a hit (4% per point, up to 80%) and wears a little.
     pub(crate) fn armor_absorb(&mut self, amount: f32) -> f32 {
-        let points = self.armor_points().min(20);
+        // Defense after debuffs and with accessories and buffs (rpg.rs); this classic part
+        // counts up to 20 points.
+        let points = self.defense_points().min(20);
         if points == 0 {
             return amount;
         }
@@ -552,7 +576,7 @@ impl Game {
     /// Seconds a weapon needs between full-strength swings (the hand is quick, an axe slow).
     pub(crate) fn attack_cooldown(&self) -> f32 {
         // A modifier makes the weapon quicker or slower (Etapa 5).
-        let k = self.held_stack().and_then(|s| crate::affixes::of(&s)).map(|a| 1.0 / a.speed).unwrap_or(1.0);
+        let k = self.held_stack().and_then(|s| crate::affixes::of(&s)).map(|a| 1.0 / a.speed).unwrap_or(1.0) / self.t5.rpg.stats.melee_speed.max(0.3);
         if let Some(c) = self.weapon_cooldown() {
             return k * c / self.gem_attack_speed();
         }
@@ -596,12 +620,15 @@ impl Game {
     pub(crate) fn wear_held(&mut self, amount: u16) {
         let sel = self.selected;
         let Some(s) = self.surv.inv.slots[sel] else { return };
-        let Some(t) = self.items.get(s.item).tool.clone() else { return };
+        let Some(max) = self.items.get(s.item).max_wear() else { return };
+        if self.items.get(s.item).armor.is_some() {
+            return;
+        }
         if self.unbreaking_saves(&s, false) {
             return;
         }
         let d = s.wear() + amount;
-        if d >= t.durability {
+        if d >= max {
             self.surv.inv.slots[sel] = None;
             self.sfx(Sfx::Break(Material::Wood));
             self.toast("Sua ferramenta quebrou", 2.0);
@@ -662,6 +689,7 @@ impl Game {
         let tool = self.held_tool();
         let drops = self.items.drops(&self.reg, id, tool.as_ref(), &mut self.surv.rng);
         let drops = self.ench_drops(id, drops);
+        let drops = self.extras_drops(id, drops);
         self.fase6_block_broken(pos, id);
         let c = pos.as_vec3() + Vec3::splat(0.5);
         let harvested = self.items.can_harvest(&self.reg, id, tool.as_ref());
@@ -715,6 +743,7 @@ impl Game {
             }
             let _ = inv.add_in(&self.items, st, order);
         }
+        self.extras_chest_loot(&mut inv);
         self.apoth_chest_loot(&mut inv);
         inv
     }
@@ -849,6 +878,10 @@ impl Game {
                 }
             }
             self.spawn_orbs(pos + Vec3::Y * 0.5, xp);
+            if self.survival {
+                let v = self.mob_coins(def);
+                self.drop_coins(pos + Vec3::Y * 0.5, v);
+            }
         }
     }
 
@@ -865,7 +898,9 @@ impl Game {
             None => 1.0,
         };
         // Etapa 5: the weapon's modifier and the warrior emblem.
-        let bonus = self.held_stack().and_then(|s| crate::affixes::of(&s)).map(|a| a.damage).unwrap_or(1.0) * self.melee_bonus();
+        // Whips count as summoner weapons (rpg.rs).
+        let class = if crate::rpg::is_whip(&self.held_key()) { self.t5.rpg.stats.dmg[crate::rpg::SUMMON] } else { self.melee_bonus() };
+        let bonus = self.held_stack().and_then(|s| crate::affixes::of(&s)).map(|a| a.damage).unwrap_or(1.0) * class;
         self.gem_attack(base * bonus * (0.2 + 0.8 * k * k))
     }
 
@@ -882,7 +917,7 @@ impl Game {
         if !items.is_empty() {
             // Out of the void or lava, the body rests on the ground above.
             let mut pos = self.body.pos;
-            pos.y = pos.y.max(1.0);
+            pos.y = pos.y.max(voxel::chunk::MIN_Y as f32 + 6.0);
             let p = pos.floor().as_ivec3();
             let mut q = p;
             while q.y < p.y + 40 && (Terrain::solid(&self.world, q) || self.world.fluid(self.world.block_or_air(q)) == 2) {
@@ -916,10 +951,19 @@ impl Game {
 
     /// Right click in survival. Returns true when something happened.
     pub(crate) fn surv_use(&mut self) -> bool {
+        if self.nature_sip() {
+            return true;
+        }
         if self.loot_corpse() {
             return true;
         }
-        if self.lead_use() || self.pet_use() || self.village_use() || self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
+        if self.extras_mob_use() {
+            return true;
+        }
+        if self.lead_use() || self.stand_use() || self.pet_use() || self.village_use() || self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
+            return true;
+        }
+        if self.plugins_use_item() {
             return true;
         }
         if let Some(st) = self.held_stack() {
@@ -942,8 +986,12 @@ impl Game {
                 if self.nether_end_block_use(hit.block, &name) {
                     return true;
                 }
+                if self.extras_block_use(&name, hit.block) {
+                    return true;
+                }
                 match name.as_str() {
                     n if n.ends_with("_sign") => return self.edit_sign(hit.block),
+                    "command_block" => return self.cmdblock_open(hit.block),
                     "bee_nest_honey" | "beehive_honey" => return self.hive_use(hit.block, &name),
                     "composter" | "composter_ready" => {
                         if self.use_composter(hit.block, name == "composter_ready") {
@@ -961,8 +1009,8 @@ impl Game {
                         self.open_container(Open::Furnace(hit.block));
                         return true;
                     }
-                    n if n == "hopper" || n == "dropper" || n == "dispenser" || n == "crafter" || n.ends_with("_drawer") || n == "shulker_box" => {
-                        let n = if n == "hopper" { 5 } else if n.ends_with("_drawer") { 18 } else if n == "shulker_box" { 27 } else { 9 };
+                    n if n == "hopper" || n == "dropper" || n == "dispenser" || n == "crafter" || n.ends_with("_drawer") || n.ends_with("shulker_box") => {
+                        let n = if n == "hopper" { 5 } else if n.ends_with("_drawer") { 18 } else if n.ends_with("shulker_box") { 27 } else { 9 };
                         self.surv.containers.entry(hit.block).or_insert_with(|| Container::Chest(Inventory::new(n)));
                         self.open_container(Open::Chest(hit.block));
                         return true;
@@ -981,6 +1029,16 @@ impl Game {
                         return true;
                     }
                     "reforge_table" => return self.t5_use_block("reforge_table"),
+                    "scale_altar" => return self.use_scale_altar(hit.block),
+                    "piggy_bank" => return self.open_bank(0),
+                    "music_box" => return self.use_music_box(hit.block),
+                    "dye_vat" => return self.use_dye_vat(),
+                    "locked_chest" => return self.use_locked_chest(hit.block),
+                    "safe" => return self.open_bank(1),
+                    n if n.starts_with("pylon_") => {
+                        let kind = n.trim_start_matches("pylon_").to_string();
+                        return self.use_pylon(hit.block, &kind);
+                    }
                     _ => {}
                 }
             }
@@ -991,6 +1049,9 @@ impl Game {
             return self.equip_held();
         }
         if self.nether_end_use(&item.name) {
+            return true;
+        }
+        if self.extras_item_use(&item.name) {
             return true;
         }
         if self.pot_plant(item.places) {
@@ -1082,12 +1143,14 @@ impl Game {
             if self.redstone.kind(self.world.block_or_air(hit.block)) != crate::redstone::Kind::Tnt {
                 if self.light_portal(hit) {
                     self.anim.start_swing();
+                    self.wear_held(1);
                     return true;
                 }
-                return false;
+                return self.light_fire();
             }
             self.prime_tnt(hit.block, 4.0);
             self.anim.start_swing();
+            self.wear_held(1);
             return true;
         }
         let Some(block) = item.places else { return false };
@@ -1100,6 +1163,9 @@ impl Game {
                 self.surv.inv.take(sel, 1);
             }
             self.after_place(pos);
+            let placed = self.world.block_or_air(pos);
+            self.extras_after_place(pos, placed);
+            self.tr_after_place(pos);
             if trees::is_sapling(&self.reg.get(block).name) {
                 let t = 60.0 + self.surv.rng.f32() * 120.0;
                 self.surv.saplings.push((pos, t));
@@ -1340,7 +1406,7 @@ impl Game {
             }
         }
         // Healing needs a full-ish stomach; an empty one hurts.
-        if self.surv.hunger >= 18.0 && self.health < self.max_health {
+        if self.surv.hunger >= 18.0 && self.health < self.max_health && !self.has_effect(crate::effects::BLEEDING) {
             self.surv.heal_t += dt;
             let every = if self.surv.hunger >= 20.0 && self.surv.saturation > 0.0 { 0.5 } else { 4.0 };
             if self.surv.heal_t >= every {
@@ -1362,6 +1428,7 @@ impl Game {
         } else {
             self.surv.starve_t = 0.0;
         }
+        self.nature_update(dt);
         // Eating: hold the use button with food in hand.
         let food: Option<FoodDef> = self.held_stack().and_then(|s| self.items.get(s.item).food);
         let wants = use_held && self.screen == Screen::Playing && food.is_some() && self.surv.hunger < 20.0;
@@ -1372,6 +1439,15 @@ impl Game {
                 self.surv.eat_sound = 0.22;
                 self.sfx(Sfx::Eat);
                 self.anim.start_swing();
+                // Crumbs of the food fall from the mouth (game feel, Lote 6).
+                if let Some(Look::Sprite(l)) = self.held_stack().map(|s| self.items.get(s.item).look) {
+                    let at = self.body.eye() + self.forward() * 0.45 - Vec3::Y * 0.2;
+                    let layer = (self.item_base + l) as u16;
+                    for _ in 0..4 {
+                        let j = Vec3::new(self.fx.range(-0.08, 0.08), 0.0, self.fx.range(-0.08, 0.08));
+                        self.particles.mote(at + j, layer, [1.0, 1.0, 1.0], 0.045, 2.6, 0.6);
+                    }
+                }
             }
             if self.surv.eat >= 1.6 {
                 self.surv.eat = 0.0;
@@ -1383,6 +1459,8 @@ impl Game {
                 let eaten = self.held_stack().map(|s| self.items.get(s.item).name.clone()).unwrap_or_default();
                 self.surv.inv.take(sel, 1);
                 self.fase6_ate(&eaten);
+                self.rpg_ate(f.hunger as u32, f.saturation);
+                self.nature_consumed(&eaten);
                 self.sfx(Sfx::Pickup);
                 if chorus {
                     self.chorus_hop();
@@ -1397,6 +1475,8 @@ impl Game {
         let still = Input::default();
         let player = self.body.pos + Vec3::Y * 0.9;
         let alive = self.screen != Screen::Dead;
+        // The magnet ring reaches further (rpg.rs).
+        let pull = 2.6 + self.t5.rpg.stats.pickup;
         let mut picked: Vec<usize> = Vec::new();
         for (i, d) in self.surv.drops.iter_mut().enumerate() {
             d.age += dt;
@@ -1408,22 +1488,46 @@ impl Game {
             let to = player - d.body.pos;
             let dist = to.length();
             // Like the classic game: anything within about a block of the player is taken at once.
-            if alive && d.age > PICKUP_DELAY && dist < 2.6 {
+            if alive && d.age > PICKUP_DELAY && dist < pull {
                 if dist < 1.7 {
                     picked.push(i);
                 } else {
                     d.body.vel += to.normalize_or_zero() * dt * 40.0;
                 }
             }
+            let falling = d.body.vel.y;
+            let was_up = !d.body.on_ground;
             d.body.step(&self.world, &still, dt);
+            // A dropped thing bounces a little when it lands, and settles (game feel, Lote 6).
+            if was_up && d.body.on_ground && falling < -3.0 && !d.body.in_water {
+                d.body.vel.y = -falling * 0.3;
+                d.body.on_ground = false;
+            }
             // Floats up in water.
             if d.body.in_water {
                 d.body.vel.y = d.body.vel.y.max(0.6);
             }
         }
+        // Rare things on the ground give off a glint of their rarity's colour.
+        if !self.settings.reduce_motion && self.fx.rand() < dt * 6.0 && !self.surv.drops.is_empty() {
+            let k = (self.fx.rand() * self.surv.drops.len() as f32) as usize % self.surv.drops.len();
+            let d = &self.surv.drops[k];
+            if let Some(c) = crate::juice::rarity(&self.items.get(d.stack.item).name) {
+                let at = d.body.pos + Vec3::new(self.fx.range(-0.2, 0.2), 0.25 + self.fx.range(0.0, 0.3), self.fx.range(-0.2, 0.2));
+                let glow = self.glow_layer();
+                let col = [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0];
+                self.particles.glow(at, Vec3::Y * 0.35, glow, col, 0.035, 0.8);
+            }
+        }
         let mut sound = false;
         for &i in picked.iter().rev() {
             let s = self.surv.drops[i].stack;
+            // Coins go into the wallet, never the inventory.
+            if self.pocket_coins(&s) {
+                self.surv.drops.swap_remove(i);
+                sound = true;
+                continue;
+            }
             match self.surv.inv.add(&self.items, s) {
                 None => {
                     self.surv.drops.swap_remove(i);
@@ -1462,7 +1566,7 @@ impl Game {
                 i += 1;
             }
         }
-        self.surv.drops.retain(|d| d.age < DESPAWN && d.body.pos.y > -64.0);
+        self.surv.drops.retain(|d| d.age < DESPAWN && d.body.pos.y > voxel::chunk::MIN_Y as f32 - 64.0);
 
         // Experience orbs drift to the player.
         let mut gained = 0;
@@ -1593,6 +1697,7 @@ impl Game {
     pub(crate) fn drop_instances(&self, cam_block: IVec3) -> Vec<GpuItem> {
         let c = cam_block.as_vec3();
         let mut out = Vec::with_capacity(self.surv.drops.len() + self.surv.orbs.len());
+        out.extend(self.swing_instances(cam_block));
         // The orb sprite is loaded right after the item sprites.
         let orb_layer = (self.item_base as usize + self.items.textures.len()) as f32;
         let hand = self.hand_light_level();
@@ -1629,17 +1734,17 @@ impl Game {
                     let yaw = d.spin_rest + kf * 0.7;
                     let (lift, pitch, spread) = if flat > 0.5 { (0.02 + kf * 0.02, -std::f32::consts::FRAC_PI_2, 0.07) } else { (size * 0.5, 0.0, size * 1.1) };
                     let off = Vec3::new(yaw.cos(), 0.0, yaw.sin()) * kf * spread;
-                    out.push(GpuItem { pos: [p.x + off.x, p.y + lift, p.z + off.z, size], info: [yaw, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [pitch, 0.0, 0.0, 0.0] });
+                    out.push(GpuItem { pos: [p.x + off.x, p.y + lift, p.z + off.z, size], info: [yaw, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [pitch, 0.0, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
                 } else {
                     let off = Vec3::new(kf * 0.05, kf * 0.04, -kf * 0.05);
-                    out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0; 4] });
+                    out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
                 }
             }
         }
         for o in &self.surv.orbs {
             let p = o.pos - c + Vec3::Y * ((o.age * 4.0).sin() * 0.05);
             let size = 0.12 + (o.value as f32).sqrt() * 0.04;
-            out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [self.yaw, 1.0, 1.0, 1.0], layers: [orb_layer, orb_layer, orb_layer, 0.5], rot: [0.0; 4] });
+            out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [self.yaw, 1.0, 1.0, 1.0], layers: [orb_layer, orb_layer, orb_layer, 0.5], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
         }
         out
     }
@@ -1659,9 +1764,10 @@ impl Game {
 
     pub(crate) fn draw_survival_hud(&mut self, hx: f32, hy: f32, cell: f32) {
         let s = self.ui.scale;
+        self.draw_nature_hud(hx, hy, cell);
         // Hunger: ten drumsticks on the right, above the hotbar.
         let y = hy - 11.0 * s;
-        let shake = self.surv.saturation <= 0.0 && self.surv.hunger <= 6.0;
+        let shake = self.surv.saturation <= 0.0 && self.surv.hunger <= 6.0 && !self.settings.reduce_motion;
         for i in 0..10 {
             let x = hx + cell * 9.0 - (i + 1) as f32 * 8.0 * s;
             let v = self.surv.hunger - i as f32 * 2.0;
@@ -1678,8 +1784,8 @@ impl Game {
                 draw_drumstick(&mut self.ui, x, y + dy, s, if v >= 2.0 { 1.0 } else { 0.5 }, false);
             }
         }
-        // Armor above the hearts.
-        let pts = self.armor_points();
+        // Armor above the hearts (defense with accessories and buffs; above 20 shows a number).
+        let pts = self.defense_points();
         if pts > 0 {
             // Above the top row of hearts (life crystals add rows).
             let rows = ((self.max_health / 2.0).ceil() as i32 + 9) / 10;
@@ -1699,6 +1805,9 @@ impl Game {
                 if v > 0 {
                     draw_shield(&mut self.ui, x, y, s, if v >= 2 { 1.0 } else { 0.5 }, false);
                 }
+            }
+            if pts > 20 {
+                self.ui.text(hx + 81.0 * s, y, &format!("+{}", pts - 20), [200, 220, 255, 255]);
             }
         }
         // Experience bar and level.
@@ -1737,7 +1846,14 @@ impl Game {
         };
         let extra = rows.saturating_sub(3) as f32 * 18.0;
         let (pw, ph) = (176.0 * s, (166.0 + extra) * s);
-        let x0 = ((w - pw) / 2.0).floor();
+        let mut x0 = ((w - pw) / 2.0).floor();
+        // A shop's offer list sits on the left: centre the two together when they fit.
+        if open == Open::Shop {
+            let left = (crate::money::LIST_W + 4.0) * s;
+            if left + pw + 24.0 * s <= w {
+                x0 = ((w - left - pw - 24.0 * s) / 2.0).floor() + left;
+            }
+        }
         // Opening slides the panel up into place and fades the backdrop in (Immersive UI idea).
         // Screenshots skip it so they show the panel where it rests.
         let since = *self.surv.opened_at.get_or_insert_with(std::time::Instant::now);
@@ -1778,6 +1894,7 @@ impl Game {
         }
         self.ui.label(x0 + 8.0 * s, y0 + (73.0 + extra) * s, "Inventário", dark, s);
         let n = self.surv.grid_size();
+        let mut over_shop = false;
         match open {
             Open::Craft | Open::Table => {
                 let (gx, gy, ox, oy, title) = if n == 3 { (30.0, 17.0, 124.0, 35.0, "Fabricação") } else { (88.0, 26.0, 146.0, 36.0, "Fabricação") };
@@ -1799,7 +1916,7 @@ impl Game {
                     }
                     // A little figure of the player in the corner, like the classic screen.
                     self.ui.frame(x0 + 26.0 * s, y0 + 8.0 * s, 52.0 * s, 62.0 * s, s, [0, 0, 0, 255]);
-                    slots.extend(self.accessory_slots(x0, y0));
+                    slots.extend(self.accessory_slots(x0, y0, mouse));
 
                 }
             }
@@ -1822,13 +1939,7 @@ impl Game {
                 self.ui.rect(ax, ay, 24.0 * s, 8.0 * s, [139, 139, 139, 255]);
                 self.ui.rect(ax, ay, 24.0 * s * cook.clamp(0.0, 1.0), 8.0 * s, [240, 240, 240, 255]);
             }
-            Open::Shop => {
-                let title = format!("{}: loja", self.surv.shop_name);
-                self.ui.label(x0 + 8.0 * s, y0 + 6.0 * s, &title, dark, s);
-                for i in 0..self.surv.shop.slots.len().min(18) {
-                    slots.push((Slot::Cont(i), x0 + (8 + (i % 9) * 18) as f32 * s, y0 + (18 + (i / 9) * 18) as f32 * s));
-                }
-            }
+            Open::Shop => over_shop = self.draw_shop(x0, y0, ph, mouse),
             Open::Station(st) => self.draw_station(st, x0, y0, &mut slots, mouse),
             Open::Chest(p) if self.apoth_table(p).is_some() => slots.extend(self.draw_apoth_table(p, x0, y0, mouse)),
             Open::Chest(p) => {
@@ -1854,7 +1965,7 @@ impl Game {
 
         let result = self.craft_result();
         let mut hovered: Option<Slot> = None;
-        let anim = crate::juice::enabled(self.settings.ui_animations, self.args.screenshot.is_some());
+        let anim = crate::juice::enabled(self.settings.ui_animations && !self.settings.reduce_motion, self.args.screenshot.is_some());
         let carried = self.surv.cursor.map(|c| c.item);
         for (k, &(slot, sx, sy)) in slots.iter().enumerate() {
             let big = slot == Slot::CraftOut || slot == Slot::Cont(2) && matches!(open, Open::Furnace(_)) || self.is_station_output(slot);
@@ -1892,6 +2003,8 @@ impl Game {
             }
         }
         let over_book = self.draw_recipe_book(x0, y0, pw, ph, w, h, mouse);
+        let over_wallet = self.survival && self.draw_wallet(x0 + pw - s, y0 + 74.0 * s + extra * s, mouse);
+        let over_book = over_book || over_shop || over_wallet;
         self.surv.want_recipe = false;
         self.surv.uses_pending = false;
         // Clicks.
@@ -1919,7 +2032,7 @@ impl Game {
         // Right-drag (like Mouse Tweaks): one item into each slot the mouse passes over.
         if self.rdown && !self.rclicked && open != Open::Shop {
             if let (Some(slot), Some(c)) = (hovered, self.surv.cursor) {
-                let fresh = self.surv.drag_last != Some(slot) && !matches!(slot, Slot::CraftOut | Slot::Armor(_) | Slot::Acc(_)) && !(slot == Slot::Cont(2) && matches!(open, Open::Furnace(_))) && !self.is_station_output(slot);
+                let fresh = self.surv.drag_last != Some(slot) && !matches!(slot, Slot::CraftOut | Slot::Armor(_) | Slot::Acc(_) | Slot::Vanity(_) | Slot::Dye(_)) && !(slot == Slot::Cont(2) && matches!(open, Open::Furnace(_))) && !self.is_station_output(slot);
                 let fits = match self.slot_get(slot) {
                     None => true,
                     Some(st) => st.stacks_with(&c) && st.count < self.items.get(st.item).max_stack,
@@ -1948,13 +2061,16 @@ impl Game {
                 None => None,
             };
             if let Some(st) = st {
-                let mut name = self.item_label(&st);
-                if let (Some(Slot::Cont(i)), Open::Shop) = (hovered, open) {
-                    let price = self.surv.shop_prices.get(i).copied().unwrap_or(0);
-                    name = format!("{name} x{}: {price} esmeralda(s)", st.count);
-                }
+                let name = self.item_label(&st);
                 let mut lines = vec![(name, self.gem_name_color(&st))];
                 lines.extend(self.item_details(&st));
+                // In a shop, what the trader would pay for it.
+                if open == Open::Shop && matches!(hovered, Some(Slot::Inv(_))) {
+                    lines.push(match self.sell_price(st.item) {
+                        Some(p) => (format!("Vende por: {} (Shift+clique)", crate::money::text(p * st.count as u64)), [255, 220, 120, 255]),
+                        None => ("O vendedor não compra isso".to_string(), [170, 170, 170, 255]),
+                    });
+                }
                 self.draw_tooltip_lines(&lines, mouse);
             }
         }
@@ -1969,7 +2085,12 @@ impl Game {
             self.surv.juice.cursor(mouse, None, s, anim);
             self.surv.juice.draw_sparks(&mut self.ui);
         }
-        self.ui.text_centered(w / 2.0, y0 + ph + 4.0 * s, "Esq.: pegar  Dir.: metade  Shift: mover  Roda: 1 a 1  R: receita  U: usos", WHITE);
+        let hint = if open == Open::Shop {
+            "Clique: comprar  Shift: 5x  Shift+clique no inventário: vender"
+        } else {
+            "Esq.: pegar  Dir.: metade  Shift: mover  Roda: 1 a 1  R: receita  U: usos"
+        };
+        self.ui.text_centered(w / 2.0, y0 + ph + 4.0 * s, hint, WHITE);
     }
 
     /// Extra tooltip lines (Durability Tooltip idea): wear left in colour, attack, armour, food.
@@ -1978,7 +2099,7 @@ impl Game {
         let it = self.items.get(st.item);
         let mut out = crate::enchanting::lines(st);
         out.extend(self.fase6_details(st));
-        let dur = it.tool.as_ref().map(|t| t.durability).or(it.armor.map(|a| a.durability));
+        let dur = it.max_wear();
         if let Some(d) = dur {
             let left = d.saturating_sub(st.wear());
             let k = left as f32 / d.max(1) as f32;
@@ -1996,6 +2117,7 @@ impl Game {
             out.push((format!("Fome: +{}  Saturação: +{:.1}", f.hunger, f.saturation), GRAY));
         }
         self.t5_details(st, &mut out);
+        self.rpg_details(&it.name, &mut out);
         out.extend(self.gem_tooltip(st));
         out
     }
@@ -2020,7 +2142,7 @@ impl Game {
     fn craft_result(&self) -> Option<ItemStack> {
         let n = self.surv.grid_size();
         let grid: Vec<Option<ItemStack>> = (0..n * n).map(|i| self.surv.craft[i]).collect();
-        self.recipes.craft(&grid, n)
+        self.recipes.craft(&grid, n).filter(|r| self.station_ok(r.item))
     }
 
     pub(crate) fn slot_get(&self, slot: Slot) -> Option<ItemStack> {
@@ -2031,6 +2153,8 @@ impl Game {
             Slot::Armor(i) => self.surv.armor[i],
             Slot::Offhand => self.surv.offhand,
             Slot::Acc(i) => self.t5.acc[i],
+            Slot::Vanity(i) => self.t5.look.vanity[i],
+            Slot::Dye(i) => self.t5.look.dyes[i],
             Slot::Cont(i) => match self.open_container_inv() {
                 Some(inv) => inv.slots.get(i).copied().flatten(),
                 None => None,
@@ -2046,6 +2170,8 @@ impl Game {
             Slot::Armor(i) => self.surv.armor[i] = v,
             Slot::Offhand => self.surv.offhand = v,
             Slot::Acc(i) => self.t5.acc[i] = v,
+            Slot::Vanity(i) => self.t5.look.vanity[i] = v,
+            Slot::Dye(i) => self.t5.look.dyes[i] = v,
             Slot::Cont(i) => {
                 if let Some(inv) = self.open_container_inv_mut() {
                     if i < inv.slots.len() {
@@ -2094,9 +2220,18 @@ impl Game {
         if self.apoth_socket_click(slot, right) {
             return;
         }
-        if let (Slot::Cont(i), Open::Shop) = (slot, self.surv.open) {
-            self.buy(i);
-            return;
+        // Shift-click: coins go into the wallet; in a shop, anything else is sold.
+        if let (Slot::Inv(k), true, true) = (slot, shift, self.survival) {
+            if let Some(st) = self.surv.inv.slots[k] {
+                if self.pocket_coins(&st) {
+                    self.surv.inv.slots[k] = None;
+                    return;
+                }
+                if self.surv.open == Open::Shop {
+                    self.sell_slot(k);
+                    return;
+                }
+            }
         }
         if self.station_click(slot, shift) {
             return;
@@ -2115,6 +2250,11 @@ impl Game {
         }
         if let (Slot::Acc(_), Some(c)) = (slot, self.surv.cursor) {
             if !crate::accessories::is_accessory(&self.items.get(c.item).name) {
+                return;
+            }
+        }
+        if let (Slot::Vanity(_) | Slot::Dye(_), Some(c)) = (slot, self.surv.cursor) {
+            if !self.visual_fits(slot, &self.items.get(c.item).name.clone()) {
                 return;
             }
         }
@@ -2237,7 +2377,7 @@ impl Game {
     pub(crate) fn wheel_move(&mut self, up: bool) -> bool {
         let Some(slot) = self.surv.hover_slot else { return false };
         let Some(st) = self.slot_get(slot) else { return false };
-        if self.surv.cursor.is_some() || matches!(slot, Slot::CraftOut | Slot::Armor(_) | Slot::Acc(_)) || self.surv.open == Open::Shop || self.is_station_output(slot) {
+        if self.surv.cursor.is_some() || matches!(slot, Slot::CraftOut | Slot::Armor(_) | Slot::Acc(_) | Slot::Vanity(_) | Slot::Dye(_)) || self.surv.open == Open::Shop || self.is_station_output(slot) {
             return false;
         }
         let container = matches!(self.surv.open, Open::Chest(_) | Open::Furnace(_) | Open::Station(_));
@@ -2491,8 +2631,10 @@ impl Game {
         let pv = def.parts[2].pivot;
         let l = self.world.light(eye.floor().as_ivec3());
         let eat = if self.surv.eat > 0.0 { (self.surv.eat * 14.0).sin().abs() * 0.04 } else { 0.0 };
+        // The food gets smaller as it is eaten.
+        let left = 1.0 - 0.45 * (self.surv.eat / 1.6).clamp(0.0, 1.0);
         // So close to the eye the item would fill the screen at its third-person size.
-        self.held_in_fist(bones.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 0.6, l, Vec3::Y * eat)
+        self.held_in_fist(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 0.6 * left, l, Vec3::Y * eat)
     }
 
     /// Skeletons' bows and the arrows in flight or stuck in blocks.
@@ -2511,7 +2653,7 @@ impl Game {
                     continue;
                 }
                 let p = &def.parts[2];
-                let m = glam::Mat4::from_cols_array_2d(&b.m[2]);
+                let m = glam::Mat4::from_cols_array_2d(&b.forearm(2));
                 let fist = m.transform_point3(Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32 - 10.0, p.pivot.2 as f32 + 1.0));
                 let (_, rot, _) = m.to_scale_rotation_translation();
                 // Held upright in the outstretched arm, string towards the body, seen side-on.
@@ -2522,11 +2664,13 @@ impl Game {
                 let y = (tip + side) * std::f32::consts::FRAC_1_SQRT_2;
                 let q = rot * Quat::from_mat3(&Mat3::from_cols(x, y, face));
                 let (yaw, pitch, roll) = q.to_euler(EulerRot::YXZ);
-                out.push(GpuItem { pos: [fist.x, fist.y, fist.z, 0.62], info: [yaw, 1.0, b.light[0], b.light[1]], layers: [bow; 4], rot: [pitch, roll, 0.0, 0.0] });
+                out.push(GpuItem { pos: [fist.x, fist.y, fist.z, 0.62], info: [yaw, 1.0, b.light[0], b.light[1]], layers: [bow, bow, bow, 0.0], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
             }
         }
         out.extend(self.bobber_instance(cam_block));
         out.extend(self.shot_instances(cam_block));
+        out.extend(self.tr_weapon_instances(cam_block));
+        out.extend(self.tr_wing_instances(cam_block));
         if let Some(arrow) = sprite("arrow") {
             let c = cam_block.as_vec3();
             for a in &self.mobs.arrows {
@@ -2542,7 +2686,7 @@ impl Game {
                 let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
                 let p = a.pos - c;
                 for pitch in [0.0, std::f32::consts::FRAC_PI_2] {
-                    out.push(GpuItem { pos: [p.x, p.y, p.z, 0.5], info: [yaw, 1.0, sky, blk], layers: [arrow; 4], rot: [pitch, roll, 0.0, 0.0] });
+                    out.push(GpuItem { pos: [p.x, p.y, p.z, 0.5], info: [yaw, 1.0, sky, blk], layers: [arrow, arrow, arrow, 0.0], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
                 }
             }
         }
@@ -2551,18 +2695,8 @@ impl Game {
 
     /// The armour the player wears, drawn over the player model with the same bones.
     pub(crate) fn armor_instances(&self, bones: &crate::entity::Bones) -> Vec<(usize, crate::entity::Bones)> {
-        let mut out = Vec::new();
-        for piece in 0..4 {
-            let Some(st) = self.surv.armor[piece] else { continue };
-            if let Some(mesh) = self.entities.armor_mesh(&self.items.get(st.item).name, piece) {
-                out.push((mesh, *bones));
-                // Smithing trims show as a coloured pattern over the piece.
-                if let Some(t) = crate::smithing::trim_of(&st).and_then(|(_, m)| self.entities.trim_mesh(m, piece)) {
-                    out.push((t, *bones));
-                }
-            }
-        }
-        out
+        // Vanity, dyes and wings decide what shows (vanity.rs).
+        self.look_instances(bones)
     }
 
     /// The held item in the right hand of the player model, for the views from outside: the
@@ -2604,6 +2738,10 @@ impl Game {
             // Instruments are 3D models held in both hands (instruments.rs).
             return None;
         }
+        if crate::torch::index(&it.name).is_some() {
+            // Torches are 3D models with a live flame (torch.rs).
+            return None;
+        }
         let tool = it.tool.is_some() || it.name.ends_with("_sword") || matches!(it.name.as_str(), "stick" | "blaze_rod" | "breeze_rod" | "bone" | "mace" | "trident") || it.name.ends_with("_rod");
         Some(match it.look {
             Look::Block(b) => {
@@ -2636,6 +2774,7 @@ impl Game {
             info: [yaw, if look.flat { 1.0 } else { 0.0 }, (l >> 4) as f32 / 15.0, blk],
             layers: [look.layers[0], look.layers[1], look.layers[2], 0.0],
             rot: [pitch, roll, 0.0, 0.0],
+            ..bytemuck::Zeroable::zeroed()
         })
     }
 
@@ -2653,10 +2792,18 @@ impl Game {
         }
         for m in &self.mobs.list {
             // Fire imps glow like a torch.
-            let glows = matches!(self.mobs.reg.defs[m.def].name.as_str(), "fire_imp" | "ember_wraith");
+            let name = self.mobs.reg.defs[m.def].name.as_str();
+            if let Some(l) = crate::tr_pets::light_of(name) {
+                found.push((m.body.pos.distance(eye), m.body.pos + Vec3::Y * 0.2, l));
+                continue;
+            }
+            let glows = matches!(name, "fire_imp" | "ember_wraith");
             if (m.on_fire > 0.0 || glows) && m.alive() {
                 found.push((m.body.pos.distance(eye), m.body.pos + Vec3::Y * 0.8, if glows { 0.7 } else { 0.85 }));
             }
+        }
+        for (p, l) in self.companion_lights() {
+            found.push((p.distance(eye), p, l));
         }
         found.retain(|f| f.0 < 48.0);
         found.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -2922,8 +3069,8 @@ impl Game {
                 item_icon(&mut self.ui, &self.reg, &self.items, self.item_base, result, rx + 8.0 * s, gy + cell, 16.0 * s);
                 let rows = cells.len().div_ceil(*rw);
                 let need = (*rw).max(rows);
-                let label = if need <= 2 { "Grade 2x2" } else { "Mesa 3x3" };
-                self.ui.text(gx, gy + 3.0 * cell + 3.0 * s, label, [200, 200, 200, 255]);
+                let label = format!("{}{}", if need <= 2 { "Grade 2x2" } else { "Mesa 3x3" }, self.station_label(result.item));
+                self.ui.text(gx, gy + 3.0 * cell + 3.0 * s, &label, [200, 200, 200, 255]);
                 fill = Some((*rw, cells.clone()));
             }
             BookRecipe::Smelt { input, result } => {

@@ -165,6 +165,7 @@ impl Game {
             self.surv.exhaustion += 1.0;
         }
         self.prog.stats.add("damage_dealt", (dmg * 10.0) as u64);
+        self.rpg_after_melee(i, dmg);
     }
 
     fn attack_charge_was_full(&self) -> bool {
@@ -177,6 +178,9 @@ impl Game {
     pub(crate) fn weapon_reach(&self) -> f32 {
         if self.held_key().ends_with("_spear") {
             4.5
+        } else if crate::rpg::is_whip(&self.held_key()) {
+            // Whips reach further (rpg.rs).
+            5.0
         } else if self.survival {
             3.0
         } else {
@@ -197,6 +201,7 @@ impl Game {
             }
         }
         k *= self.dig_effects();
+        k *= self.shears_speed(id);
         if self.body.head_in_water && self.armor_ench(AQUA_AFFINITY) == 0 {
             k /= 5.0;
         }
@@ -424,6 +429,9 @@ impl Game {
     /// Right click with a ranged weapon or a wind charge. True when it is one (the draw happens
     /// while the button is held, in `update_weapons`).
     pub(crate) fn weapon_use(&mut self, name: &str) -> bool {
+        if crate::tr_weapons::bow_power(name).is_some() {
+            return true;
+        }
         match name {
             "bow" | "trident" => true,
             "crossbow" => {
@@ -496,7 +504,11 @@ impl Game {
     pub(crate) fn update_weapons(&mut self, dt: f32, use_held: bool) {
         self.prog.wind_t -= dt;
         self.prog.sweep = (self.prog.sweep - dt).max(0.0);
-        let name = self.held_key();
+        let mut name = self.held_key();
+        // Ore bows (tr_weapons.rs) draw like the plain bow.
+        if crate::tr_weapons::bow_power(&name).is_some() {
+            name = "bow".into();
+        }
         let playing = self.screen == crate::Screen::Playing;
         let holding = use_held && playing;
         match name.as_str() {
@@ -546,7 +558,7 @@ impl Game {
     /// How far the bow is drawn (0..1), for the arm pose and the zoom.
     pub(crate) fn bow_pull(&self) -> f32 {
         let n = self.held_key();
-        if n == "bow" {
+        if n == "bow" || crate::tr_weapons::bow_power(&n).is_some() {
             (self.prog.draw / 1.0).min(1.0)
         } else if n == "crossbow" {
             if self.prog.loaded {
@@ -574,7 +586,9 @@ impl Game {
         let potion = arrow.and_then(|a| a.1);
         let mut pickup = self.survival;
         if let Some((slot, p)) = arrow {
-            if !(infinity && p.is_none()) {
+            // The hunter's quiver sometimes saves the arrow (rpg.rs).
+            let saved = self.t5.rpg.stats.ammo_save > 0.0 && self.surv.rng.f32() < self.t5.rpg.stats.ammo_save;
+            if !(infinity && p.is_none()) && !saved {
                 self.use_arrow(slot);
             } else {
                 pickup = false;
@@ -583,8 +597,10 @@ impl Game {
         let f = self.forward();
         let mut s = Shot::new(self.body.eye() + f * 0.3, f * 60.0 * pull, ShotKind::Arrow { potion, pickup }, 0.0);
         let power = self.held_ench(POWER) as f32;
-        s.damage = (6.0 * pull) * if power > 0.0 { 1.0 + 0.25 * (power + 1.0) } else { 1.0 };
-        s.crit = pull >= 1.0;
+        let ranged = self.t5.rpg.stats.dmg[crate::rpg::RANGED];
+        let ore = crate::tr_weapons::bow_power(&self.held_key()).unwrap_or(1.0);
+        s.damage = (6.0 * pull) * if power > 0.0 { 1.0 + 0.25 * (power + 1.0) } else { 1.0 } * ranged * ore;
+        s.crit = pull >= 1.0 || pull > 0.6 && self.surv.rng.f32() < self.t5.rpg.stats.crit[crate::rpg::RANGED];
         s.punch = self.held_ench(PUNCH);
         s.flame = self.held_ench(FLAME) > 0;
         self.prog.shots.push(s);
@@ -601,8 +617,9 @@ impl Game {
         let angles: &[f32] = if multi { &[-0.17, 0.0, 0.17] } else { &[0.0] };
         for &a in angles {
             let dir = Vec3::new(f.x * a.cos() - f.z * a.sin(), f.y, f.x * a.sin() + f.z * a.cos()).normalize_or_zero();
-            let mut s = Shot::new(self.body.eye() + dir * 0.3, dir * 63.0, ShotKind::Arrow { potion: None, pickup: a == 0.0 && self.survival }, 9.0);
+            let mut s = Shot::new(self.body.eye() + dir * 0.3, dir * 63.0, ShotKind::Arrow { potion: None, pickup: a == 0.0 && self.survival }, 9.0 * self.t5.rpg.stats.dmg[crate::rpg::RANGED]);
             s.pierce = pierce;
+            s.crit = self.surv.rng.f32() < self.t5.rpg.stats.crit[crate::rpg::RANGED];
             self.prog.shots.push(s);
         }
         self.wear_held(if multi { 3 } else { 1 });
@@ -769,6 +786,7 @@ impl Game {
         if matches!(kind, ShotKind::Trident { .. }) && (water_mob(&name) || self.mobs.list[k].body.in_water) {
             dmg += 2.5 * imp as f32;
         }
+        self.orichalcum_petals(k, dmg);
         let m = &mut self.mobs.list[k];
         m.hurt(dmg, eye);
         if punch > 0 {
@@ -866,11 +884,11 @@ impl Game {
             let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
             let p = s.pos - c;
             if matches!(s.kind, ShotKind::WindCharge) {
-                out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [s.age * 8.0, 0.0, sky, blk], layers: [layer; 4], rot: [0.0; 4] });
+                out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [s.age * 8.0, 0.0, sky, blk], layers: [layer, layer, layer, 0.0], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
                 continue;
             }
             for pitch in [0.0, std::f32::consts::FRAC_PI_2] {
-                out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [yaw, 1.0, sky, blk], layers: [layer; 4], rot: [pitch, roll, 0.0, 0.0] });
+                out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [yaw, 1.0, sky, blk], layers: [layer, layer, layer, 0.0], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
             }
         }
         out

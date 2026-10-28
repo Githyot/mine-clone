@@ -201,11 +201,24 @@ impl Game {
         if self.audio.is_none() || self.args.screenshot.is_some() {
             return;
         }
+        let Some((gain, pan, muffle)) = self.place_sound(pos, range) else { return };
+        let vol = vol * gain * self.settings.sound_volume;
+        if let Some(c) = crate::subtitles::caption(s) {
+            if vol > 0.02 {
+                self.subtitle(c, Some(pos));
+            }
+        }
+        self.sfx_raw(s, vol, pan, muffle);
+    }
+
+    /// Where a sound at `pos` sits for our ears: its gain (distance and walls), pan (-1 left
+    /// .. 1 right) and muffling (0..1). None past `range`. Voices use it too (voice.rs).
+    pub(crate) fn place_sound(&self, pos: Vec3, range: f32) -> Option<(f32, f32, f32)> {
         let eye = self.body.eye();
         let to = pos - eye;
         let d = to.length();
         if d > range {
-            return;
+            return None;
         }
         let gain = (1.0 - d / range).powf(1.3);
         let right = self.listener_right();
@@ -233,8 +246,7 @@ impl Game {
         }
         let occ = (walls as f32 / 3.0).min(1.0);
         let muffle = occ * 0.85 + (d / range) * 0.3;
-        let vol = vol * gain * (1.0 - 0.5 * occ) * self.settings.sound_volume;
-        self.sfx_raw(s, vol, pan, muffle);
+        Some((gain * (1.0 - 0.5 * occ), pan, muffle))
     }
 
     /// Play a sound with no place (in the head, or all around), but still in stereo and
@@ -248,6 +260,7 @@ impl Game {
     }
 
     fn sfx_raw(&mut self, s: Sfx, vol: f32, pan: f32, muffle: f32) {
+        let vol = vol * self.settings.volumes.of(s.category());
         if vol <= 0.002 {
             return;
         }
@@ -404,6 +417,7 @@ impl Game {
     fn mob_voices(&mut self, dt: f32) {
         let eye = self.body.eye();
         let mut calls: Vec<(Fx, Vec3, f32)> = Vec::new();
+        let mut captions: Vec<(String, Vec3)> = Vec::new();
         let mut hurt_fx: Vec<(Vec3, f32, bool)> = Vec::new();
         let mut steps: Vec<(Vec3, f32, bool)> = Vec::new();
         use crate::sfx_extra::Voice as V;
@@ -445,6 +459,7 @@ impl Game {
                         if near {
                             if let Some(fx) = crate::mob_sounds::pick(&def.name, Call::Death, depth, self.fx.rand(), self.fx.rand()) {
                                 calls.push((fx, at, 0.9));
+                                captions.push((format!("{} morre", def.display_name), at));
                             }
                         }
                         hurt_fx.push((at, height, true));
@@ -452,6 +467,7 @@ impl Game {
                         if near {
                             if let Some(fx) = crate::mob_sounds::pick(&def.name, Call::Hurt, depth, self.fx.rand(), self.fx.rand()) {
                                 calls.push((fx, at, 0.85));
+                                captions.push((format!("{} sofre dano", def.display_name), at));
                             }
                         }
                         hurt_fx.push((at, height, false));
@@ -468,11 +484,15 @@ impl Game {
                 if self.fx.rand() < chance {
                     if let Some(fx) = crate::mob_sounds::pick(&def.name, Call::Idle, depth, self.fx.rand(), self.fx.rand()) {
                         calls.push((fx, at, 0.6));
+                        captions.push((def.display_name.clone(), at));
                     }
                 }
             }
         }
         self.fx.voices.retain(|k, _| seen.contains(k));
+        for (c, at) in captions {
+            self.subtitle(&c, Some(at));
+        }
         for (fx, at, vol) in calls {
             self.sfx_at(Sfx::Fx(fx), at, vol, 24.0);
         }
@@ -583,7 +603,7 @@ impl Game {
         let eye = self.body.eye();
         let head = eye.floor().as_ivec3();
         let sky = (self.world.light(head) >> 4) as f32;
-        let biome = self.world.gen.biome_at(head.x, head.z);
+        let biome = self.world.gen.base_biome_at(head.x, head.z);
         match self.dim {
             Dim::Nether => {
                 self.fx.dim_t -= dt;

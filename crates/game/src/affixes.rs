@@ -1,6 +1,6 @@
 //! Item modifiers (Terraria's prefixes, Apotheosis' affixes): a weapon, caster or accessory
 //! comes out of the crafting grid with a random modifier that changes its damage, speed,
-//! critical chance or mana cost. At the reforge table two emeralds roll a new one.
+//! critical chance or mana cost. At the reforge table 15 silver rolls a new one.
 //! The modifier lives in the top 4 bits of the stack's `damage` (see `ItemStack::affix`), so
 //! saves and stacks need nothing new.
 
@@ -68,6 +68,9 @@ fn pct(k: f32) -> String {
     }
 }
 
+/// What the reforge table charges, in copper.
+const REFORGE: u64 = 15 * crate::money::SILVER;
+
 impl Game {
     fn affix_class(&self, st: &ItemStack) -> Option<Class> {
         let it = self.items.get(st.item);
@@ -102,37 +105,20 @@ impl Game {
         st.with_affix(k)
     }
 
-    /// Right click on the reforge table: two emeralds for a new modifier on the held item.
+    /// Right click on the reforge table: 15 silver for a new modifier on the held item.
     pub(crate) fn reforge_held(&mut self) -> bool {
         let sel = self.selected;
         let Some(st) = self.surv.inv.slots[sel] else {
-            self.toast("Segure uma arma, cajado ou acessório para reforjar (2 esmeraldas)", 3.0);
+            self.toast(format!("Segure uma arma, cajado ou acessório para reforjar ({})", crate::money::text(REFORGE)), 3.0);
             return true;
         };
         let Some(class) = self.affix_class(&st) else {
             self.toast("Isso não pode ser reforjado", 2.5);
             return true;
         };
-        if self.survival {
-            let Some(em) = self.items.id("emerald") else { return true };
-            let have: u32 = self.surv.inv.slots.iter().flatten().filter(|s| s.item == em).map(|s| s.count as u32).sum();
-            if have < 2 {
-                self.toast("Reforjar custa 2 esmeraldas", 2.5);
-                return true;
-            }
-            let mut left = 2;
-            for slot in self.surv.inv.slots.iter_mut() {
-                if let Some(s) = slot {
-                    if s.item == em && left > 0 {
-                        let n = s.count.min(left);
-                        s.count -= n;
-                        left -= n;
-                        if s.count == 0 {
-                            *slot = None;
-                        }
-                    }
-                }
-            }
+        if !self.pay(REFORGE) {
+            self.toast(format!("Reforjar custa {}", crate::money::text(REFORGE)), 2.5);
+            return true;
         }
         let new = self.pick_affix(st, class, st.affix());
         self.surv.inv.slots[sel] = Some(new);
@@ -157,9 +143,6 @@ impl Game {
         const GOOD: [u8; 4] = [120, 220, 120, 255];
         const BAD: [u8; 4] = [230, 100, 90, 255];
         let name = &self.items.get(st.item).name;
-        if let Some(d) = crate::accessories::describe(name) {
-            out.push((d.to_string(), [170, 200, 255, 255]));
-        }
         if let Some(d) = crate::magic::describe(name) {
             out.push((d, [170, 200, 255, 255]));
         }

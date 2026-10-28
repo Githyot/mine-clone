@@ -15,6 +15,7 @@ Textures and mob skins come from tools/gen_fase6_art.py.
 
 import re
 from pathlib import Path
+from lote3_structures import ocean_monument  # Lote 3 of plan/o-que-falta.md
 
 ROOT = Path(__file__).resolve().parent.parent
 PACK = ROOT / "packs" / "vanilla"
@@ -235,7 +236,7 @@ I(item("recovery_compass", "Bússola de Recuperação", max_stack="Some(1)"))
 I(item("brush", "Escova", max_stack="Some(1)", tool=tool("Hoe", 1, 1.0, 1.0, 64)))
 I(item("wind_charge", "Carga de Vento"))
 I("    // Weapons")
-I(item("crossbow", "Besta", max_stack="Some(1)"))
+I(item("crossbow", "Besta", max_stack="Some(1)", durability="Some(465)"))
 I(item("trident", "Tridente", tool=tool("Sword", 4, 1.0, 9.0, 250)))
 I(item("mace", "Maça", tool=tool("Sword", 3, 1.0, 6.0, 500)))
 SPEARS = (("wooden", "Madeira", 1, 2.0, 59), ("stone", "Pedra", 2, 3.0, 131), ("copper", "Cobre", 2, 3.5, 190), ("iron", "Ferro", 3, 4.0, 250),
@@ -283,6 +284,7 @@ def smelt(inp, out, xp=0.1):
 
 
 shaped([" B ", "D#D", "###"], {"B": "book", "D": "diamond", "#": "obsidian"}, "enchanting_table")
+shaped(["MMM", "SES", "WWW"], {"M": "milk_bucket", "S": "sugar", "E": "egg", "W": "wheat"}, "cake")
 shaped(["III", " i ", "iii"], {"I": "iron_block", "i": "iron_ingot"}, "anvil")
 shaped(["/S/", "P P"], {"/": "stick", "S": "stone_slab", "P": "#planks"}, "grindstone")
 shaped(["PPP", "BBB", "PPP"], {"P": "#planks", "B": "book"}, "bookshelf")
@@ -302,6 +304,7 @@ shapeless(["netherite_scrap"] * 4 + ["gold_ingot"] * 4, "netherite_ingot")
 smelt("ancient_debris", "netherite_scrap", 2.0)
 shaped(["SSS"], {"S": "sugar_cane"}, "paper", 3)
 shapeless(["sugar_cane"], "sugar")
+shapeless(["book", "ink_sac", "feather"], "writable_book")
 shapeless(["paper", "paper", "paper", "leather"], "book")
 shapeless(["blaze_rod"], "blaze_powder", 2)
 shapeless(["slime_ball", "blaze_powder"], "magma_cream")
@@ -693,6 +696,12 @@ def structures_ron(structs):
         out.append(f'        chance: {s["chance"]},')
         if s.get("sink"):
             out.append(f'        sink: {s["sink"]},')
+        if s.get("foundation"):
+            out.append(f'        foundation: Some("{s["foundation"]}"),')
+        if s.get("rough"):
+            out.append(f'        rough: {s["rough"]},')
+        if s.get("mobs"):
+            out.append("        mobs: [" + ", ".join(f'("{m}", {n})' for m, n in s["mobs"]) + "],")
         out.append("        palette: [" + ", ".join(f"('{k}', \"{v}\")" for k, v in s["palette"].items()) + "],")
         out.append("        layers: [")
         for layer in s["layers"]:
@@ -781,7 +790,7 @@ def main():
     # Check the shape of a smelting entry against the base file.
     sample = re.search(r"smelting: \[\s*\(([^)]*)\)", BASE_RECIPES)
     assert sample and "input:" in sample.group(1), "smelting entries changed shape"
-    structs = [trial_chamber(), ancient_city(), trail_ruins(), beach_ruin()]  # the base game has its own desert well
+    structs = [trial_chamber(), ancient_city(), trail_ruins(), beach_ruin(), ocean_monument()]  # the base game has its own desert well
     for s in structs:
         for v in s["palette"].values():
             assert v.split(":")[0] in known, f"{s['name']}: unknown block {v}"

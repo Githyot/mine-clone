@@ -58,6 +58,7 @@ fn style(name: &str) -> Style {
         "lich" => Style { helper: "skeleton", school: 1, ground: "snow", call: "O Lich ergue os mortos congelados!", special: 1 },
         "obsidilith" => Style { helper: "ash_skeleton", school: 3, ground: "obsidian", call: "O Obsidilito chama as cinzas!", special: 2 },
         "world_breaker" => Style { helper: "ash_skeleton", school: 3, ground: "netherrack", call: "O Quebra-Mundos chama as cinzas!", special: 2 },
+        "frost_colossus" => Style { helper: "jelly_ice", school: 1, ground: "snow_block", call: "O Colosso chama o gelo vivo!", special: 1 },
         "vine_queen" => Style { helper: "spider", school: 4, ground: "dirt", call: "A rainha solta suas aranhas da selva!", special: 3 },
         // The Aether's dungeon bosses (mods/aether.rs).
         "slider" => Style { helper: "sentry", school: 0, ground: "carved_stone", call: "O Deslizador desperta as sentinelas!", special: 0 },
@@ -130,14 +131,15 @@ impl Game {
         }
         let st = style(&name);
         let player = self.body.pos;
+        let hunted = self.hunted();
         let m = &mut self.mobs.list[i];
-        // A boss never loses interest.
-        m.aggro = true;
+        // A boss never loses interest (but leaves a player in creative alone).
+        m.aggro = hunted;
         let angry = m.health < m.max_health * 0.5;
         let pos = m.body.pos;
         let head = pos + Vec3::Y * 4.2;
         let dist = (player - pos).length();
-        if dist > 48.0 {
+        if dist > 48.0 || !hunted {
             return;
         }
         if angry && !self.boss.called_help {

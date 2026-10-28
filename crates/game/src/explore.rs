@@ -44,7 +44,7 @@ impl Game {
             "mycelium" => [130, 110, 130],
             "clay" => [150, 155, 170],
             "mud" => [70, 62, 58],
-            _ => match s.biome {
+            _ => match s.biome.base() {
                 Biome::Swamp => [80, 100, 50],
                 Biome::Savanna => [150, 160, 70],
                 Biome::Jungle => [50, 140, 40],

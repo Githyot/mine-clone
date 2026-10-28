@@ -126,6 +126,24 @@ pub fn brew(potion: &str, ingredient: &str) -> Option<String> {
         ("awkward", "cobweb") => "weaving",
         ("awkward", "slime_block") => "oozing",
         ("awkward", "stone") => "infested",
+        // The Terraria side's buff potions (rpg.rs).
+        ("awkward", "iron_ingot") => "ironskin",
+        ("awkward", "lapis_lazuli") => "mana_regeneration",
+        ("awkward", "amethyst") => "magic_power",
+        ("awkward", "feather") => "archery",
+        ("awkward", "ruby") => "wrath",
+        ("awkward", "topaz") => "rage",
+        ("awkward", "armadillo_scute") => "endurance",
+        ("awkward", "glow_berries") => "lifeforce",
+        ("awkward", "cactus") => "thorns",
+        ("awkward", "obsidian") => "titan",
+        ("awkward", "glow_ink_sac") => "summoning",
+        ("awkward", "gold_nugget") => "spelunker",
+        ("awkward", "bone") => "hunter",
+        ("awkward", "glowstone") => "shine",
+        ("awkward", "brick") => "builder",
+        ("awkward", "fire_charge") => "warmth",
+        ("awkward", "magma_block") => "inferno",
         _ => "",
     };
     if !base.is_empty() {
@@ -355,7 +373,7 @@ impl Game {
         let ka = ench::kinds(&self.items, a.item);
         let mut out = ItemStack { count: 1, ..a };
         let mut cost: u32 = 0;
-        let dur = self.items.get(a.item).tool.as_ref().map(|t| t.durability).or(self.items.get(a.item).armor.map(|x| x.durability)).unwrap_or(0);
+        let dur = self.items.get(a.item).max_wear().unwrap_or(0);
         let book_b = bn == "enchanted_book";
         if repair_material(&an) == Some(bn.as_str()) && a.damage > 0 && dur > 0 {
             // Each material mends a quarter of the item.
@@ -412,7 +430,7 @@ impl Game {
             xp += ench::total_power(&s);
         }
         if let (Some(a), Some(b)) = (a, b) {
-            let dur = self.items.get(a.item).tool.as_ref().map(|t| t.durability).or(self.items.get(a.item).armor.map(|x| x.durability)).unwrap_or(0);
+            let dur = self.items.get(a.item).max_wear().unwrap_or(0);
             if dur == 0 {
                 return None;
             }
@@ -487,7 +505,7 @@ impl Game {
                 let an = self.item_name(&self.prog.bench.slots[0]);
                 let used = if repair_material(&an) == Some(bn.as_str()) {
                     let a = self.prog.bench.slots[0].unwrap();
-                    let dur = self.items.get(a.item).tool.as_ref().map(|t| t.durability).or(self.items.get(a.item).armor.map(|x| x.durability)).unwrap_or(1);
+                    let dur = self.items.get(a.item).max_wear().unwrap_or(1);
                     a.damage.div_ceil((dur / 4).max(1)).min(64) as u8
                 } else {
                     1

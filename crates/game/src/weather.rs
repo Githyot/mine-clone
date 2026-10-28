@@ -112,7 +112,7 @@ impl Weather {
         }
         self.flash = (self.flash - dt * 2.5).max(0.0);
 
-        let here = world.gen.biome_at(eye.x.floor() as i32, eye.z.floor() as i32);
+        let here = world.gen.base_biome_at(eye.x.floor() as i32, eye.z.floor() as i32);
         self.snowing_here = self.cold(here);
         if self.rain <= 0.0 {
             self.columns.clear();
@@ -158,7 +158,7 @@ impl Weather {
                     continue;
                 }
                 let (x, z) = (cb.x + dx, cb.z + dz);
-                let biome = world.gen.biome_at(x, z);
+                let biome = world.gen.base_biome_at(x, z);
                 if matches!(biome, Biome::Desert | Biome::Badlands) {
                     continue;
                 }

@@ -15,6 +15,7 @@ use voxel::rng::Rng;
 use voxel::worldgen::{Biome, Dim};
 
 use crate::audio::Sfx;
+use crate::money::{g, s};
 use crate::Game;
 
 /// The hard mode ore pairs: (first, second, lowest y, highest y, veins per chunk, vein size).
@@ -23,6 +24,10 @@ const HARD_ORES: [(&str, &str, i32, i32, u32, u32); 3] = [
     ("mythril_ore", "orichalcum_ore", 5, 44, 4, 5),
     ("adamantite_ore", "titanium_ore", 3, 30, 3, 5),
 ];
+
+/// The same ores further down in the deep world (worldgen/deep.rs), richer the deeper the tier:
+/// (from y, to y, veins). Only depths already generated get them.
+const DEEP_HARD_ORES: [(i32, i32, u32); 3] = [(-260, -20, 4), (-430, -160, 4), (-610, -320, 4)];
 
 const GOBLINS: [&str; 3] = ["goblin_warrior", "goblin_warrior", "goblin_archer"];
 
@@ -297,7 +302,7 @@ impl Game {
                     if verdite_on && !self.t5.hard.verdite.contains(&key) {
                         self.t5.hard.verdite.insert(key);
                         let mid = cp * CHUNK_SIZE as i32 + IVec2::splat(8);
-                        if self.world.gen.biome_at(mid.x, mid.y) == Biome::Jungle {
+                        if self.world.gen.base_biome_at(mid.x, mid.y) == Biome::Jungle {
                             self.place_veins(cp, "verdite_ore", 8, 50, 4, 6, 0x7E2D);
                             done += 1;
                         }
@@ -315,6 +320,9 @@ impl Game {
             let (common, rare) = if voxel::worldgen::common_metal(self.seed, 4 + i) { (a, b) } else { (b, a) };
             self.place_veins(cp, common, lo, hi, veins, size, 0x4A11 + i as u64);
             self.place_veins(cp, rare, lo, hi, (veins / 3).max(1), size.saturating_sub(2).max(3), 0x4B22 + i as u64);
+            let (dlo, dhi, dv) = DEEP_HARD_ORES[i];
+            self.place_veins(cp, common, dlo, dhi, dv, size + 1, 0x4C33 + i as u64);
+            self.place_veins(cp, rare, dlo, dhi, dv / 2, size, 0x4D44 + i as u64);
         }
     }
 
@@ -357,14 +365,14 @@ impl Game {
             "npc_tinkerer" => self.t5.hard.goblins_beaten,
             "npc_mechanic" => self.t5.hard.mechanic_freed,
             "npc_sorceress" => self.t5.hard.on,
-            _ => false,
+            _ => self.tr_npc_wish(name),
         }
     }
 }
 
-/// Shops of the Terraria side's town folk: (mob name, goods: item, count, price in emeralds).
-pub const SHOPS: &[(&str, &[(&str, u8, u8)])] = &[
-    ("npc_tinkerer", &[("running_boots", 1, 8), ("cloud_bottle", 1, 9), ("shiny_balloon", 1, 8), ("climbing_claws", 1, 6), ("lucky_horseshoe", 1, 10), ("reforge_table", 1, 6), ("grappling_hook", 1, 5), ("goblin_battle_standard", 1, 6)]),
-    ("npc_mechanic", &[("redstone", 16, 1), ("repeater", 2, 1), ("piston", 2, 2), ("grappling_hook", 1, 4), ("rail", 16, 2), ("cursed_skull", 1, 8)]),
-    ("npc_sorceress", &[("parchment", 8, 1), ("glyph_book", 1, 6), ("mana_crystal", 1, 6), ("void_tome", 1, 18), ("ice_spike_staff", 1, 14), ("star_tome", 1, 22), ("bloody_tear", 1, 4)]),
+/// Shops of the Terraria side's town folk: (mob name, goods: item, count, price in copper).
+pub const SHOPS: &[(&str, &[(&str, u8, u32)])] = &[
+    ("npc_tinkerer", &[("running_boots", 1, s(80)), ("cloud_bottle", 1, s(90)), ("shiny_balloon", 1, s(80)), ("climbing_claws", 1, s(60)), ("lucky_horseshoe", 1, g(1)), ("reforge_table", 1, s(60)), ("grappling_hook", 1, s(50)), ("goblin_battle_standard", 1, s(60)), ("claw_glove", 1, s(90)), ("frog_charm", 1, s(80)), ("creature_radar", 1, s(70)), ("battle_tally", 1, s(60)), ("ore_finder", 1, s(80)), ("weather_vane", 1, s(50))]),
+    ("npc_mechanic", &[("redstone", 16, s(5)), ("repeater", 2, s(5)), ("piston", 2, s(10)), ("grappling_hook", 1, s(40)), ("rail", 16, s(10)), ("cursed_skull", 1, s(80))]),
+    ("npc_sorceress", &[("parchment", 8, s(5)), ("glyph_book", 1, s(60)), ("mana_crystal", 1, s(60)), ("void_tome", 1, g(1) + s(80)), ("ice_spike_staff", 1, g(1) + s(40)), ("star_tome", 1, g(2) + s(20)), ("bloody_tear", 1, s(40)), ("greater_mana_potion", 2, s(40)), ("arcane_cuffs", 1, g(1) + s(40)), ("imp_staff", 1, g(1) + s(60))]),
 ];

@@ -35,7 +35,7 @@ impl Game {
     }
 
     /// A free spot (floor under, two air cells) around `center`, dark (`cave`) or under the sky.
-    fn spot_near(&mut self, center: Vec3, min: f32, max: f32, cave: bool) -> Option<Vec3> {
+    pub(crate) fn spot_near(&mut self, center: Vec3, min: f32, max: f32, cave: bool) -> Option<Vec3> {
         for _ in 0..40 {
             let a = self.wander.rand() * std::f32::consts::TAU;
             let r = min + (max - min) * self.wander.rand();
@@ -110,6 +110,7 @@ impl Game {
         };
         self.wander.slam_cd -= dt;
         let me = self.body.pos;
+        let hunted = self.hunted();
         let m = &mut self.mobs.list[i];
         let d = me - m.body.pos;
         let flat = Vec3::new(d.x, 0.0, d.z);
@@ -135,7 +136,7 @@ impl Game {
             }
             return;
         }
-        if self.wander.slam_cd <= 0.0 && m.body.on_ground && flat.length() > 3.0 && flat.length() < 10.0 && m.aggro {
+        if self.wander.slam_cd <= 0.0 && m.body.on_ground && flat.length() > 3.0 && flat.length() < 10.0 && m.aggro && hunted {
             // Leap toward the player.
             let v = flat.normalize() * flat.length().min(8.0) * 1.1;
             m.body.vel = Vec3::new(v.x, 11.0, v.z);
@@ -155,7 +156,7 @@ impl Game {
         let target = self.body.pos + Vec3::Y * 0.9;
         let d = target - from;
         let flat = Vec3::new(d.x, 0.0, d.z);
-        if self.wander.volley_cd > 0.0 || !m.aggro || flat.length() > 20.0 || flat.length() < 3.0 {
+        if self.wander.volley_cd > 0.0 || !m.aggro || !self.hunted() || flat.length() > 20.0 || flat.length() < 3.0 {
             return;
         }
         self.wander.volley_cd = 7.0;

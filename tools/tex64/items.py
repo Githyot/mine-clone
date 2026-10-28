@@ -16,6 +16,7 @@ MATERIALS = {
     "diamond": "#52dcd2", "netherite": "#4a4246", "copper": "#d8803f", "bronze": "#bb8a44",
     "lead": "#6c7590", "silver": "#dfe3e8", "tungsten": "#7d9a80", "platinum": "#c3dfe8",
     "tin": "#aab4c0", "leather": "#8c5a34", "chainmail": "#9a9aa2", "gold": "#f2c53a",
+    "magmarite": "#e0602a",
 }
 GEMS = {"diamond": "#52dcd2", "emerald": "#2fc860", "ruby": "#d8304a", "sapphire": "#3060d8",
         "topaz": "#e8a820", "amethyst": "#9a52d8", "lapis_lazuli": "#2f52c4", "quartz": "#ece6dc"}

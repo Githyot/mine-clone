@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use voxel::item::{ItemRegistry, ItemStack};
 use voxel::recipe::Recipes;
 
-use crate::accessories::ACC_SLOTS;
+use crate::rpg::MAX_ACC;
 use crate::Game;
 
 /// `main` with the entries of `extra` added at the end of its list. Both are RON files of the
@@ -62,13 +62,32 @@ struct Saved {
     goblins_beaten: bool,
     #[serde(default)]
     mechanic_freed: bool,
+    /// rpg.rs: accessory slots opened, the loadout worn and what the other two hold
+    /// (four armour pieces, then the accessories).
+    #[serde(default)]
+    extra_slots: u8,
+    /// Lote 11: the pet and light pet called out (item names), vanity armour and dyes.
+    #[serde(default)]
+    pet: Option<String>,
+    #[serde(default)]
+    light_pet: Option<String>,
+    #[serde(default)]
+    vanity: Vec<SavedStack>,
+    #[serde(default)]
+    dyes: Vec<SavedStack>,
+    #[serde(default)]
+    loadout: usize,
+    #[serde(default)]
+    loadouts: Vec<Vec<SavedStack>>,
 }
 
 /// What the Terraria side keeps for the world that is open.
 #[derive(Default)]
 pub struct Terraria {
     /// Worn accessories.
-    pub acc: [Option<ItemStack>; ACC_SLOTS],
+    pub acc: [Option<ItemStack>; MAX_ACC],
+    /// Stats, minions, loadouts (rpg.rs).
+    pub rpg: crate::rpg::Rpg,
     pub glyphs: crate::glyphs::Grimoire,
     pub hook: crate::hook::Hook,
     pub moves: crate::accessories::Moves,
@@ -77,24 +96,38 @@ pub struct Terraria {
     /// Damage a ward spell still soaks up, and for how long.
     pub ward: f32,
     pub ward_t: f32,
+    /// The rest of the Terraria side (tr.rs), saved in tr.ron.
+    pub tr: crate::tr::Tr,
     /// Spirits from the spirit staff, circling the player.
     pub spirits: Vec<crate::magic::Spirit>,
     /// Vortexes of the void book, pulling mobs in.
     pub vortexes: Vec<crate::magic::Vortex>,
+    /// Lote 11: summoned mounts and pets, wings, vanity and dyes, sentries.
+    pub comp: crate::companions::Companions,
+    pub look: crate::vanity::Looks,
+    pub sentries: Vec<crate::sentries::Sentry>,
     /// Read from the world's folder yet (it loads on the first frame in a world).
-    loaded: bool,
+    pub(crate) loaded: bool,
 }
 
 impl Terraria {
     pub fn load(dir: &Path, items: &ItemRegistry) -> Terraria {
-        let mut t = Terraria { loaded: true, ..Default::default() };
+        let mut t = Terraria { loaded: true, tr: crate::tr::Tr::load(dir, items), ..Default::default() };
         let Some(s) = std::fs::read_to_string(dir.join("terraria.ron")).ok().and_then(|x| ron::from_str::<Saved>(&x).ok()) else {
             return t;
         };
-        for (i, st) in s.acc.iter().enumerate().take(ACC_SLOTS) {
-            if let Some((name, count, damage)) = st {
-                if let Some(id) = items.id(name) {
-                    t.acc[i] = Some(ItemStack { item: id, count: *count, damage: *damage, ench: Default::default(), sockets: 0 });
+        let stack = |st: &SavedStack| st.as_ref().and_then(|(name, count, damage)| items.id(name).map(|id| ItemStack { item: id, count: *count, damage: *damage, ench: Default::default(), sockets: 0 }));
+        for (i, st) in s.acc.iter().enumerate().take(MAX_ACC) {
+            t.acc[i] = stack(st);
+        }
+        t.rpg.extra_slots = s.extra_slots.min(2);
+        t.rpg.loadout = s.loadout.min(2);
+        for (k, g) in s.loadouts.iter().enumerate().take(3) {
+            for (i, st) in g.iter().enumerate() {
+                if i < 4 {
+                    t.rpg.loadouts[k].armor[i] = stack(st);
+                } else if i - 4 < MAX_ACC {
+                    t.rpg.loadouts[k].acc[i - 4] = stack(st);
                 }
             }
         }
@@ -108,10 +141,19 @@ impl Terraria {
         t.hard.verdite = s.verdite.into_iter().collect::<HashSet<_>>();
         t.hard.goblins_beaten = s.goblins_beaten;
         t.hard.mechanic_freed = s.mechanic_freed;
+        t.comp.pet = s.pet.as_deref().and_then(crate::companions::pet_of);
+        t.comp.light = s.light_pet.as_deref().and_then(crate::companions::pet_of);
+        for (i, st) in s.vanity.iter().enumerate().take(4) {
+            t.look.vanity[i] = stack(st);
+        }
+        for (i, st) in s.dyes.iter().enumerate().take(crate::vanity::DYE_SLOTS) {
+            t.look.dyes[i] = stack(st);
+        }
         t
     }
 
     pub fn save(&self, dir: &Path, items: &ItemRegistry) {
+        self.tr.save(dir, items);
         let s = Saved {
             acc: self.acc.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect(),
             learned: self.glyphs.learned.iter().cloned().collect(),
@@ -122,6 +164,13 @@ impl Terraria {
             verdite: self.hard.verdite.iter().copied().collect(),
             goblins_beaten: self.hard.goblins_beaten,
             mechanic_freed: self.hard.mechanic_freed,
+            extra_slots: self.rpg.extra_slots,
+            pet: self.comp.pet.map(|k| crate::companions::PETS[k].item.to_string()),
+            light_pet: self.comp.light.map(|k| crate::companions::PETS[k].item.to_string()),
+            vanity: self.look.vanity.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect(),
+            dyes: self.look.dyes.iter().map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect(),
+            loadout: self.rpg.loadout,
+            loadouts: self.rpg.loadouts.iter().map(|g| g.armor.iter().chain(g.acc.iter()).map(|s| s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))).collect()).collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
@@ -154,18 +203,31 @@ impl Game {
         if !self.t5.loaded {
             self.t5_load();
         }
+        self.update_rpg(dt);
         self.update_accessories(dt);
+        self.update_companions(dt);
+        self.update_sentries(dt);
         self.update_hook(dt, use_held);
         self.update_glyph_casting(dt, use_held);
         self.update_spell_extras(dt);
         self.update_fight(dt);
         self.update_hardmode(dt);
+        self.update_tr(dt, use_held);
     }
 
     /// Right click with an item of the Terraria side; true when it did something.
     pub(crate) fn t5_use(&mut self, name: &str) -> bool {
         if crate::accessories::is_accessory(name) {
             return self.wear_accessory();
+        }
+        if let Some(r) = self.rpg_use(name) {
+            return r;
+        }
+        if let Some(r) = self.companion_use(name) {
+            return r;
+        }
+        if let Some(r) = self.sentry_use(name) {
+            return r;
         }
         if crate::hook::is_hook(name) {
             return self.throw_hook(name);
@@ -179,6 +241,9 @@ impl Game {
         }
         if name.starts_with("glyph_") {
             return self.learn_glyph(name);
+        }
+        if let Some(r) = self.tr_use(name) {
+            return r;
         }
         if let Some(r) = self.t5_summon(name) {
             return r;
@@ -211,12 +276,9 @@ impl Game {
             if self.t5.hard.blood_moon() {
                 amount *= 1.2;
             }
-            // The base armour only counts worn pieces up to the classic 20 points: hard mode armour
-            // above that and the accessories' points soften the blow here.
-            let worn = self.armor_points_t5() - self.accessory_armor();
-            let extra = (worn.saturating_sub(20) + self.accessory_armor()) as f32;
-            amount *= (1.0 - extra * 0.02).max(0.5);
         }
+        // Defense above the classic 20 points and endurance (rpg.rs).
+        let mut amount = self.rpg_reduce(amount, from);
         if self.t5.ward > 0.0 && amount > 0.0 {
             let soak = amount.min(self.t5.ward);
             self.t5.ward -= soak;
@@ -230,12 +292,6 @@ impl Game {
         amount
     }
 
-    /// All armour points including what hard mode armour brings above the classic 20.
-    pub(crate) fn armor_points_t5(&self) -> u32 {
-        let worn: u32 = self.surv.armor.iter().flatten().filter_map(|s| self.items.get(s.item).armor).map(|a| a.points as u32).sum();
-        worn + self.accessory_armor()
-    }
-
     /// The HUD of the Terraria side: event bar, depth meter, ward, the active glyph spell.
     pub(crate) fn draw_t5_hud(&mut self, w: f32, h: f32) {
         if self.t5.hard.blood_moon() {
@@ -243,7 +299,13 @@ impl Game {
             self.ui.rect(0.0, 0.0, w, h, [120, 0, 0, 38]);
         }
         self.draw_event_bar(w);
+        self.draw_tr_hud(w, h);
         self.draw_accessory_hud(w, h);
+        self.draw_info_hud(h);
+        if self.t5.rpg.sheet && self.screen == crate::Screen::Playing {
+            let s = self.ui.scale;
+            self.draw_stats_sheet(w - 4.0 * s, 40.0 * s);
+        }
         self.draw_glyph_hud(w, h);
     }
 }

@@ -1,15 +1,29 @@
-//! Chunk storage. A chunk is a 16×16 column, 256 blocks tall, split into 16 sections of 16³.
+//! Chunk storage. A chunk is a 16×16 column, 1024 blocks tall (world y -768 up to 255, the deep
+//! Terraria-style underground lives below y 0), split into 64 sections of 16³.
 //! Each section stores its blocks with a palette: an all-air section costs a few bytes,
 //! a section with up to 16 kinds of block costs 2 KB instead of 8 KB.
+//!
+//! `get`/`set` take a world y from 0 up (the old surface world), `get_w`/`set_w` any world y,
+//! `*_local` the index from the bottom of the column (what lighting and meshing walk).
+//! Light is only kept for a band of sections around the player (`light_lo..light_hi`).
 
 use crate::block::{BlockId, AIR};
 use glam::IVec2;
 
 pub const CHUNK_SIZE: usize = 16;
+/// The top of the world (exclusive, world y).
 pub const CHUNK_HEIGHT: usize = 256;
-pub const SECTIONS: usize = CHUNK_HEIGHT / 16;
+/// The bottom of the world (world y): the floor of the Underworld.
+pub const MIN_Y: i32 = -768;
+/// Blocks from the bottom of the column up to the top.
+pub const WORLD_HEIGHT: usize = CHUNK_HEIGHT + DEPTH;
+/// Blocks below y 0.
+pub const DEPTH: usize = (-MIN_Y) as usize;
+pub const SECTIONS: usize = WORLD_HEIGHT / 16;
+/// Local section holding world y 0.
+pub const BASE_SECTION: usize = DEPTH / 16;
 pub const SECTION_VOLUME: usize = 16 * 16 * 16;
-pub const CHUNK_VOLUME: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_HEIGHT;
+pub const CHUNK_VOLUME: usize = CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT;
 
 pub type ChunkPos = IVec2;
 
@@ -19,10 +33,16 @@ pub fn section_index(x: usize, y: usize, z: usize) -> usize {
     x | (z << 4) | (y << 8)
 }
 
-/// Index inside a whole chunk column: x + z*16 + y*256.
+/// Index inside a run of sections: x + z*16 + y*256 (y counted from the run's bottom).
 #[inline(always)]
 pub fn column_index(x: usize, y: usize, z: usize) -> usize {
     x | (z << 4) | (y << 8)
+}
+
+/// Local y (from the bottom of the column) of a world y.
+#[inline(always)]
+pub fn local_y(y: i32) -> usize {
+    (y - MIN_Y) as usize
 }
 
 #[derive(Clone, Debug)]
@@ -51,6 +71,41 @@ impl PalettedSection {
         }
     }
 
+    /// Pack 4096 blocks (`section_index` order) at once, much faster than setting them one by one.
+    pub fn from_slice(blocks: &[BlockId]) -> Self {
+        let first = blocks[0];
+        if blocks.iter().all(|&b| b == first) {
+            return Self::filled(first);
+        }
+        let mut palette: Vec<BlockId> = Vec::with_capacity(16);
+        let mut idx = vec![0u16; SECTION_VOLUME];
+        let (mut last, mut last_i) = (BlockId::MAX, 0u16);
+        let mut non_air = 0u16;
+        for (i, &b) in blocks.iter().enumerate() {
+            if b != AIR {
+                non_air += 1;
+            }
+            if b != last {
+                last = b;
+                last_i = match palette.iter().position(|&p| p == b) {
+                    Some(p) => p as u16,
+                    None => {
+                        palette.push(b);
+                        (palette.len() - 1) as u16
+                    }
+                };
+            }
+            idx[i] = last_i;
+        }
+        let bits: u32 = if palette.len() <= 16 { 4 } else if palette.len() <= 256 { 8 } else { 16 };
+        let mut s = PalettedSection { palette, bits, data: vec![0u64; SECTION_VOLUME.div_ceil(64 / bits as usize)], non_air };
+        for (i, &p) in idx.iter().enumerate() {
+            let v = if bits == 16 { blocks[i] as u32 } else { p as u32 };
+            s.set_raw(i, v);
+        }
+        s
+    }
+
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.non_air == 0
@@ -59,6 +114,12 @@ impl PalettedSection {
     #[inline]
     pub fn non_air(&self) -> u16 {
         self.non_air
+    }
+
+    /// Whether some block for which `f` holds may be here (false means surely not), from the
+    /// palette alone, so a whole section can be skipped without reading its blocks.
+    pub fn may_contain(&self, f: impl Fn(BlockId) -> bool) -> bool {
+        self.bits == 16 || self.palette.iter().any(|&b| f(b))
     }
 
     #[inline(always)]
@@ -156,12 +217,20 @@ impl PalettedSection {
 pub struct Chunk {
     pub pos: ChunkPos,
     pub sections: [PalettedSection; SECTIONS],
-    /// Packed light per block: high nibble = sky light, low nibble = block light. Empty until lit.
+    /// Packed light per block of sections `light_lo..light_hi` (local): high nibble = sky light,
+    /// low nibble = block light. Empty until lit.
     pub light: Vec<u8>,
+    pub light_lo: usize,
+    pub light_hi: usize,
     /// Biome id per column (x + z*16), used for grass/leaf tint.
     pub biomes: [u8; 256],
     /// Changed by a player since generation, so it must be saved.
     pub modified: bool,
+    /// Loaded from a save made before the deep world: only y 0 and up came from the file.
+    pub legacy: bool,
+    /// Sections below this one (local) are not generated yet: plain stone standing in for the
+    /// depths until someone goes down there (`Generator::generate_deep`).
+    pub deep_lo: usize,
 }
 
 impl Chunk {
@@ -170,50 +239,92 @@ impl Chunk {
             pos,
             sections: std::array::from_fn(|_| PalettedSection::default()),
             light: Vec::new(),
+            light_lo: 0,
+            light_hi: 0,
             biomes: [0; 256],
             modified: false,
+            legacy: false,
+            deep_lo: 0,
         }
     }
 
+    /// World y from 0 up.
     #[inline(always)]
     pub fn get(&self, x: usize, y: usize, z: usize) -> BlockId {
-        self.sections[y >> 4].get(section_index(x, y & 15, z))
+        self.get_local(x, y + DEPTH, z)
     }
 
     #[inline]
     pub fn set(&mut self, x: usize, y: usize, z: usize, id: BlockId) {
-        self.sections[y >> 4].set(section_index(x, y & 15, z), id)
-    }
-
-    /// Like `get` but returns air outside the vertical range.
-    #[inline]
-    pub fn get_i(&self, x: usize, y: i32, z: usize) -> BlockId {
-        if !(0..CHUNK_HEIGHT as i32).contains(&y) {
-            AIR
-        } else {
-            self.get(x, y as usize, z)
-        }
+        self.set_local(x, y + DEPTH, z, id)
     }
 
     #[inline(always)]
-    pub fn light_at(&self, x: usize, y: usize, z: usize) -> u8 {
-        if self.light.is_empty() {
-            0xF0
+    pub fn get_local(&self, x: usize, y: usize, z: usize) -> BlockId {
+        self.sections[y >> 4].get(section_index(x, y & 15, z))
+    }
+
+    #[inline]
+    pub fn set_local(&mut self, x: usize, y: usize, z: usize, id: BlockId) {
+        self.sections[y >> 4].set(section_index(x, y & 15, z), id)
+    }
+
+    /// Any world y inside the world (MIN_Y..CHUNK_HEIGHT).
+    #[inline(always)]
+    pub fn get_w(&self, x: usize, y: i32, z: usize) -> BlockId {
+        self.get_local(x, local_y(y), z)
+    }
+
+    #[inline]
+    pub fn set_w(&mut self, x: usize, y: i32, z: usize, id: BlockId) {
+        self.set_local(x, local_y(y), z, id)
+    }
+
+    /// Like `get_w` but returns air outside the vertical range.
+    #[inline]
+    pub fn get_i(&self, x: usize, y: i32, z: usize) -> BlockId {
+        if !(MIN_Y..CHUNK_HEIGHT as i32).contains(&y) {
+            AIR
         } else {
-            self.light[column_index(x, y, z)]
+            self.get_w(x, y, z)
         }
     }
 
-    /// Highest non-air block in a column, or -1.
+    /// Light at a world y from 0 up.
+    #[inline(always)]
+    pub fn light_at(&self, x: usize, y: usize, z: usize) -> u8 {
+        self.light_local(x, y + DEPTH, z)
+    }
+
+    #[inline(always)]
+    pub fn light_w(&self, x: usize, y: i32, z: usize) -> u8 {
+        self.light_local(x, local_y(y), z)
+    }
+
+    /// Outside the lit band: open sky above it, dark rock below it.
+    #[inline(always)]
+    pub fn light_local(&self, x: usize, y: usize, z: usize) -> u8 {
+        if self.light.is_empty() {
+            0xF0
+        } else if y < self.light_lo * 16 {
+            0
+        } else if y >= self.light_hi * 16 {
+            0xF0
+        } else {
+            self.light[column_index(x, y - self.light_lo * 16, z)]
+        }
+    }
+
+    /// Highest non-air block at or above y 0 in a column, or -1.
     pub fn top_y(&self, x: usize, z: usize) -> i32 {
-        for s in (0..SECTIONS).rev() {
+        for s in (BASE_SECTION..SECTIONS).rev() {
             if self.sections[s].is_empty() {
                 continue;
             }
             for yy in (0..16).rev() {
                 let y = s * 16 + yy;
-                if self.get(x, y, z) != AIR {
-                    return y as i32;
+                if self.get_local(x, y, z) != AIR {
+                    return y as i32 + MIN_Y;
                 }
             }
         }
@@ -273,6 +384,17 @@ mod tests {
             assert_eq!(s.get(i), (i % 300) as BlockId);
         }
         assert_eq!(s.non_air() as usize, SECTION_VOLUME - SECTION_VOLUME.div_ceil(300));
+    }
+
+    #[test]
+    fn from_slice_matches_set() {
+        let v: Vec<BlockId> = (0..SECTION_VOLUME).map(|i| ((i / 7) % 5) as BlockId).collect();
+        let s = PalettedSection::from_slice(&v);
+        assert!((0..SECTION_VOLUME).all(|i| s.get(i) == v[i]));
+        assert_eq!(s.non_air() as usize, v.iter().filter(|&&b| b != AIR).count());
+        let w: Vec<BlockId> = (0..SECTION_VOLUME).map(|i| (i % 300) as BlockId).collect();
+        let s = PalettedSection::from_slice(&w);
+        assert!((0..SECTION_VOLUME).all(|i| s.get(i) == w[i]));
     }
 
     #[test]

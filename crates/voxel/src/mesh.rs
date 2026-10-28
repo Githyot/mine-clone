@@ -7,7 +7,7 @@
 //! - w2: sky 4 bits | block light 4 bits | tint r 8 | g 8 | b 8
 
 use crate::block::{BlockId, BlockRegistry, Shape, Transparency, AIR};
-use crate::chunk::{Chunk, CHUNK_HEIGHT};
+use crate::chunk::{local_y, Chunk, MIN_Y, SECTIONS};
 use crate::shapes::{CONN_NX, CONN_NZ, CONN_PX, CONN_PZ};
 
 pub const FLAG_WAVE: u32 = 1;
@@ -92,13 +92,15 @@ impl SectionMesh {
 }
 
 const P: usize = 18; // padded width
-const PH: usize = CHUNK_HEIGHT + 2;
 
-/// Blocks and light of a chunk plus a one-block border from its neighbours.
+/// Blocks and light of a band of a chunk's sections (`lo..hi`, local) plus a one-block border
+/// from its neighbours and the sections above and below.
 pub struct MeshInput {
     blocks: Vec<BlockId>,
     light: Vec<u8>,
     biomes: [u8; 256],
+    pub lo: usize,
+    pub hi: usize,
 }
 
 #[inline(always)]
@@ -109,8 +111,16 @@ fn pi(x: usize, y: usize, z: usize) -> usize {
 impl MeshInput {
     /// `chunks` uses the same 3×3 layout as lighting (index 4 = centre). Missing neighbours read as stone-dark air.
     pub fn new(chunks: [Option<&Chunk>; 9]) -> Self {
-        let mut blocks = vec![AIR; P * P * PH];
-        let mut light = vec![0xF0u8; P * P * PH];
+        Self::band(chunks, 0, SECTIONS)
+    }
+
+    pub fn band(chunks: [Option<&Chunk>; 9], lo: usize, hi: usize) -> Self {
+        let (lo, hi) = (lo.min(SECTIONS), hi.min(SECTIONS).max(lo));
+        let ph = (hi - lo) * 16 + 2;
+        // Padded y 0 is the block below the band.
+        let first = (lo * 16) as i32 - 1;
+        let mut blocks = vec![AIR; P * P * ph];
+        let mut light = vec![0xF0u8; P * P * ph];
         for pz in 0..P {
             for px in 0..P {
                 let wx = px as i32 - 1;
@@ -119,26 +129,70 @@ impl MeshInput {
                 let cz = wz.div_euclid(16);
                 let (lx, lz) = (wx.rem_euclid(16) as usize, wz.rem_euclid(16) as usize);
                 let Some(c) = chunks[((cx + 1) + (cz + 1) * 3) as usize] else { continue };
-                for s in 0..16 {
-                    let sec = &c.sections[s];
-                    let empty = sec.is_empty();
-                    for yy in 0..16 {
-                        let y = s * 16 + yy;
-                        let i = pi(px, y + 1, pz);
-                        if !empty {
-                            blocks[i] = sec.get(crate::chunk::section_index(lx, yy, lz));
-                        }
-                        light[i] = c.light_at(lx, y, lz);
+                let lit = !c.light.is_empty();
+                for py in 0..ph {
+                    let y = first + py as i32;
+                    if y < 0 || y >= (SECTIONS * 16) as i32 {
+                        continue;
+                    }
+                    let y = y as usize;
+                    let i = pi(px, py, pz);
+                    let sec = &c.sections[y >> 4];
+                    if !sec.is_empty() {
+                        blocks[i] = sec.get(crate::chunk::section_index(lx, y & 15, lz));
+                    }
+                    if lit {
+                        light[i] = c.light_local(lx, y, lz);
                     }
                 }
             }
         }
         let c = chunks[4].expect("centre chunk");
-        MeshInput { blocks, light, biomes: c.biomes }
+        MeshInput { blocks, light, biomes: c.biomes, lo, hi }
     }
 
+    /// Only sections `lo..=hi` (and a block above and below): enough to mesh just those, for an
+    /// edit that has to show in the same frame.
+    pub fn new_sections(chunks: [Option<&Chunk>; 9], lo: usize, hi: usize) -> Self {
+        Self::band(chunks, lo, hi + 1)
+    }
+
+    /// Light for a block just opened up (relative to the centre chunk) before the light workers
+    /// get to it: what its neighbours would spread into it, so the faces it uncovers aren't black.
+    /// `y` is a world y.
+    pub fn guess_light(&mut self, x: i32, y: i32, z: i32) {
+        if y < MIN_Y {
+            return;
+        }
+        let py = local_y(y) as i32 - (self.lo * 16) as i32 + 1;
+        // Needs a padded block on every side, inside the band.
+        if !(0..16).contains(&x) || !(0..16).contains(&z) || py < 1 || py as usize > (self.hi - self.lo) * 16 {
+            return;
+        }
+        let i = pi((x + 1) as usize, py as usize, (z + 1) as usize);
+        let (mut sky, mut blk) = (0u8, 0u8);
+        for (d, down) in [(1isize, false), (-1, false), (P as isize, false), (-(P as isize), false), ((P * P) as isize, true), (-((P * P) as isize), false)] {
+            let l = self.light[(i as isize + d) as usize];
+            // Full sunlight keeps going straight down.
+            let s = l >> 4;
+            sky = sky.max(if down && s == 15 { 15 } else { s.saturating_sub(1) });
+            blk = blk.max((l & 15).saturating_sub(1));
+        }
+        self.light[i] = sky << 4 | blk;
+    }
+
+    /// Leave out one block, given relative to the centre chunk (-1..=16 reaches the border).
+    /// `y` is a world y.
+    pub fn hide(&mut self, x: i32, y: i32, z: i32) {
+        let py = local_y(y) as i32 - (self.lo * 16) as i32 + 1;
+        if (-1..=16).contains(&x) && (-1..=16).contains(&z) && py >= 0 && (py as usize) < (self.hi - self.lo) * 16 + 2 {
+            self.blocks[pi((x + 1) as usize, py as usize, (z + 1) as usize)] = AIR;
+        }
+    }
+
+    /// `s` is a local section inside the band.
     pub fn section_has_blocks(&self, s: usize) -> bool {
-        let y0 = s * 16 + 1;
+        let y0 = (s - self.lo) * 16 + 1;
         (y0..y0 + 16).any(|y| {
             let row = &self.blocks[pi(0, y, 0)..pi(0, y + 1, 0)];
             row.iter().any(|&b| b != AIR)
@@ -167,10 +221,101 @@ pub struct MeshTables {
     biome_tints: Vec<[u8; 3]>,
     /// Water drawn with its biome's water colour (swamps).
     water: Vec<bool>,
+    /// Blocks standing in water (kelp): water around them shows no face toward them.
+    wlog: Vec<bool>,
     water_tints: Vec<[u8; 3]>,
     /// Redstone: 1 wire, 2 something wire runs into from any side, 3 a repeater (joins along
     /// its facing), 0 anything else.
     rs: Vec<u8>,
+    /// Shapes from resource packs (JSON block models), drawn instead of the block's own.
+    /// Behind a lock so a pack change can swap them while the workers keep their tables.
+    models: std::sync::RwLock<ModelSet>,
+}
+
+#[derive(Default)]
+struct ModelSet {
+    quads: Vec<Option<std::sync::Arc<[ModelQuad]>>>,
+    /// Full blocks whose model leaves gaps: their neighbours' faces toward them are drawn.
+    open: Vec<bool>,
+}
+
+/// One face of a resource pack model element.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ModelFace {
+    /// [u1, v1, u2, v2] in texture pixels (0..16); None = the element's own outline.
+    pub uv: Option<[f32; 4]>,
+    pub layer: u16,
+    /// Hidden when the block on this side (0..6, mesh face order) is opaque.
+    pub cull: Option<u8>,
+    pub tint: bool,
+}
+
+/// A box of a resource pack model, in pixels (0..16), with its faces in mesh order
+/// (+x, -x, +y, -y, +z, -z).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ModelElement {
+    pub from: [f32; 3],
+    pub to: [f32; 3],
+    pub faces: [Option<ModelFace>; 6],
+}
+
+/// A model face ready to mesh.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ModelQuad {
+    pub pos: [[u8; 3]; 4],
+    pub uv: [[u8; 2]; 4],
+    pub layer: u16,
+    pub face: u8,
+    /// Face to cull against (6 = never).
+    pub cull: u8,
+    /// Touches the block's side: lit by the neighbour there.
+    pub edge: bool,
+    pub tint: bool,
+}
+
+/// The quads of a model's elements (positions clamped to the block, as the vertex format
+/// holds only 0..16 per block).
+pub fn model_quads(elements: &[ModelElement]) -> Vec<ModelQuad> {
+    let mut out = Vec::new();
+    for e in elements {
+        let lo = [0, 1, 2].map(|a| e.from[a].min(e.to[a]).clamp(0.0, 16.0).round() as u32);
+        let hi = [0, 1, 2].map(|a| e.from[a].max(e.to[a]).clamp(0.0, 16.0).round() as u32);
+        for (f, fi) in FACES.iter().enumerate() {
+            let Some(face) = e.faces[f] else { continue };
+            // Where the face lies, and the texture outline the element itself covers there.
+            let proj = |q: [u32; 3]| -> [f32; 2] {
+                let uv = match f {
+                    0 => [16 - q[2], 16 - q[1]],
+                    1 => [q[2], 16 - q[1]],
+                    2 => [q[0], q[2]],
+                    3 => [q[0], 16 - q[2]],
+                    4 => [q[0], 16 - q[1]],
+                    _ => [16 - q[0], 16 - q[1]],
+                };
+                [uv[0] as f32, uv[1] as f32]
+            };
+            let corners: Vec<[u32; 3]> = fi.corners.iter().map(|c| [0, 1, 2].map(|a| if c[a] == 1 { hi[a] } else { lo[a] })).collect();
+            let p: Vec<[f32; 2]> = corners.iter().map(|&q| proj(q)).collect();
+            let (umin, umax) = (p.iter().map(|x| x[0]).fold(16.0, f32::min), p.iter().map(|x| x[0]).fold(0.0, f32::max));
+            let (vmin, vmax) = (p.iter().map(|x| x[1]).fold(16.0, f32::min), p.iter().map(|x| x[1]).fold(0.0, f32::max));
+            let mut q = ModelQuad { pos: [[0; 3]; 4], uv: [[0; 2]; 4], layer: face.layer, face: f as u8, cull: face.cull.unwrap_or(6), edge: false, tint: face.tint };
+            for k in 0..4 {
+                q.pos[k] = corners[k].map(|v| v as u8);
+                let [mut u, mut v] = p[k];
+                if let Some([u1, v1, u2, v2]) = face.uv {
+                    let tu = if umax > umin { (u - umin) / (umax - umin) } else { 0.0 };
+                    let tv = if vmax > vmin { (v - vmin) / (vmax - vmin) } else { 0.0 };
+                    u = u1 + (u2 - u1) * tu;
+                    v = v1 + (v2 - v1) * tv;
+                }
+                q.uv[k] = [u.clamp(0.0, 16.0).round() as u8, v.clamp(0.0, 16.0).round() as u8];
+            }
+            let axis = f >> 1;
+            q.edge = if f & 1 == 0 { hi[axis] == 16 } else { lo[axis] == 0 };
+            out.push(q);
+        }
+    }
+    out
 }
 
 /// How redstone wire joins the blocks around it (see `MeshTables::rs`).
@@ -203,6 +348,7 @@ impl MeshTables {
             emissive: vec![],
             base: vec![],
             liquid_h: vec![],
+            models: Default::default(),
             biome_tints: biome_tints
                 .iter()
                 // The lowest bit of red marks foliage (odd), so the shader can turn it with the
@@ -210,6 +356,7 @@ impl MeshTables {
                 .map(|c| [(c[0] * 200.0).min(255.0) as u8 | 1, (c[1] * 200.0).min(255.0) as u8, (c[2] * 200.0).min(255.0) as u8])
                 .collect(),
             water: vec![],
+            wlog: vec![],
             rs: vec![],
             water_tints: (0..crate::worldgen::Biome::COUNT)
                 .map(|i| crate::worldgen::Biome::from_u8(i as u8).water_tint().map(|c| (c * 200.0).min(255.0) as u8 & !1))
@@ -217,6 +364,7 @@ impl MeshTables {
         };
         for (i, b) in reg.blocks.iter().enumerate() {
             t.water.push(b.shape == Shape::Liquid && b.name.starts_with("water"));
+            t.wlog.push(b.waterlogged);
             t.rs.push(redstone_join(reg, i as BlockId));
             t.opaque.push(reg.is_opaque(i as BlockId));
             t.shape.push(b.shape);
@@ -241,7 +389,9 @@ impl MeshTables {
             // Glass joins up with its neighbours: no frame lines between panes of a window.
             t.base.push(b.base);
             t.liquid_h.push(if b.shape == Shape::Liquid { crate::shapes::liquid_height(b.variant) } else { 0 });
-            t.connected.push(if b.shape != Shape::Cube {
+            t.connected.push(if b.shape == Shape::Pane && (b.name == "glass_pane" || b.name.ends_with("_glass_pane")) {
+                Connect::Full
+            } else if b.shape != Shape::Cube {
                 Connect::None
             } else if b.name == "glass" || b.name.ends_with("_glass") {
                 Connect::Full
@@ -338,7 +488,7 @@ fn pack(pos: [u32; 3], ao: u32, uv: [u32; 2], layer: u32, face: u32, flags: u32,
 
 /// Flood-fill the open cells of a section and record which of its faces are connected.
 pub fn section_visibility(t: &MeshTables, input: &MeshInput, section: usize) -> u64 {
-    let y0 = section * 16 + 1;
+    let y0 = (section - input.lo) * 16 + 1;
     let mut seen = [false; 4096];
     for (i, s) in seen.iter_mut().enumerate() {
         let (x, y, z) = (i & 15, i >> 8, (i >> 4) & 15);
@@ -390,11 +540,45 @@ pub fn section_visibility(t: &MeshTables, input: &MeshInput, section: usize) -> 
 }
 
 /// Mesh one 16-block-tall section of the chunk described by `input`.
+impl MeshTables {
+    /// Swap in the resource packs' block models (by block id). Chunks already meshed keep the
+    /// old look until they are meshed again.
+    pub fn set_models(&self, list: Vec<(BlockId, Vec<ModelQuad>)>) {
+        let mut m = ModelSet { quads: vec![None; self.shape.len()], open: vec![false; self.shape.len()] };
+        for (id, quads) in list {
+            let i = id as usize;
+            if i < m.quads.len() {
+                // Open unless some box fills the whole block.
+                m.open[i] = !full_cube(&quads);
+                m.quads[i] = Some(quads.into());
+            }
+        }
+        *self.models.write().unwrap() = m;
+    }
+}
+
+/// Whether the quads close all six sides of the block (each side has a quad covering it all).
+fn full_cube(quads: &[ModelQuad]) -> bool {
+    (0..6u8).all(|f| {
+        quads.iter().any(|q| {
+            q.face == f && q.edge && {
+                let axis = (f >> 1) as usize;
+                (0..3).filter(|&a| a != axis).all(|a| q.pos.iter().any(|p| p[a] == 0) && q.pos.iter().any(|p| p[a] == 16))
+            }
+        })
+    })
+}
+
 pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> SectionMesh {
     let mut out = SectionMesh { vis: section_visibility(t, input, section), ..Default::default() };
+    let model_set = t.models.read().unwrap();
+    let models = &model_set.quads;
+    let open = &model_set.open;
+    // Opaque for drawing: a full block, unless a pack model opened it up.
+    let solid = |id: usize| t.opaque[id] && !open.get(id).copied().unwrap_or(false);
     let blocks = &input.blocks;
     let light = &input.light;
-    let y0 = section * 16;
+    let y0 = (section - input.lo) * 16;
     let white = [200u8, 200, 200];
     // Uniform faces wait here, per direction and slice, to be merged into bigger quads.
     let mut masks: Vec<[Option<FaceKey>; 256]> = vec![[None; 256]; 6 * 16];
@@ -418,6 +602,28 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                 let biome_tint = t.biome_tints[biome.min(t.biome_tints.len() - 1)];
                 let wave = if t.wave[idu] { FLAG_WAVE } else { 0 };
                 let base = [lx as u32 * 16, ly as u32 * 16, lz as u32 * 16];
+
+                if let Some(Some(quads)) = models.get(idu) {
+                    for q in quads.iter() {
+                        let ni = |f: usize| {
+                            let n = FACES[f].normal;
+                            (i as isize + n[0] as isize + n[2] as isize * P as isize + n[1] as isize * (P * P) as isize) as usize
+                        };
+                        if q.cull < 6 && solid(blocks[ni(q.cull as usize)] as usize) {
+                            continue;
+                        }
+                        // Inside the block: the brightest light around it (a solid block holds none).
+                        let l = if q.edge { light[ni(q.face as usize)] } else { (0..6).map(|f| light[ni(f)]).fold(light[i], |a, b| (a & 0xF0).max(b & 0xF0) | (a & 15).max(b & 15)) };
+                        let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
+                        let tint = if q.tint { biome_tint } else { white };
+                        for k in 0..4 {
+                            let c = q.pos[k];
+                            let pos = [base[0] + c[0] as u32, base[1] + c[1] as u32, base[2] + c[2] as u32];
+                            out.solid.push(pack(pos, 3, [q.uv[k][0] as u32, q.uv[k][1] as u32], q.layer as u32, q.face as u32, 0, sky, blk, tint));
+                        }
+                    }
+                    continue;
+                }
 
                 if shape == Shape::Cross {
                     let l = light[i];
@@ -499,7 +705,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                         let n = fi.normal;
                         let ni = (i as isize + n[0] as isize + n[2] as isize * P as isize + n[1] as isize * (P * P) as isize) as usize;
                         // Top and bottom are full faces, hidden against the same block or solid ones.
-                        if (f == 2 || f == 3) && (blocks[ni] == id || t.opaque[blocks[ni] as usize]) {
+                        if (f == 2 || f == 3) && (blocks[ni] == id || solid(blocks[ni] as usize)) {
                             continue;
                         }
                         let l = if f == 2 || f == 3 { light[ni] } else { light[i].max(light[ni]) };
@@ -540,13 +746,25 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
 
                 if shape.is_boxes() {
                     let nb = |o: isize| blocks[(i as isize + o) as usize] as usize;
-                    let mut conn = 0;
-                    for (bit, o) in [(CONN_PX, 1isize), (CONN_NX, -1), (CONN_PZ, P as isize), (CONN_NZ, -(P as isize))] {
-                        let n = nb(o);
-                        if crate::shapes::joins(shape, t.shape[n], t.opaque[n]) {
-                            conn |= bit;
+                    let conn_at = |j: isize| {
+                        let mut conn = 0;
+                        for (bit, o) in [(CONN_PX, 1isize), (CONN_NX, -1), (CONN_PZ, P as isize), (CONN_NZ, -(P as isize))] {
+                            let n = nb(j + o);
+                            if crate::shapes::joins(t.shape[nb(j)], t.shape[n], solid(n)) {
+                                conn |= bit;
+                            }
                         }
-                    }
+                        conn
+                    };
+                    let conn = conn_at(0);
+                    // Panes: the sides they join are hidden against the next pane (no end caps
+                    // inside a window), and so are top and bottom against a pane above or below
+                    // that is shaped the same.
+                    let up = (P * P) as isize;
+                    let pane = shape == Shape::Pane;
+                    let stacked = |o: isize| pane && t.shape[nb(o)] == Shape::Pane && conn_at(o) == conn;
+                    let (pane_up, pane_down) = (stacked(up), stacked(-up));
+                    let same = |o: isize| blocks[(i as isize + o) as usize] == id;
                     boxes.clear();
                     crate::shapes::boxes(shape, t.variant[idu], conn, false, &mut boxes);
                     let tint = |f: usize| if t.tint[idu] & (1 << f) != 0 { biome_tint } else { white };
@@ -568,7 +786,11 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                                 _ => lo[2] == 0,
                             };
                             let ni = (i as isize + n[0] as isize + n[2] as isize * P as isize + n[1] as isize * (P * P) as isize) as usize;
-                            if edge && t.opaque[blocks[ni] as usize] {
+                            if edge && solid(blocks[ni] as usize) {
+                                continue;
+                            }
+                            let side_bit = [CONN_PX, CONN_NX, 0, 0, CONN_PZ, CONN_NZ][f];
+                            if pane && edge && (conn & side_bit != 0 && t.shape[blocks[ni] as usize] == Shape::Pane || f == 2 && pane_up || f == 3 && pane_down) {
                                 continue;
                             }
                             let l = if edge { light[ni] } else { light[i] };
@@ -584,6 +806,28 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                             } else {
                                 t.faces[idu][f]
                             } as u32;
+                            // Glass panes join their frames up with the same pane around them,
+                            // like glass blocks: (u low, u high) neighbours for each face.
+                            let ctm = if t.connected[idu] == Connect::Full && pane {
+                                let (u0, u1) = match f {
+                                    0 => (P as isize, -(P as isize)),
+                                    1 => (-(P as isize), P as isize),
+                                    4 => (-1, 1),
+                                    5 => (1, -1),
+                                    _ => (0, 0),
+                                };
+                                let mut bits = 0;
+                                if u0 != 0 {
+                                    for (bit, o, ok) in [(FLAG_CTM_U0, u0, true), (FLAG_CTM_U1, u1, true), (FLAG_CTM_V0, up, pane_up), (FLAG_CTM_V1, -up, pane_down)] {
+                                        if ok && same(o) {
+                                            bits |= bit;
+                                        }
+                                    }
+                                }
+                                bits
+                            } else {
+                                0
+                            };
                             for c in fi.corners {
                                 let q = [if c[0] == 1 { hi[0] } else { lo[0] }, if c[1] == 1 { hi[1] } else { lo[1] }, if c[2] == 1 { hi[2] } else { lo[2] }];
                                 let mut uv = match f {
@@ -601,7 +845,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                                 } else if f == 2 && matches!(shape, Shape::Repeater | Shape::Comparator) {
                                     uv = turn_uv([q[0], q[2]], facing);
                                 }
-                                out.solid.push(pack([base[0] + q[0], base[1] + q[1], base[2] + q[2]], 3, uv, layer, f as u32, 0, sky, blk, tint(f)));
+                                out.solid.push(pack([base[0] + q[0], base[1] + q[1], base[2] + q[2]], 3, uv, layer, f as u32, ctm, sky, blk, tint(f)));
                             }
                         }
                     }
@@ -620,7 +864,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     let ni = (i as isize + n[0] as isize + n[2] as isize * P as isize + n[1] as isize * (P * P) as isize) as usize;
                     let nid = blocks[ni];
                     let low_top = hgt < 16 && f == 2;
-                    if t.opaque[nid as usize] && !low_top {
+                    if solid(nid as usize) && !low_top {
                         continue;
                     }
                     if nid == id && t.cull_same[idu] && !(hgt < 16 && f != 3) {
@@ -628,7 +872,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     }
                     // Liquid against liquid: no face in between (any level of the same one, or the
                     // sides against another), only the top shows over a different one.
-                    if liquid && t.shape[nid as usize] == Shape::Liquid && (f != 2 || t.base[nid as usize] == t.base[idu]) {
+                    if liquid && (t.shape[nid as usize] == Shape::Liquid && (f != 2 || t.base[nid as usize] == t.base[idu]) || t.water[idu] && t.wlog[nid as usize]) {
                         continue;
                     }
                     // Ice (or glass) on water: neither face between them shows. The translucent
@@ -681,9 +925,9 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                             let s1 = off(t_off[0]);
                             let s2 = off(t_off[1]);
                             let cc = off([t_off[0][0] + t_off[1][0], t_off[0][1] + t_off[1][1], t_off[0][2] + t_off[1][2]]);
-                            let o1 = t.opaque[blocks[s1] as usize];
-                            let o2 = t.opaque[blocks[s2] as usize];
-                            let oc = t.opaque[blocks[cc] as usize];
+                            let o1 = solid(blocks[s1] as usize);
+                            let o2 = solid(blocks[s2] as usize);
+                            let oc = solid(blocks[cc] as usize);
                             ao = if o1 && o2 { 0 } else { 3 - (o1 as u32 + o2 as u32 + oc as u32) };
                             for (idx, o) in [(s1, o1), (s2, o2), (cc, oc && !(o1 && o2))] {
                                 if !o && !(o1 && o2 && idx == cc) {
@@ -949,18 +1193,19 @@ mod tests {
     fn single_block_has_six_faces() {
         let reg = BlockRegistry::from_ron(r#"(blocks: [(name: "stone")])"#).unwrap();
         let t = MeshTables::new(&reg, vec![]);
+        const B: usize = crate::chunk::BASE_SECTION;
         let mut c = Chunk::new(ChunkPos::new(0, 0));
         c.set(5, 5, 5, 1);
         let input = MeshInput::new([None, None, None, None, Some(&c), None, None, None, None]);
-        let m = mesh_section(&t, &input, 0);
+        let m = mesh_section(&t, &input, B);
         assert_eq!(m.solid.len(), 24);
-        assert!(input.section_has_blocks(0));
-        assert!(!input.section_has_blocks(3));
-        assert_eq!(section_visibility(&t, &input, 0), VIS_ALL);
+        assert!(input.section_has_blocks(B));
+        assert!(!input.section_has_blocks(B + 3));
+        assert_eq!(section_visibility(&t, &input, B), VIS_ALL);
         // Two touching blocks hide two faces, and the evenly lit faces left merge into a 2x1 box.
         c.set(6, 5, 5, 1);
         let input = MeshInput::new([None, None, None, None, Some(&c), None, None, None, None]);
-        let m = mesh_section(&t, &input, 0);
+        let m = mesh_section(&t, &input, B);
         assert_eq!(m.solid.len(), 24);
         assert!(m.solid.iter().all(|v| (v.w[1] >> 25) & FLAG_TILE != 0));
     }
