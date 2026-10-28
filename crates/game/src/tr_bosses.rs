@@ -38,7 +38,6 @@ const SMALL_FLYERS: [&str; 12] = ["ether_wyvern", "vortex_hornet", "nebula_eye",
 
 #[derive(Default)]
 pub struct Fight {
-    /// (reset_contact lets the next touch land at once.)
     vel: Vec3,
     t: f32,
     mode: u8,
@@ -67,8 +66,9 @@ fn snowy(b: Biome) -> bool {
 }
 
 impl Fight {
-    pub(crate) fn reset_contact(&mut self) {
-        self.contact_t = 0.0;
+    /// Stop the fight's clock for a frame (a boss winding up, tr_feel3d.rs).
+    pub(crate) fn hold(&mut self, dt: f32) {
+        self.t -= dt;
     }
 }
 
@@ -248,11 +248,8 @@ impl Game {
                 let a = k as f32 / 10.0 * std::f32::consts::TAU;
                 self.particles.block_bits((pos + Vec3::new(a.cos() * 2.0, -0.5, a.sin() * 2.0)).floor().as_ivec3(), layer, tint, 2, 1.2);
             }
-            self.sfx(Sfx::Explode);
-            if dist < 4.0 && (me.y - pos.y).abs() < 2.0 {
-                self.t5.tr.fight.contact_t = 0.0;
-                self.tr_contact(me + Vec3::Y * 0.9, 1.0, attack * 1.3);
-            }
+            // A ring runs out along the ground: jump over it.
+            self.shockwave(pos, if angry { 11.0 } else { 8.0 }, attack);
         }
         if shed {
             let kind = if angry && self.surv.rng.f32() < 0.5 { "jelly_spiked" } else { "jelly_blue" };
@@ -293,6 +290,7 @@ impl Game {
         let mut call = false;
         let mut turned = false;
         let mut spin = 0.0;
+        let mut dash = None;
         if savage_now && !f.savage {
             // The change: it spins in place, then comes back savage.
             f.savage = true;
@@ -315,6 +313,7 @@ impl Game {
                     f.t = 0.0;
                     f.left = if f.savage { 5 } else { 3 };
                     f.vel = (me - pos).normalize_or_zero() * if f.savage { 28.0 } else { 20.0 };
+                    dash = Some((f.vel, 0.55));
                 }
             }
             1 => {
@@ -326,6 +325,7 @@ impl Game {
                         f.mode = 0;
                     } else {
                         f.vel = (me - pos).normalize_or_zero() * if f.savage { 28.0 } else { 20.0 };
+                        dash = Some((f.vel, 0.3));
                     }
                 } else if f.t > 0.5 {
                     f.vel *= 1.0 - (6.0 * dt).min(1.0);
@@ -361,6 +361,9 @@ impl Game {
             if let Some(s) = self.mobs.list.last_mut() {
                 s.aggro = true;
             }
+        }
+        if let Some((v, secs)) = dash {
+            self.dash_windup(i, crate::tr_feel3d::Clock::Tr, v, secs);
         }
         self.tr_contact(pos, 1.3, attack * if savage { 1.5 } else { 1.0 });
     }

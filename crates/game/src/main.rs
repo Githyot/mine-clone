@@ -78,6 +78,7 @@ mod tr_dungeon;
 mod tr_comfort;
 mod tr_minis;
 mod tr_journey;
+mod tr_feel3d;
 mod tr_weapons;
 mod tr_world;
 mod glyphs;
