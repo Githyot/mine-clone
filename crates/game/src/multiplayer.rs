@@ -1297,6 +1297,10 @@ impl Game {
                     sleeping: m.sleeping,
                     aggro: m.aggro,
                     on_fire: m.on_fire,
+                    act: m.social.act.code(),
+                    talking: m.social.speaking(),
+                    size: m.size,
+                    grow: m.grow,
                 })
                 .collect();
             h.host.send(*id, &ToGuest::Mobs { dim: my_dim, list: mobs });
@@ -1802,6 +1806,13 @@ impl Game {
                     m.sleeping = s.sleeping;
                     m.aggro = s.aggro;
                     m.on_fire = s.on_fire;
+                    // Social poses: a chat partner speaks when the host says so.
+                    m.social.act = voxel::mob::Act::from_code(s.act);
+                    m.social.age = 2.0;
+                    m.social.first = s.talking;
+                    m.social.t = 1.0;
+                    m.size = s.size;
+                    m.grow = s.grow;
                     let g = self.guest();
                     g.mob_health.insert(s.id, s.health);
                     g.mob_target.insert(s.id, (pos, s.yaw));

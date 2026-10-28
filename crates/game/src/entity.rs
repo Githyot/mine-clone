@@ -129,6 +129,7 @@ pub struct EntityRenderer {
     instrument_meshes: usize,
     /// First shield mesh (shield.rs order).
     shield_meshes: usize,
+    summon_meshes: usize,
     /// (mesh, first instance, count) for this frame.
     draws: Vec<(usize, u32, u32)>,
     /// The same for the shadow map.
@@ -498,12 +499,19 @@ fn add_eyelids(mb: &mut MeshBuilder, def: &MobDef, skin: &Skin) {
     }
 }
 
+/// Players (voice chat) and town folk (chatting with each other, anim.rs) get a mouth: the
+/// models whose first part is a player-like 8×8×8 head.
+pub(crate) fn has_mouth(def: &MobDef) -> bool {
+    let folk = def.name.starts_with("npc_") || def.name.starts_with("settler_");
+    (def.name == "player" || folk) && def.parts.len() <= MOUTH_PART && def.parts.first().is_some_and(|p| p.size == (8, 8, 8) && p.uv == (0, 0) && p.anim == Anim::Head)
+}
+
 /// The player's mouth, for voice chat: a dark slit on the face (rows 6..7, columns 2..6 of
 /// the head's front), coloured with the skin's own lip pixel in deep shadow. It rides on its
 /// own part slot; `player_model` opens it by stretching that slot downward from its top edge
 /// with the voice, and folds it away while silent.
 fn add_mouth(mb: &mut MeshBuilder, def: &MobDef) {
-    if def.name != "player" || def.parts.len() > MOUTH_PART || def.parts.is_empty() {
+    if !has_mouth(def) {
         return;
     }
     let p = &def.parts[0];
@@ -1425,6 +1433,8 @@ impl EntityRenderer {
         skins.push(Skin { pixels: kit, scale: SKIN_DETAIL }.rescaled(scale));
         let shield_layer = skins.len();
         skins.push(Skin { pixels: crate::shield::paint_skin(SKIN_DETAIL), scale: SKIN_DETAIL }.rescaled(scale));
+        let summon_layer = skins.len();
+        skins.push(Skin { pixels: crate::summons::paint(SKIN_DETAIL), scale: SKIN_DETAIL }.rescaled(scale));
         let layers = skins.len().max(1) as u32;
         let (tw, th) = (SKIN_W * scale, SKIN_H * scale);
         let levels = scale.trailing_zeros() + 1;
@@ -1612,6 +1622,15 @@ impl EntityRenderer {
                 indices: idx.len() as u32,
             });
         }
+        let summon_meshes = meshes.len();
+        for i in 0..crate::summons::COUNT {
+            let (v, idx) = instrument_mesh(crate::summons::model(i), summon_layer as u32);
+            meshes.push(MobMesh {
+                vbuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("summon verts"), contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX }),
+                ibuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("summon idx"), contents: bytemuck::cast_slice(&idx), usage: wgpu::BufferUsages::INDEX }),
+                indices: idx.len() as u32,
+            });
+        }
         let shield_meshes = meshes.len();
         for model in crate::shield::models() {
             let (v, idx) = instrument_mesh(model, shield_layer as u32);
@@ -1632,7 +1651,7 @@ impl EntityRenderer {
         }
         let particles = crate::particles::ParticleGpu::new(r);
         let items = crate::item_render::ItemGpu::new(r);
-        EntityRenderer { particles, items, pipelines, shadow_pipeline, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, mat_buf, meshes, mob_meshes, armor_meshes, trim_meshes, wing_meshes, instrument_meshes, shield_meshes, draws: Vec::new(), shadow_draws: Vec::new(), instance_count: 0 }
+        EntityRenderer { particles, items, pipelines, shadow_pipeline, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, mat_buf, meshes, mob_meshes, armor_meshes, trim_meshes, wing_meshes, instrument_meshes, shield_meshes, summon_meshes, draws: Vec::new(), shadow_draws: Vec::new(), instance_count: 0 }
     }
 
     /// Mesh index of an armour piece (0 helmet .. 3 boots) for the item named `item`.
@@ -1665,6 +1684,11 @@ impl EntityRenderer {
     /// Mesh index of shield mesh `i` (shield.rs: frames, cloth, designs).
     pub fn shield_mesh(&self, i: usize) -> Option<usize> {
         (i < crate::shield::MESHES).then_some(self.shield_meshes + i)
+    }
+
+    /// Mesh index of summoned creature model `i` (summons.rs).
+    pub fn summon_mesh(&self, i: usize) -> Option<usize> {
+        (i < crate::summons::COUNT).then_some(self.summon_meshes + i)
     }
 
     /// Mesh index of a painting, for `prepare`.
