@@ -273,6 +273,19 @@ fn ctm_sample(in: VOut) -> vec4<f32> {
     let dx = dpdx(in.uv);
     let dy = dpdy(in.uv);
     var uv = in.uv;
+    let layer = f32(in.layer) + 1.0;
+    if (layer == g.anim.x || layer == g.anim.y) {
+        return fire_sample(in, dx, dy);
+    }
+    if (layer == g.anim.z) {
+        // Lava creeps: the surface swirls slowly and its glow breathes.
+        let wp = in.rel + g.cam_world.xyz - g.cam_pos.xyz;
+        let t = g.cam_pos.w;
+        uv += vec2<f32>(sin(t * 0.55 + wp.z * 1.3 + uv.y * 6.283), cos(t * 0.47 + wp.x * 1.1 + uv.x * 6.283)) * 0.045;
+        let c = textureSampleGrad(tex, samp, uv, in.layer, dx, dy);
+        let pulse = 1.0 + 0.08 * sin(t * 1.3 + wp.x * 0.7 + wp.z * 0.9);
+        return vec4<f32>(c.rgb * pulse, c.a);
+    }
     if (m != 0u) {
         let e = 1.0 / 16.0;
         let f = fract(in.uv);
@@ -282,6 +295,27 @@ fn ctm_sample(in: VOut) -> vec4<f32> {
         if ((m & 8u) != 0u && f.y >= 1.0 - e) { uv.y -= e; }
     }
     return textureSampleGrad(tex, samp, uv, in.layer, dx, dy);
+}
+
+// Fire (fire_fx.rs): the flame picture dances. Each column of flame stretches and shrinks on
+// its own, the tongues sway more the higher they reach, and the whole flame flickers. Every
+// fire block has its own rhythm.
+fn fire_sample(in: VOut, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
+    let wp = in.rel + g.cam_world.xyz - g.cam_pos.xyz;
+    let ph = dot(floor(wp + vec3<f32>(0.01)), vec3<f32>(1.7, 3.1, 2.3));
+    let t = g.cam_pos.w;
+    let f = fract(in.uv);
+    let base = in.uv - f;
+    let up = 1.0 - f.y;
+    let s = 1.0 + 0.17 * sin(t * 6.1 + f.x * 9.0 + ph) + 0.09 * sin(t * 10.7 - f.x * 21.0 + ph * 1.3);
+    let v = up * s;
+    if (v >= 1.0) {
+        return vec4<f32>(0.0);
+    }
+    let x = f.x + sin(t * 4.7 + up * 7.0 + ph) * 0.04 * up + sin(t * 9.3 + up * 13.0) * 0.012 * up;
+    let c = textureSampleGrad(tex, samp, base + vec2<f32>(clamp(x, 0.0, 0.999), 1.0 - v), in.layer, dx, dy);
+    let flick = 1.0 + 0.12 * sin(t * 13.0 + ph + up * 5.0) + 0.06 * sin(t * 23.0 + ph * 0.7);
+    return vec4<f32>(c.rgb * flick, c.a);
 }
 
 const LUM = vec3<f32>(0.3, 0.59, 0.11);

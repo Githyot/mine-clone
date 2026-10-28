@@ -59,6 +59,9 @@ pub struct Globals {
     /// Hand light shadows: xyz corner of the solid-block grid relative to the camera's block,
     /// w: 1 when on.
     pub occl: [f32; 4],
+    /// Animated block textures (fire_fx.rs): texture layer + 1 of x fire, y soul fire, z lava
+    /// (0 = none, so the default animates nothing).
+    pub anim: [f32; 4],
 }
 
 #[repr(C)]

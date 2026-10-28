@@ -38,6 +38,8 @@ struct Globals {
     // Hand light shadows: xyz corner of the solid-block grid relative to the camera's block,
     // w: 1 when on.
     occl: vec4<f32>,
+    // Animated textures: layer + 1 of x fire, y soul fire, z lava (0 = none).
+    anim: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;

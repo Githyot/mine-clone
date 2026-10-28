@@ -94,6 +94,7 @@ mod windmill;
 mod entity;
 mod instruments;
 mod torch;
+mod fire_fx;
 mod item_render;
 mod juice;
 mod menus;
@@ -730,6 +731,8 @@ struct Game {
     musicians: instruments::Musicians,
     /// Flames owed to the held torch (fractions carry over between frames), and a count of
     /// them for the sparks and smoke in between (torch.rs).
+    /// Fire blocks' flames and embers (fire_fx.rs).
+    fire_fx: fire_fx::FireFx,
     torch_fx: f32,
     torch_sparks: u32,
     /// Screenshots: the held torch's fire has been lit up once already.
@@ -1123,6 +1126,7 @@ impl Game {
             walker_t: 0.0,
             melody_cd: 0.0,
             musicians: Default::default(),
+            fire_fx: Default::default(),
             torch_fx: 0.0,
             torch_sparks: 0,
             torch_lit: false,
@@ -1760,6 +1764,7 @@ impl Game {
             if matches!(self.screen, Screen::Playing | Screen::Inventory) {
                 self.portal_step(dt);
                 self.update_ambient(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.update_fire_fx(dt, self.args.screenshot.is_some());
                 self.update_musicians(dt);
                 self.update_immersion(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
@@ -4452,6 +4457,7 @@ impl Game {
             dyn_lights: self.dynamic_lights(eye, block),
             extra: [self.settings.layered_clouds as u8 as f32, self.settings.emissive_textures as u8 as f32, 0.0, self.season_uniform()],
             pom: self.parallax_uniform(),
+            anim: self.anim_layers(),
             ..Default::default()
         };
         // A torch in the hand casts shadows (with Sombras on): the blocks around the player.
