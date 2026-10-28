@@ -34,6 +34,8 @@ mod audio;
 mod backpacks;
 mod controller;
 mod elements;
+mod skills;
+mod atlas;
 mod enchanting;
 mod drop_fx;
 mod effects;
@@ -686,6 +688,8 @@ struct Game {
     magic: magic::Magic,
     /// What spells do to the world (elements.rs): spells' blocks that thaw back later.
     elements: elements::Elements,
+    skills: skills::Skills,
+    atlas: atlas::Atlas,
     boss: bosses::BossState,
     /// The Terraria side (Etapa 5): accessories, glyph spells, hard mode and its events.
     t5: terraria::Terraria,
@@ -1132,6 +1136,8 @@ impl Game {
             max_health,
             magic: magic::Magic::new(max_mana),
             elements: Default::default(),
+            skills: Default::default(),
+            atlas: Default::default(),
             boss: bosses::BossState::new(bosses_beaten),
             t5: terraria::Terraria::default(),
             ne: nether_end::NetherEnd::default(),
@@ -1545,6 +1551,8 @@ impl Game {
         self.progress_save();
         self.t5_save();
         self.elements_save();
+        self.skills_save();
+        self.atlas_save();
         self.prog.save(&level_path_hint(&self.base, &self.world_name), &self.items);
         self.extras.save(&self.world.save.dir, &level_path_hint(&self.base, &self.world_name));
         self.save_mods();
@@ -1625,7 +1633,7 @@ impl Game {
         if repeat {
             return;
         }
-        if self.progress_key(code) || self.advancements_key(code) || self.mods_key(code) {
+        if self.atlas_key(code) || self.progress_key(code) || self.skills_key(code) || self.advancements_key(code) || self.mods_key(code) {
             return;
         }
         let f3 = self.keys.contains(&KeyCode::F3);
@@ -2033,6 +2041,14 @@ impl Game {
                     self.travel(voxel::worldgen::Dim::Nether, Vec3::new(p.x / 8.0, 70.0, p.z / 8.0));
                     return;
                 }
+                if let Ok(v) = std::env::var("MC_SKILLS") {
+                    // Test hook: the crafts' experience, their page open (skills.rs).
+                    self.test_skills(&v);
+                }
+                if std::env::var("MC_ATLAS").is_ok() {
+                    // Test hook: an atlas in hand with the land around inked, open (atlas.rs).
+                    self.test_atlas();
+                }
                 if let Ok(n) = std::env::var("MC_PROGRESS") {
                     // Test hook: chapters before N done, the Guide in front (MC_TALK, MC_JOURNAL, MC_REWARD).
                     self.test_progress(n.parse().unwrap_or(0));
@@ -2174,6 +2190,8 @@ impl Game {
             if sim {
                 self.update_boss(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_progress(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.update_skills(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.update_atlas(dt);
             }
             if sim && self.dim == voxel::worldgen::Dim::Overworld {
                 // Townsfolk live at home.
@@ -2637,7 +2655,7 @@ impl Game {
             }
         }
         if use_ && self.place_cd <= 0.0 {
-            if self.mods_use() {
+            if self.atlas_use() || self.mods_use() {
                 self.place_cd = 0.3;
             } else if self.cart_use() || self.boat_use() || self.sit_use() {
                 self.place_cd = 0.3;
@@ -4043,6 +4061,7 @@ impl Game {
             self.draw_hotbar_items(hx, hy, cell);
             self.draw_boss_bar(w);
             self.draw_progress(w, h);
+            self.draw_skills(w, h, hy);
             self.draw_t5_hud(w, h);
             self.draw_mods_hud(w, h);
             if self.survival {
@@ -4140,6 +4159,8 @@ impl Game {
             }
             // The advancements panel covers the rest of the HUD.
             self.draw_advancements(w, h);
+            self.draw_skill_page(w, h);
+            self.draw_atlas(w, h);
         }
 
         self.draw_net_overlay(w, h);

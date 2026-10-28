@@ -40,7 +40,7 @@ impl Game {
     fn wait_for_bite(&mut self) -> f32 {
         // Rain brings the fish up.
         let rain = if self.weather.rain > 0.5 { 0.7 } else { 1.0 };
-        (5.0 + self.surv.rng.f32() * 20.0) * rain * self.rod_bite_factor() * self.tr_bite_factor()
+        (5.0 + self.surv.rng.f32() * 20.0) * rain * self.rod_bite_factor() * self.tr_bite_factor() * self.skill_bite_factor()
     }
 
     /// Right click with the rod: cast, or reel in.
@@ -108,6 +108,7 @@ impl Game {
             self.spawn_orbs(self.body.pos + Vec3::Y, n);
         }
         self.wear_rod(1);
+        self.skill_fish_caught(roll < fish_p);
         self.rod_caught(Some(name).filter(|_| roll < fish_p), at);
     }
 

@@ -611,8 +611,9 @@ impl Game {
             }
             _ => {
                 if let Some((_, p)) = potion_of(&name) {
+                    let longer = self.skill_potion_time();
                     for &(e, a, t) in p.effects {
-                        self.add_effect(e, a, t, false);
+                        self.add_effect(e, a, t * longer, false);
                     }
                 }
                 "glass_bottle"

@@ -92,7 +92,7 @@ impl Game {
 
     /// Melee damage multiplier: emblems, sets, buffs (rpg.rs).
     pub(crate) fn melee_bonus(&self) -> f32 {
-        self.t5.rpg.stats.dmg[crate::rpg::MELEE]
+        self.t5.rpg.stats.dmg[crate::rpg::MELEE] * self.skill_melee()
     }
 
     pub(crate) fn magic_bonus(&self) -> f32 {

@@ -786,6 +786,23 @@ MODO JORNADA (lado Terraria)
     meio-dia, anoitecer, meia-noite, congelar o tempo, chuva, invencível e quantidade de
     monstros (normal, poucos, nenhum, muitos).
 
+OFÍCIOS (tecla Y)
+  Sete ofícios sobem de nível (até 20) com o que você faz no modo sobrevivência:
+    Mineração (picareta e pá; minérios dão mais), Lenhador (machado e toras), Lavoura
+    (colher plantas maduras), Pesca, Combate (dano que você causa), Alquimia (poções feitas
+    perto de você e bebidas) e Exploração (andar, nadar, voar).
+  Cada nível dá um pequeno bônus: cavar e cortar mais rápido, chance de minério, tora ou
+    colheita a mais, peixe mordendo antes, mais dano, poções mais longas, menos fome.
+  Ao ganhar experiência aparece "+N Ofício" acima da barra. Y abre a página com todos.
+
+ATLAS
+  Livro + mapa na mesa = Atlas. Com ele em qualquer lugar do inventário, a terra em volta
+    é desenhada nele aos poucos e fica lá para sempre (o mapa comum só mostra onde você está).
+  Botão direito com ele na mão abre as páginas: florestas, montanhas, rios e mar desenhados
+    à mão, com Casa, Vila e o lugar da última morte marcados.
+  Setas movem, + e - mudam o zoom, Espaço volta para você, N desenha uma marca numerada onde
+    você está, Delete apaga a marca mais perto, Esc ou botão direito fecha.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)
