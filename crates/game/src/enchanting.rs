@@ -509,3 +509,8 @@ mod tests {
         assert_eq!(e.pairs().count(), 1);
     }
 }
+
+/// Whether a stack carries a real enchantment (not just anvil wear or an armour trim).
+pub fn is_enchanted(s: &ItemStack) -> bool {
+    s.ench.pairs().any(|(id, _)| id != WORK && id != TRIM && def(id).is_some())
+}

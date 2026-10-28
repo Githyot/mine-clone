@@ -1202,9 +1202,9 @@ ARMOR_L3 = {
     # material: (display, palette, points per piece helmet/chest/legs/boots)
     "umbral": ("de Sombraço", pal("#1a1028", "#3a2458", "#5a3a84", "#8a64b8", "#c8a8f0"), (2, 5, 4, 2)),
     "sanguinite": ("de Sanguinita", pal("#2a0406", "#5a0e14", "#8a1c22", "#c03a38", "#f08a80"), (2, 5, 4, 2)),
-    "hive": ("de Abelha", pal("#3a2204", "#6a3e08", "#a0640e", "#d49a1e", "#f4c84a"), (1, 3, 3, 1)),
-    "jungle": ("da Selva", pal("#0e2a10", "#1e4a1c", "#2e6a2a", "#4e9a3a", "#8ad064"), (2, 4, 3, 1)),
-    "fossil": ("Fóssil", pal("#4a3e2a", "#7a6a4a", "#a8966e", "#cfc09a", "#f0e6c8"), (2, 4, 3, 1)),
+    "hive": ("de Abelha", pal("#3a2204", "#6a3e08", "#a0640e", "#d49a1e", "#f4c84a"), (2, 5, 4, 2)),
+    "jungle": ("da Selva", pal("#0e2a10", "#1e4a1c", "#2e6a2a", "#4e9a3a", "#8ad064"), (2, 5, 4, 2)),
+    "fossil": ("Fóssil", pal("#4a3e2a", "#7a6a4a", "#a8966e", "#cfc09a", "#f0e6c8"), (2, 5, 4, 2)),
     "necro": ("Necro", pal("#2a2a24", "#5a584c", "#8a8676", "#b8b4a2", "#e4e0d0"), (2, 4, 3, 2)),
     "ninja": ("Ninja", pal("#0a0a0e", "#16161e", "#24242e", "#3a3a48", "#5a5a6e"), (1, 3, 2, 1)),
 }
@@ -1231,7 +1231,7 @@ def items_l3():
         ("unicorn_horn", "Chifre de Unicórnio", icon(HORN2, pal("#6a5a7a", "#b8a8c8", "#e8d8f0", "#fff0ff", "#ffffff")), ""),
         ("sturdy_fossil", "Fóssil Resistente", icon(FOSSIL, pal("#4a3e2a", "#7a6a4a", "#a8966e", "#cfc09a", "#f0e6c8")), ""),
         ("jungle_spore", "Esporo da Selva", icon(GEL, pal("#1e4a1c", "#3a8a2a", "#6ac44a", "#b4f08a", "#f0fff0")), ""),
-        ("sky_blade", "Lâmina Celeste", gi.tool("sky", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 2, speed: 8.0, damage: 6.5, durability: 600))"),
+        ("sky_blade", "Lâmina Celeste", gi.tool("sky", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 2, speed: 8.0, damage: 5.5, durability: 600))"),
         ("umbral_pickaxe", "Picareta de Sombraço", gi.tool("umbral", "pickaxe"), "max_stack: Some(1), tool: Some((kind: Pickaxe, tier: 3, speed: 9.0, damage: 4.0, durability: 1100))"),
         ("sanguinite_pickaxe", "Picareta de Sanguinita", gi.tool("sanguinite", "pickaxe"), "max_stack: Some(1), tool: Some((kind: Pickaxe, tier: 3, speed: 9.0, damage: 4.0, durability: 1100))"),
         ("umbral_sword", "Espada de Sombraço", gi.tool("umbral", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 3, speed: 8.0, damage: 7.5, durability: 1100))"),
@@ -1983,10 +1983,32 @@ def items_l4():
         ("umbral_bow", "Arco de Sombraço", icon2(BOW, umbral, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 800))"),
         ("sanguinite_bow", "Arco de Sanguinita", icon2(BOW, sang, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 800))"),
         ("ballista_rod", "Cajado da Balista", icon2(SENTRY, pal("#3a2a14", "#7a5a2e", "#c4a060", "#f0d890", "#fff8e0"), WOOD), stack1),
-        ("enchanted_sword", "Espada Encantada", gi.tool("enchanted", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 2, speed: 8.0, damage: 6.0, durability: 900))"),
-        ("star_saber", "Sabre Estelar", gi.tool("star", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 3, speed: 8.0, damage: 7.0, durability: 1200))"),
+        ("enchanted_sword", "Espada Encantada", gi.tool("enchanted", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 2, speed: 8.0, damage: 4.5, durability: 900))"),
+        ("star_saber", "Sabre Estelar", gi.tool("star", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 3, speed: 8.0, damage: 4.5, durability: 1200))"),
         ("water_bolt", "Raio d'Água", gi.wand("water"), stack1),
         ("demon_scythe", "Foice Demoníaca", icon2(SCYTHE, umbral, WOOD), stack1),
+    ]
+    # The balance sheet (plan/balanceamento.md): every class gets a weapon at every stage.
+    magma = pal("#3a0c04", "#7a2008", "#c04a10", "#f08a28", "#ffd27a")
+    m5 = e5.METALS
+    bow = "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: {}))"
+    for name, disp, col, dur in [
+        ("magmarite", "de Magmarita", magma, 1000),
+        ("cobalt", "de Cobalto", m5["cobalt"], 1200),
+        ("mythril", "de Mitril", m5["mythril"], 1400),
+        ("adamantite", "de Adamantita", m5["adamantite"], 1600),
+        ("radiant", "Radiante", m5["radiant"], 1800),
+        ("verdite", "de Verdita", m5["verdite"], 2000),
+        ("lumite", "de Lumita", m5["lumite"], 2400),
+    ]:
+        out.append((f"{name}_bow", f"Arco {disp}", icon2(BOW, col, STRING), bow.format(dur)))
+    out += [
+        ("adamantite_rifle", "Fuzil de Adamantita", icon2(MUSKET, m5["adamantite"], STEEL), stack1),
+        ("poison_knife", "Faca Envenenada", icon2(KNIFE, jungle, WOOD), ""),
+        ("magmarite_knife", "Faca de Magmarita", icon2(KNIFE, magma, WOOD), ""),
+        ("mythril_javelin", "Azagaia de Mitril", icon2(JAVELIN, m5["mythril"], WOOD), "max_stack: Some(64)"),
+        ("verdite_knife", "Faca de Verdita", icon2(KNIFE, m5["verdite"], WOOD), ""),
+        ("crystal_jelly_staff", "Cajado da Geleia de Cristal", gi.staff("jelly", "platinum"), stack1),
     ]
     return out
 
@@ -2023,11 +2045,28 @@ SHAPED_L4 = [
     (["GWG", " S ", " S "], {"G": "gold_ingot", "W": "crossbow", "S": "stick"}, "ballista_rod", 1),
     (["F", "F", "S"], {"F": "fallen_star", "S": "iron_sword"}, "enchanted_sword", 1),
     (["FFF", "FSF", "FFF"], {"F": "fallen_star", "S": "sky_blade"}, "star_saber", 1),
-    (["WBW", "WWW"], {"W": "water_bucket", "B": "book"}, "water_bolt", 1),
+    ([" IS", "I S", " IS"], {"I": "magmarite_ingot", "S": "string"}, "magmarite_bow", 1),
+    ([" IS", "I S", " IS"], {"I": "cobalt_ingot", "S": "string"}, "cobalt_bow", 1),
+    ([" IS", "I S", " IS"], {"I": "palladium_ingot", "S": "string"}, "cobalt_bow", 1),
+    ([" IS", "I S", " IS"], {"I": "mythril_ingot", "S": "string"}, "mythril_bow", 1),
+    ([" IS", "I S", " IS"], {"I": "orichalcum_ingot", "S": "string"}, "mythril_bow", 1),
+    ([" IS", "I S", " IS"], {"I": "adamantite_ingot", "S": "string"}, "adamantite_bow", 1),
+    ([" IS", "I S", " IS"], {"I": "titanium_ingot", "S": "string"}, "adamantite_bow", 1),
+    ([" IS", "I S", " IS"], {"I": "radiant_ingot", "S": "string"}, "radiant_bow", 1),
+    ([" IS", "I S", " IS"], {"I": "verdite_ingot", "S": "string"}, "verdite_bow", 1),
+    ([" IS", "I S", " IS"], {"I": "lumite_ingot", "S": "string"}, "lumite_bow", 1),
+    (["III", "IGF"], {"I": "adamantite_ingot", "G": "gunpowder", "F": "flint"}, "adamantite_rifle", 1),
+    (["III", "IGF"], {"I": "titanium_ingot", "G": "gunpowder", "F": "flint"}, "adamantite_rifle", 1),
+    (["  I", " I ", "S  "], {"I": "magmarite_ingot", "S": "stick"}, "magmarite_knife", 6),
+    (["  I", " S ", "S  "], {"I": "mythril_ingot", "S": "stick"}, "mythril_javelin", 8),
+    (["  I", " S ", "S  "], {"I": "orichalcum_ingot", "S": "stick"}, "mythril_javelin", 8),
+    (["  I", " I ", "S  "], {"I": "verdite_ingot", "S": "stick"}, "verdite_knife", 8),
     (["UUU", "U S", "  S"], {"U": "umbral_ingot", "S": "dark_shard"}, "demon_scythe", 1),
 ]
 SHAPELESS_L4 = [
     (["lead_ingot"], "musket_ball", 50),
+    (["throwing_knife", "throwing_knife", "throwing_knife", "throwing_knife", "jungle_spore"], "poison_knife", 4),
+    (["jelly_staff", "soul_of_light", "soul_of_light", "soul_of_light", "mythril_ingot"], "crystal_jelly_staff", 1),
     (["iron_nugget", "iron_nugget", "gunpowder"], "musket_ball", 25),
     (["meteorite_ingot", "musket_ball", "musket_ball", "musket_ball", "musket_ball", "musket_ball"], "meteor_shot", 5),
 ]
@@ -2596,7 +2635,7 @@ def mobs_l7():
 
     out = ["    // Lote 7: the last bosses, the four pillars and their folk, the dungeon spirits."]
     out.append(boss("jelly_queen", "Rainha Geleia", 2400, 10, QUEEN_PARTS_L7, 4.0, 3.0, 2.6,
-                    '(item: "gel", min: 30, max: 60), (item: "crystal_wings", chance: 0.4), (item: "crystal_yoyo", chance: 0.6), (item: "soul_of_light", min: 4, max: 8), (item: "jelly_saddle", chance: 0.2)', 250,
+                    '(item: "gel", min: 30, max: 60), (item: "crystal_wings", chance: 0.4), (item: "crystal_yoyo", chance: 0.6), (item: "crystal_jelly_staff", chance: 0.5), (item: "soul_of_light", min: 4, max: 8), (item: "jelly_saddle", chance: 0.2)', 250,
                     "[(part: 0, inflate: 0.6), (part: 1, inflate: 0.4)]", ", hops: true"))
     out.append(boss("scale_idol", "Ídolo Escamado", 5200, 14, IDOL_PARTS, 3.0, 3.2, 4.4,
                     '(item: "beetle_husk", min: 6, max: 12), (item: "turtle_shell", min: 1, max: 3), (item: "stone_fist", chance: 0.5), (item: "sun_stone_staff", chance: 0.5), (item: "emerald", min: 8, max: 14)', 250,
@@ -3114,8 +3153,8 @@ def items_l8():
         ("frost_medallion", "Medalhão de Gelo", icon2(MEDAL, pal("#2a4a6a", "#4a7aa0", "#7aaed4", "#b4daf4", "#eef8ff"), pal("#c8d2dc", "#ffffff")), ""),
         ("pirate_map", "Mapa do Tesouro", icon2(MAP, pal("#6a5a3a", "#a89470", "#d8c8a0", "#ece0c0", "#f8f0dc"), pal("#a03030", "#3a2a1a")), ""),
         ("ether_crystal", "Cristal Etéreo", icon(SHARD, pal("#2a0a3a", "#7a2aa0", "#c45ad4", "#ffc0ff", "#ffffff")), ""),
-        ("horseman_blade", "Lâmina do Cavaleiro", gi.tool("pumpkin", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 4, speed: 8.0, damage: 10.0, durability: 2000))"),
-        ("cutlass", "Alfanje", gi.tool("cutlass", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 4, speed: 10.0, damage: 9.0, durability: 1800))"),
+        ("horseman_blade", "Lâmina do Cavaleiro", gi.tool("pumpkin", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 4, speed: 8.0, damage: 19.0, durability: 2000))"),
+        ("cutlass", "Alfanje", gi.tool("cutlass", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 4, speed: 10.0, damage: 12.0, durability: 1800))"),
         ("blizzard_staff", "Cajado da Nevasca", gi.staff("blizzard", "silver"), stack1),
         ("laser_rifle", "Rifle de Laser", icon2(RAPID, pal("#2a6a4a", "#4aa07a", "#7ad4a8", "#b0f0d0", "#e8fff4"), STEEL), stack1),
         ("flame_sentry_rod", "Cajado da Sentinela de Chamas", icon2(SENTRY, SOLAR, WOOD), stack1),

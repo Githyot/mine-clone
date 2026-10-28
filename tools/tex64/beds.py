@@ -261,7 +261,9 @@ def main():
     for k, img in tex.items():
         write("block", k, img)
     for c in COLORS:
-        write("item", f"{c}_bed", bed_icon(c, tex))
+        # Items are pixel art like the others (pixel.py, as build.py does).
+        from pixel import pixelate
+        write("item", f"{c}_bed", pixelate(bed_icon(c, tex)))
     # The old one-block bed's pictures.
     for c in ("red", "white"):
         for part in ("top", "side", "end"):

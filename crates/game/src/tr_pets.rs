@@ -347,6 +347,25 @@ impl Game {
     }
 
     /// Test scenes: MC_TR=pets (every pet), mounts, harpies, wings (third person, flying).
+    /// Pets and mounts drawn with a summons.rs model in place of their own plain one.
+    pub(crate) fn pet_models(&self, cam_block: IVec3, max_dist: f32) -> Vec<(usize, crate::entity::Bones)> {
+        let c = cam_block.as_vec3();
+        let mut out = Vec::new();
+        for m in &self.mobs.list {
+            if (m.body.pos - c).length() > max_dist || !m.alive() {
+                continue;
+            }
+            let def = &self.mobs.reg.defs[m.def];
+            let Some(model) = crate::summons::pet_model(&def.name) else { continue };
+            let Some(mesh) = self.entities.summon_mesh(model) else { continue };
+            let l = self.world.light((m.body.pos + Vec3::Y * 0.5).floor().as_ivec3());
+            let speed = Vec3::new(m.body.vel.x, 0.0, m.body.vel.z).length();
+            let light = [(l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0, 0.0, 0.0];
+            out.push((mesh, crate::summons::pet_bones(model, m.body.pos - c, m.yaw, m.age + m.phase * 10.0, speed, light)));
+        }
+        out
+    }
+
     pub(crate) fn test_tr_pets(&mut self, scene: &str) {
         self.t5.tr.pets.test = true;
         let f = self.forward();

@@ -369,5 +369,14 @@ REGISTRY["raw_gold"] = lambda: raw("golden")
 for _g, _c in GEMS.items():
     REGISTRY[_g] = lambda g=_g, c=_c: gem(g, c)
 
+# Swords and armour have a design of their own per material (arms.py), not one recoloured drawing.
+import arms  # noqa: E402
+
+for _m in arms.SWORDS:
+    REGISTRY[f"{_m}_sword"] = lambda m=_m: arms.sword(m)
+for _m in arms.STYLE:
+    for _t, _f in arms.ARMOR_ICONS.items():
+        REGISTRY[f"{_m}_{_t}"] = lambda m=_m, f=_f: f(m)
+
 import beds as _beds  # noqa: E402  (each bed's icon is its 3D model)
 REGISTRY.update(_beds.ITEMS)

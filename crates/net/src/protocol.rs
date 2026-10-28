@@ -322,6 +322,12 @@ pub struct MobState {
     pub sleeping: bool,
     pub aggro: bool,
     pub on_fire: f32,
+    /// Its social act (voxel::mob::Act::code), whether it has the word in a chat, and how big
+    /// it is (babies; seconds left to grow up).
+    pub act: u8,
+    pub talking: bool,
+    pub size: f32,
+    pub grow: f32,
 }
 
 /// FNV-1a over a list of names: same content on both sides gives the same number.

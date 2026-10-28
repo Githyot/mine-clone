@@ -12,6 +12,10 @@ use crate::shapes::{CONN_NX, CONN_NZ, CONN_PX, CONN_PZ};
 
 pub const FLAG_WAVE: u32 = 1;
 pub const FLAG_LIQUID: u32 = 2;
+/// Wave and liquid together (never on a real liquid face): a rooted plant. Its base stays put and
+/// only the part above bends in the wind; the ao bits say if it stands on (1) or carries (2)
+/// another such plant, so tall stacks bend as one stem.
+pub const FLAG_PLANT: u32 = FLAG_WAVE | FLAG_LIQUID;
 /// Merged quad (greedy meshing): the shader repeats the texture once per block from the
 /// position instead of reading the vertex UVs.
 pub const FLAG_TILE: u32 = 4;
@@ -641,6 +645,12 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                         [[15, 0, 1], [1, 0, 15], [1, 16, 15], [15, 16, 1]],
                     ];
                     let uvs = [[0, 16], [16, 16], [16, 0], [0, 0]];
+                    let (flags, stack) = if wave != 0 {
+                        let stem = |j: usize| t.shape[blocks[j] as usize] == Shape::Cross && t.wave[blocks[j] as usize];
+                        (FLAG_PLANT, stem(i - P * P) as u32 | (stem(i + P * P) as u32) << 1)
+                    } else {
+                        (0, 3)
+                    };
                     for q in quads {
                         // Front and back so the plant is visible from both sides.
                         for order in [[0usize, 1, 2, 3], [1, 0, 3, 2]] {
@@ -648,11 +658,11 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                                 let c = q[k];
                                 out.solid.push(pack(
                                     [base[0] + c[0], base[1] + c[1], base[2] + c[2]],
-                                    3,
+                                    stack,
                                     uvs[k],
                                     layer,
                                     2,
-                                    wave,
+                                    flags,
                                     sky,
                                     blk,
                                     tint,
