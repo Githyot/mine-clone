@@ -1357,7 +1357,8 @@ impl Game {
         match self.renderer.post.builtin() {
             Some(Builtin::Realcado) => [if o[5] > 0.5 { 2.2 } else { 1.0 }, o[6], 1.6 * o[0].min(1.0), 0.0],
             Some(Builtin::Suave) => [1.0, 0.0, 0.8 * o[0], 0.0],
-            _ => [1.0, 0.0, 0.0, 0.0],
+            // Without a shader pack the water ripples and reflects when Reflexos na água is on.
+            _ => [1.0, if self.settings.water_reflections { 1.0 } else { 0.0 }, 0.0, 0.0],
         }
     }
 
@@ -1809,6 +1810,9 @@ impl Game {
                 self.unstick();
                 if self.args.demo {
                     self.build_demo();
+                }
+                if std::env::var("MC_SHADOWS").is_ok() {
+                    self.build_shadow_test();
                 }
                 if self.args.shapes {
                     self.build_shapes();
@@ -2607,7 +2611,7 @@ impl Game {
                 false,
             ),
             (format!("Sombras: {}", settings::SHADOW_LEVELS[self.settings.shadows.min(2) as usize]), ShaderRow::Shadows, false),
-            (format!("Reflexos na água: {}{}", onoff(self.settings.water_reflections), if cur.is_none() { " (com shader)" } else { "" }), ShaderRow::Reflections, false),
+            (format!("Reflexos na água: {}", onoff(self.settings.water_reflections)), ShaderRow::Reflections, false),
             (format!("Suavização TAA: {}{}", onoff(self.settings.taa), if cur.is_none() { " (com shader)" } else { "" }), ShaderRow::Taa, false),
             (format!("Nuvens: {}", if !self.settings.show_clouds { "Não" } else if self.settings.layered_clouds { "Em camadas" } else { "Simples" }), ShaderRow::Clouds, false),
             (format!("Minérios brilhantes: {}", onoff(self.settings.emissive_textures)), ShaderRow::Emissive, false),
@@ -3397,6 +3401,39 @@ impl Game {
         // Look from above.
         self.body.pos.y += 3.5;
         self.body.flying = true;
+    }
+
+    /// Test hook MC_SHADOWS=1: flat sand around the player, a pool of water in front and a stone
+    /// wall to one side, for shadow and reflection screenshots.
+    fn build_shadow_test(&mut self) {
+        let p = self.body.pos.floor().as_ivec3();
+        let f = self.forward();
+        let dir = if f.x.abs() > f.z.abs() { IVec3::new(f.x.signum() as i32, 0, 0) } else { IVec3::new(0, 0, f.z.signum() as i32) };
+        let side = IVec3::new(-dir.z, 0, dir.x);
+        let g = |n: &str| self.reg.id_or_air(n);
+        let (sand, water, stone, ice, thin) = (g("sand"), g("water"), g("stone_bricks"), g("ice"), g("thin_ice"));
+        for a in -14..=14 {
+            for b in -8..=24 {
+                let col = p + side * a + dir * b;
+                for h in -3..12 {
+                    let q = col + IVec3::Y * h;
+                    let pool = (4..=20).contains(&b) && (-7..=9).contains(&a);
+                    let id = if h < -1 || (h == -1 && !pool) {
+                        sand
+                    } else if h == -1 && b >= 15 && a >= 2 {
+                        // Part of the pool frozen over, thick and thin ice.
+                        if a >= 6 { ice } else { thin }
+                    } else if h == -1 || (h == -2 && pool) {
+                        water
+                    } else if a == -4 && (0..=3).contains(&b) && h < 3 {
+                        stone
+                    } else {
+                        AIR
+                    };
+                    self.world.set_block(q, id);
+                }
+            }
+        }
     }
 
     /// A little scene for test screenshots: a house with glass, torches and a glowstone lamp.
@@ -4410,6 +4447,29 @@ impl Game {
             pom: self.parallax_uniform(),
             ..Default::default()
         };
+        // A torch in the hand casts shadows (with Sombras on): the blocks around the player.
+        if self.settings.shadows > 0 && g.hand_light[3] > 0.0 {
+            let n = scenefx::OCCL_SIZE as i32;
+            let corner = head.floor().as_ivec3() - IVec3::splat(n / 2);
+            if self.renderer.fx.occluders_stale(corner) {
+                let reg = &self.world.reg;
+                let mut grid = vec![0u8; (n * n * n) as usize];
+                for z in 0..n {
+                    for x in 0..n {
+                        let column = corner + IVec3::new(x, 0, z);
+                        for y in 0..n {
+                            if reg.is_opaque(self.world.block_or_air(column + IVec3::Y * y)) {
+                                grid[((z * n + y) * n + x) as usize] = 1;
+                            }
+                        }
+                    }
+                }
+                let r = &mut *self.renderer;
+                r.fx.upload_occluders(&r.queue, corner, &grid);
+            }
+            let c = corner - block;
+            g.occl = [c.x as f32, c.y as f32, c.z as f32, 1.0];
+        }
         // Shadows and reflections (scenefx.rs); the renderer fills in the rest of the globals.
         self.renderer.fx.level = self.settings.shadows.min(2);
         self.renderer.fx.reflections = self.settings.water_reflections;
@@ -4537,11 +4597,20 @@ impl Game {
         items.extend(stand_models);
         net_held.extend(stand_held);
         let mut held_third = None;
+        // Drawn but casting no shadow (first-person arm, inventory figure), and the other way
+        // round (the body in first person still casts its shadow).
+        let mut overlay = Vec::new();
+        let mut shadow_only = Vec::new();
         // The held torch's flame top, for its fire (torch.rs).
         let mut torch_top = None;
         if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
             let def = &self.mobs.reg.defs[pd];
             let pose = self.pose(false);
+            if !third && self.renderer.fx.level > 0 {
+                let bones = self.anim.bones(def, &pose, block, 1.0, 1.0);
+                shadow_only.extend(self.armor_instances(&bones));
+                shadow_only.push((pd, bones));
+            }
             if third {
                 let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
                 let mut bones = self.anim.bones(def, &pose, block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
@@ -4569,18 +4638,18 @@ impl Game {
                     Some((arms, (self.entities.instrument_mesh(i)?, ib)))
                 });
                 if let Some((arms, inst)) = two_hands {
-                    items.push((pd, arms));
-                    items.push(inst);
+                    overlay.push((pd, arms));
+                    overlay.push(inst);
                 } else {
                     let arm = self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, light[0], light[1]);
                     // Same size against the fist as the other held items in first person.
                     if let Some((t, mesh)) = self.held_torch().and_then(|t| Some((t, self.entities.torch_mesh(t)?))).filter(|_| self.camera_mode == 0) {
                         let pv = def.parts[2].pivot;
                         let (tb, top) = torch::hold(t, arm.m[2], Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 0.55, 0.2, self.now, [light[0], 1.0, 0.0, 0.0]);
-                        items.push((mesh, tb));
+                        overlay.push((mesh, tb));
                         torch_top = Some((t, top + block.as_vec3(), 0.5));
                     }
-                    items.push((pd, arm));
+                    overlay.push((pd, arm));
                 }
             }
         }
@@ -4633,8 +4702,8 @@ impl Game {
             for mm in b.m.iter_mut() {
                 *mm = (m * glam::Mat4::from_cols_array_2d(mm)).to_cols_array_2d();
             }
-            items.extend(self.armor_instances(&b));
-            items.push((pd, b));
+            overlay.extend(self.armor_instances(&b));
+            overlay.push((pd, b));
             let back = center + f * (world_h * 1.3) - block.as_vec3();
             figure_backdrop = Some(item_render::GpuItem { pos: [back.x, back.y, back.z, world_h * 1.22 * (d + world_h * 1.3) / d], info: [0.0, 0.0, 0.0, 0.0], layers: [0.0; 4], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
         }
@@ -4665,7 +4734,7 @@ impl Game {
             let p = paintings::Painting { name: String::new(), anchor: anchor.to_array(), facing: n.to_array(), def: d };
             items.push((self.entities.painting_mesh(d), p.bones(block, &self.world)));
         }
-        self.entities.prepare(&self.renderer, items);
+        self.entities.prepare_split(&self.renderer, items, overlay, shadow_only);
         self.entities.particles.prepare(&self.renderer, &self.particles, &self.world, block);
         let mut drops = self.drop_instances(block);
         drops.extend(figure_backdrop);

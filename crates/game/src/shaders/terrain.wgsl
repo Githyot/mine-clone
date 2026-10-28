@@ -6,6 +6,8 @@
 @group(2) @binding(1) var shadow_cmp: sampler_comparison;
 @group(2) @binding(2) var scene_copy: texture_2d<f32>;
 @group(2) @binding(3) var scene_depth: texture_depth_2d;
+// Solid blocks around the player (1 = blocks light) for hand light shadows; corner in g.occl.
+@group(2) @binding(4) var occluders: texture_3d<u32>;
 
 struct VOut {
     @builtin(position) clip: vec4<f32>,
@@ -133,6 +135,46 @@ fn sun_visibility(in: VOut) -> f32 {
     return mix(v, 1.0, far_fade);
 }
 
+// 1 when nothing solid stands between this point and the light in the player's hand, 0 when a
+// block is in the way: walk the grid of solid blocks cell by cell toward the light.
+fn hand_visibility(in: VOut) -> f32 {
+    let goal = g.hand_light.xyz - g.occl.xyz;
+    var n = face_normal((in.kind >> 8u) & 7u);
+    if ((in.kind & 1u) != 0u) {
+        n = normalize(goal - (in.rel - g.occl.xyz));
+    }
+    let start = in.rel - g.occl.xyz + n * 0.04;
+    let d = goal - start;
+    let dir = d / max(length(d), 1e-4);
+    var cell = vec3<i32>(floor(start));
+    let end = vec3<i32>(floor(goal));
+    let stp = vec3<i32>(sign(dir));
+    let inv = 1.0 / max(abs(dir), vec3<f32>(1e-5));
+    // Distance along the ray to the next cell wall on each axis.
+    var t_max = (select(vec3<f32>(cell), vec3<f32>(cell + vec3<i32>(1)), dir > vec3<f32>(0.0)) - start) * sign(dir) * inv;
+    t_max = select(t_max, vec3<f32>(1e9), abs(dir) < vec3<f32>(1e-5));
+    let size = i32(textureDimensions(occluders).x);
+    for (var i = 0; i < 48; i++) {
+        if (all(cell == end)) {
+            return 1.0;
+        }
+        if (all(cell >= vec3<i32>(0)) && all(cell < vec3<i32>(size)) && textureLoad(occluders, cell, 0).r != 0u) {
+            return 0.0;
+        }
+        if (t_max.x < t_max.y && t_max.x < t_max.z) {
+            cell.x += stp.x;
+            t_max.x += inv.x;
+        } else if (t_max.y < t_max.z) {
+            cell.y += stp.y;
+            t_max.y += inv.y;
+        } else {
+            cell.z += stp.z;
+            t_max.z += inv.z;
+        }
+    }
+    return 1.0;
+}
+
 fn lit(c: vec3<f32>, in: VOut) -> vec3<f32> {
     let daylight = g.fog_color.w;
     var sky = light_curve(in.light.x) * daylight;
@@ -145,6 +187,10 @@ fn lit(c: vec3<f32>, in: VOut) -> vec3<f32> {
     }
     // A light in the player's hand fades one level per block, like a placed torch.
     var hand = g.hand_light.w - length(in.rel - g.hand_light.xyz) / 15.0;
+    if (g.occl.w > 0.5 && hand > in.light.y) {
+        // Walls and blocks cast shadows from the torch in the hand.
+        hand *= hand_visibility(in);
+    }
     for (var i = 0; i < 8; i++) {
         let d = g.dyn_lights[i];
         hand = max(hand, d.w - length(in.rel - d.xyz) / 15.0);
@@ -404,15 +450,21 @@ fn fs_solid(in: VOut) -> @location(0) vec4<f32> {
     return vec4<f32>(shade(c.rgb * r * p.light, in), 1.0);
 }
 
-// Slope of a few travelling waves at a world position (for rippling water).
+// Slope of a few travelling waves at a world position (for rippling water). Slow noise bends
+// the wave fronts and changes their height from patch to patch, so they never line up into a
+// regular grid of stripes.
 fn wave_slope(xz: vec2<f32>, t: f32) -> vec2<f32> {
+    let warp = vec2<f32>(water_noise(xz * 0.13 + vec2<f32>(t * 0.05, 0.0)), water_noise(xz * 0.13 + vec2<f32>(17.0, -t * 0.04))) * 2.6;
+    let p = xz + warp;
     let d1 = vec2<f32>(0.8, 0.6);
     let d2 = vec2<f32>(-0.55, 0.83);
     let d3 = vec2<f32>(0.24, -0.97);
-    var s = d1 * cos(dot(xz, d1) * 1.7 + t * 1.9) * 0.6;
-    s += d2 * cos(dot(xz, d2) * 2.9 + t * 2.6) * 0.35;
-    s += d3 * cos(dot(xz, d3) * 5.3 + t * 3.4) * 0.2;
-    return s;
+    let d4 = vec2<f32>(-0.92, -0.38);
+    var s = d1 * cos(dot(p, d1) * 1.7 + t * 1.9) * 0.6;
+    s += d2 * cos(dot(p, d2) * 2.9 + t * 2.6) * 0.35;
+    s += d3 * cos(dot(p, d3) * 5.3 + t * 3.4) * 0.2;
+    s += d4 * cos(dot(p, d4) * 3.7 + t * 2.2) * 0.25;
+    return s * (0.45 + 0.9 * water_noise(xz * 0.045 + vec2<f32>(t * 0.02, t * 0.013)));
 }
 
 // Sky seen in a direction (for reflections that leave the screen).
@@ -479,11 +531,55 @@ fn screen_reflection(start: vec3<f32>, r: vec3<f32>) -> vec4<f32> {
     return vec4<f32>(0.0);
 }
 
+fn water_hash(p: vec2<f32>) -> f32 {
+    return fract(sin(dot(p, vec2<f32>(127.1, 311.7))) * 43758.5453);
+}
+
+// Smooth value noise, 0..1.
+fn water_noise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = water_hash(i);
+    let b = water_hash(i + vec2<f32>(1.0, 0.0));
+    let c = water_hash(i + vec2<f32>(0.0, 1.0));
+    let d = water_hash(i + vec2<f32>(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+// The water texture without its one-block grid: two copies at other scales and angles, drifting
+// apart and blended by slow noise, fading into the texture's average colour in the distance.
+// `wx`, `dx`, `dy`: world xz and its screen derivatives.
+fn water_texture(in: VOut, base: vec4<f32>, wx: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
+    let t = g.cam_pos.w;
+    let rot = mat2x2<f32>(0.8, 0.6, -0.6, 0.8);
+    let a = wx * 0.5 + vec2<f32>(t * 0.031, t * 0.017);
+    let b = rot * wx * 0.37 + vec2<f32>(-t * 0.022, t * 0.029);
+    let sa = textureSampleGrad(tex, samp, fract(a), in.layer, dx * 0.5, dy * 0.5);
+    let sb = textureSampleGrad(tex, samp, fract(b), in.layer, rot * dx * 0.37, rot * dy * 0.37);
+    // Keep the drift and wobble of the animated texture, but break its grid.
+    let w = smoothstep(0.25, 0.75, water_noise(wx * 0.09 + vec2<f32>(t * 0.01, 0.0)));
+    var c = mix(mix(sa, sb, w), base, 0.25);
+    // Broad patches of lighter and darker water.
+    let tone = water_noise(wx * 0.035 - vec2<f32>(0.0, t * 0.006)) * 0.16 + 0.92;
+    c = vec4<f32>(c.rgb * tone, c.a);
+    let avg = textureSampleLevel(tex, samp, vec2<f32>(0.5), in.layer, 16.0);
+    let far = smoothstep(12.0, 56.0, in.dist);
+    return vec4<f32>(mix(c.rgb, avg.rgb * tone, far * 0.8), mix(c.a, avg.a, far * 0.8));
+}
+
 @fragment
 fn fs_translucent(in: VOut) -> @location(0) vec4<f32> {
-    let c = ctm_sample(in);
+    // Derivatives need uniform control flow, so take them before branching on the block.
+    let wx = in.rel.xz + g.cam_world.xz - g.cam_pos.xz;
+    let wdx = dpdx(wx);
+    let wdy = dpdy(wx);
+    var c = ctm_sample(in);
     if (c.a < 0.02) {
         discard;
+    }
+    if ((in.kind & 2u) != 0u && ((in.kind >> 8u) & 7u) == 2u) {
+        c = water_texture(in, c, wx, wdx, wdy);
     }
     let fog = fog_amount(in);
     var rgb = lit(c.rgb, in);
@@ -494,11 +590,13 @@ fn fs_translucent(in: VOut) -> @location(0) vec4<f32> {
         // angles and catches the sun.
         let wp = in.rel + g.cam_world.xyz - g.cam_pos.xyz;
         let s = wave_slope(wp.xz, g.cam_pos.w);
-        let n = normalize(vec3<f32>(-s.x * 0.22, 1.0, -s.y * 0.22));
+        // Ripples shade the water up close; far away they would only make moire stripes.
+        let near = 1.0 - smoothstep(14.0, 48.0, in.dist);
+        let n = normalize(vec3<f32>(-s.x * 0.22, 1.0, -s.y * 0.22) * vec3<f32>(mix(0.4, 1.0, near), 1.0, mix(0.4, 1.0, near)));
         let v = normalize(in.rel - g.cam_pos.xyz);
         let sky = light_curve(in.light.x);
         let fres = pow(1.0 - max(-v.y, 0.0), 4.0);
-        rgb *= 0.9 + (n.x + n.z) * 1.2;
+        rgb *= mix(1.0, 0.9 + (n.x + n.z) * 1.2, near);
         let r = reflect(v, n);
         if (g.extra.z > 0.5) {
             // Reflections: the world mirrored where the screen shows it, the sky elsewhere.

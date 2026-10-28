@@ -56,6 +56,9 @@ pub struct Globals {
     /// Block depth (parallax occlusion mapping): x depth in blocks (0 = off), y most steps
     /// per pixel, z distance in blocks where it has faded out, w self-shadows 0/1.
     pub pom: [f32; 4],
+    /// Hand light shadows: xyz corner of the solid-block grid relative to the camera's block,
+    /// w: 1 when on.
+    pub occl: [f32; 4],
 }
 
 #[repr(C)]
@@ -926,7 +929,10 @@ impl Renderer {
         let taa = hdr_on && self.post.taa;
         let view_proj = self.fx.jitter(sw, sh, taa) * plain_vp;
         let reproj = if taa { Some(self.fx.reprojection(view_proj, plain_vp, cam.block)) } else { None };
-        self.fx.prepare(&self.device, hdr_on, sw, sh, &self.depth, self.depth_changed);
+        // Reflections copy the picture before water is drawn: the shader pack's HDR texture, or
+        // the screen itself when the display allows copying from it.
+        let scene_format = if hdr_on { Some(crate::post::HDR) } else { self.copy_src_ok.then_some(self.config.format) };
+        self.fx.prepare(&self.device, scene_format, sw, sh, &self.depth, self.depth_changed);
         self.depth_changed = false;
         // Sun shadows where there is a sun (the Overworld and the Aether).
         let sun = Vec3::new(globals.sun_dir[0], globals.sun_dir[1], globals.sun_dir[2]);
@@ -1126,10 +1132,14 @@ impl Renderer {
                 pass.set_vertex_buffer(0, b.slice(..));
                 pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
             }
+            // The player and mobs cast shadows too.
+            if let Some(e) = entities {
+                e.draw_shadow(&mut pass);
+            }
         }
         // With water reflections the pass is split: everything opaque first, then a copy of
         // the picture for the water to reflect, then water, glass, rain and lines on top.
-        let split = hdr && self.fx.reflecting();
+        let split = self.fx.reflecting();
         let late = LateDraws {
             pipes,
             tex_bg: &self.tex_bg,
@@ -1180,7 +1190,7 @@ impl Renderer {
                 }
             }
             if let Some(e) = entities {
-                e.draw(&mut pass, hdr, &self.tex_bg);
+                e.draw(&mut pass, hdr, &self.tex_bg, &self.fx.bg_solid);
             }
             if clouds {
                 pass.set_pipeline(&pipes.cloud);
@@ -1191,7 +1201,7 @@ impl Renderer {
             }
         }
         if split {
-            if let (Some(src), Some(dst)) = (self.post.scene_texture(), self.fx.copy_texture()) {
+            if let (Some(src), Some(dst)) = (self.post.scene_texture().or(Some(&frame.texture)), self.fx.copy_texture()) {
                 enc.copy_texture_to_texture(src.as_image_copy(), dst.as_image_copy(), wgpu::Extent3d { width: sw, height: sh, depth_or_array_layers: 1 });
             }
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {

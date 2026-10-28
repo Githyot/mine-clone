@@ -875,6 +875,14 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     if liquid && (t.shape[nid as usize] == Shape::Liquid && (f != 2 || t.base[nid as usize] == t.base[idu]) || t.water[idu] && t.wlog[nid as usize]) {
                         continue;
                     }
+                    // Ice (or glass) on water: neither face between them shows. The translucent
+                    // pass doesn't sort faces inside a section, so the ice's dim underside
+                    // could be drawn over its top and turn a frozen river dark.
+                    let n_liquid = t.shape[nid as usize] == Shape::Liquid;
+                    let n_ice = nid != AIR && !n_liquid && t.transp[nid as usize] == Transparency::Translucent && t.shape[nid as usize] == Shape::Cube;
+                    if (liquid && n_ice) || (!liquid && n_liquid && transp == Transparency::Translucent && shape == Shape::Cube) {
+                        continue;
+                    }
                     let layer = t.faces[idu][f] as u32 | t.emissive[idu];
                     let tint = if t.tint[idu] & (1 << f) != 0 {
                         biome_tint

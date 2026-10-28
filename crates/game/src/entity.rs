@@ -105,6 +105,8 @@ struct MobMesh {
 pub struct EntityRenderer {
     /// [drawing straight to the screen, drawing into the HDR scene for shader packs]
     pipelines: [wgpu::RenderPipeline; 2],
+    /// Depth only, into the sun's shadow map.
+    shadow_pipeline: wgpu::RenderPipeline,
     skin_bg: wgpu::BindGroup,
     inst_layout: wgpu::BindGroupLayout,
     inst_bg: wgpu::BindGroup,
@@ -125,6 +127,8 @@ pub struct EntityRenderer {
     instrument_meshes: usize,
     /// (mesh, first instance, count) for this frame.
     draws: Vec<(usize, u32, u32)>,
+    /// The same for the shadow map.
+    shadow_draws: Vec<(usize, u32, u32)>,
     pub instance_count: usize,
 }
 
@@ -1003,8 +1007,37 @@ impl EntityRenderer {
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("entity"),
+            bind_group_layouts: &[&r.globals_layout, &r.tex_layout, &inst_layout, &r.fx.layout],
+            push_constant_ranges: &[],
+        });
+        let vbuf_layout = [wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<EntityVertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Uint32, 3 => Uint32],
+        }];
+        let shadow_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("entity shadow"),
             bind_group_layouts: &[&r.globals_layout, &r.tex_layout, &inst_layout],
             push_constant_ranges: &[],
+        });
+        let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("entity shadow"),
+            layout: Some(&shadow_layout),
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_entity_shadow"), buffers: &vbuf_layout, compilation_options: Default::default() },
+            fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs_entity_shadow"), targets: &[], compilation_options: Default::default() }),
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: crate::scenefx::SHADOW_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: Default::default(),
+                // No slope bias: the model's small faces turned edge-on to the sun would be pushed
+                // behind the ground; the lookup on the receiving side is offset instead.
+                bias: Default::default(),
+            }),
+            multisample: Default::default(),
+            multiview: None,
+            cache: None,
         });
         let make = |format: wgpu::TextureFormat| device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("entity"),
@@ -1107,7 +1140,7 @@ impl EntityRenderer {
         }
         let particles = crate::particles::ParticleGpu::new(r);
         let items = crate::item_render::ItemGpu::new(r);
-        EntityRenderer { particles, items, pipelines, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, armor_meshes, trim_meshes, wing_meshes, instrument_meshes, draws: Vec::new(), instance_count: 0 }
+        EntityRenderer { particles, items, pipelines, shadow_pipeline, skin_bg, inst_layout, inst_bg, inst_buf, inst_cap, meshes, mob_meshes, armor_meshes, trim_meshes, wing_meshes, instrument_meshes, draws: Vec::new(), shadow_draws: Vec::new(), instance_count: 0 }
     }
 
     /// Mesh index of an armour piece (0 helmet .. 3 boots) for the item named `item`.
@@ -1160,35 +1193,56 @@ impl EntityRenderer {
     }
 
     /// Upload this frame's instances. `items` are (mob definition index, bones), any order.
-    pub fn prepare(&mut self, r: &Renderer, mut items: Vec<(usize, Bones)>) {
+    #[allow(dead_code)]
+    pub fn prepare(&mut self, r: &Renderer, items: Vec<(usize, Bones)>) {
+        self.prepare_split(r, items, Vec::new(), Vec::new());
+    }
+
+    /// Like `prepare`, with `overlay` drawn but casting no shadow (the first-person arm, the
+    /// inventory figure) and `shadow_only` casting a shadow but not drawn (the player's body in
+    /// first person).
+    pub fn prepare_split(&mut self, r: &Renderer, mut items: Vec<(usize, Bones)>, mut overlay: Vec<(usize, Bones)>, mut shadow_only: Vec<(usize, Bones)>) {
         items.sort_by_key(|(d, _)| *d);
-        self.instance_count = items.len();
+        overlay.sort_by_key(|(d, _)| *d);
+        shadow_only.sort_by_key(|(d, _)| *d);
+        let total = items.len() + overlay.len() + shadow_only.len();
+        self.instance_count = items.len() + overlay.len();
         self.draws.clear();
-        if items.is_empty() {
+        self.shadow_draws.clear();
+        if total == 0 {
             return;
         }
-        if items.len() > self.inst_cap {
-            self.inst_cap = items.len().next_power_of_two();
+        if total > self.inst_cap {
+            self.inst_cap = total.next_power_of_two();
             self.inst_buf = Self::make_inst_buf(&r.device, self.inst_cap);
             self.inst_bg = Self::make_inst_bg(&r.device, &self.inst_layout, &self.inst_buf);
         }
-        let bones: Vec<Bones> = items.iter().map(|(_, b)| *b).collect();
+        let bones: Vec<Bones> = items.iter().chain(&overlay).chain(&shadow_only).map(|(_, b)| *b).collect();
         r.queue.write_buffer(&self.inst_buf, 0, bytemuck::cast_slice(&bones));
-        let mut start = 0usize;
-        while start < items.len() {
-            let d = items[start].0;
-            let mut end = start;
-            while end < items.len() && items[end].0 == d {
-                end += 1;
+        // Runs of the same mesh, each list after the ones before it in the buffer.
+        let meshes = self.meshes.len();
+        let runs = |list: &[(usize, Bones)], base: usize, out: &mut Vec<(usize, u32, u32)>| {
+            let mut start = 0usize;
+            while start < list.len() {
+                let d = list[start].0;
+                let mut end = start;
+                while end < list.len() && list[end].0 == d {
+                    end += 1;
+                }
+                if d < meshes {
+                    out.push((d, (base + start) as u32, (end - start) as u32));
+                }
+                start = end;
             }
-            if d < self.meshes.len() {
-                self.draws.push((d, start as u32, (end - start) as u32));
-            }
-            start = end;
-        }
+        };
+        runs(&items, 0, &mut self.draws);
+        runs(&overlay, items.len(), &mut self.draws);
+        runs(&items, 0, &mut self.shadow_draws);
+        runs(&shadow_only, items.len() + overlay.len(), &mut self.shadow_draws);
     }
 
-    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, hdr: bool, block_tex: &'a wgpu::BindGroup) {
+    /// `fx`: the shadow map bind group, so mobs stand in the shade of trees too.
+    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, hdr: bool, block_tex: &'a wgpu::BindGroup, fx: &'a wgpu::BindGroup) {
         self.particles.draw(pass, hdr, block_tex);
         self.items.draw(pass, hdr, block_tex);
         if self.draws.is_empty() {
@@ -1197,7 +1251,23 @@ impl EntityRenderer {
         pass.set_pipeline(&self.pipelines[hdr as usize]);
         pass.set_bind_group(1, &self.skin_bg, &[]);
         pass.set_bind_group(2, &self.inst_bg, &[]);
-        for &(m, first, count) in &self.draws {
+        pass.set_bind_group(3, fx, &[]);
+        self.draw_list(pass, &self.draws);
+    }
+
+    /// Into the sun's shadow map (the pass has the globals bound).
+    pub fn draw_shadow<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        if self.shadow_draws.is_empty() {
+            return;
+        }
+        pass.set_pipeline(&self.shadow_pipeline);
+        pass.set_bind_group(1, &self.skin_bg, &[]);
+        pass.set_bind_group(2, &self.inst_bg, &[]);
+        self.draw_list(pass, &self.shadow_draws);
+    }
+
+    fn draw_list<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, list: &[(usize, u32, u32)]) {
+        for &(m, first, count) in list {
             let mesh = &self.meshes[m];
             pass.set_vertex_buffer(0, mesh.vbuf.slice(..));
             pass.set_index_buffer(mesh.ibuf.slice(..), wgpu::IndexFormat::Uint32);
