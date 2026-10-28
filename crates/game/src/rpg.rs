@@ -817,11 +817,13 @@ impl Game {
             s.apply(&M::Reach(1.5));
         }
         if self.has_effect(WELL_FED) {
-            s.defense += 1.0;
-            s.dmg.iter_mut().for_each(|d| *d += 0.05);
-            s.crit.iter_mut().for_each(|c| *c += 0.02);
-            s.move_speed += 0.05;
-            s.regen += 0.1;
+            // Well fed, plenty satisfied, exquisitely stuffed (tr3_traps.rs meals).
+            let f = lvl(WELL_FED);
+            s.defense += f;
+            s.dmg.iter_mut().for_each(|d| *d += 0.05 * f);
+            s.crit.iter_mut().for_each(|c| *c += 0.02 * f);
+            s.move_speed += 0.05 * f;
+            s.regen += 0.1 * f;
         }
         if self.has_effect(COZY_FIRE) {
             s.regen += 0.25;

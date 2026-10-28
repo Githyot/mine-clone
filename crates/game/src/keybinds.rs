@@ -9,7 +9,7 @@ use winit::keyboard::KeyCode;
 use crate::{Game, Screen};
 
 /// (setting name, label, default key)
-pub(crate) const ACTIONS: [(&str, &str, KeyCode); 22] = [
+pub(crate) const ACTIONS: [(&str, &str, KeyCode); 23] = [
     ("forward", "Andar para frente", KeyCode::KeyW),
     ("back", "Andar para tras", KeyCode::KeyS),
     ("left", "Andar para a esquerda", KeyCode::KeyA),
@@ -30,6 +30,7 @@ pub(crate) const ACTIONS: [(&str, &str, KeyCode); 22] = [
     ("glyphs", "Grimório", KeyCode::KeyG),
     ("skills", "Ofícios", KeyCode::KeyY),
     ("hook", "Gancho", KeyCode::KeyF),
+    ("emote", "Emotes", KeyCode::KeyI),
     ("voice_talk", "Falar (chat de voz)", KeyCode::CapsLock),
     ("voice_mute", "Microfone liga/desliga", KeyCode::KeyK),
 ];

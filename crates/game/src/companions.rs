@@ -35,6 +35,12 @@ pub const MOUNTS: &[MountDef] = &[
     MountDef { item: "fuzzy_carrot", mob: "rabbit", name: "Coelho Gigante", size: 3.0, speed: 1.7, jump: 1.45, air_jumps: 1, flight: 0.0, soft: false },
     MountDef { item: "blessed_apple", mob: "deer", name: "Cervo Encantado", size: 1.25, speed: 2.4, jump: 1.2, air_jumps: 0, flight: 0.0, soft: false },
     MountDef { item: "cosmic_truffle", mob: "cosmaw", name: "Cosmandíbula", size: 1.1, speed: 1.8, jump: 1.0, air_jumps: 0, flight: f32::INFINITY, soft: true },
+    // Lote 22 (tr3_world.rs).
+    MountDef { item: "ancient_horn", mob: "mount_basilisk", name: "Basilisco", size: 1.0, speed: 2.7, jump: 1.1, air_jumps: 0, flight: 0.0, soft: false },
+    MountDef { item: "witchs_broom", mob: "mount_broom", name: "Vassoura da Bruxa", size: 1.0, speed: 2.0, jump: 1.0, air_jumps: 0, flight: f32::INFINITY, soft: true },
+    MountDef { item: "reindeer_bells", mob: "mount_reindeer", name: "Rena", size: 1.0, speed: 2.1, jump: 1.2, air_jumps: 0, flight: f32::INFINITY, soft: true },
+    MountDef { item: "drill_containment_unit", mob: "mount_drill", name: "Broca Voadora", size: 1.0, speed: 1.5, jump: 1.0, air_jumps: 0, flight: f32::INFINITY, soft: true },
+    MountDef { item: "scaly_truffle", mob: "mount_pigron", name: "Porco-Dragão", size: 1.0, speed: 1.9, jump: 1.0, air_jumps: 1, flight: f32::INFINITY, soft: true },
 ];
 
 pub struct PetDef {

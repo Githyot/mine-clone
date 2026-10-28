@@ -71,6 +71,13 @@ pub fn coin_factor(kind: usize) -> f32 {
 impl Game {
     /// The held tool as it works on `block`: a multi-tool takes the kind the block wants.
     pub(crate) fn held_tool_for(&self, block: BlockId) -> Option<ToolDef> {
+        // Riding the drill mount (tr3_world.rs): it digs like the best pickaxe, faster.
+        if self.t5.comp.mount.is_some_and(|(k, _)| crate::companions::MOUNTS[k].item == "drill_containment_unit") {
+            let mut t = self.items.id("netherite_pickaxe").and_then(|id| self.items.get(id).tool.clone())?;
+            t.kind = self.reg.get(block).tool.unwrap_or(t.kind);
+            t.speed *= 1.6;
+            return Some(t);
+        }
         let mut t = self.held_tool()?;
         let name = self.held_key();
         if let Some((_, kinds)) = MULTI.iter().find(|m| m.0 == name) {

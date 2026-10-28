@@ -272,7 +272,7 @@ mod lote11_tests {
             let id = items.id(n).unwrap_or_else(|| panic!("missing item {n}"));
             // Everything but the turret pictures and the boss-only wings can be made.
             let made = recipes.shaped.iter().any(|r| r.result.item == id) || recipes.shapeless.iter().any(|r| r.result.item == id);
-            let dropped = ["breaker_wings", "feather_wings", "angel_wings", "betsy_wing", "festive_wings"].contains(&n.as_str()) || n.starts_with("sentry_");
+            let dropped = ["breaker_wings", "feather_wings", "angel_wings", "betsy_wing", "festive_wings", "ancient_horn", "witchs_broom", "reindeer_bells", "scaly_truffle"].contains(&n.as_str()) || n.starts_with("sentry_");
             assert!(made || dropped, "{n} has no recipe");
         }
     }

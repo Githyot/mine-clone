@@ -917,6 +917,17 @@ impl Game {
 
     pub(crate) fn surv_died(&mut self) {
         let at = self.body.pos + Vec3::Y * 0.8;
+        // The altar of fate (tr3_world.rs): soft keeps everything but half the coins.
+        let fate = self.fate();
+        if fate == 0 {
+            self.soft_death();
+            self.fase6_died();
+            let (lvl, _) = self.surv.level();
+            let keep = (lvl * 7).min(100);
+            self.surv.xp = 0;
+            self.spawn_orbs(at, keep);
+            return;
+        }
         // Armor first, so taking it back puts it on again.
         let mut items: Vec<ItemStack> = self.surv.armor.iter_mut().filter_map(|s| s.take()).collect();
         items.extend(self.surv.inv.slots.iter_mut().filter_map(|s| s.take()));
@@ -924,6 +935,10 @@ impl Game {
         items.extend(self.surv.craft.iter_mut().filter_map(|s| s.take()));
         // Curse of vanishing: gone for good.
         items.retain(|s| s.ench.get(crate::enchanting::VANISHING) == 0);
+        if fate == 2 {
+            items.clear();
+            self.hard_death();
+        }
         self.fase6_died();
         if !items.is_empty() {
             // Out of the void or lava, the body rests on the ground above.
@@ -1047,6 +1062,7 @@ impl Game {
                     "locked_chest" => return self.use_locked_chest(hit.block),
                     "safe" => return self.open_bank(1),
                     n if crate::tr_comfort::is_station(n) => return self.use_comfort_station(n),
+                    n if crate::tr3_traps::is_use_block(n) => return self.tr3_use_block(n, hit.block),
                     n if crate::tr_journey::is_block(n) => return self.use_journey_block(n),
                     n if n.starts_with("pylon_") => {
                         let kind = n.trim_start_matches("pylon_").to_string();
@@ -1258,6 +1274,10 @@ impl Game {
     /// Throw the held item (Q); all of it with Ctrl.
     pub(crate) fn surv_throw(&mut self, all: bool) {
         let sel = self.selected;
+        if self.is_favorite(sel) {
+            self.toast("Favorito: não se joga fora (Alt + clique para desmarcar)", 2.0);
+            return;
+        }
         let n = if all { 64 } else { 1 };
         if let Some(s) = self.surv.inv.take(sel, n) {
             let f = self.forward();
@@ -1538,7 +1558,14 @@ impl Game {
                     if left.count != s.count {
                         sound = true;
                     }
-                    self.surv.drops[i].stack = left;
+                    // What doesn't fit goes into the void bag (tr3_world.rs).
+                    match self.void_stash(left) {
+                        None => {
+                            self.surv.drops.swap_remove(i);
+                            sound = true;
+                        }
+                        Some(left) => self.surv.drops[i].stack = left,
+                    }
                 }
             }
         }
@@ -1985,6 +2012,13 @@ impl Game {
                 hovered = Some(slot);
                 self.ui.rect(sx - pad, sy - pad, cell - 2.0 * s + 2.0 * pad, cell - 2.0 * s + 2.0 * pad, [170, 170, 170, 255]);
             }
+            if matches!(slot, Slot::Inv(i) if self.is_favorite(i)) {
+                // Favourites have a golden frame.
+                let (x, y, e) = (sx - pad, sy - pad, cell - 2.0 * s + 2.0 * pad);
+                for (rx, ry, rw, rh) in [(x, y, e, s), (x, y + e - s, e, s), (x, y, s, e), (x + e - s, y, s, e)] {
+                    self.ui.rect(rx, ry, rw, rh, [230, 180, 50, 255]);
+                }
+            }
             let st = if slot == Slot::CraftOut { result } else { self.slot_get(slot) };
             if let Some(st) = st {
                 // The hovered item grows a little; ones that match the cursor's stack bob.
@@ -2231,6 +2265,11 @@ impl Game {
         if self.apoth_socket_click(slot, right) {
             return;
         }
+        // Alt + click: a favourite (tr3_world.rs).
+        if let (Slot::Inv(k), true) = (slot, self.keys.contains(&winit::keyboard::KeyCode::AltLeft) || self.keys.contains(&winit::keyboard::KeyCode::AltRight)) {
+            self.toggle_favorite(k);
+            return;
+        }
         // Shift-click: coins go into the wallet; in a shop, anything else is sold.
         if let (Slot::Inv(k), true, true) = (slot, shift, self.survival) {
             if let Some(st) = self.surv.inv.slots[k] {
@@ -2239,6 +2278,10 @@ impl Game {
                     return;
                 }
                 if self.surv.open == Open::Shop {
+                    if self.is_favorite(k) {
+                        self.toast("Favorito: não se vende (Alt + clique para desmarcar)", 2.0);
+                        return;
+                    }
                     self.sell_slot(k);
                     return;
                 }

@@ -81,6 +81,8 @@ mod tr;
 mod tr3;
 mod tr3_foes;
 mod tr3_tools;
+mod tr3_traps;
+mod tr3_world;
 mod tr3_folk;
 mod tr3_golf;
 mod tr_bosses;
@@ -1710,6 +1712,10 @@ impl Game {
                 }
             }
             KeyCode::KeyB if self.screen == Screen::Playing => self.quick_buff(),
+            KeyCode::KeyI if self.screen == Screen::Playing => self.emote_key(),
+            KeyCode::Digit0 if self.screen == Screen::Playing => {
+                self.emote_pick(9);
+            }
             KeyCode::KeyF if self.screen == Screen::Playing && self.survival => self.quick_hook(),
             KeyCode::KeyC if matches!(self.screen, Screen::Playing | Screen::Inventory) => self.t5.rpg.sheet = !self.t5.rpg.sheet,
             KeyCode::KeyR if self.screen == Screen::Inventory && self.survival => self.surv.want_recipe = true,
@@ -1764,7 +1770,7 @@ impl Game {
         if let Some(i) = digits.iter().position(|&d| d == code) {
             if self.screen == Screen::Inventory {
                 self.inv_number_key = Some(i);
-            } else {
+            } else if !self.emote_pick(i) {
                 self.selected = i;
                 self.show_held_name();
             }
@@ -3583,6 +3589,7 @@ impl Game {
         self.plugins_block(pos, id, true);
         let name = self.reg.get(id).name.clone();
         self.comfort_placed(pos, &name);
+        self.tr3_placed(pos, &name);
         self.anim.start_swing();
         self.pads.rumble(0.0, 0.35, 0.05);
         let m = Material::of(&self.reg.get(id).name);
@@ -4102,6 +4109,7 @@ impl Game {
             self.draw_hunter_marks(w, h);
             self.draw_sign_texts(w, h);
             self.draw_mob_names(w, h);
+            self.draw_tr3_hud(w, h);
             if self.screen == Screen::Playing {
                 self.draw_explore_hud(w, h);
             }
@@ -4715,6 +4723,7 @@ impl Game {
         let (top, horizon, daylight, sun) = self.sky();
         // Deep down the sky fades out, and the Underworld glows red like the Nether (deep.rs).
         let (top, horizon, daylight, underworld) = self.deep_sky(eye.y, top, horizon, daylight);
+        let (top, horizon) = if underworld || self.dim != voxel::worldgen::Dim::Overworld { (top, horizon) } else { self.tr3_sky(top, horizon, daylight) };
         let underwater = self.body.head_in_water;
         let rd = self.settings.render_distance as f32 * 16.0;
         // Distant terrain pushes the fog out to its own edge.
@@ -4770,7 +4779,11 @@ impl Game {
             pom: self.parallax_uniform(),
             clouds: [self.cloud_wind[0], self.cloud_wind[1], self.cloud_drift, (self.fx_time % 100_000.0) as f32],
             mat: material::uniform(self.settings.materials, self.settings.shader_quality == ShaderQuality::Fast),
-            anim: self.anim_layers(),
+            anim: {
+                let mut a = self.anim_layers();
+                a[3] = if self.dim == voxel::worldgen::Dim::Overworld { self.moon_uniform() } else { 0.0 };
+                a
+            },
             ..Default::default()
         };
         // A torch in the hand casts shadows (with Sombras on): the blocks around the player.

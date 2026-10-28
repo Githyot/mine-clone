@@ -259,8 +259,10 @@ impl Game {
 
     /// O in the inventory: the backpack (not the hotbar) merged and sorted.
     pub(crate) fn sort_backpack(&mut self) {
-        let mut all: Vec<ItemStack> = self.surv.inv.slots[9..INV_SIZE].iter_mut().filter_map(|s| s.take()).collect();
-        let mut merged = Inventory::new(INV_SIZE - 9);
+        // Favourites stay where they are (tr3_world.rs).
+        let free: Vec<usize> = (9..INV_SIZE).filter(|&k| !self.is_favorite(k)).collect();
+        let mut all: Vec<ItemStack> = free.iter().filter_map(|&k| self.surv.inv.slots[k].take()).collect();
+        let mut merged = Inventory::new(free.len());
         let mut left = Vec::new();
         for st in all.drain(..) {
             if let Some(rest) = merged.add(&self.items, st) {
@@ -283,8 +285,8 @@ impl Game {
         };
         let mut stacks: Vec<ItemStack> = merged.slots.into_iter().flatten().collect();
         stacks.sort_by_key(|s| key(s));
-        for (k, st) in stacks.into_iter().chain(left).enumerate() {
-            self.surv.inv.slots[9 + k] = Some(st);
+        for (st, k) in stacks.into_iter().chain(left).zip(free) {
+            self.surv.inv.slots[k] = Some(st);
         }
         self.sfx(Sfx::Click);
         self.toast("Mochila organizada", 1.5);
@@ -294,11 +296,15 @@ impl Game {
     /// into that chest.
     pub(crate) fn quick_stack(&mut self) {
         let me = self.body.pos;
+        let favs: Vec<bool> = (0..INV_SIZE).map(|k| self.is_favorite(k)).collect();
         let chests: Vec<IVec3> = self.surv.containers.iter().filter(|(p, c)| matches!(c, Container::Chest(_)) && (p.as_vec3() + Vec3::splat(0.5)).distance(me) <= 8.0).map(|(p, _)| *p).collect();
         let mut moved = 0;
         for p in chests {
             let Some(Container::Chest(inv)) = self.surv.containers.get_mut(&p) else { continue };
             for k in 9..INV_SIZE {
+                if favs[k] {
+                    continue;
+                }
                 let Some(st) = self.surv.inv.slots[k] else { continue };
                 if !inv.slots.iter().flatten().any(|s| s.stacks_with(&st)) {
                     continue;

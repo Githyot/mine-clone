@@ -168,7 +168,7 @@ impl Tr {
             tax_freed: self.minis.tax_freed,
             tax_owed: self.minis.tax_owed,
         };
-        self.r3.save(dir);
+        self.r3.save(dir, items);
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
             if let Err(e) = std::fs::write(dir.join("tr.ron"), text) {

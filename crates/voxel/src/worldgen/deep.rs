@@ -188,6 +188,10 @@ pub(super) struct DeepPalette {
     cinder_log: BlockId,
     ember_leaves: BlockId,
     glow_moss: BlockId,
+    /// Glowing mosses of the deep caverns and gem trees (Lote 22 of the Terraria side).
+    mosses: Vec<BlockId>,
+    gem_log: BlockId,
+    gem_leaves: Vec<BlockId>,
     glow_mushroom: BlockId,
     glow_cap: BlockId,
     mushroom_stem: BlockId,
@@ -288,6 +292,9 @@ impl DeepPalette {
             cinder_log: g("cinder_log"),
             ember_leaves: g("ember_leaves"),
             glow_moss: g("glow_moss"),
+            mosses: ["neon_moss", "lava_moss", "helium_moss", "argon_moss", "xenon_moss", "krypton_moss"].iter().map(|n| g(n)).filter(|&b| b != AIR).collect(),
+            gem_log: g("gem_tree_log"),
+            gem_leaves: ["amethyst_gem_leaves", "topaz_gem_leaves", "sapphire_gem_leaves", "emerald_gem_leaves", "ruby_gem_leaves", "diamond_gem_leaves"].iter().map(|n| g(n)).filter(|&b| b != AIR).collect(),
             glow_mushroom: g("glow_mushroom"),
             glow_cap: g("glow_mushroom_block"),
             mushroom_stem: g("mushroom_stem"),
@@ -914,6 +921,14 @@ impl Generator {
         let solid = |b: BlockId| b != AIR && b != p.water && b != p.lava;
         let mut trees: Vec<(i32, i32, i32)> = Vec::new();
         let mut mushrooms: Vec<(i32, i32, i32)> = Vec::new();
+        let mut gem_trees: Vec<(i32, i32, i32)> = Vec::new();
+        // Patches of one glowing moss, some tens of blocks across, in the deep caverns.
+        let moss_at = |wx: i32, y: i32, wz: i32| -> Option<BlockId> {
+            if y > -60 || p.mosses.is_empty() || cell_rand(seed, wx >> 5, y >> 4, wz >> 5, 77) > 0.18 {
+                return None;
+            }
+            Some(p.mosses[(cell_rand(seed, wx >> 5, y >> 4, wz >> 5, 78) * p.mosses.len() as f32) as usize % p.mosses.len()])
+        };
         let (blo, bhi) = (buf.lo, buf.hi);
         for z in 0..16usize {
             for x in 0..16usize {
@@ -996,7 +1011,14 @@ impl Generator {
                                 }
                             }
                             _ => {
-                                if below == p.stone && y < -40 && r(4) < 0.0004 {
+                                if (below == p.stone || below == p.deepslate) && r(13) < 0.75 {
+                                    if let Some(m) = moss_at(wx, y, wz) {
+                                        buf.d[i - 256] = m;
+                                    }
+                                }
+                                if y < -100 && p.gem_log != AIR && r(14) < 0.0012 && (2..14).contains(&x) && (2..14).contains(&z) {
+                                    gem_trees.push((wx, y, wz));
+                                } else if below == p.stone && y < -40 && r(4) < 0.0004 {
                                     buf.d[i] = p.life_crystal;
                                 } else if below == p.stone && r(1) < 0.012 {
                                     buf.d[i] = p.spike_up;
@@ -1047,6 +1069,11 @@ impl Generator {
                                 }
                             }
                             UBiome::Plain => {
+                                if (above == p.stone || above == p.deepslate) && r(13) < 0.75 {
+                                    if let Some(m) = moss_at(wx, y, wz) {
+                                        buf.d[i + 256] = m;
+                                    }
+                                }
                                 if r(5) < 0.015 {
                                     buf.d[i] = p.spike_down;
                                 }
@@ -1079,6 +1106,29 @@ impl Generator {
                     for dx in -2i32..=2 {
                         if dx.abs() + dz.abs() + dy.abs() < 4 && d.get(wx + dx, y + h + dy, wz + dz) == Some(AIR) {
                             d.set(wx + dx, y + h + dy, wz + dz, p.ember_leaves);
+                        }
+                    }
+                }
+            }
+        }
+        // Gem trees: a short stone trunk under a crown of gem leaves, deeper ones of rarer gems.
+        for (wx, y, wz) in gem_trees {
+            let h = 3 + (cell_rand(seed, wx, y, wz, 15) * 3.0) as i32;
+            let depth = ((-y - 100) as f32 / 450.0).clamp(0.0, 0.999);
+            let n = p.gem_leaves.len();
+            let k = ((depth * n as f32) as usize + (cell_rand(seed, wx, y, wz, 16) * 2.0) as usize).min(n - 1);
+            let leaves = p.gem_leaves[k];
+            for k in 0..h {
+                if d.get(wx, y + k, wz) != Some(AIR) {
+                    break;
+                }
+                d.set(wx, y + k, wz, p.gem_log);
+            }
+            for dy in -1i32..=1 {
+                for dz in -2i32..=2 {
+                    for dx in -2i32..=2 {
+                        if dx * dx + dz * dz + dy * dy * 2 <= 5 && d.get(wx + dx, y + h + dy, wz + dz) == Some(AIR) {
+                            d.set(wx + dx, y + h + dy, wz + dz, leaves);
                         }
                     }
                 }

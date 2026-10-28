@@ -18,7 +18,7 @@ use crate::Game;
 /// (rod, fishing power)
 const RODS: &[(&str, f32)] = &[("fishing_rod", 10.0), (crate::mods::aquaculture::ROD, 15.0), ("reinforced_rod", 20.0), ("magma_rod", 30.0), ("golden_rod", 45.0)];
 /// (bait in the bag, power)
-const BAITS: &[(&str, f32)] = &[("master_bait", 50.0), ("journeyman_bait", 30.0), ("apprentice_bait", 15.0), ("worm", 10.0)];
+const BAITS: &[(&str, f32)] = &[("master_bait", 50.0), ("journeyman_bait", 30.0), ("critter_gold_butterfly", 50.0), ("apprentice_bait", 15.0), ("critter_snail", 25.0), ("critter_firefly", 20.0), ("critter_butterfly", 20.0), ("critter_grasshopper", 15.0), ("worm", 10.0)];
 
 /// The angler's fish: (item, where it lives, as he says it)
 const QUESTS: &[(&str, &str, &str)] = &[
@@ -81,7 +81,7 @@ impl Game {
         let rod = self.held_name().and_then(|n| rod_power(&n)).unwrap_or(10.0);
         let bait = BAITS.iter().find(|b| self.inv_has(b.0)).map_or(0.0, |b| b.1);
         let potion = if self.t5.tr.fish.potion > 0.0 { 15.0 } else { 0.0 };
-        rod + bait + potion
+        rod + bait + potion + self.tr3_fish_bonus()
     }
 
     fn inv_has(&self, name: &str) -> bool {
@@ -119,6 +119,9 @@ impl Game {
     fn water_kind(&self, at: Vec3) -> &'static str {
         if self.t5.tr.fish.lava {
             return "lava";
+        }
+        if let Some(k) = self.tr3_fountain_kind(at) {
+            return k;
         }
         if at.y > 120.0 {
             return "sky";

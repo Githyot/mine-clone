@@ -508,7 +508,7 @@ wyh.box((10, 8, 12), (-5, 0, -6), look("wyhead", WY, eyes=((60, 120, 220), "glow
 wyh.box((8, 4, 6), (-4, 1, 6), look("wysnout", WY, pattern="plate"), "Head", (0, 4, 0))
 for k, x in enumerate((-6, 4)):
     wyh.box((2, 6, 2), (x, 8, -4), look("wyhorn", ["#6a6a74", "#9a9aa4", "#cacad4"]), "Head", (0, 4, 0))
-mob("sky_wyvern", "Serpe do Céu", "Wyvern", wyh, "kind: Hostile, health: 1600, speed: 0, attack: 26, xp: 60, width: 1.0, height: 0.9, spawn: Never, flies: true, hover: 0.0, scale: 1.4, coins: Some(4000), drops: [(item: \"soul_of_flight\", min: 5, max: 10)]",
+mob("sky_wyvern", "Serpe do Céu", "Wyvern", wyh, "kind: Hostile, health: 1600, speed: 0, attack: 26, xp: 60, width: 1.0, height: 0.9, spawn: Never, flies: true, hover: 0.0, scale: 1.4, coins: Some(4000), drops: [(item: \"soul_of_flight\", min: 5, max: 10), (item: \"scaly_truffle\", min: 1, max: 1, chance: 0.08)]",
     eggs=("#eef2fa", "#4a8ae0"))
 wyb = Model()
 wyb.box((8, 8, 10), (-4, 0, -5), look("wybody", WY, pattern="plate"))
@@ -565,7 +565,7 @@ for k, (x, y, z, s) in enumerate(((-15, 18, -2, (10, 3, 3)), (6, 15, -1, (11, 3,
     mw.box(s, (x, y, z), look("mwbranch", BARK, pattern="rings"), f"Arm({k % 2})", (x + s[0] // 2, y, z))
 for x in (-9, 5):
     mw.box((3, 3, 12), (x, 0, -6), look("mwroot", BARK, pattern="rings"))
-mob("mourning_wood", "Árvore Lamentosa", "Mourning Wood", mw, "kind: Hostile, health: 3200, speed: 0.8, attack: 26, xp: 150, width: 1.6, height: 4.6, spawn: Never, scale: 2.4, lit: false, coins: Some(10000), motion: (heavy: Some(1.0)), drops: [(item: \"spooky_wood\", min: 20, max: 40), (item: \"spooky_staff\", min: 1, max: 1, chance: 0.25)]",
+mob("mourning_wood", "Árvore Lamentosa", "Mourning Wood", mw, "kind: Hostile, health: 3200, speed: 0.8, attack: 26, xp: 150, width: 1.6, height: 4.6, spawn: Never, scale: 2.4, lit: false, coins: Some(10000), motion: (heavy: Some(1.0)), drops: [(item: \"spooky_wood\", min: 20, max: 40), (item: \"spooky_staff\", min: 1, max: 1, chance: 0.25), (item: \"witchs_broom\", min: 1, max: 1, chance: 0.1)]",
     eggs=("#563a20", "#ff7a1e"))
 
 PINE = ["#0e2a16", "#16401e", "#1e5a2a", "#2a7438"]
@@ -574,7 +574,7 @@ ev.box((4, 6, 4), (-2, 0, -2), look("evtrunk", BARK, pattern="rings"))
 for k, (w, y) in enumerate(((14, 6), (11, 13), (8, 20), (5, 26))):
     ev.box((w, 7 if k < 2 else (6 if k == 2 else 5), w), (-w // 2, y, -w // 2), look(f"evlayer{k}", PINE, eyes=((255, 60, 40), "glow") if k == 1 else None, pattern="noise"), "Head" if k else None, (0, 12, 0))
 ev.box((3, 3, 3), (-1, 31, -1), look("evstar", GOLD, glow=True), "Head", (0, 12, 0))
-mob("everscream", "Pinheiro Furioso", "Everscream", ev, "kind: Hostile, health: 3600, speed: 0.6, attack: 28, xp: 160, width: 1.8, height: 4.6, spawn: Never, scale: 2.4, coins: Some(12000), motion: (heavy: Some(1.0)), drops: [(item: \"frost_shard\", min: 6, max: 12), (item: \"festive_wings\", min: 1, max: 1, chance: 0.15)]",
+mob("everscream", "Pinheiro Furioso", "Everscream", ev, "kind: Hostile, health: 3600, speed: 0.6, attack: 28, xp: 160, width: 1.8, height: 4.6, spawn: Never, scale: 2.4, coins: Some(12000), motion: (heavy: Some(1.0)), drops: [(item: \"frost_shard\", min: 6, max: 12), (item: \"festive_wings\", min: 1, max: 1, chance: 0.15), (item: \"reindeer_bells\", min: 1, max: 1, chance: 0.1)]",
     eggs=("#1e5a2a", "#f2cc52"))
 
 TANK = ["#4a0a0a", "#7a1414", "#a82424", "#d04040"]
@@ -585,7 +585,7 @@ for x in (-8, 6):
 nk.box((9, 5, 9), (-4, 10, -4), look("nkturret", TANK, eyes=((255, 255, 160), "glow"), pattern="plate"), "Head", (0, 12, 0))
 nk.box((2, 2, 9), (-1, 12, 5), look("nkgun", ["#2a2a30", "#4a4a54", "#6e6e7c"]), "Head", (0, 12, 0))
 nk.box((3, 3, 3), (-1, 15, -1), look("nktrim", ["#c8c8c8", "#e6e6e6", "#ffffff"], pattern="cloth"), "Head", (0, 12, 0))
-mob("santa_tank", "Tanque Natalino", "Santa-NK1", nk, "kind: Hostile, health: 4200, speed: 1.4, attack: 30, xp: 180, width: 2.0, height: 1.8, spawn: Never, scale: 2.2, coins: Some(14000), motion: (heavy: Some(1.0)), drops: [(item: \"frost_shard\", min: 6, max: 12), (item: \"elf_gun\", min: 1, max: 1, chance: 0.25)]",
+mob("santa_tank", "Tanque Natalino", "Santa-NK1", nk, "kind: Hostile, health: 4200, speed: 1.4, attack: 30, xp: 180, width: 2.0, height: 1.8, spawn: Never, scale: 2.2, coins: Some(14000), motion: (heavy: Some(1.0)), drops: [(item: \"frost_shard\", min: 6, max: 12), (item: \"elf_gun\", min: 1, max: 1, chance: 0.25), (item: \"reindeer_bells\", min: 1, max: 1, chance: 0.1)]",
     eggs=("#a82424", "#e6e6e6"))
 
 # --- Rare monsters ----------------------------------------------------------------------------
@@ -727,7 +727,7 @@ for k, x in enumerate((-5, 2)):
     al.box((3, 2, 8), (x, 1, 5), look("aljaw", ["#3a2a14", "#5a4220", "#7a5a2e"]), f"Arm({k})", (x + 1, 2, 5))
 mob("antlion", "Formiga-Leão", "Antlion", al, f"{H}, health: 40, speed: 0, attack: 0, xp: 6, width: 0.9, height: 0.5, drops: [(item: \"antlion_mandible\", min: 1, max: 2, chance: 0.6)]", eggs=("#d0aa66", "#5a4220"))
 ac = quadruped((8, 5, 14), (7, 5, 6), 5, 2, look("acb", SAND, pattern="plate"), look("ach", SAND, eyes=((20, 10, 6), None), pattern="plate"), look("acl", ["#5a4220", "#7a5a2e", "#9a7640"]), snout=(6, 2, 4), snout_look=look("acj", ["#3a2a14", "#5a4220", "#7a5a2e"]))
-mob("antlion_charger", "Formiga-Leão Corredora", "Antlion Charger", ac, f"{H}, health: 55, speed: 4.6, attack: 7, xp: 8, width: 0.8, height: 0.8, drops: [(item: \"antlion_mandible\", min: 1, max: 2, chance: 0.6)]", eggs=("#b08a4e", "#3a2a14"))
+mob("antlion_charger", "Formiga-Leão Corredora", "Antlion Charger", ac, f"{H}, health: 55, speed: 4.6, attack: 7, xp: 8, width: 0.8, height: 0.8, drops: [(item: \"antlion_mandible\", min: 1, max: 2, chance: 0.6), (item: \"ancient_horn\", min: 1, max: 1, chance: 0.03)]", eggs=("#b08a4e", "#3a2a14"))
 SCALE_G = ["#2a4a2a", "#3e6a3a", "#56904e", "#7ab06a"]
 lam = Model()
 lam.box((8, 8, 8), (-4, 24, -4), look("lamh", SKIN, eyes=((200, 220, 60), "glow")), "Head", (0, 24, 0))
@@ -1509,6 +1509,448 @@ for n, dn, en, hunger, sat, art, rec in (
     item(n, dn, en, 16, f"food: Some((hunger: {hunger}, saturation: {sat}))")
     shapeless(rec, n)
     ICONS[n] = sprite(lambda a, l=art: food_icon(a, *l))
+
+
+# ==============================================================================================
+# L22: world and character
+# ==============================================================================================
+
+# Biome torches: a torch of its land's colour (the Torch God's favour swaps them in for you).
+def torch_art(flame, stick):
+    def draw(a):
+        a.poly([(15, 14), (17, 14), (17, 32), (15, 32)], shade_fill(stick, lambda xs, ys: 0.4 + 0.4 * (xs < 16)), stick[0])
+        a.poly([(14, 10), (18, 10), (18, 14), (14, 14)], shade_fill(flame, lambda xs, ys: 0.95 - (ys - 10) / 6), flame[0])
+        a.px(15, 9, flame[-1])
+        a.px(16, 11, flame[-1])
+    return draw
+
+
+BIOME_TORCHES = (
+    ("desert_torch", "Tocha do Deserto", "Desert Torch", ["#8a4a08", "#d08a1a", "#f8c040", "#fff0a0"], ["#6a4a22", "#9a7040", "#c8a060"], "sand"),
+    ("ice_torch", "Tocha de Gelo", "Ice Torch", ["#2a6a9a", "#5aa8d8", "#a0e0ff", "#f0ffff"], ["#4a5a6a", "#7a8a9a", "#a8b8c8"], "ice"),
+    ("jungle_torch", "Tocha da Selva", "Jungle Torch", ["#1a6a0a", "#4ab020", "#9af050", "#e8ffc0"], ["#3a4a1a", "#5a6e2a", "#7a9038"], "vine"),
+    ("coral_torch", "Tocha de Coral", "Coral Torch", ["#0a6a6a", "#20b0a8", "#70f0e0", "#e0fff8"], ["#8a3a3a", "#c06058", "#e89088"], "tube_coral"),
+    ("bone_torch", "Tocha de Osso", "Bone Torch", ["#8a7a5a", "#c8b890", "#f0e8c8", "#ffffff"], ["#a8a088", "#d0c8b0", "#f0ead8"], "bone"),
+    ("demon_torch", "Tocha Demoníaca", "Demon Torch", ["#3a0a6a", "#7a28c0", "#c070ff", "#f0d0ff"], ["#2a1a2a", "#4a2a4a", "#6a3a6a"], "obsidian"),
+    ("cursed_torch", "Tocha Amaldiçoada", "Cursed Torch", ["#3a6a0a", "#80c020", "#c8ff40", "#f8ffd0"], ["#3a2a3a", "#5a3a5a", "#7a4a7a"], "rotten_flesh"),
+    ("ichor_torch", "Tocha de Icor", "Ichor Torch", ["#8a6a0a", "#d0a820", "#ffe040", "#fff8c0"], ["#4a1a1a", "#7a2a2a", "#a03a3a"], "redstone"),
+    ("hallowed_torch", "Tocha Sagrada", "Hallowed Torch", ["#8a2a8a", "#e070e0", "#ffc0ff", "#ffffff"], ["#8a8aa0", "#b8b8d0", "#e0e0f8"], "glowstone_dust"),
+)
+for n, dn, en, flame, stick, extra in BIOME_TORCHES:
+    block(n, dn, en, f'shape: Torch, transparency: Cutout, solid: false, light: 14, hardness: 0.0, textures: (all: Some("{n}"))')
+    BLOCK_ICONS[n] = torch_art(flame, stick)
+    shapeless(["torch", "torch", "torch", extra], n, 3)
+
+# Glowing mosses on the deep cavern stone (voxel/src/worldgen/deep.rs places them).
+MOSSES = (
+    ("neon_moss", "Musgo Neon", "Neon Moss", ["#2a0a5a", "#5a1ab0", "#9a50ff", "#e0b0ff"]),
+    ("lava_moss", "Musgo de Lava", "Lava Moss", ["#5a1a04", "#b04010", "#ff8a20", "#ffe0a0"]),
+    ("helium_moss", "Musgo de Hélio", "Helium Moss", ["#4a4a5a", "#a0a0c0", "#e8e8ff", "#ffffff"]),
+    ("argon_moss", "Musgo de Argônio", "Argon Moss", ["#5a0a3a", "#b02a7a", "#ff70c8", "#ffd8f0"]),
+    ("xenon_moss", "Musgo de Xenônio", "Xenon Moss", ["#0a3a5a", "#1a80b0", "#40d0ff", "#c8f8ff"]),
+    ("krypton_moss", "Musgo de Criptônio", "Krypton Moss", ["#1a4a0a", "#3aa018", "#80ff40", "#e0ffc8"]),
+)
+
+
+def moss_top(pal):
+    def draw(a):
+        a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(pal[:3], lambda xs, ys: 0.4 + 0.35 * np.sin(xs * 1.3 + ys * 0.7) * np.cos(ys * 1.1)), pal[0])
+        for k in range(18):
+            x, y = (k * 7) % 31, (k * 13) % 31
+            a.px(x, y, pal[3])
+    return draw
+
+
+def moss_side(pal):
+    def draw(a):
+        a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(TRAP_STONE, lambda xs, ys: 0.5 + 0.2 * np.sin(xs * 0.9) * np.sin(ys * 1.3)), "#1a1a1e")
+        a.poly([(0, 0), (32, 0), (32, 6), (26, 9), (20, 6), (14, 10), (8, 7), (0, 9)], shade_fill(pal[:3], lambda xs, ys: 0.7), pal[0])
+        for x in (3, 11, 22, 29):
+            a.px(x, 2, pal[3])
+    return draw
+
+
+for n, dn, en, pal in MOSSES:
+    block(n, dn, en, f'light: 8, hardness: 1.5, tool: Some(Pickaxe), textures: (top: Some("{n}_top"), side: Some("{n}_side"), bottom: Some("stone")), drops: Some([(item: "{n}")])')
+    BLOCK_ICONS[n + "_top"] = moss_top(pal)
+    BLOCK_ICONS[n + "_side"] = moss_side(pal)
+
+# Gem trees grow in the deep caverns: a stone trunk with gem leaves that drop their gem.
+GEMLEAF = (("amethyst", ["#3a1a5a", "#6a3aa0", "#a070e0", "#e0c8ff"], "amethyst_shard_t"),
+           ("topaz", ["#6a4a04", "#b08a14", "#f0c840", "#fff4b0"], "topaz"),
+           ("sapphire", ["#0a1a5a", "#1a40a8", "#4a80f0", "#c0d8ff"], "sapphire"),
+           ("emerald", ["#0a4a1a", "#1a8a3a", "#40d070", "#c0ffd8"], "emerald"),
+           ("ruby", ["#5a0a10", "#a01a28", "#e84858", "#ffc0c8"], "ruby"),
+           ("diamond", ["#1a5a6a", "#3aa8b8", "#80f0f8", "#f0ffff"], "diamond"))
+block("gem_tree_log", "Tronco de Árvore de Gema", "Gem Tree Trunk", 'hardness: 3.0, tool: Some(Pickaxe), textures: (side: Some("gem_tree_log"), top: Some("gem_tree_log_top"))')
+
+
+def gem_log(a):
+    a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(TRAP_STONE, lambda xs, ys: 0.45 + 0.25 * np.sin(xs * 1.4)), "#141418")
+    for x in (5, 13, 21, 28):
+        a.poly([(x, 0), (x + 1, 0), (x + 1, 32), (x, 32)], shade_fill(TRAP_STONE, lambda xs, ys: 0.15), "#141418")
+
+
+def gem_log_top(a):
+    a.disc(16, 16, 15.5, shade_fill(TRAP_STONE, lambda xs, ys: 0.5 + 0.25 * np.sin(np.hypot(xs - 16, ys - 16) * 1.4)), "#141418")
+
+
+BLOCK_ICONS["gem_tree_log"] = gem_log
+BLOCK_ICONS["gem_tree_log_top"] = gem_log_top
+for g, pal, drop in GEMLEAF:
+    n = f"{g}_gem_leaves"
+    drop_item = "amethyst_cluster" if g == "amethyst" else drop
+    block(n, f"Folhas de {dict(amethyst='Ametista', topaz='Topázio', sapphire='Safira', emerald='Esmeralda', ruby='Rubi', diamond='Diamante')[g]}", f"{g.title()} Gem Leaves",
+          f'transparency: Cutout, light: 6, hardness: 0.6, textures: (all: Some("{n}")), drops: Some([(item: "{drop_item}", chance: 0.25)])')
+
+    def gem_leaves(a, pal=pal):
+        a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(pal, lambda xs, ys: 0.35 + 0.3 * np.sin(xs * 1.7) * np.sin(ys * 1.9)), pal[0])
+        for k in range(12):
+            x, y = (k * 11 + 3) % 30, (k * 7 + 5) % 30
+            a.poly([(x, y + 1), (x + 1, y), (x + 2, y + 1), (x + 1, y + 2)], shade_fill(pal[2:], lambda xs, ys: 0.9), pal[1])
+        for k in range(6):
+            a.px((k * 9 + 2) % 31, (k * 17 + 4) % 31, "#00000000")
+    BLOCK_ICONS[n] = gem_leaves
+
+# Living trees: living wood and leaves (the tree itself is a structure, below).
+block("living_wood", "Madeira Viva", "Living Wood", 'hardness: 2.0, tool: Some(Axe), textures: (side: Some("living_wood"), top: Some("living_wood_top"))')
+block("living_leaves", "Folhas Vivas", "Living Leaves", 'transparency: Cutout, hardness: 0.2, tint: true, textures: (all: Some("living_leaves")), drops: Some([(item: "oak_sapling", chance: 0.04), (item: "apple", chance: 0.01)])')
+LIVING = ["#2a1a0a", "#4a3018", "#6e4a26", "#946a3a", "#b88a54"]
+
+
+def living_side(a):
+    a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(LIVING, lambda xs, ys: 0.45 + 0.3 * np.sin(xs * 0.9 + np.sin(ys * 0.35) * 2.0)), LIVING[0])
+    for x in (4, 12, 19, 27):
+        lin(x, 0, x + 2, 32, 0.8, shade_fill(LIVING, lambda xs, ys: 0.1), LIVING[0], a)
+
+
+def living_top(a):
+    a.disc(16, 16, 15.5, shade_fill(LIVING, lambda xs, ys: 0.5 + 0.3 * np.sin(np.hypot(xs - 16, ys - 16) * 1.1)), LIVING[0])
+
+
+def living_leaves(a):
+    pal = ["#2a3a1a", "#4a6a2a", "#6a8e3a", "#90b858"]
+    a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(pal, lambda xs, ys: 0.4 + 0.35 * np.sin(xs * 1.5) * np.cos(ys * 1.3)), pal[0])
+    for k in range(10):
+        a.px((k * 7 + 1) % 31, (k * 11 + 3) % 31, "#00000000")
+
+
+BLOCK_ICONS["living_wood"] = living_side
+BLOCK_ICONS["living_wood_top"] = living_top
+BLOCK_ICONS["living_leaves"] = living_leaves
+shapeless(["living_wood"], "oak_planks", 4)
+
+
+def living_tree():
+    """A giant hollow tree: roots flaring at the base, a door, a spiral of steps climbing the
+    hollow trunk from a root room with a chest up to a lookout under a great canopy."""
+    W, C = 17, 8
+    sink, room = 10, 4
+    up = 40
+    layers = []
+    for ly in range(sink + up):
+        y = ly - sink  # 0 = first layer above the ground
+        rows = []
+        for z in range(W):
+            row = ""
+            for x in range(W):
+                d = math.hypot(x - C, z - C)
+                ch = " "
+                if ly == 0:
+                    ch = "L" if d <= 4.5 else " "
+                elif ly <= room - 1:
+                    ch = ("L" if d > 3.6 else ".") if d <= 4.5 else " "
+                    if ly == 1 and (x, z) == (C, C + 3):
+                        ch = "K"
+                    if ly == 1 and (x, z) == (C - 3, C):
+                        ch = "t"
+                elif ly == room:
+                    ch = ("L" if d > 2.1 else ".") if d <= 4.5 else " "
+                elif y < 29:
+                    outer = 3.3 + (1.6 if y < 2 else 0.8 if y < 4 else 0.0) + (0.0 if y >= 0 else -0.2)
+                    if d <= outer:
+                        ch = "L" if d > 2.1 else "."
+                    # Roots spreading out on the ground.
+                    if 0 <= y < 2 and d <= 6.5 and (abs(x - C) <= 0 or abs(z - C) <= 0) and d > outer:
+                        ch = "L"
+                    # The door, two high, facing south.
+                    if 0 <= y < 2 and x == C and z > C + 1:
+                        ch = "." if d <= outer else ch
+                    # Windows now and then.
+                    if y in (9, 17, 24) and (x, z) in ((C + 3, C), (C - 3, C), (C, C - 3)):
+                        ch = "."
+                elif y == 29:
+                    ch = "P" if d <= 4.5 else ch
+                    if (x, z) == (C, C):
+                        ch = "."
+                elif y < 31:
+                    ch = "f" if abs(d - 4.5) < 0.6 else ch
+                # Branches.
+                if y == 22 and d <= 7.5 and d > 3.3 and (x == z or x + z == 2 * C):
+                    ch = "W"
+                # The canopy.
+                cd = math.sqrt((x - C) ** 2 + (z - C) ** 2 + ((y - 33) * 1.4) ** 2)
+                if y >= 23 and cd <= 8.2 and ch in (" ", "."):
+                    hole = y < 31 and d <= 4.8
+                    if not hole and math.sin(x * 2.1 + z * 1.7 + y * 0.9) > -0.75:
+                        ch = "F"
+                if y >= 23 and ch == " ":
+                    ch = "."
+                rows.append if False else None
+                row += ch
+            rows.append(row)
+        layers.append(rows)
+    # Steps spiralling up the hollow, one per layer, eight to a turn.
+    ang = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)]
+    for ly in range(1, sink + 29):
+        if room - 0 < ly or ly < room:
+            dx, dz = ang[ly % 8]
+            x, z = C + dx, C + dz
+            if ly > room:
+                r = list(layers[ly][z]); r[x] = "L"; layers[ly][z] = "".join(r)
+    # A ladder hole in the lookout floor where the steps arrive.
+    dx, dz = ang[(sink + 29) % 8]
+    r = list(layers[sink + 29][C + dz]); r[C + dx] = "."; layers[sink + 29][C + dz] = "".join(r)
+    rows = lambda ls: "[" + ", ".join(f'"{r}"' for r in ls) + "]"
+    body = ",\n            ".join(rows(l) for l in layers)
+    return f"""    (
+        name: "arvore_viva",
+        biomes: ["Forest", "Birch Forest", "Dark Forest", "Flower Forest", "Old Growth Taiga", "Mata Atlantica"],
+        spacing: 44,
+        chance: 0.3,
+        palette: [('L', "living_wood"), ('F', "living_leaves"), ('W', "living_wood"), ('P', "oak_planks"), ('f', "oak_fence"), ('K', "chest"), ('t', "lantern")],
+        layers: [
+            {body},
+        ],
+        sink: {sink},
+        rough: 4,
+        loot: [(item: "magic_mirror", chance: 0.35), (item: "life_crystal", chance: 0.3), (item: "kite_bunny", chance: 0.4), (item: "torch", min: 6, max: 14), (item: "apple", min: 2, max: 5), (item: "gold_ingot", min: 1, max: 4, chance: 0.6), (item: "garden_gnome", chance: 0.2), (item: "ambrosia", chance: 0.1)],
+    ),
+"""
+
+
+STRUCTURES.append(living_tree())
+
+# Fountains (the water and the fish of their land come to them) and monoliths (the sky of the
+# celestial pillars, when switched on).
+def fountain(pal, water):
+    def draw(a):
+        a.poly([(5, 26), (27, 26), (25, 31), (7, 31)], shade_fill(pal, lambda xs, ys: 0.7 - (xs - 5) / 40), pal[0])
+        a.poly([(14, 12), (18, 12), (18, 26), (14, 26)], shade_fill(pal, lambda xs, ys: 0.8 - (xs - 14) / 8), pal[0])
+        a.poly([(9, 10), (23, 10), (21, 13), (11, 13)], shade_fill(pal, lambda xs, ys: 0.7), pal[0])
+        for x, y in ((12, 6), (16, 3), (20, 6), (10, 16), (22, 18), (13, 22), (19, 24)):
+            a.px(x, y, water[2])
+            a.px(x, y + 1, water[1])
+        a.poly([(7, 24), (25, 24), (25, 26), (7, 26)], shade_fill(water, lambda xs, ys: 0.6), water[0])
+    return draw
+
+
+FOUNTAINS = (("desert_fountain", "Fonte do Deserto", "Desert Water Fountain", ["#6a5030", "#a08050", "#d0b080", "#f0e0b8"], ["#3a8aa0", "#6ac0d0", "#c0f0f8"], "desert"),
+             ("snow_fountain", "Fonte da Neve", "Snow Water Fountain", ["#5a6a80", "#8a9ab0", "#c0ccd8", "#f0f8ff"], ["#5aa0d8", "#90d0f8", "#e0f8ff"], "snow"),
+             ("jungle_fountain", "Fonte da Selva", "Jungle Water Fountain", ["#2a4a1a", "#4a7030", "#709848", "#a0c878"], ["#2a8a50", "#50b878", "#a0f0c0"], "swamp"),
+             ("ocean_fountain", "Fonte do Oceano", "Ocean Water Fountain", ["#2a4a6a", "#4a7090", "#7aa0c0", "#c0d8f0"], ["#1a5aa0", "#3a8ad8", "#a0d0ff"], "ocean"),
+             ("evil_fountain", "Fonte Corrompida", "Corrupt Water Fountain", ["#2a1a3a", "#4a2a5a", "#6a3a7a", "#9a6aa8"], ["#5a3a80", "#8a5ab0", "#d0a0f0"], "evil"))
+for n, dn, en, pal, water, _ in FOUNTAINS:
+    block(n, dn, en, f'shape: Cross, transparency: Cutout, solid: false, light: 4, hardness: 2.0, tool: Some(Pickaxe), textures: (all: Some("{n}"))')
+    BLOCK_ICONS[n] = fountain(pal, water)
+shaped(["SBS", "SWS", "SSS"], {"S": "sandstone", "B": "water_bucket", "W": "cactus"}, "desert_fountain")
+shaped(["SBS", "SWS", "SSS"], {"S": "stone_bricks", "B": "water_bucket", "W": "snowball"}, "snow_fountain")
+shaped(["SBS", "SWS", "SSS"], {"S": "mossy_stone_bricks", "B": "water_bucket", "W": "vine"}, "jungle_fountain")
+shaped(["SBS", "SWS", "SSS"], {"S": "prismarine", "B": "water_bucket", "W": "kelp"}, "ocean_fountain")
+shaped(["SBS", "SWS", "SSS"], {"S": "stone_bricks", "B": "water_bucket", "W": "rotten_flesh"}, "evil_fountain")
+
+MONOLITHS = (("solar_monolith", "Monólito Solar", "Solar Monolith", ["#5a1a04", "#a83a0a", "#f07a1a", "#ffd080"], "solar_fragment"),
+             ("vortex_monolith", "Monólito do Vórtice", "Vortex Monolith", ["#0a3a3a", "#1a7a6a", "#3ac8a8", "#b0fff0"], "vortex_fragment"),
+             ("nebula_monolith", "Monólito da Nebulosa", "Nebula Monolith", ["#3a0a4a", "#7a1a8a", "#d050e0", "#ffc0ff"], "nebula_fragment"),
+             ("stardust_monolith", "Monólito da Poeira Estelar", "Stardust Monolith", ["#0a2a5a", "#1a50a0", "#4a90f0", "#d0e8ff"], "stardust_fragment"))
+
+
+def monolith(pal):
+    def draw(a):
+        a.poly([(10, 31), (22, 31), (20, 4), (16, 0), (12, 4)], shade_fill(["#141418", "#26262e", "#3a3a46", "#56566a"], lambda xs, ys: 0.8 - (xs - 10) / 14), "#04040a")
+        for y in (8, 14, 20, 26):
+            a.poly([(14, y), (18, y), (18, y + 2), (14, y + 2)], shade_fill(pal, lambda xs, ys: 0.8), pal[0])
+        a.px(16, 4, pal[3])
+    return draw
+
+
+for n, dn, en, pal, frag in MONOLITHS:
+    block(n, dn, en, f'shape: Cross, transparency: Cutout, solid: false, light: 6, hardness: 3.0, tool: Some(Pickaxe), textures: (all: Some("{n}"))')
+    BLOCK_ICONS[n] = monolith(pal)
+    shaped(["FFF", "FOF", "FFF"], {"F": frag, "O": "obsidian"}, n)
+
+# Luck and the fate altar.
+block("garden_gnome", "Gnomo de Jardim", "Garden Gnome", 'shape: Cross, transparency: Cutout, solid: false, hardness: 0.5, textures: (all: Some("garden_gnome"))')
+
+
+def gnome(a):
+    a.poly([(16, 0), (22, 12), (10, 12)], shade_fill(["#6a0a0a", "#a81a1a", "#e03a3a"], lambda xs, ys: 0.8 - (xs - 10) / 16), "#2a0404")
+    a.disc(16, 15, 4.0, shade_fill(["#a87050", "#d8a080", "#f0c8a8"], lit(15, 14, 4)), "#4a2a1a")
+    a.poly([(12, 16), (20, 16), (18, 23), (14, 23)], shade_fill(["#c8c8c8", "#e8e8e8", "#ffffff"], lambda xs, ys: 0.7), "#5a5a5a")
+    a.poly([(11, 21), (21, 21), (22, 29), (10, 29)], shade_fill(["#1a3a7a", "#2a5ab0", "#4a7ad8"], lambda xs, ys: 0.7 - (xs - 10) / 20), "#0a1a3a")
+    a.poly([(10, 29), (22, 29), (22, 31), (10, 31)], shade_fill(["#3a2a1a", "#5a4228", "#7a5a38"], lambda xs, ys: 0.6), "#1a0e04")
+
+
+BLOCK_ICONS["garden_gnome"] = gnome
+block("fate_altar", "Altar do Destino", "Altar of Fate", 'hardness: 3.0, tool: Some(Pickaxe), light: 5, textures: (top: Some("fate_altar_top"), side: Some("fate_altar_side"), bottom: Some("stone"))')
+
+
+def fate_top(a):
+    a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(TRAP_STONE, lambda xs, ys: 0.55), "#101014")
+    a.disc(16, 16, 9.0, shade_fill(["#1a0a2a", "#3a1a5a", "#6a3aa0", "#b090f0"], lit(14, 14, 9)), "#0a0414")
+    for k in range(3):
+        a.disc(16 + 5 * math.cos(k * 2.09), 16 + 5 * math.sin(k * 2.09), 1.6, shade_fill(["#e0d0ff", "#ffffff"], lambda xs, ys: 0.7), "#3a1a5a")
+
+
+def fate_side(a):
+    a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(TRAP_STONE, lambda xs, ys: 0.6 - ys / 80), "#101014")
+    for x, c in ((6, "#6ad06a"), (16, "#e0c040"), (26, "#e04040")):
+        a.disc(x, 16, 3.0, shade_fill(["#141414", c, "#ffffff"], lit(x - 1, 15, 3)), "#000000")
+
+
+BLOCK_ICONS["fate_altar_top"] = fate_top
+BLOCK_ICONS["fate_altar_side"] = fate_side
+shaped(["GBG", "SOS", "SSS"], {"G": "gold_ingot", "B": "book", "O": "obsidian", "S": "stone_bricks"}, "fate_altar")
+shapeless(["clay_ball", "clay_ball", "red_dye", "blue_dye", "white_dye"], "garden_gnome")
+
+# Items: the Torch God's favour, permanent upgrades, the void bag, kites and new mounts.
+def favor_icon(a):
+    a.disc(16, 16, 11.0, shade_fill(["#5a1a04", "#a84010", "#f08a20", "#ffd060", "#fff8d0"], lit(13, 12, 11)), "#2a0802")
+    a.poly([(16, 6), (20, 14), (18, 22), (14, 22), (12, 14)], shade_fill(["#ffd060", "#fff0a0", "#ffffff"], lambda xs, ys: 0.4 + (22 - ys) / 30), "#a84010")
+
+
+def ambrosia_icon(a):
+    a.poly([(11, 8), (21, 8), (24, 28), (8, 28)], shade_fill(["#7aa0b0", "#a8c8d4", "#d8eef4"], lambda xs, ys: 0.4), "#3a5a66")
+    a.poly([(10, 14), (22, 14), (24, 27), (8, 27)], shade_fill(GOLD, lambda xs, ys: 0.95 - (xs - 8) / 22), "#5a3a08")
+    a.poly([(12, 4), (20, 4), (20, 8), (12, 8)], shade_fill(WOOD, lambda xs, ys: 0.6), "#140c06")
+    a.px(12, 17, "#ffffff")
+
+
+def gummy_icon(a):
+    for i, c in enumerate((["#8a0a2a", "#e03a6a", "#ff9ac0"], ["#8a6a0a", "#e0c03a", "#fff09a"], ["#0a6a2a", "#3ae06a", "#9affc0"])):
+        lin(6 + i * 7, 26 - i * 5, 13 + i * 7, 20 - i * 5 - (3 if i == 2 else 0), 3.0, shade_fill(c, lambda xs, ys: 0.7), c[0], a)
+
+
+def pearl_icon(a):
+    a.disc(16, 16, 10.0, shade_fill(["#1a0a3a", "#3a2a7a", "#7a5ad0", "#c0a8ff", "#ffffff"], lit(12, 12, 10)), "#0a0420")
+    for x, y in ((12, 18), (19, 13), (17, 21), (22, 19)):
+        a.px(x, y, "#ffffff")
+
+
+def loaf_icon(a):
+    a.poly([(4, 22), (8, 12), (16, 8), (24, 12), (28, 22), (24, 26), (8, 26)], shade_fill(["#6a3a10", "#a86a2a", "#d8a050", "#f8d090"], lit(14, 12, 12)), "#2a1404")
+    for x in (10, 16, 22):
+        lin(x - 2, 14, x + 2, 11, 1.0, shade_fill(["#f8e0b0", "#fff0d0"], lambda xs, ys: 0.6), "#a86a2a", a)
+
+
+def cartkit_icon(a):
+    a.poly([(5, 10), (27, 10), (25, 22), (7, 22)], shade_fill(STEEL, lambda xs, ys: 0.8 - (ys - 10) / 20), "#16181c")
+    for x in (10, 22):
+        a.disc(x, 25, 3.2, shade_fill(["#2a2a2a", "#4a4a4a", "#7a7a7a"], lit(x - 1, 24, 3)), "#000000")
+    a.poly([(13, 4), (19, 4), (21, 10), (11, 10)], shade_fill(GOLD, lambda xs, ys: 0.7), "#5a3a08")
+
+
+def voidbag_icon(a):
+    a.poly([(8, 12), (24, 12), (28, 28), (4, 28)], shade_fill(["#0a0414", "#1a0a2a", "#2a1440", "#3a2058"], lambda xs, ys: 0.8 - (xs - 4) / 30), "#000000")
+    a.poly([(11, 6), (21, 6), (24, 12), (8, 12)], shade_fill(["#2a1440", "#3a2058", "#5a3a80"], lambda xs, ys: 0.7), "#000000")
+    a.disc(16, 20, 4.0, shade_fill(["#3a0a6a", "#8a40e0", "#e0b0ff"], lit(15, 19, 4)), "#1a0430")
+    a.px(16, 20, "#ffffff")
+
+
+def kite_icon(a, pal, tail):
+    a.poly([(16, 2), (27, 12), (16, 22), (5, 12)], shade_fill(pal, lit(12, 8, 12)), pal[0])
+    lin(16, 2, 16, 22, 0.8, shade_fill(WOOD, lambda xs, ys: 0.6), WOOD[0], a)
+    lin(5, 12, 27, 12, 0.8, shade_fill(WOOD, lambda xs, ys: 0.6), WOOD[0], a)
+    for i in range(4):
+        a.poly([(15 - i % 2 * 2, 23 + i * 2), (18 - i % 2 * 2, 23 + i * 2), (17 - i % 2 * 2, 25 + i * 2), (14 - i % 2 * 2, 25 + i * 2)], shade_fill(tail, lambda xs, ys: 0.7), tail[0])
+
+
+def horn_icon(a):
+    lin(6, 26, 16, 14, 4.0, shade_fill(["#6a5a3a", "#a89068", "#e0d0a8"], lambda xs, ys: 0.7), "#2a2010", a)
+    lin(16, 14, 24, 5, 2.4, shade_fill(["#6a5a3a", "#a89068", "#f0e8d0"], lambda xs, ys: 0.8), "#2a2010", a)
+
+
+def broom_icon(a):
+    lin(24, 4, 12, 20, 1.6, shade_fill(WOOD, lambda xs, ys: 0.7), WOOD[0], a)
+    a.poly([(12, 18), (16, 22), (8, 30), (3, 27)], shade_fill(["#6a5a1a", "#a8902a", "#e0c860"], lambda xs, ys: 0.6 + 0.3 * ((xs + ys) % 3 < 1)), "#2a2004")
+
+
+def bells_icon(a):
+    lin(6, 8, 26, 8, 1.4, shade_fill(["#6a0a0a", "#a81a1a", "#e03a3a"], lambda xs, ys: 0.7), "#2a0404", a)
+    for x in (9, 16, 23):
+        a.poly([(x - 3, 20), (x - 2, 12), (x + 2, 12), (x + 3, 20)], shade_fill(GOLD, lit(x - 1, 14, 5)), "#5a3a08")
+        a.px(x, 21, "#5a3a08")
+
+
+def drillmount_icon(a):
+    a.disc(12, 16, 8.0, shade_fill(STEEL, lit(10, 13, 8)), "#16181c")
+    a.poly([(18, 10), (30, 16), (18, 22)], shade_fill(["#4a3a0a", "#a88a2a", "#f0d060"], lambda xs, ys: 0.8 - (xs - 18) / 20), "#2a1a04")
+    a.disc(10, 15, 3.0, shade_fill(["#0a3a6a", "#3a8ad8", "#a0e0ff"], lit(9, 14, 3)), "#04101e")
+
+
+def truffle_icon(a):
+    a.disc(16, 18, 9.0, shade_fill(["#3a1a3a", "#6a3a6a", "#9a5a9a", "#c890c8"], lit(13, 15, 9)), "#1a041a")
+    for x, y in ((12, 14), (19, 16), (15, 22), (21, 21)):
+        a.disc(x, y, 1.5, shade_fill(["#e0b0e0", "#ffffff"], lambda xs, ys: 0.7), "#6a3a6a")
+
+
+ICONS["torch_gods_favor"] = sprite(favor_icon)
+item("torch_gods_favor", "Favor do Deus das Tochas", "Torch God's Favor", 1)
+for n, dn, en, fn in (("ambrosia", "Ambrosia", "Ambrosia", ambrosia_icon), ("gummy_worm", "Minhoca de Goma", "Gummy Worm", gummy_icon),
+                      ("galaxy_pearl", "Pérola Galáctica", "Galaxy Pearl", pearl_icon), ("artisan_loaf", "Pão Artesanal", "Artisan Loaf", loaf_icon),
+                      ("minecart_kit", "Kit de Melhoria do Carrinho", "Minecart Upgrade Kit", cartkit_icon), ("void_bag", "Saco do Vazio", "Void Bag", voidbag_icon)):
+    item(n, dn, en, 1)
+    ICONS[n] = sprite(fn)
+shaped(["LEL", "ECE", "LEL"], {"L": "leather", "E": "ender_pearl", "C": "chest"}, "void_bag")
+shapeless(["gold_ingot", "gold_ingot", "iron_ingot", "iron_ingot", "minecart", "redstone"], "minecart_kit")
+shapeless(["wheat", "wheat", "wheat", "honey_bottle", "egg"], "artisan_loaf")
+
+KITES = (("kite_red", "Pipa Vermelha", "Red Kite", ["#5a0a0a", "#a81a1a", "#e03a3a", "#ff9a9a"], ["#e0c040", "#fff0a0"], "red_dye"),
+         ("kite_blue", "Pipa Azul", "Blue Kite", ["#0a1a5a", "#1a40a8", "#4a80f0", "#c0d8ff"], ["#e0e0e0", "#ffffff"], "blue_dye"),
+         ("kite_bunny", "Pipa de Coelho", "Bunny Kite", ["#6a6a6a", "#b0b0b0", "#e8e8e8", "#ffffff"], ["#e090a0", "#ffd0d8"], "white_dye"),
+         ("kite_goldfish", "Pipa Peixe-Dourado", "Goldfish Kite", ["#8a3a04", "#d06a10", "#f8a030", "#ffe0a0"], ["#f8a030", "#ffe0a0"], "orange_dye"),
+         ("kite_wyvern", "Pipa de Serpe", "Wyvern Kite", ["#3a3a5a", "#6a6a9a", "#a0a0d0", "#e8e8ff"], ["#a0a0d0", "#ffffff"], "phantom_membrane"))
+for n, dn, en, pal, tail, extra in KITES:
+    item(n, dn, en, 1)
+    ICONS[n] = sprite(lambda a, p=pal, t=tail: kite_icon(a, p, t))
+    shaped([" PS", "PXP", "SP "], {"P": "paper", "S": "string", "X": extra}, n)
+    k = Model()
+    k.box((10, 10, 1), (-5, 0, 0), look(n + "s", pal, pattern="petals" if "bunny" in n or "goldfish" in n else "plate"), "Head", (0, 5, 0))
+    k.box((1, 8, 1), (0, -8, 0), look(n + "t", tail))
+    if "wyvern" in n:
+        for i in range(3):
+            k.box((6 - i, 4, 1), (-(6 - i) // 2, -12 - i * 4, 0), look(n + "s", pal, pattern="plate"))
+    mob(n, dn, en, k, "kind: Passive, health: 10, speed: 0, attack: 0, xp: 0, width: 0.8, height: 0.8, spawn: Never, flies: true, hover: 0.0, coins: Some(0)")
+
+# New mounts (companions.rs's MOUNTS): basilisk, witch's broom, reindeer, drill, pig dragon.
+MOUNT_ITEMS = (("ancient_horn", "Chifre Antigo", "Ancient Horn", horn_icon), ("witchs_broom", "Vassoura da Bruxa", "Witch's Broom", broom_icon),
+               ("reindeer_bells", "Sinos de Rena", "Reindeer Bells", bells_icon), ("drill_containment_unit", "Unidade de Contenção da Broca", "Drill Containment Unit", drillmount_icon),
+               ("scaly_truffle", "Trufa Escamosa", "Scaly Truffle", truffle_icon))
+for n, dn, en, fn in MOUNT_ITEMS:
+    item(n, dn, en, 1)
+    ICONS[n] = sprite(fn)
+shaped(["NRN", "DBD", "NRN"], {"N": "netherite_ingot", "R": "redstone_block", "D": "diamond", "B": "beacon"}, "drill_containment_unit")
+BAS = ["#3a2a1a", "#6a4a2a", "#9a7040", "#c8a060"]
+bas = quadruped((8, 7, 16), (7, 6, 8), 6, 3, look("basb", BAS, pattern="scales"), look("bash", BAS, eyes=((240, 200, 40), None), pattern="scales"), look("basl", BAS[:3]), snout=(5, 4, 4), snout_look=look("bass", BAS), tail=(3, 3, 12))
+mob("mount_basilisk", "Basilisco", "Basilisk", bas, "kind: Passive, health: 40, speed: 0, attack: 0, xp: 0, width: 1.2, height: 1.4, spawn: Never, coins: Some(0)")
+br = Model()
+br.box((2, 2, 22), (-1, 6, -11), look("brst", WOOD, pattern="noise"))
+br.box((6, 6, 8), (-3, 4, -18), look("brbr", ["#6a5a1a", "#a8902a", "#e0c860"], pattern="noise"))
+mob("mount_broom", "Vassoura da Bruxa", "Witch's Broom", br, "kind: Passive, health: 40, speed: 0, attack: 0, xp: 0, width: 0.8, height: 0.6, spawn: Never, flies: true, coins: Some(0)")
+RD = ["#4a2e18", "#6e4626", "#946236", "#b88050"]
+rd = quadruped((8, 9, 16), (6, 6, 8), 10, 3, look("rdb", RD, belly=["#d8c8a8", "#f0e8d0"]), look("rdh", RD, eyes=((20, 20, 20), None)), look("rdl", RD[:3]), snout=(4, 3, 3), snout_look=look("rdn", ["#8a0a0a", "#e02020", "#ff8080"]), ears=(2, 3, 1), tail=(3, 3, 2))
+for k, x in enumerate((-4, 2)):
+    rd.box((1, 6, 1), (x + 1, 25, 6), look("rdant", ["#6a5a3a", "#a89068", "#e0d0a8"]))
+mob("mount_reindeer", "Rena", "Reindeer", rd, "kind: Passive, health: 40, speed: 0, attack: 0, xp: 0, width: 1.0, height: 1.8, spawn: Never, flies: true, coins: Some(0)")
+dr = Model()
+dr.box((12, 10, 12), (-6, 4, -6), look("drb", STEEL, pattern="plate"))
+dr.box((6, 6, 10), (-3, 6, 6), look("drd", ["#4a3a0a", "#a88a2a", "#f0d060"], pattern="plate"), "Head", (0, 9, 6))
+dr.box((6, 4, 6), (-3, 14, -3), look("drc", ["#0a3a6a", "#3a8ad8", "#a0e0ff"], glow=True))
+mob("mount_drill", "Broca Voadora", "Drill Mount", dr, "kind: Passive, health: 40, speed: 0, attack: 0, xp: 0, width: 1.0, height: 1.0, spawn: Never, flies: true, lit: true, coins: Some(0)")
+PG = ["#7a3a5a", "#b05a80", "#e08ab0", "#ffc0d8"]
+pg = quadruped((10, 8, 12), (8, 7, 7), 4, 3, look("pgb", PG), look("pgh", PG, eyes=((20, 20, 20), None)), look("pgl", PG[:3]), snout=(4, 3, 2), snout_look=look("pgs", ["#c06a90", "#e090b8", "#ffc0d8"]),
+               wings=(12, 1, 8), wing_look=look("pgw", ["#5a2a6a", "#8a4aa0", "#c080e0"], pattern="petals"), tail=(2, 2, 6))
+mob("mount_pigron", "Porco-Dragão", "Pigron", pg, "kind: Passive, health: 40, speed: 0, attack: 0, xp: 0, width: 1.0, height: 1.0, spawn: Never, flies: true, coins: Some(0)")
 
 
 # ==============================================================================================

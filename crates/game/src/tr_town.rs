@@ -140,7 +140,7 @@ pub struct TownLife {
     /// Town animals: (mob, home), saved with the world.
     pub(crate) animals: Vec<(String, Vec3)>,
     /// Seconds of party left.
-    party: f32,
+    pub(crate) party: f32,
     confetti_t: f32,
     /// The peddler's goods while he is in town.
     peddler: Vec<(&'static str, u8, u32)>,
@@ -339,7 +339,7 @@ impl Game {
         self.toast("O Mascate chegou à vila! Ele vai embora ao anoitecer.", 4.0);
     }
 
-    fn start_party(&mut self, secs: f32) {
+    pub(crate) fn start_party(&mut self, secs: f32) {
         self.t5.tr.town.party = secs;
         self.toast("Festa na vila! Os moradores estão felizes e os preços caíram.", 4.0);
         self.sfx(Sfx::Xp);

@@ -38,7 +38,7 @@ const STATIONS: &[(&str, u8, &str)] = &[
 ];
 
 /// The piggy bank and the safe keep their things under these keys (never a real block).
-const BANK_X: i32 = i32::MIN + 9;
+pub(crate) const BANK_X: i32 = i32::MIN + 9;
 
 /// Shimmer swaps (both ways) and one-way changes, before taking a thing apart.
 const SHIMMER: &[(&str, &str)] = &[

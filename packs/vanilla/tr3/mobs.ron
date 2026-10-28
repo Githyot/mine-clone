@@ -130,7 +130,7 @@
         layers: [(part: 1, inflate: 0.3)],
     ),
     (
-        name: "sky_wyvern", display_name: "Serpe do Céu", kind: Hostile, health: 1600, speed: 0, attack: 26, xp: 60, width: 1.0, height: 0.9, spawn: Never, flies: true, hover: 0.0, scale: 1.4, coins: Some(4000), drops: [(item: "soul_of_flight", min: 5, max: 10)],
+        name: "sky_wyvern", display_name: "Serpe do Céu", kind: Hostile, health: 1600, speed: 0, attack: 26, xp: 60, width: 1.0, height: 0.9, spawn: Never, flies: true, hover: 0.0, scale: 1.4, coins: Some(4000), drops: [(item: "soul_of_flight", min: 5, max: 10), (item: "scaly_truffle", min: 1, max: 1, chance: 0.08)],
         parts: [
             (size: (10, 8, 12), origin: (-5, 0, -6), uv: (0, 0), anim: Head, pivot: (0, 4, 0)),
             (size: (8, 4, 6), origin: (-4, 1, 6), uv: (0, 20), anim: Head, pivot: (0, 4, 0)),
@@ -204,7 +204,7 @@
         ],
     ),
     (
-        name: "mourning_wood", display_name: "Árvore Lamentosa", kind: Hostile, health: 3200, speed: 0.8, attack: 26, xp: 150, width: 1.6, height: 4.6, spawn: Never, scale: 2.4, lit: false, coins: Some(10000), motion: (heavy: Some(1.0)), drops: [(item: "spooky_wood", min: 20, max: 40), (item: "spooky_staff", min: 1, max: 1, chance: 0.25)],
+        name: "mourning_wood", display_name: "Árvore Lamentosa", kind: Hostile, health: 3200, speed: 0.8, attack: 26, xp: 150, width: 1.6, height: 4.6, spawn: Never, scale: 2.4, lit: false, coins: Some(10000), motion: (heavy: Some(1.0)), drops: [(item: "spooky_wood", min: 20, max: 40), (item: "spooky_staff", min: 1, max: 1, chance: 0.25), (item: "witchs_broom", min: 1, max: 1, chance: 0.1)],
         parts: [
             (size: (12, 24, 12), origin: (-6, 0, -6), uv: (0, 0), anim: Head, pivot: (0, 18, 0)),
             (size: (10, 3, 3), origin: (-15, 18, -2), uv: (0, 36), anim: Arm(0), pivot: (-10, 18, -2)),
@@ -215,7 +215,7 @@
         ],
     ),
     (
-        name: "everscream", display_name: "Pinheiro Furioso", kind: Hostile, health: 3600, speed: 0.6, attack: 28, xp: 160, width: 1.8, height: 4.6, spawn: Never, scale: 2.4, coins: Some(12000), motion: (heavy: Some(1.0)), drops: [(item: "frost_shard", min: 6, max: 12), (item: "festive_wings", min: 1, max: 1, chance: 0.15)],
+        name: "everscream", display_name: "Pinheiro Furioso", kind: Hostile, health: 3600, speed: 0.6, attack: 28, xp: 160, width: 1.8, height: 4.6, spawn: Never, scale: 2.4, coins: Some(12000), motion: (heavy: Some(1.0)), drops: [(item: "frost_shard", min: 6, max: 12), (item: "festive_wings", min: 1, max: 1, chance: 0.15), (item: "reindeer_bells", min: 1, max: 1, chance: 0.1)],
         parts: [
             (size: (4, 6, 4), origin: (-2, 0, -2), uv: (0, 0)),
             (size: (14, 7, 14), origin: (-7, 6, -7), uv: (0, 10)),
@@ -226,7 +226,7 @@
         ],
     ),
     (
-        name: "santa_tank", display_name: "Tanque Natalino", kind: Hostile, health: 4200, speed: 1.4, attack: 30, xp: 180, width: 2.0, height: 1.8, spawn: Never, scale: 2.2, coins: Some(14000), motion: (heavy: Some(1.0)), drops: [(item: "frost_shard", min: 6, max: 12), (item: "elf_gun", min: 1, max: 1, chance: 0.25)],
+        name: "santa_tank", display_name: "Tanque Natalino", kind: Hostile, health: 4200, speed: 1.4, attack: 30, xp: 180, width: 2.0, height: 1.8, spawn: Never, scale: 2.2, coins: Some(14000), motion: (heavy: Some(1.0)), drops: [(item: "frost_shard", min: 6, max: 12), (item: "elf_gun", min: 1, max: 1, chance: 0.25), (item: "reindeer_bells", min: 1, max: 1, chance: 0.1)],
         parts: [
             (size: (12, 7, 16), origin: (-6, 3, -8), uv: (0, 0)),
             (size: (2, 5, 16), origin: (-8, 0, -8), uv: (0, 23)),
@@ -297,7 +297,7 @@
         ],
     ),
     (
-        name: "antlion_charger", display_name: "Formiga-Leão Corredora", kind: Hostile, spawn: Never, health: 55, speed: 4.6, attack: 7, xp: 8, width: 0.8, height: 0.8, drops: [(item: "antlion_mandible", min: 1, max: 2, chance: 0.6)],
+        name: "antlion_charger", display_name: "Formiga-Leão Corredora", kind: Hostile, spawn: Never, health: 55, speed: 4.6, attack: 7, xp: 8, width: 0.8, height: 0.8, drops: [(item: "antlion_mandible", min: 1, max: 2, chance: 0.6), (item: "ancient_horn", min: 1, max: 1, chance: 0.03)],
         parts: [
             (size: (8, 5, 14), origin: (-4, 5, -7), uv: (0, 0)),
             (size: (7, 5, 6), origin: (-4, 8, 6), uv: (0, 19), anim: Head, pivot: (0, 10, 7)),
@@ -701,7 +701,7 @@
         ],
     ),
     (
-        name: "critter_grasshopper", display_name: "Gafanhoto", kind: Passive, spawn: Never, attack: 0, xp: 1, coins: Some(0), health: 2, speed: 2.4, width: 0.3, height: 0.25, hops: true, biomes: ["Plains", "Meadow", "Savanna", "Sunflower Plains"], weight: 3, group: (1, 2), flee_range: 4.0,
+        name: "critter_grasshopper", display_name: "Gafanhoto", kind: Passive, spawn: Never, attack: 0, xp: 1, coins: Some(0), health: 2, speed: 2.4, width: 0.3, height: 0.25, hops: true, flee_range: 4.0,
         parts: [
             (size: (3, 2, 6), origin: (-2, 1, -3), uv: (0, 0)),
             (size: (2, 2, 2), origin: (-1, 2, 2), uv: (18, 0), anim: Head, pivot: (0, 3, 3)),
@@ -712,7 +712,7 @@
         ],
     ),
     (
-        name: "critter_squirrel", display_name: "Esquilo", kind: Passive, spawn: Never, attack: 0, xp: 1, coins: Some(0), health: 4, speed: 3.0, width: 0.35, height: 0.4, hops: true, flee_range: 6.0, climbs: true, biomes: ["Forest", "Birch Forest", "Dark Forest", "Flower Forest", "Old Growth Taiga"], weight: 4, group: (1, 2),
+        name: "critter_squirrel", display_name: "Esquilo", kind: Passive, spawn: Never, attack: 0, xp: 1, coins: Some(0), health: 4, speed: 3.0, width: 0.35, height: 0.4, hops: true, flee_range: 6.0, climbs: true,
         parts: [
             (size: (4, 4, 6), origin: (-2, 2, -3), uv: (0, 0)),
             (size: (4, 4, 4), origin: (-2, 4, 2), uv: (20, 0), anim: Head, pivot: (0, 6, 3)),
@@ -750,6 +750,104 @@
         name: "rolling_boulder", display_name: "Pedregulho", kind: Neutral, health: 9999, speed: 0, attack: 0, xp: 0, width: 0.9, height: 0.9, spawn: Never, coins: Some(0),
         parts: [
             (size: (14, 14, 14), origin: (-7, 0, -7), uv: (0, 0), anim: Head, pivot: (0, 7, 0)),
+        ],
+    ),
+    (
+        name: "kite_red", display_name: "Pipa Vermelha", kind: Passive, health: 10, speed: 0, attack: 0, xp: 0, width: 0.8, height: 0.8, spawn: Never, flies: true, hover: 0.0, coins: Some(0),
+        parts: [
+            (size: (10, 10, 1), origin: (-5, 0, 0), uv: (0, 0), anim: Head, pivot: (0, 5, 0)),
+            (size: (1, 8, 1), origin: (0, -8, 0), uv: (22, 0)),
+        ],
+    ),
+    (
+        name: "kite_blue", display_name: "Pipa Azul", kind: Passive, health: 10, speed: 0, attack: 0, xp: 0, width: 0.8, height: 0.8, spawn: Never, flies: true, hover: 0.0, coins: Some(0),
+        parts: [
+            (size: (10, 10, 1), origin: (-5, 0, 0), uv: (0, 0), anim: Head, pivot: (0, 5, 0)),
+            (size: (1, 8, 1), origin: (0, -8, 0), uv: (22, 0)),
+        ],
+    ),
+    (
+        name: "kite_bunny", display_name: "Pipa de Coelho", kind: Passive, health: 10, speed: 0, attack: 0, xp: 0, width: 0.8, height: 0.8, spawn: Never, flies: true, hover: 0.0, coins: Some(0),
+        parts: [
+            (size: (10, 10, 1), origin: (-5, 0, 0), uv: (0, 0), anim: Head, pivot: (0, 5, 0)),
+            (size: (1, 8, 1), origin: (0, -8, 0), uv: (22, 0)),
+        ],
+    ),
+    (
+        name: "kite_goldfish", display_name: "Pipa Peixe-Dourado", kind: Passive, health: 10, speed: 0, attack: 0, xp: 0, width: 0.8, height: 0.8, spawn: Never, flies: true, hover: 0.0, coins: Some(0),
+        parts: [
+            (size: (10, 10, 1), origin: (-5, 0, 0), uv: (0, 0), anim: Head, pivot: (0, 5, 0)),
+            (size: (1, 8, 1), origin: (0, -8, 0), uv: (22, 0)),
+        ],
+    ),
+    (
+        name: "kite_wyvern", display_name: "Pipa de Serpe", kind: Passive, health: 10, speed: 0, attack: 0, xp: 0, width: 0.8, height: 0.8, spawn: Never, flies: true, hover: 0.0, coins: Some(0),
+        parts: [
+            (size: (10, 10, 1), origin: (-5, 0, 0), uv: (0, 0), anim: Head, pivot: (0, 5, 0)),
+            (size: (1, 8, 1), origin: (0, -8, 0), uv: (22, 0)),
+            (size: (6, 4, 1), origin: (-3, -12, 0), uv: (26, 0)),
+            (size: (5, 4, 1), origin: (-3, -16, 0), uv: (40, 0)),
+            (size: (4, 4, 1), origin: (-2, -20, 0), uv: (52, 0)),
+        ],
+    ),
+    (
+        name: "mount_basilisk", display_name: "Basilisco", kind: Passive, health: 40, speed: 0, attack: 0, xp: 0, width: 1.2, height: 1.4, spawn: Never, coins: Some(0),
+        parts: [
+            (size: (8, 7, 16), origin: (-4, 6, -8), uv: (0, 0)),
+            (size: (7, 6, 8), origin: (-4, 10, 7), uv: (0, 23), anim: Head, pivot: (0, 13, 8)),
+            (size: (5, 4, 4), origin: (-3, 11, 15), uv: (30, 23), anim: Head, pivot: (0, 13, 8)),
+            (size: (3, 6, 3), origin: (-4, 0, -7), uv: (48, 23), anim: Leg(0), pivot: (-3, 6, -6)),
+            (size: (3, 6, 3), origin: (1, 0, -7), uv: (48, 23), anim: Leg(1), pivot: (2, 6, -6)),
+            (size: (3, 6, 3), origin: (-4, 0, 4), uv: (48, 23), anim: Leg(1), pivot: (-3, 6, 5)),
+            (size: (3, 6, 3), origin: (1, 0, 4), uv: (48, 23), anim: Leg(0), pivot: (2, 6, 5)),
+            (size: (3, 3, 12), origin: (-2, 10, -20), uv: (0, 37)),
+        ],
+    ),
+    (
+        name: "mount_broom", display_name: "Vassoura da Bruxa", kind: Passive, health: 40, speed: 0, attack: 0, xp: 0, width: 0.8, height: 0.6, spawn: Never, flies: true, coins: Some(0),
+        parts: [
+            (size: (2, 2, 22), origin: (-1, 6, -11), uv: (0, 0)),
+            (size: (6, 6, 8), origin: (-3, 4, -18), uv: (0, 24)),
+        ],
+    ),
+    (
+        name: "mount_reindeer", display_name: "Rena", kind: Passive, health: 40, speed: 0, attack: 0, xp: 0, width: 1.0, height: 1.8, spawn: Never, flies: true, coins: Some(0),
+        parts: [
+            (size: (8, 9, 16), origin: (-4, 10, -8), uv: (0, 0)),
+            (size: (6, 6, 8), origin: (-3, 16, 7), uv: (0, 25), anim: Head, pivot: (0, 19, 8)),
+            (size: (4, 3, 3), origin: (-2, 17, 15), uv: (28, 25), anim: Head, pivot: (0, 19, 8)),
+            (size: (2, 3, 1), origin: (-3, 22, 8), uv: (42, 25), anim: Head, pivot: (0, 19, 8)),
+            (size: (2, 3, 1), origin: (1, 22, 8), uv: (42, 25), anim: Head, pivot: (0, 19, 8)),
+            (size: (3, 10, 3), origin: (-4, 0, -7), uv: (48, 25), anim: Leg(0), pivot: (-3, 10, -6)),
+            (size: (3, 10, 3), origin: (1, 0, -7), uv: (48, 25), anim: Leg(1), pivot: (2, 10, -6)),
+            (size: (3, 10, 3), origin: (-4, 0, 4), uv: (48, 25), anim: Leg(1), pivot: (-3, 10, 5)),
+            (size: (3, 10, 3), origin: (1, 0, 4), uv: (48, 25), anim: Leg(0), pivot: (2, 10, 5)),
+            (size: (3, 3, 2), origin: (-2, 16, -10), uv: (0, 39)),
+            (size: (1, 6, 1), origin: (-3, 25, 6), uv: (10, 39)),
+            (size: (1, 6, 1), origin: (3, 25, 6), uv: (10, 39)),
+        ],
+    ),
+    (
+        name: "mount_drill", display_name: "Broca Voadora", kind: Passive, health: 40, speed: 0, attack: 0, xp: 0, width: 1.0, height: 1.0, spawn: Never, flies: true, lit: true, coins: Some(0),
+        parts: [
+            (size: (12, 10, 12), origin: (-6, 4, -6), uv: (0, 0)),
+            (size: (6, 6, 10), origin: (-3, 6, 6), uv: (0, 22), anim: Head, pivot: (0, 9, 6)),
+            (size: (6, 4, 6), origin: (-3, 14, -3), uv: (32, 22)),
+        ],
+    ),
+    (
+        name: "mount_pigron", display_name: "Porco-Dragão", kind: Passive, health: 40, speed: 0, attack: 0, xp: 0, width: 1.0, height: 1.0, spawn: Never, flies: true, coins: Some(0),
+        parts: [
+            (size: (10, 8, 12), origin: (-5, 4, -6), uv: (0, 0)),
+            (size: (8, 7, 7), origin: (-4, 9, 5), uv: (0, 20), anim: Head, pivot: (0, 12, 6)),
+            (size: (4, 3, 2), origin: (-2, 10, 12), uv: (30, 20), anim: Head, pivot: (0, 12, 6)),
+            (size: (3, 4, 3), origin: (-5, 0, -5), uv: (42, 20), anim: Leg(0), pivot: (-4, 4, -4)),
+            (size: (3, 4, 3), origin: (2, 0, -5), uv: (42, 20), anim: Leg(1), pivot: (3, 4, -4)),
+            (size: (3, 4, 3), origin: (-5, 0, 2), uv: (42, 20), anim: Leg(1), pivot: (-4, 4, 3)),
+            (size: (3, 4, 3), origin: (2, 0, 2), uv: (42, 20), anim: Leg(0), pivot: (3, 4, 3)),
+            (size: (12, 1, 8), origin: (-17, 11, -4), uv: (0, 34), anim: Wing(0), pivot: (-5, 12, 0)),
+            (size: (12, 1, 8), origin: (5, 11, -4), uv: (0, 34), anim: Wing(1), pivot: (5, 12, 0)),
+            (size: (2, 2, 6), origin: (-1, 10, -12), uv: (40, 34)),
         ],
     ),
 ])

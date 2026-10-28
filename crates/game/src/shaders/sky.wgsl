@@ -72,7 +72,22 @@ fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
         let m = max(a, b);
         if (m < 0.09) {
             let spot = hash3(floor(vec3<f32>(dot(dir, t1) / ds, dot(dir, t2) / ds, 0.0) * 40.0));
-            col = vec3<f32>(0.82, 0.84, 0.9) - vec3<f32>(spot * 0.12);
+            var lit = true;
+            // Moon phases (tr3_world.rs): anim.w is the phase + 1, 1 full .. 5 new .. 8.
+            let ph = g.anim.w - 1.0;
+            if (ph > -0.5) {
+                let u = floor(dot(dir, t1) / ds / 0.09 * 8.0) / 8.0;
+                if (ph < 4.5) {
+                    lit = u > -1.0 + ph * 0.5;
+                } else {
+                    lit = u < -1.0 + (ph - 4.0) * 0.5;
+                }
+            }
+            if (lit) {
+                col = vec3<f32>(0.82, 0.84, 0.9) - vec3<f32>(spot * 0.12);
+            } else {
+                col = col * 0.8 + vec3<f32>(0.02, 0.02, 0.03);
+            }
         }
     }
     return vec4<f32>(col, 1.0);

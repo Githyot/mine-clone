@@ -6,6 +6,8 @@
 //! - L18 town folk, mini-bosses, event bosses and rare monsters (tr3_folk.rs).
 //! - L19 the common monsters of each land (tr3_foes.rs).
 //! - L20 tools and weapons (tr3_tools.rs; the guns fly in tr_weapons.rs).
+//! - L21 traps, statues, teleporters, stations, meals and critters (tr3_traps.rs).
+//! - L22 the world and the character (tr3_world.rs).
 
 use std::path::Path;
 
@@ -26,6 +28,10 @@ struct Saved {
     golf_holes: u32,
     #[serde(default)]
     golf_trophies: u8,
+    #[serde(default)]
+    traps: crate::tr3_traps::SavedTraps,
+    #[serde(default)]
+    world: crate::tr3_world::SavedWorld3,
 }
 
 #[derive(Default)]
@@ -34,6 +40,8 @@ pub struct Tr3 {
     pub(crate) folk: crate::tr3_folk::Folk,
     pub(crate) foes: crate::tr3_foes::Foes,
     pub(crate) tools: crate::tr3_tools::Tools,
+    pub(crate) traps: crate::tr3_traps::Traps,
+    pub(crate) world: crate::tr3_world::World3,
 }
 
 /// Shops of this round's town folk: (mob, goods: item, count, price in copper).
@@ -58,11 +66,13 @@ impl Tr3 {
         let s: Saved = std::fs::read_to_string(dir.join("tr3.ron")).ok().and_then(|x| ron::from_str(&x).ok()).unwrap_or_default();
         let mut t = Tr3::default();
         t.golf.load(s.balls, s.golf_points, s.golf_holes, s.golf_trophies);
+        t.traps.load(s.traps);
+        t.world.load(s.world);
         t
     }
 
-    pub fn save(&self, dir: &Path) {
-        let s = Saved { balls: self.golf.saved(), golf_points: self.golf.points, golf_holes: self.golf.holes, golf_trophies: self.golf.trophies };
+    pub fn save(&self, dir: &Path, items: &voxel::item::ItemRegistry) {
+        let s = Saved { balls: self.golf.saved(), golf_points: self.golf.points, golf_holes: self.golf.holes, golf_trophies: self.golf.trophies, traps: self.traps.saved(), world: self.world.saved(items) };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
             if let Err(e) = std::fs::write(dir.join("tr3.ron"), text) {
@@ -79,6 +89,9 @@ impl Game {
         self.update_folk(dt);
         self.update_foes(dt);
         self.update_tools(dt);
+        self.update_traps(dt);
+        self.update_world3(dt);
+        self.critter_glow();
     }
 
     /// A boss fell.
@@ -88,7 +101,7 @@ impl Game {
 
     /// Right click with an item of this round; Some(true) when it did something.
     pub(crate) fn tr3_use(&mut self, name: &str) -> Option<bool> {
-        self.golf_use(name).or_else(|| self.tools_use(name))
+        self.golf_use(name).or_else(|| self.tools_use(name)).or_else(|| self.traps_use(name)).or_else(|| self.world3_use(name))
     }
 
     /// Who of this round's town folk wants to move in.
@@ -137,6 +150,14 @@ impl Game {
             }
             "foes" | "foes2" | "crawler" | "medusa" => {
                 self.test_foes(scene);
+                true
+            }
+            "world3" | "livingtree" => {
+                self.test_world3(scene);
+                true
+            }
+            "traps" | "critters" => {
+                self.test_traps(scene);
                 true
             }
             "folk" | "minis3" | "wyvern" => {
