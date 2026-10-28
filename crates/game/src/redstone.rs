@@ -1274,7 +1274,7 @@ impl crate::Game {
         if dispenser {
             match name.as_str() {
                 "arrow" => {
-                    self.mobs.arrows.push(crate::mobs::Arrow { pos: out, vel: dir * 30.0 + Vec3::Y * 1.0, age: 0.0, stuck: false, damage: 3.0 });
+                    self.mobs.arrows.push(crate::mobs::Arrow { pos: out, vel: dir * 30.0 + Vec3::Y * 1.0, age: 0.0, stuck: false, damage: 3.0, shooter: 0 });
                     self.sfx(crate::audio::Sfx::Click);
                     return;
                 }

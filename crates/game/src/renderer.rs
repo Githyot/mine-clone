@@ -59,6 +59,11 @@ pub struct Globals {
     /// Hand light shadows: xyz corner of the solid-block grid relative to the camera's block,
     /// w: 1 when on.
     pub occl: [f32; 4],
+    /// xy: how far the wind has carried the clouds, z: classic clouds' drift, w: cloud clock.
+    pub clouds: [f32; 4],
+    /// Material feel of items and armour (material.rs): x 0 off, 1 glints, 2 also relief and
+    /// sparkles.
+    pub mat: [f32; 4],
 }
 
 #[repr(C)]
@@ -103,6 +108,8 @@ struct ScenePipes {
     cloud: wgpu::RenderPipeline,
     line: wgpu::RenderPipeline,
     lod: wgpu::RenderPipeline,
+    /// Distant nodes clear of the real chunks: no discard, so early depth rejection works.
+    lod_far: wgpu::RenderPipeline,
     rain: wgpu::RenderPipeline,
 }
 
@@ -288,7 +295,7 @@ impl Renderer {
         let ([block_view, block_view2], texture_size) = Self::upload_blocks(&device, &queue, textures);
         let tex_bg = Self::make_tex_bg(&device, &tex_layout, &block_view, &block_view2, &sampler);
 
-        let terrain = shader(&device, "terrain", include_str!("shaders/terrain.wgsl"));
+        let terrain = shader(&device, "terrain", concat!(include_str!("shaders/material.wgsl"), "\n", include_str!("shaders/terrain.wgsl")));
         let sky = shader(&device, "sky", include_str!("shaders/sky.wgsl"));
         let lines = shader(&device, "lines", include_str!("shaders/lines.wgsl"));
         let lod = shader(&device, "lod", include_str!("shaders/lod.wgsl"));
@@ -381,7 +388,7 @@ impl Renderer {
             wgpu::VertexBufferLayout {
                 array_stride: std::mem::size_of::<crate::lod::LodVertex>() as u64,
                 step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Unorm8x4],
+                attributes: &wgpu::vertex_attr_array![0 => Uint32, 1 => Unorm8x4],
             },
             wgpu::VertexBufferLayout {
                 array_stride: 12,
@@ -408,6 +415,7 @@ impl Renderer {
             cloud: make("clouds", f, &globals_only, &sky, "vs_sky", "fs_clouds", &[], blend_alpha, None, depth_state(false, C::Less), T::TriangleList),
             line: make("lines", f, &globals_only, &lines, "vs_lines", "fs_lines", &line_layout, blend_alpha, None, depth_state(false, C::LessEqual), T::LineList),
             lod: make("lod", f, &globals_only, &lod, "vs_lod", "fs_lod", &lod_layout, None, None, depth_state(true, C::Less), T::TriangleList),
+            lod_far: make("lod far", f, &globals_only, &lod, "vs_lod", "fs_lod_far", &lod_layout, None, None, depth_state(true, C::Less), T::TriangleList),
             rain: make("rain", f, &globals_only, &rain, "vs_rain", "fs_rain", &rain_layout, blend_alpha, None, depth_state(false, C::Less), T::TriangleList),
         };
         let pipes = [scene_pipes(format), scene_pipes(HDR)];
@@ -997,13 +1005,17 @@ impl Renderer {
                 }
             }
         }
-        // Distant terrain tiles share the instance buffer (their corner relative to the camera).
-        let mut lod_draws: Vec<(usize, &wgpu::Buffer, u32)> = Vec::new();
-        for (t, tile) in lod.map(|l| &l.tiles).into_iter().flatten() {
-            let s = crate::lod::TILE;
-            let origin = Vec3::new((t.x * s - cam.block.x) as f32, -cam.block.y as f32, (t.y * s - cam.block.z) as f32);
+        // Distant terrain nodes share the instance buffer (their corner relative to the camera).
+        // Nodes reaching into the real chunks (and the band where they sink) need the discard.
+        let mut lod_draws: Vec<(usize, &wgpu::Buffer, u32, bool)> = Vec::new();
+        let lod_inner = lod.map(|l| l.inner).unwrap_or(0.0) + 64.0;
+        let eye2 = glam::Vec2::new(cam.frac.x, cam.frac.z);
+        for tile in lod.map(|l| l.tiles.values()).into_iter().flatten() {
+            let s = tile.node.size() as f32;
+            let o = tile.node.origin();
+            let origin = Vec3::new((o.x - cam.block.x) as f32, -cam.block.y as f32, (o.y - cam.block.z) as f32);
             let lo = origin + Vec3::new(0.0, tile.min_y - 8.0, 0.0);
-            let hi = origin + Vec3::new(s as f32, tile.max_y + 1.0, s as f32);
+            let hi = origin + Vec3::new(s, tile.max_y + 1.0, s);
             if !visible(lo, hi) {
                 continue;
             }
@@ -1011,7 +1023,8 @@ impl Renderer {
                 self.quad_cap = tile.quads.next_power_of_two();
                 self.quad_ibuf = Self::make_quad_ibuf(&self.device, self.quad_cap);
             }
-            lod_draws.push((instances.len(), &tile.buf, tile.quads));
+            let near = eye2.clamp(glam::Vec2::new(lo.x, lo.z), glam::Vec2::new(hi.x, hi.z)).distance(eye2) < lod_inner;
+            lod_draws.push((instances.len(), &tile.buf, tile.quads, near));
             instances.push(origin.to_array());
         }
         // Shadow casters: every section with solid blocks around the camera, seen or not.
@@ -1182,12 +1195,14 @@ impl Renderer {
                 pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
                 quads += *q as usize;
             }
-            if !lod_draws.is_empty() {
-                pass.set_pipeline(&pipes.lod);
-                for (i, b, q) in &lod_draws {
-                    pass.set_vertex_buffer(0, b.slice(..));
-                    pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
+            let mut lod_pipe = None;
+            for (i, b, q, near) in &lod_draws {
+                if lod_pipe != Some(*near) {
+                    lod_pipe = Some(*near);
+                    pass.set_pipeline(if *near { &pipes.lod } else { &pipes.lod_far });
                 }
+                pass.set_vertex_buffer(0, b.slice(..));
+                pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
             }
             if let Some(e) = entities {
                 e.draw(&mut pass, hdr, &self.tex_bg, &self.fx.bg_solid);

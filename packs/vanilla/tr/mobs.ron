@@ -648,7 +648,7 @@
     // Lote 7: the last bosses, the four pillars and their folk, the dungeon spirits.
     (
         name: "jelly_queen", display_name: "Rainha Geleia", kind: Hostile, health: 2400, speed: 0.1, attack: 10,
-        drops: [(item: "gel", min: 30, max: 60), (item: "crystal_wings", chance: 0.4), (item: "crystal_yoyo", chance: 0.6), (item: "soul_of_light", min: 4, max: 8), (item: "jelly_saddle", chance: 0.2)], xp: 250,
+        drops: [(item: "gel", min: 30, max: 60), (item: "crystal_wings", chance: 0.4), (item: "crystal_yoyo", chance: 0.6), (item: "crystal_jelly_staff", chance: 0.5), (item: "soul_of_light", min: 4, max: 8), (item: "jelly_saddle", chance: 0.2)], xp: 250,
         width: 3.0, height: 2.6, spawn: Never, scale: 4.0, boss: true, hops: true,
         parts: [
             (size: (12, 10, 12), origin: (-6, 0, -6), uv: (0, 0)),

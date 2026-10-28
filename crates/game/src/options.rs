@@ -49,9 +49,13 @@ pub enum Id {
     Taa,
     Emissive,
     Relief,
+    Materials,
     Lod,
+    LodDetail,
     Drops,
     AmbientLife,
+    DropLabels,
+    DropGlow,
     Master,
     Music,
     Vol(SoundCat),
@@ -219,6 +223,8 @@ impl Game {
                     format!("Vida no ambiente: {}", crate::ambient_life::LEVELS[st.ambient_life.min(3) as usize].0),
                     "Folhas caindo, vaga-lumes, borboletas, abelhas, pássaros, peixes e poeira no ar.",
                 ),
+                self.opt_button(Id::DropLabels, format!("Nomes dos itens no chão: {}", onoff(st.drop_labels)), "Mostra o nome e a quantidade dos itens caídos por perto."),
+                self.opt_button(Id::DropGlow, format!("Brilho dos itens no chão: {}", onoff(st.drop_glow)), "Um brilho suave, mais forte nos encantados e raros."),
                 self.opt_button(Id::TextureRes, format!("Resolução das texturas: {}x", st.texture_resolution), "Diminua em computadores com pouca memória de vídeo."),
                 self.opt_button(Id::Packs, format!("Texturas: {}...", self.textures_name.trim_end_matches(".zip")), "Escolher um pacote de texturas."),
                 header("Shaders e efeitos"),
@@ -238,6 +244,15 @@ impl Game {
                 self.opt_button(Id::Taa, format!("Suavização TAA: {}{}", onoff(st.taa), needs_pack), "Bordas suaves. Precisa de um shader ligado."),
                 self.opt_button(Id::Emissive, format!("Minérios brilhantes: {}", onoff(st.emissive_textures)), "Os pontos coloridos dos minérios brilham no escuro."),
                 self.opt_button(Id::Relief, format!("Relevo nas texturas: {}", onoff(st.relief)), "Um leve relevo esculpido nas texturas perto da câmera."),
+                self.opt_button(
+                    Id::Materials,
+                    format!(
+                        "Materiais: {}{}",
+                        crate::material::LEVELS[st.materials.min(2) as usize],
+                        if st.materials > 1 && st.shader_quality == ShaderQuality::Fast { " (Simples no Rápido)" } else { "" }
+                    ),
+                    "Brilho do diamante e dos metais, relevo em itens e armaduras. Simples: só o brilho.",
+                ),
                 self.slider(
                     Id::Lod,
                     match st.lod_distance {
@@ -245,6 +260,11 @@ impl Game {
                         d => format!("Terreno distante: +{d} blocos"),
                     },
                     "Terreno simplificado além da distância de visão.",
+                ),
+                self.opt_button(
+                    Id::LodDetail,
+                    format!("Detalhe do terreno distante: {}", crate::lod::DETAILS[(st.lod_detail as usize).min(crate::lod::DETAILS.len() - 1)].0),
+                    "Leve: menos polígonos e memória, para PCs fracos. Alto: mais detalhe ao longe.",
                 ),
             ],
             Tab::Audio => {
@@ -325,10 +345,14 @@ impl Game {
             Id::Reflections => return shader_row(self, ShaderRow::Reflections),
             Id::Taa => return shader_row(self, ShaderRow::Taa),
             Id::Emissive => return shader_row(self, ShaderRow::Emissive),
+            Id::LodDetail => self.settings.lod_detail = (self.settings.lod_detail + 1) % crate::lod::DETAILS.len() as u8,
             Id::Relief => self.settings.relief = !self.settings.relief,
+            Id::Materials => self.settings.materials = (self.settings.materials.min(2) + 1) % 3,
             Id::ViewBobbing => self.settings.view_bobbing = !self.settings.view_bobbing,
             Id::Drops => self.settings.flat_drops = !self.settings.flat_drops,
             Id::AmbientLife => self.settings.ambient_life = (self.settings.ambient_life + 1) % 4,
+            Id::DropLabels => self.settings.drop_labels = !self.settings.drop_labels,
+            Id::DropGlow => self.settings.drop_glow = !self.settings.drop_glow,
             Id::TextureRes => {
                 let st = &mut self.settings;
                 st.texture_resolution = match st.texture_resolution {
