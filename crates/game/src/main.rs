@@ -98,6 +98,7 @@ mod windmill;
 mod entity;
 mod instruments;
 mod torch;
+mod summons;
 mod item_render;
 mod juice;
 mod menus;
@@ -4717,8 +4718,11 @@ impl Game {
         }
         let selection = if self.screen == Screen::Playing || self.args.screenshot.is_some() { self.target.map(|t| t.block) } else { None };
         let mut items = self.mobs.instances(&self.world, block, rd + 16.0);
+        // Pets and mounts with a better body in summons.rs: theirs comes out, that one goes in.
+        items.retain(|(d, _)| self.mobs.reg.defs.get(*d).is_none_or(|def| summons::pet_model(&def.name).is_none()));
         let musician = self.musician_instances(&mut items, block);
         let mob_items = self.arrow_and_bow_instances(&items, block);
+        items.extend(self.pet_models(block, rd + 16.0));
         items.extend(musician);
         let (net_models, mut net_held) = self.net_instances(block);
         items.extend(net_models);
@@ -4802,6 +4806,10 @@ impl Game {
         items.extend(self.wagon_instances(block, rd + 16.0));
         items.extend(self.aircraft_instances(block));
         items.extend(self.windmill_instances(block, eye, rd + 16.0));
+        // Summoned minions and sentries, with their own bodies (summons.rs).
+        items.extend(self.minion_instances(block));
+        items.extend(self.sentry_instances(block));
+        items.extend(self.tr_sentry_models(block));
         // The player figure in the inventory, in 3D, turning its head toward the mouse.
         let mut figure_backdrop = None;
         if let (Some((bx, by, bw, bh)), Some(pd)) = (self.surv.figure_box.take(), self.mobs.reg.id("player")) {
@@ -4882,8 +4890,6 @@ impl Game {
         }
         drops.extend(held_third);
         drops.extend(mob_items);
-        drops.extend(self.minion_instances(block));
-        drops.extend(self.sentry_instances(block));
         drops.extend(net_held);
         if let (Some(k), Some(h)) = (self.args.mine, self.target) {
             let id = self.world.block_or_air(h.block);
