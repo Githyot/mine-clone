@@ -55,6 +55,8 @@ pub enum Fx {
     InvClose,
     /// Worn armour shifting as you walk: true for metal, false for leather.
     Armor(bool),
+    /// Feet sliding over ice; the value is how fast (0..1). A soft, low scrape.
+    Slide(f32),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,6 +170,7 @@ pub fn synth(fx: Fx, seed: u32) -> Vec<f32> {
         Fx::InvOpen => flap(r, true),
         Fx::InvClose => flap(r, false),
         Fx::Armor(metal) => armor(r, metal),
+        Fx::Slide(s) => slide(r, s.clamp(0.0, 1.0)),
     };
     out.into_iter().map(|s| s.clamp(-1.0, 1.0)).collect()
 }
@@ -602,6 +605,27 @@ fn land(rng: &mut Rng, strength: f32) -> Vec<f32> {
     out
 }
 
+/// Boot soles gliding over ice: a hushed scrape that swells and fades, with a faint low hum
+/// of the ice under it. Kept dark so it never hisses.
+fn slide(rng: &mut Rng, speed: f32) -> Vec<f32> {
+    let dur = 0.4 + speed * 0.15;
+    let n = samples(dur);
+    let mut lp = LowPass::new(420.0 + speed * 260.0);
+    let hum = rng.range(70.0, 82.0);
+    let mut out: Vec<f32> = (0..n)
+        .map(|i| {
+            let k = i as f32 / n as f32;
+            let t = i as f32 / RATE;
+            let env = (k * PI).sin().powf(1.5);
+            let scrape = lp.run(rng.noise()) * 2.2;
+            let under = (t * hum * TAU).sin() * 0.25;
+            (scrape + under) * env * (0.3 + speed * 0.35)
+        })
+        .collect();
+    edges(&mut out, 0.01);
+    out
+}
+
 /// Air moving: a band of noise sweeping up and back down.
 fn whoosh(rng: &mut Rng, dur: f32, lo: f32, hi: f32, gain: f32) -> Vec<f32> {
     let n = samples(dur);
@@ -721,6 +745,8 @@ mod tests {
             Fx::InvClose,
             Fx::Armor(true),
             Fx::Armor(false),
+            Fx::Slide(0.0),
+            Fx::Slide(1.0),
         ];
         all
     }

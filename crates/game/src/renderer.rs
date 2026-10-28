@@ -59,6 +59,8 @@ pub struct Globals {
     /// Hand light shadows: xyz corner of the solid-block grid relative to the camera's block,
     /// w: 1 when on.
     pub occl: [f32; 4],
+    /// xy: how far the wind has carried the clouds, z: classic clouds' drift, w: cloud clock.
+    pub clouds: [f32; 4],
 }
 
 #[repr(C)]
