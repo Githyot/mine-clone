@@ -591,6 +591,10 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
         }
         // Squash and stretch: landing flattens it, rising stretches it (jellies much more).
         let mut s = st.squash * if style == Style::Hopper { 1.0 } else { 0.55 } + hurt * 0.06;
+        if style == Style::Floater && def.aquatic {
+            // A jellyfish's bell pulses as it swims.
+            s += ((clock * 2.2).sin().max(0.0) - 0.3) * 0.16;
+        }
         if style == Style::Hopper {
             s += (-st.vy * 0.03).clamp(-0.25, 0.15) * (!mob.body.on_ground) as u8 as f32;
             s += (clock * 3.1).sin() * 0.035 * idle;
@@ -659,6 +663,11 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
             Role::Leg { .. } if sleeping => {
                 // Front legs tuck forward, hind legs back.
                 Quat::from_rotation_x(if p.pivot.2 >= 0 { -FRAC_PI_2 } else { FRAC_PI_2 })
+            }
+            Role::Leg { pair, .. } if style == Style::Floater && def.aquatic && alive => {
+                // Jellyfish tentacles: trailing, waving slowly out of step.
+                let k = pair as f32 * 1.3 + pivot.x * 0.4 + pivot.z * 0.3;
+                Quat::from_rotation_x((clock * 2.2 + k).sin() * 0.28) * Quat::from_rotation_z((clock * 1.6 + k * 1.7).sin() * 0.18)
             }
             Role::Leg { pair, front, side } => {
                 let k = pair as f32 * PI;
@@ -784,6 +793,10 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
             Role::Wing(k) => {
                 let side = if k == 0 { 1.0 } else { -1.0 };
                 let flap = match style {
+                    // Fins: wide ones (rays, turtles' flippers) beat slow and deep together,
+                    // small pectoral fins paddle quickly.
+                    Style::Swimmer if p.size.0 >= 4 => (clock * (1.6 + amp * 1.2) + mob.phase).sin() * (0.35 + amp.min(1.0) * 0.15) * alive as u8 as f32,
+                    Style::Swimmer => ((clock * (4.0 + amp * 5.0) + k as f32 * PI).sin() * 0.3 + 0.15) * alive as u8 as f32,
                     Style::Flyer => {
                         let rate = 26.0 - rig.heavy * 18.0;
                         (clock * rate + k as f32 * 0.2).sin() * 0.55 + 0.35
@@ -820,7 +833,10 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
                 let mood = if mob.aggro { 0.15 } else { 0.35 + st.near * 0.65 };
                 let wag = if awake { (clock * rig.wag_rate).sin() * 0.5 * rig.wag * mood * (1.0 - run * 0.7) } else { 0.0 };
                 let sway = (clock * 1.1).sin() * 0.12 * idle;
-                let swish = if style == Style::Swimmer { (clock * (3.0 + amp * 5.0) - 0.8).sin() * (0.25 + amp.min(1.0) * 0.3) } else { 0.0 };
+                // Swimmers: the wave runs down the body, so the parts further back lag and
+                // swing wider (a stem, then the fin).
+                let lag = (rig.centre.z - pivot.z).max(0.0) * 0.07;
+                let swish = if style == Style::Swimmer { (clock * (3.0 + amp * 5.0) - 0.8 - lag).sin() * (0.25 + amp.min(1.0) * 0.3) * (1.0 + lag) } else { 0.0 };
                 let mut lift = (t * 2.0).cos() * 0.08 * amp.min(1.0) + run * 0.18 - if sleeping || !alive { 0.35 } else { 0.0 };
                 if mob.aggro && def.kind != Kind::Passive {
                     lift += 0.3;
@@ -879,7 +895,7 @@ mod tests {
     use super::*;
 
     fn defs() -> Vec<MobDef> {
-        let texts: Vec<String> = ["mobs.ron", "mods/mobs.ron", "etapa5/mobs.ron", "fase6/mobs.ron", "tr/mobs.ron"]
+        let texts: Vec<String> = ["mobs.ron", "mods/mobs.ron", "etapa5/mobs.ron", "fase6/mobs.ron", "tr/mobs.ron", "aguas/mobs.ron"]
             .iter()
             .filter_map(|f| std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/vanilla").join(f)).ok())
             .collect();

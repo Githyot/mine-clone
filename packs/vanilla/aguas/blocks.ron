@@ -1,0 +1,12 @@
+// Plants of the lakes, rivers, swamps, seas and cave lakes (worldgen/waters.rs). Textures drawn
+// by tools/gen_aguas.py.
+(blocks: [
+    (name: "cattail", display_name: Some("Taboa"), shape: Cross, transparency: Cutout, solid: false, waterlogged: true, hardness: 0.0, drops: Some([(item: "cattail")])),
+    (name: "cattail_top", display_name: Some("Taboa"), shape: Cross, transparency: Cutout, solid: false, hardness: 0.0, in_inventory: false, drops: Some([(item: "cattail")])),
+    (name: "duckweed", display_name: Some("Lentilha-d'água"), shape: Layer, transparency: Cutout, hardness: 0.0, textures: (top: Some("duckweed"), bottom: Some("duckweed"), side: Some("lily_pad_side"))),
+    (name: "water_lily", display_name: Some("Ninfeia"), shape: Layer, transparency: Cutout, hardness: 0.0, textures: (top: Some("water_lily"), bottom: Some("lily_pad"), side: Some("lily_pad_side"))),
+    (name: "pondweed", display_name: Some("Elódea"), shape: Cross, transparency: Cutout, solid: false, waterlogged: true, tint: false, hardness: 0.0),
+    (name: "sea_pickle", display_name: Some("Pepino-do-mar"), shape: Cross, transparency: Cutout, solid: false, waterlogged: true, light: 6, hardness: 0.0),
+    (name: "sea_anemone", display_name: Some("Anêmona-do-mar"), shape: Cross, transparency: Cutout, solid: false, waterlogged: true, hardness: 0.0),
+    (name: "glow_algae", display_name: Some("Alga Luminosa"), shape: Cross, transparency: Cutout, solid: false, waterlogged: true, light: 7, hardness: 0.0),
+])

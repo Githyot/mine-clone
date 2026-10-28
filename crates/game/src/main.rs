@@ -389,6 +389,8 @@ fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) 
     let b0 = terraria::with_extra(&b0, embedded::DEEP_BLOCKS_RON);
     // The rest of the Terraria side (tr.rs).
     let b0 = terraria::with_extra(&b0, embedded::TR_BLOCKS_RON);
+    // Water plants of the lakes, rivers and seas (worldgen/waters.rs).
+    let b0 = terraria::with_extra(&b0, embedded::AGUAS_BLOCKS_RON);
     let i0 = terraria::with_extra(&merge_list(items[0], &fase6_text(None, "items.ron")), embedded::T5_ITEMS_RON);
     // The stats content (rpg.rs) after the Terraria side's own items.
     let i0 = terraria::with_extra(&i0, embedded::RPG_ITEMS_RON);
@@ -922,7 +924,7 @@ impl Game {
         // Mobs: a mobs.ron on disk wins, like blocks.
         let [mobs_text, mods_mobs] = read_pack_pair(&base, "mobs.ron", embedded::MOBS_RON, embedded::MODS_MOBS_RON);
         let mobs_text = terraria::with_extra(&merge_list(&mobs_text, &fase6_text(Some(&base), "mobs.ron")), embedded::T5_MOBS_RON);
-        let mobs_text = terraria::with_extra(&mobs_text, embedded::TR_MOBS_RON);
+        let mobs_text = terraria::with_extra(&terraria::with_extra(&mobs_text, embedded::TR_MOBS_RON), embedded::AGUAS_MOBS_RON);
         let [_, dims_mobs] = read_pack_pair(&base, "dims_mobs.ron", "", embedded::MODS_DIMS_MOBS_RON);
         let mob_reg = voxel::mob::MobRegistry::from_ron_many(&[&mobs_text, &mods_mobs, &dims_mobs]).unwrap_or_else(|e| {
             log::error!("{e}; using built-in mobs");
@@ -1869,6 +1871,10 @@ impl Game {
                 if let Ok(name) = std::env::var("MC_BIOME") {
                     // Test hook: stand in the nearest biome of that name (e.g. "Meadow").
                     self.test_biome(&name);
+                }
+                if let Ok(kind) = std::env::var("MC_AGUAS") {
+                    // Test hook: under the water of a lake, river, sea... full of its creatures.
+                    self.test_aguas(&kind);
                 }
                 if let Ok(kind) = std::env::var("MC_CAVE") {
                     // Test hook: stand in a cave biome.
