@@ -8,6 +8,8 @@ use crate::entity::Bones;
 use crate::world::World;
 use voxel::physics::Terrain;
 
+pub mod aquatic;
+
 const MAX_PASSIVE: usize = 14;
 const MAX_HOSTILE: usize = 12;
 const DESPAWN_DIST: f32 = 128.0;
@@ -16,6 +18,8 @@ pub struct Mobs {
     pub reg: MobRegistry,
     pub list: Vec<Mob>,
     spawn_cd: f32,
+    /// Next time the schools of fish regroup.
+    school_cd: f32,
     seed: u64,
     grass: BlockId,
     pub enabled: bool,
@@ -146,7 +150,7 @@ impl Mobs {
     }
 
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, spawning: true, peaceful: false, calm: false, hp_scale: 1.0, spawn_mult: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false, anim: Default::default(), social: Default::default() }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, school_cd: 0.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, spawning: true, peaceful: false, calm: false, hp_scale: 1.0, spawn_mult: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false, anim: Default::default(), social: Default::default() }
     }
 
     pub(crate) fn next_rand(&mut self) -> u64 {
@@ -238,7 +242,9 @@ impl Mobs {
                         && (!away || !d.biomes.is_empty())
                         && match d.spawn {
                             SpawnRule::Grass => animals && !water && self.ground[*i].contains(&below),
-                            SpawnRule::Water => animals && water,
+                            // In the Overworld the water creatures have their own spawning
+                            // (aquatic.rs); elsewhere they go by biome.
+                            SpawnRule::Water => animals && water && away,
                             SpawnRule::Dark => dark && !water && hostile < max_hostile && !self.peaceful && !self.calm && (self.reg.defs[*i].ground.is_empty() || self.ground[*i].contains(&below)),
                             SpawnRule::Never => false,
                         }
@@ -351,6 +357,7 @@ impl Mobs {
             self.list.clear();
             return out;
         }
+        self.test_fill(world, player, creative, daylight);
         if self.peaceful {
             let reg = &self.reg;
             self.list.retain(|m| reg.defs[m.def].kind != Kind::Hostile);
@@ -359,10 +366,17 @@ impl Mobs {
         if self.spawn_cd <= 0.0 && self.spawning {
             self.spawn_cd = 1.0 / self.spawn_mult.clamp(0.25, 4.0);
             self.natural_spawn(world, player, daylight);
+            self.water_spawn(world, player, daylight);
             for k in 0..self.others.len() {
                 let p = self.others[k].0;
                 self.natural_spawn(world, p, daylight);
+                self.water_spawn(world, p, daylight);
             }
+        }
+        self.school_cd -= dt;
+        if self.school_cd <= 0.0 {
+            self.school_cd = 0.3;
+            self.school_up();
         }
         let mut events = Vec::new();
         let day = daylight > 0.5;
@@ -499,7 +513,13 @@ impl Mobs {
         self.list.retain(|m| {
             let gone = !m.alive() && m.dead_age > DEATH_TIME;
             let keep = m.name.is_some() || m.leashed;
-            let reach = if keep { DESPAWN_DIST + 48.0 } else { DESPAWN_DIST };
+            let reach = if keep {
+                DESPAWN_DIST + 48.0
+            } else if aquatic::is_water_creature(&reg.defs[m.def]) {
+                aquatic::WATER_DESPAWN
+            } else {
+                DESPAWN_DIST
+            };
             let far = (m.body.pos - player).length() > reach && !reg.defs[m.def].town && others.iter().all(|(p, _)| (m.body.pos - *p).length() > reach);
             let fell = m.body.pos.y < voxel::chunk::MIN_Y as f32 - 64.0;
             !(gone || (far && !m.still) || fell)
@@ -579,6 +599,7 @@ pub fn caster_school(name: &str) -> Option<u8> {
 pub fn registry_for_tests() -> voxel::mob::MobRegistry {
     use crate::embedded;
     let text = crate::terraria::with_extra(&crate::merge_list(embedded::MOBS_RON, embedded::FASE6_MOBS_RON), embedded::T5_MOBS_RON);
+    let text = crate::terraria::with_extra(&crate::terraria::with_extra(&text, embedded::TR_MOBS_RON), embedded::AGUAS_MOBS_RON);
     voxel::mob::MobRegistry::from_ron_many(&[&text, embedded::MODS_MOBS_RON, embedded::MODS_DIMS_MOBS_RON]).unwrap()
 }
 

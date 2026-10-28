@@ -155,6 +155,18 @@ pub struct MobDef {
     /// Copper it drops when it dies (money.rs works it out from its health and attack if unset).
     #[serde(default)]
     pub coins: Option<u32>,
+    /// Kinds of water it lives in (game/src/mobs/aquatic.rs): "lake", "river", "jungle_river",
+    /// "swamp", "ocean", "warm_ocean", "cold_ocean", "frozen_ocean", "deep_ocean", "cave".
+    /// When set, it spawns by the water body instead of by `biomes`.
+    #[serde(default)]
+    pub waters: Vec<String>,
+    /// Swims in schools that follow a leader.
+    #[serde(default = "d_false")]
+    pub school: bool,
+    /// Keeps to the bottom: water creatures hug the floor (rays, crayfish), land creatures walk
+    /// on the bottom instead of floating up (the drowned, crabs).
+    #[serde(default = "d_false")]
+    pub bottom: bool,
 }
 
 /// How a mob moves, for the animation. All optional.
@@ -387,6 +399,11 @@ pub struct Mob {
     /// Summoned by an item (pets and Terraria mounts): nothing can hurt or hit it, it hunts
     /// nothing and the game moves it.
     pub ghost: bool,
+    /// Water creatures: the floor and the surface of the water column it swims in (heights),
+    /// looked up again every so often.
+    water_floor: f32,
+    water_top: f32,
+    water_probe: f32,
     /// On show in the test world: stands where it was put, no AI (like a NoAI tag).
     pub still: bool,
     /// Who it is with and what they're doing (see `Act`).
@@ -417,6 +434,26 @@ impl Mob {
     pub fn go_to(&mut self, p: Vec3, wait: f32) {
         self.wander = Some(p);
         self.idle = wait;
+    }
+
+    /// Keep with the school: swim toward a spot near its leader unless busy (fleeing, fighting).
+    pub fn follow(&mut self, p: Vec3) {
+        if self.panic <= 0.0 && !self.aggro {
+            self.wander = Some(p);
+            self.idle = 2.0;
+        }
+    }
+
+    /// Fleeing from something (for the school: one scared fish scares the rest).
+    pub fn scared(&self) -> Option<Vec3> {
+        (self.panic > 0.0).then_some(self.panic_from)
+    }
+
+    /// Bolt away from `from` for a few seconds (passive creatures).
+    pub fn startle(&mut self, from: Vec3) {
+        self.panic = self.panic.max(2.5);
+        self.panic_from = from;
+        self.wander = None;
     }
 
     pub fn new(def_index: usize, def: &MobDef, pos: Vec3, seed: u64) -> Mob {
@@ -472,6 +509,9 @@ impl Mob {
             net_id: NEXT_NET_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             size: 1.0,
             ghost: false,
+            water_floor: pos.y - 1.0,
+            water_top: pos.y + 1.0,
+            water_probe: 0.0,
             still: false,
             social: Social::default(),
             scare: 0.0,
@@ -889,6 +929,9 @@ impl Mob {
                 if world.liquid((self.body.pos + Vec3::Y * 0.35).floor().as_ivec3()) {
                     jump = true;
                 }
+            } else if def.bottom {
+                // Walks on the bottom; swims up only to reach the player above it.
+                jump |= fights && player.y > self.body.pos.y + 1.5;
             } else {
                 jump = true;
             }
@@ -901,7 +944,10 @@ impl Mob {
             self.aquatic_steer(world, &mut wish, &mut jump);
         }
         let input = Input { wish, jump, sneak, sprint: run, crawl: false };
-        if def.flies && def.hover > 0.0 {
+        let chase = (fights || self.prey.is_some_and(|_| self.hungry(def))).then(|| if fights { player } else { self.prey.unwrap_or(player) });
+        if def.aquatic && self.body.in_water {
+            self.swim_step(def, world, wish, chase, run, dt);
+        } else if def.flies && def.hover > 0.0 {
             self.fly_step(def, world, wish, if fights { Some(player) } else { None }, run, dt);
         } else {
             self.body.step(world, &input, dt);
@@ -928,7 +974,10 @@ impl Mob {
     /// ground below (or over the player it fights), bobbing a little.
     fn fly_step(&mut self, def: &MobDef, world: &impl Terrain, wish: Vec3, target: Option<Vec3>, run: bool, dt: f32) {
         let at = self.body.pos;
-        let ground = (0..40).map(|k| at.y.floor() as i32 - k).find(|&y| world.solid(glam::IVec3::new(at.x.floor() as i32, y, at.z.floor() as i32)));
+        let ground = (0..40).map(|k| at.y.floor() as i32 - k).find(|&y| {
+            let p = glam::IVec3::new(at.x.floor() as i32, y, at.z.floor() as i32);
+            world.solid(p) || world.liquid(p)
+        });
         let bob = (self.age * 1.3 + self.phase).sin() * 0.6;
         let want_y = match (target, ground) {
             (Some(p), _) => p.y + def.hover + bob,
@@ -958,6 +1007,42 @@ impl Mob {
         let dy = want - self.body.pos.y;
         let k = def.speed / crate::physics::FLY_SPEED;
         (wish * k, dy > 0.5, dy < -0.5)
+    }
+
+    /// Water creatures in the water: swim in three dimensions at their own speed. Up and down
+    /// they go for the creature they chase, else for a depth of their own (rays and crayfish
+    /// keep to the floor), never breaking the surface.
+    fn swim_step(&mut self, def: &MobDef, world: &impl Terrain, wish: Vec3, chase: Option<Vec3>, run: bool, dt: f32) {
+        let at = self.body.pos;
+        self.water_probe -= dt;
+        if self.water_probe <= 0.0 {
+            self.water_probe = 0.6 + self.rng.f32() * 0.4;
+            let (x, z) = (at.x.floor() as i32, at.z.floor() as i32);
+            let y0 = at.y.floor() as i32;
+            let floor = (0..24).map(|k| y0 - k).find(|&y| world.solid(glam::IVec3::new(x, y, z))).map(|y| y as f32 + 1.0);
+            let top = (0..24).map(|k| y0 + k).find(|&y| !world.liquid(glam::IVec3::new(x, y, z))).map(|y| y as f32);
+            self.water_floor = floor.unwrap_or(at.y - 24.0);
+            self.water_top = top.unwrap_or(at.y + 24.0);
+        }
+        let (lo, hi) = (self.water_floor + 0.1, (self.water_top - def.height - 0.15).max(self.water_floor + 0.1));
+        let want = match chase {
+            Some(p) => p.y + 0.3,
+            None if def.bottom => lo,
+            None => {
+                // A depth of its own that drifts slowly, somewhere in the lower two thirds.
+                let f = 0.5 + 0.5 * (self.age * 0.07 + self.phase * 2.0).sin();
+                lo + (hi - lo) * (0.1 + 0.55 * f)
+            }
+        }
+        .clamp(lo, hi);
+        let speed = def.speed * if run { 1.5 } else { 1.0 } * if self.chill > 0.0 { 0.4 } else { 1.0 };
+        let mut v = Vec3::new(wish.x, 0.0, wish.z) * speed;
+        v.y = ((want - at.y) * 1.2).clamp(-speed * 0.6, speed * 0.6);
+        let k = (dt * 3.0).min(1.0);
+        let vel = self.body.vel + (v - self.body.vel) * k;
+        self.body.fly(world, vel, dt);
+        let feet = self.body.pos.floor().as_ivec3();
+        self.body.in_water = world.liquid(feet) || world.liquid(feet + glam::IVec3::Y);
     }
 
     /// Water creatures (`MobDef::aquatic`): in the water they keep off the bottom and away from

@@ -19,6 +19,7 @@ mod nether;
 mod otherside;
 pub mod showcase;
 mod variants;
+mod waters;
 pub use caves::CaveBiome;
 pub use distant_lands::is_distant;
 pub use end::{end_pillars, EndPillar, END_EXIT_Y, END_PLATFORM};
@@ -598,6 +599,7 @@ pub struct Generator {
     end: end::EndPalette,
     caves: caves::CavePalette,
     ecologics: ecologics::EcoPalette,
+    waters: waters::WaterPalette,
     aether: aether::AetherPalette,
     otherside: otherside::OthersidePalette,
     distant: distant_lands::DistantPalette,
@@ -702,6 +704,7 @@ impl Generator {
             end: end::EndPalette::new(reg),
             caves: caves::CavePalette::new(reg),
             ecologics: ecologics::EcoPalette::new(reg),
+            waters: waters::WaterPalette::new(reg),
             aether: aether::AetherPalette::new(reg),
             otherside: otherside::OthersidePalette::new(reg),
             distant: distant_lands::DistantPalette::new(reg),
@@ -1142,6 +1145,7 @@ impl Generator {
         self.decorate_caves(&mut chunk, &mut rng, &cols, pos);
         self.decorate(&mut chunk, &mut rng, &cols, pos);
         self.decorate_ecologics(&mut chunk, &cols, pos);
+        self.decorate_waters(&mut chunk, &cols, pos);
         self.place_structures(&mut chunk);
         chunk
     }
