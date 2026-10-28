@@ -20,15 +20,15 @@ OUT = os.path.join(ROOT, "packs", "vanilla", "etapa5")
 # Metals of hard mode and the end game: (name, display, tool tier, dig speed, sword damage,
 # durability, armour points (head, chest, legs, feet), smelted from an ore?)
 METALS = [
-    ("cobalt", "Cobalto", 5, 10.0, 8.0, 1800, (3, 7, 6, 3), True),
-    ("palladium", "Paládio", 5, 10.5, 8.0, 1900, (3, 7, 6, 3), True),
-    ("mythril", "Mitril", 6, 12.0, 9.0, 2300, (3, 8, 6, 3), True),
-    ("orichalcum", "Oricalco", 6, 12.5, 9.0, 2400, (3, 8, 6, 3), True),
-    ("adamantite", "Adamantita", 7, 14.0, 10.0, 2800, (4, 8, 7, 4), True),
-    ("titanium", "Titânio", 7, 14.5, 10.0, 2900, (4, 8, 7, 4), True),
-    ("radiant", "Radiante", 7, 15.0, 11.0, 3000, (4, 9, 7, 4), False),
-    ("verdite", "Verdita", 8, 17.0, 12.0, 3400, (4, 9, 8, 4), True),
-    ("lumite", "Lumita", 9, 20.0, 14.0, 4000, (5, 10, 8, 5), False),
+    ("cobalt", "Cobalto", 5, 10.0, 11.0, 1800, (3, 7, 6, 3), True),
+    ("palladium", "Paládio", 5, 10.5, 11.0, 1900, (3, 7, 6, 3), True),
+    ("mythril", "Mitril", 6, 12.0, 12.5, 2300, (3, 8, 6, 3), True),
+    ("orichalcum", "Oricalco", 6, 12.5, 12.5, 2400, (3, 8, 6, 3), True),
+    ("adamantite", "Adamantita", 7, 14.0, 14.0, 2800, (4, 8, 7, 4), True),
+    ("titanium", "Titânio", 7, 14.5, 14.0, 2900, (4, 8, 7, 4), True),
+    ("radiant", "Radiante", 7, 15.0, 17.0, 3000, (4, 9, 7, 4), False),
+    ("verdite", "Verdita", 8, 17.0, 20.0, 3400, (4, 9, 8, 4), True),
+    ("lumite", "Lumita", 9, 20.0, 28.0, 4000, (5, 10, 8, 5), False),
 ]
 # Ores: (metal, block tier needed, rare-pair partner) — tier 4 is diamond.
 ORE_TIER = {"cobalt": 4, "palladium": 4, "mythril": 5, "orichalcum": 5, "adamantite": 6, "titanium": 6, "verdite": 7}
@@ -205,8 +205,8 @@ for n, d in [("shadow_scale", "Escama Sombria"), ("spectral_bone", "Osso Espectr
 items.append(item("worm_staff", "Cajado do Verme", ", max_stack: Some(1)"))
 items.append(item("bone_whip", "Chicote de Ossos", ", tool: Some((kind: Sword, tier: 3, speed: 6.0, damage: 7.5, durability: 600))"))
 items.append(item("breaker_hammer", "Martelo do Quebra-Mundos", ", tool: Some((kind: Pickaxe, tier: 5, speed: 11.0, damage: 9.0, durability: 2000))"))
-items.append(item("vine_blade", "Lâmina das Vinhas", ", tool: Some((kind: Sword, tier: 8, speed: 12.0, damage: 13.0, durability: 3000))"))
-items.append(item("celestial_blade", "Lâmina Celeste", ", tool: Some((kind: Sword, tier: 9, speed: 15.0, damage: 17.0, durability: 4000))"))
+items.append(item("vine_blade", "Lâmina das Vinhas", ", tool: Some((kind: Sword, tier: 8, speed: 12.0, damage: 20.0, durability: 3000))"))
+items.append(item("celestial_blade", "Lâmina Celeste", ", tool: Some((kind: Sword, tier: 9, speed: 15.0, damage: 30.0, durability: 4000))"))
 shapeless.append('        (ingredients: ["star_fragment", "star_fragment", "star_fragment", "star_fragment", "lumite_ingot"], result: "star_tome"),')
 
 # ---------------------------------------------------------------------------------------------

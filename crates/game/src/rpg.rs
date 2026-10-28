@@ -192,7 +192,7 @@ pub const ACCESSORIES: &[AccDef] = &[
     acc("sage_pendant", "", &[M::Crit(MAGIC, 0.1), M::Mana(4.0)]),
     // Summon.
     acc("totem_necklace", "", &[M::Minions(1)]),
-    acc("spirit_bell", "", &[M::Minions(1), M::Dmg(SUMMON, 0.1)]),
+    acc("spirit_bell", "", &[M::Dmg(SUMMON, 0.12)]),
     // Defence.
     acc("iron_buckler", "", &[M::Def(2.0)]),
     acc("holy_pendant", "", &[M::IFrames(0.5)]),
@@ -275,10 +275,10 @@ pub const SETS: &[SetDef] = &[
     set("silver", "", &[M::Crit(ALL_CLASSES, 0.05)]),
     set("tungsten", "", &[M::Dmg(ALL_CLASSES, 0.05)]),
     set("platinum", "", &[M::Def(1.0), M::Mana(4.0), M::Crit(ALL_CLASSES, 0.03)]),
-    set("cobalt", "", &[M::MeleeSpeed(0.12), M::Move(0.1)]),
+    set("cobalt", "", &[M::Dmg(RANGED, 0.15), M::Crit(RANGED, 0.05), M::AmmoSave(0.2)]),
     set("palladium", "", &[M::Regen(0.35), M::Dmg(ALL_CLASSES, 0.05)]),
-    set("mythril", "", &[M::Crit(ALL_CLASSES, 0.1)]),
-    set("orichalcum", "Pétalas caem sobre o que você acerta", &[M::Dmg(ALL_CLASSES, 0.05)]),
+    set("mythril", "", &[M::Dmg(MAGIC, 0.15), M::Crit(MAGIC, 0.05), M::Mana(4.0)]),
+    set("orichalcum", "Pétalas caem sobre o que você acerta", &[M::Dmg(SUMMON, 0.12), M::Minions(1)]),
     set("adamantite", "", &[M::Dmg(MELEE, 0.15), M::MeleeSpeed(0.1)]),
     set("titanium", "", &[M::Endure(0.12), M::Dmg(ALL_CLASSES, 0.05)]),
     set("radiant", "Esquiva um golpe a cada 30 s", &[M::Dmg(ALL_CLASSES, 0.08)]),
@@ -333,16 +333,28 @@ pub struct MinionDef {
 }
 
 pub const MINIONS: &[MinionDef] = &[
-    MinionDef { staff: "wisp_staff", sprite: "minion_wisp", name: "Fogo-fátuo", damage: 4.0, ranged: true, cooldown: 1.0, inflict: 0, size: 0.5, tint: [0.6, 0.9, 1.6] },
-    MinionDef { staff: "wasp_staff", sprite: "minion_wasp", name: "Vespa", damage: 3.0, ranged: false, cooldown: 0.5, inflict: POISON, size: 0.45, tint: [1.5, 1.2, 0.3] },
-    MinionDef { staff: "imp_staff", sprite: "minion_imp", name: "Diabrete", damage: 6.0, ranged: true, cooldown: 1.2, inflict: MOB_BURN, size: 0.6, tint: [1.6, 0.5, 0.15] },
-    MinionDef { staff: "blade_staff", sprite: "minion_blade", name: "Lâmina Voadora", damage: 9.0, ranged: false, cooldown: 0.4, inflict: 0, size: 0.6, tint: [0.9, 0.9, 1.4] },
-    MinionDef { staff: "jelly_staff", sprite: "minion_jelly", name: "Geleinha", damage: 5.0, ranged: false, cooldown: 0.6, inflict: 0, size: 0.5, tint: [0.6, 0.9, 1.5] },
-    MinionDef { staff: "star_dragon_staff", sprite: "minion_dragon", name: "Dragão Estelar", damage: 16.0, ranged: false, cooldown: 0.35, inflict: CURSED_FLAMES, size: 1.0, tint: [0.4, 1.4, 1.4] },
+    MinionDef { staff: "wisp_staff", sprite: "minion_wisp", name: "Fogo-fátuo", damage: 3.0, ranged: true, cooldown: 1.0, inflict: 0, size: 0.5, tint: [0.6, 0.9, 1.6] },
+    MinionDef { staff: "wasp_staff", sprite: "minion_wasp", name: "Vespa", damage: 2.9, ranged: false, cooldown: 0.75, inflict: POISON, size: 0.45, tint: [1.5, 1.2, 0.3] },
+    MinionDef { staff: "imp_staff", sprite: "minion_imp", name: "Diabrete", damage: 4.8, ranged: true, cooldown: 1.2, inflict: MOB_BURN, size: 0.6, tint: [1.6, 0.5, 0.15] },
+    MinionDef { staff: "blade_staff", sprite: "minion_blade", name: "Lâmina Voadora", damage: 5.0, ranged: false, cooldown: 0.6, inflict: 0, size: 0.6, tint: [0.9, 0.9, 1.4] },
+    MinionDef { staff: "jelly_staff", sprite: "minion_jelly", name: "Geleinha", damage: 3.1, ranged: false, cooldown: 0.9, inflict: 0, size: 0.5, tint: [0.6, 0.9, 1.5] },
+    MinionDef { staff: "crystal_jelly_staff", sprite: "minion_jelly", name: "Geleia de Cristal", damage: 4.3, ranged: false, cooldown: 0.8, inflict: 0, size: 0.55, tint: [1.6, 0.8, 1.5] },
+    MinionDef { staff: "star_dragon_staff", sprite: "minion_dragon", name: "Dragão Estelar", damage: 5.6, ranged: false, cooldown: 0.6, inflict: CURSED_FLAMES, size: 1.0, tint: [0.4, 1.4, 1.4] },
 ];
 
-/// Whips: extra reach, a mark that makes minions go for that monster, and its bonus.
-const WHIPS: &[(&str, f32, u8)] = &[("leather_whip", 2.0, 0), ("thorn_whip", 3.0, POISON), ("bone_whip", 4.0, BLEEDING)];
+/// Whips: extra reach, a mark that makes minions go for that monster, and its bonus (a share
+/// more damage, so it keeps fast and slow minions in step).
+const WHIPS: &[(&str, f32, u8)] = &[("leather_whip", 0.1, 0), ("thorn_whip", 0.15, POISON), ("bone_whip", 0.2, BLEEDING)];
+
+/// Extra damage a whip's mark gives the minions (balance.rs).
+#[cfg(test)]
+pub(crate) fn whip_bonus(name: &str) -> Option<f32> {
+    WHIPS.iter().find(|w| w.0 == name).map(|w| w.1)
+}
+
+fn whip_bonus_pct(name: &str) -> f32 {
+    100.0 * WHIPS.iter().find(|w| w.0 == name).map_or(0.0, |w| w.1)
+}
 
 pub fn is_whip(name: &str) -> bool {
     WHIPS.iter().any(|w| w.0 == name)
@@ -1503,7 +1515,7 @@ impl Game {
                         }
                     }
                     let from = mi.pos;
-                    let hit = (def.damage + bonus) * power;
+                    let hit = def.damage * (1.0 + bonus) * power;
                     self.mobs.list[k].hurt(hit, from);
                     if def.inflict != 0 {
                         self.add_mob_debuff(k, def.inflict, 3.0);
@@ -1610,11 +1622,12 @@ impl Game {
             }
         }
         if let Some(m) = MINIONS.iter().find(|m| m.staff == name) {
-            out.push((format!("Invoca: {} · Dano {:.0} · Mana 10", m.name, m.damage), BLUE));
+            out.push((format!("Invoca: {} · Dano {:.1} · Mana 10", m.name, m.damage), BLUE));
             out.push(("Usa um espaço de lacaio".to_string(), [150, 150, 150, 255]));
         }
         if is_whip(name) {
-            out.push(("Marca o monstro: seus lacaios vão atrás dele".to_string(), BLUE));
+            let bonus = whip_bonus_pct(name);
+            out.push((format!("Marca o monstro: seus lacaios vão atrás dele e causam +{bonus:.0}% de dano"), BLUE));
         }
         match name {
             "ancestral_heart" => out.push(("Abre o 6º espaço de acessório".to_string(), GREEN)),

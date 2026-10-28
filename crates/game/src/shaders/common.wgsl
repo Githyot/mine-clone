@@ -38,6 +38,12 @@ struct Globals {
     // Hand light shadows: xyz corner of the solid-block grid relative to the camera's block,
     // w: 1 when on.
     occl: vec4<f32>,
+    // xy: how far the wind has carried the clouds (speed 1), z: classic clouds' drift,
+    // w: cloud clock (seconds, stops while paused).
+    clouds: vec4<f32>,
+    // Material feel of items and armour (material.rs): x 0 off, 1 glints, 2 also relief and
+    // sparkles.
+    mat: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;

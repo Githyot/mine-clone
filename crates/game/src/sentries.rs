@@ -35,6 +35,12 @@ pub const SENTRIES: &[SentryDef] = &[
     SentryDef { staff: "ballista_cane", sprite: "sentry_ballista", name: "Balista", damage: 22.0, range: 22.0, cooldown: 2.4, inflict: 0, chain: 0, tint: [1.2, 1.0, 0.7] },
 ];
 
+/// Damage per second of one turret on one monster (balance.rs).
+#[cfg(test)]
+pub(crate) fn sentry_dps(staff: &str) -> Option<f32> {
+    SENTRIES.iter().find(|s| s.staff == staff).map(|s| s.damage / s.cooldown)
+}
+
 pub fn sentry_of(staff: &str) -> Option<usize> {
     SENTRIES.iter().position(|s| s.staff == staff)
 }
