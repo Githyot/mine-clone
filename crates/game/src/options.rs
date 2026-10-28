@@ -51,6 +51,8 @@ pub enum Id {
     Relief,
     Lod,
     Drops,
+    DropLabels,
+    DropGlow,
     Master,
     Music,
     Vol(SoundCat),
@@ -213,6 +215,8 @@ impl Game {
                 ),
                 b(Id::ViewBobbing, format!("Balanço da visão: {}", onoff(st.view_bobbing))),
                 b(Id::Drops, format!("Itens no chão: {}", if st.flat_drops { "Deitados" } else { "Flutuando" })),
+                self.opt_button(Id::DropLabels, format!("Nomes dos itens no chão: {}", onoff(st.drop_labels)), "Mostra o nome e a quantidade dos itens caídos por perto."),
+                self.opt_button(Id::DropGlow, format!("Brilho dos itens no chão: {}", onoff(st.drop_glow)), "Um brilho suave, mais forte nos encantados e raros."),
                 self.opt_button(Id::TextureRes, format!("Resolução das texturas: {}x", st.texture_resolution), "Diminua em computadores com pouca memória de vídeo."),
                 self.opt_button(Id::Packs, format!("Texturas: {}...", self.textures_name.trim_end_matches(".zip")), "Escolher um pacote de texturas."),
                 header("Shaders e efeitos"),
@@ -322,6 +326,8 @@ impl Game {
             Id::Relief => self.settings.relief = !self.settings.relief,
             Id::ViewBobbing => self.settings.view_bobbing = !self.settings.view_bobbing,
             Id::Drops => self.settings.flat_drops = !self.settings.flat_drops,
+            Id::DropLabels => self.settings.drop_labels = !self.settings.drop_labels,
+            Id::DropGlow => self.settings.drop_glow = !self.settings.drop_glow,
             Id::TextureRes => {
                 let st = &mut self.settings;
                 st.texture_resolution = match st.texture_resolution {

@@ -28,6 +28,7 @@ mod audio;
 mod backpacks;
 mod controller;
 mod enchanting;
+mod drop_fx;
 mod effects;
 mod progression;
 mod stations;
@@ -1945,6 +1946,10 @@ impl Game {
                     // Test hook: caught partway up a two-block ledge (MC_MANTLE_SHELF: a shelf).
                     self.test_mantle(u.parse().unwrap_or(0.4));
                 }
+                if std::env::var("MC_DROPS").is_ok() {
+                    // Test hook: items on the ground in front, to see their names and glows.
+                    self.test_drops();
+                }
                 if std::env::var("MC_HOUSE").is_ok() {
                     // Test hook: two small houses in front; people move in; MC_SHOP opens a shop.
                     self.test_houses();
@@ -2972,6 +2977,18 @@ impl Game {
         // Healing comes from a full stomach (survival.rs).
     }
 
+    /// Whether any of `points` can be seen from the eye, no solid block in between. Names and
+    /// bars over mobs and items use it so they never show through walls or the ground.
+    pub(crate) fn in_sight(&self, points: &[Vec3]) -> bool {
+        let eye = self.body.eye();
+        let world = &self.world;
+        points.iter().any(|&p| {
+            let to = p - eye;
+            let dist = to.length();
+            dist < 0.5 || raycast(eye, to / dist, dist - 0.3, |b| voxel::physics::Terrain::solid(world, b)).is_none()
+        })
+    }
+
     /// A health bar floating over each mob that was hurt lately, with its name.
     fn draw_mob_health_bars(&mut self, w: f32, h: f32) {
         let Some((vp, cam_block)) = self.ui_view_proj else { return };
@@ -2984,7 +3001,7 @@ impl Game {
             let def = &self.mobs.reg.defs[m.def];
             let top = m.body.pos + Vec3::Y * (def.height + 0.45);
             let dist = (top - eye).length();
-            if dist > 24.0 {
+            if dist > 24.0 || !self.in_sight(&[m.body.pos + Vec3::Y * def.height * 0.9, m.body.center()]) {
                 continue;
             }
             let c = vp * (top - cam_block.as_vec3()).extend(1.0);
@@ -3845,6 +3862,7 @@ impl Game {
             }
             self.draw_effect_overlays(w, h);
             self.draw_mob_health_bars(w, h);
+            self.draw_drop_labels(w, h);
             self.draw_hunter_marks(w, h);
             self.draw_sign_texts(w, h);
             self.draw_mob_names(w, h);
@@ -4803,7 +4821,13 @@ impl Game {
             self.anim.swing = k;
         }
         if !third && self.screen == Screen::Playing && !self.hide_hud && self.camera_mode == 0 {
-            drops.extend(self.held_item_instance(eye, block));
+            let glint = self.held_stack().is_some_and(|st| enchanting::is_enchanted(&st));
+            drops.extend(self.held_item_instance(eye, block).map(|mut g| {
+                if glint {
+                    g.bmin = drop_fx::ENCH_GLINT;
+                }
+                g
+            }));
         }
         drops.extend(held_third);
         drops.extend(mob_items);
@@ -4832,7 +4856,10 @@ impl Game {
                 });
             }
         }
-        self.entities.items.prepare(&self.renderer, &drops);
+        let halos = self.drop_halos(block);
+        let halo_count = halos.len();
+        drops.extend(halos);
+        self.entities.items.prepare(&self.renderer, &drops, halo_count);
         let grab_backdrop = self.want_backdrop && self.screen == Screen::Loading;
         self.renderer.extra_lines = self.fishing_line(block, third);
         let (info, shot) = self.renderer.render(&cam, &mut g, selection, self.settings.show_clouds && self.dim == voxel::worldgen::Dim::Overworld && self.body.pos.y > -24.0, Some(&self.entities), Some(&self.lod), &self.ui, capture || grab_backdrop);

@@ -12,7 +12,8 @@ struct Item {
     // w: 1 for a chest's parts (its inner faces are dark).
     rot: vec4<f32>,
     // A part of a block (a swinging door, a chest lid) when piv.w is 1: corners in the block's
-    // 0..1 frame, and the pivot inside the block that pos stands for.
+    // 0..1 frame, and the pivot inside the block that pos stands for. On a whole item, bmin is
+    // the enchantment shimmer instead: rgb its colour, w its strength (0 = none).
     bmin: vec4<f32>,
     bmax: vec4<f32>,
     piv: vec4<f32>,
@@ -31,6 +32,7 @@ struct IOut {
     @location(2) shade: f32,
     @location(3) light: vec3<f32>,
     @location(4) dist: f32,
+    @location(5) @interpolate(flat) glint: vec4<f32>,
 };
 
 fn icorner(face: u32, k: u32) -> vec3<f32> {
@@ -140,6 +142,7 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
     }
     o.light = vec3<f32>(it.info.z, it.info.w, it.layers.w);
     o.dist = length(world - g.cam_pos.xyz);
+    o.glint = select(it.bmin, vec4<f32>(0.0), part);
     return o;
 }
 
@@ -162,7 +165,62 @@ fn fs_item(in: IOut) -> @location(0) vec4<f32> {
     let sky = ilight(in.light.x) * g.fog_color.w;
     let blk = ilight(in.light.y);
     let l = max(max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82)), vec3<f32>(0.08 + in.light.z));
-    let rgb = c.rgb * in.shade * l;
+    var rgb = c.rgb * in.shade * l;
+    if (in.glint.w > 0.0) {
+        // Enchanted: a slow band of colour sweeping across, over a faint steady tint. Kept
+        // well under white so bloom in shader packs only softens it.
+        let band = pow(0.5 + 0.5 * sin((in.uv.x + in.uv.y) * 5.0 - g.cam_pos.w * 2.2), 6.0);
+        rgb += in.glint.rgb * in.glint.w * (0.18 + 0.55 * band);
+    }
     let fog = smoothstep(g.fog.x, g.fog.y, in.dist);
     return vec4<f32>(mix(rgb, g.fog_color.rgb, fog), 1.0);
+}
+
+// The soft glow around items on the ground: a round sprite facing the camera, added on top
+// of the scene. pos: centre and radius; layers: rgb colour, w strength; info.z: sky light
+// there (the glow shows less in daylight).
+struct HOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) q: vec2<f32>,
+    @location(1) @interpolate(flat) col: vec4<f32>,
+    @location(2) dist: f32,
+};
+
+@vertex
+fn vs_halo(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> HOut {
+    let it = items[ii];
+    var q = array<vec2<f32>, 6>(vec2(-1.0, -1.0), vec2(1.0, -1.0), vec2(1.0, 1.0), vec2(-1.0, -1.0), vec2(1.0, 1.0), vec2(-1.0, 1.0));
+    let k = q[vi];
+    let to_cam = g.cam_pos.xyz - it.pos.xyz;
+    let d = normalize(to_cam);
+    var right = cross(vec3<f32>(0.0, 1.0, 0.0), d);
+    if (dot(right, right) < 0.0001) {
+        right = vec3<f32>(1.0, 0.0, 0.0);
+    }
+    right = normalize(right);
+    let up = cross(d, right);
+    let r = it.pos.w;
+    let world = it.pos.xyz + (right * k.x + up * k.y) * r;
+    let clip = g.view_proj * vec4<f32>(world, 1.0);
+    // Depth-tested as if a radius nearer the camera, so the ground the item lies on doesn't
+    // cut the glow in a hard line.
+    let near = g.view_proj * vec4<f32>(world + d * min(r, length(to_cam) * 0.5), 1.0);
+    var o: HOut;
+    o.clip = vec4<f32>(clip.xy / clip.w * near.w, near.z, near.w);
+    o.q = k;
+    let day = it.info.z * g.fog_color.w;
+    o.col = vec4<f32>(it.layers.rgb, it.layers.w * mix(1.0, 0.4, day));
+    o.dist = length(world - g.cam_pos.xyz);
+    return o;
+}
+
+@fragment
+fn fs_halo(in: HOut) -> @location(0) vec4<f32> {
+    let r2 = dot(in.q, in.q);
+    if (r2 >= 1.0) {
+        discard;
+    }
+    let f = (1.0 - r2) * (1.0 - r2);
+    let fog = 1.0 - smoothstep(g.fog.x, g.fog.y, in.dist);
+    return vec4<f32>(in.col.rgb, in.col.w * f * fog);
 }
