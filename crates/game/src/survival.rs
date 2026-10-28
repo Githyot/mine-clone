@@ -37,6 +37,13 @@ pub struct Dropped {
     pub spin_rest: f32,
 }
 
+/// What `drop_instances` needs of a drop.
+struct Shown {
+    stack: ItemStack,
+    spin: f32,
+    spin_rest: f32,
+}
+
 pub struct Orb {
     pub pos: Vec3,
     pub vel: Vec3,
@@ -718,7 +725,10 @@ impl Game {
             }
         }
         self.surv.saplings.retain(|(p, _)| *p != pos);
-        if self.surv.spawn == Some(pos + IVec3::Y) && self.reg.get(id).name.ends_with("_bed") {
+        // The other half went with it (World::break_block); the spawn point is over the head.
+        let b = self.reg.get(id);
+        let head = if voxel::bed::is_head(b.variant) { pos } else { pos + IVec3::new(voxel::bed::dir(b.variant)[0], 0, voxel::bed::dir(b.variant)[1]) };
+        if self.is_bed(id) && self.surv.spawn == Some(head + IVec3::Y) {
             self.surv.spawn = None;
             self.toast("Sua cama foi destruída", 2.5);
         }
@@ -940,7 +950,7 @@ impl Game {
         self.surv.exhaustion = 0.0;
         if let Some(p) = self.surv.spawn {
             let bed = self.world.block_or_air(p - IVec3::Y);
-            if self.reg.get(bed).name.ends_with("_bed") {
+            if self.is_bed(bed) {
                 self.body.pos = p.as_vec3() + Vec3::new(0.5, 0.0, 0.5);
             } else {
                 self.surv.spawn = None;
@@ -960,7 +970,7 @@ impl Game {
         if self.extras_mob_use() {
             return true;
         }
-        if self.lead_use() || self.stand_use() || self.pet_use() || self.village_use() || self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
+        if self.lead_use() || self.stand_use() || self.animal_use() || self.pet_use() || self.village_use() || self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
             return true;
         }
         if self.plugins_use_item() {
@@ -987,6 +997,10 @@ impl Game {
                     return true;
                 }
                 if self.extras_block_use(&name, hit.block) {
+                    return true;
+                }
+                if self.is_bed(id) {
+                    self.use_bed(hit.block);
                     return true;
                 }
                 match name.as_str() {
@@ -1022,10 +1036,6 @@ impl Game {
                         }
                         self.open_container(Open::Chest(hit.block));
                         self.sfx(Sfx::Place(Material::Wood));
-                        return true;
-                    }
-                    n if n.ends_with("_bed") => {
-                        self.use_bed(hit.block);
                         return true;
                     }
                     "reforge_table" => return self.t5_use_block("reforge_table"),
@@ -1241,18 +1251,6 @@ impl Game {
                 let f = self.forward();
                 self.spawn_drop(self.body.eye() - Vec3::Y * 0.3, left, f * 3.0);
             }
-        }
-    }
-
-    fn use_bed(&mut self, pos: IVec3) {
-        let above = pos + IVec3::Y;
-        self.surv.spawn = Some(above);
-        let t = self.time_of_day;
-        if (12500.0..23500.0).contains(&t) {
-            self.time_of_day = 0.0;
-            self.toast("Você dormiu. Bom dia!", 3.0);
-        } else {
-            self.toast("Ponto de renascimento definido. Só dá para dormir à noite.", 3.5);
         }
     }
 
@@ -1704,15 +1702,21 @@ impl Game {
         let orb_layer = (self.item_base as usize + self.items.textures.len()) as f32;
         let hand = self.hand_light_level();
         let eye = self.body.eye();
-        for d in &self.surv.drops {
-            let it = self.items.get(d.stack.item);
+        // The drops, then the things lying on show in the test world (testworld.rs).
+        let shown = self.test_ground_near(c);
+        let all = self.surv.drops.iter().map(|d| {
             // Lying flat once landed (Item Drops style), or the classic floating spin.
-            let lying = self.settings.flat_drops && (d.body.on_ground || d.body.vel.length_squared() < 0.01) && !d.body.in_water;
-            let bob = if lying { 0.0 } else { (d.age * 2.5).sin() * 0.06 + 0.18 };
-            let p = d.body.pos + Vec3::Y * bob - c;
-            let l = self.world.light((d.body.pos + Vec3::Y * 0.2).floor().as_ivec3());
+            let (lying, bob) = self.drop_lift(d);
+            (d.body.pos, d.stack, lying, bob, d.spin, d.spin_rest)
+        });
+        for (pos, stack, lying, bob, spin, spin_rest) in all.chain(shown.into_iter().map(|(p, st, yaw)| (p, st, true, 0.0, yaw, yaw))) {
+            let d = Shown { stack, spin, spin_rest };
+            let it = self.items.get(d.stack.item);
+            let glint = if crate::enchanting::is_enchanted(&d.stack) { crate::drop_fx::ENCH_GLINT } else { [0.0; 4] };
+            let p = pos + Vec3::Y * bob - c;
+            let l = self.world.light((pos + Vec3::Y * 0.2).floor().as_ivec3());
             let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
-            let blk = blk.max(hand - (d.body.pos - eye).length() / 15.0);
+            let blk = blk.max(hand - (pos - eye).length() / 15.0);
             let (flat, layers, mut size) = match it.look {
                 Look::Block(b) => {
                     let bl = self.reg.get(b);
@@ -1736,10 +1740,10 @@ impl Game {
                     let yaw = d.spin_rest + kf * 0.7;
                     let (lift, pitch, spread) = if flat > 0.5 { (0.02 + kf * 0.02, -std::f32::consts::FRAC_PI_2, 0.07) } else { (size * 0.5, 0.0, size * 1.1) };
                     let off = Vec3::new(yaw.cos(), 0.0, yaw.sin()) * kf * spread;
-                    out.push(GpuItem { pos: [p.x + off.x, p.y + lift, p.z + off.z, size], info: [yaw, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [pitch, 0.0, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
+                    out.push(GpuItem { pos: [p.x + off.x, p.y + lift, p.z + off.z, size], info: [yaw, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [pitch, 0.0, 0.0, 0.0], bmin: glint, ..bytemuck::Zeroable::zeroed() });
                 } else {
                     let off = Vec3::new(kf * 0.05, kf * 0.04, -kf * 0.05);
-                    out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
+                    out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0; 4], bmin: glint, ..bytemuck::Zeroable::zeroed() });
                 }
             }
         }
@@ -2120,6 +2124,9 @@ impl Game {
         }
         self.t5_details(st, &mut out);
         self.rpg_details(&it.name, &mut out);
+        if let Some(arms) = crate::shield::Look::of(&it.name, st.sockets).and_then(|l| l.describe()) {
+            out.push((arms, [230, 200, 120, 255]));
+        }
         out.extend(self.gem_tooltip(st));
         out
     }
@@ -2144,7 +2151,8 @@ impl Game {
     fn craft_result(&self) -> Option<ItemStack> {
         let n = self.surv.grid_size();
         let grid: Vec<Option<ItemStack>> = (0..n * n).map(|i| self.surv.craft[i]).collect();
-        self.recipes.craft(&grid, n).filter(|r| self.station_ok(r.item))
+        // A shield takes a banner's colour or a dye's design (shield.rs).
+        self.shield_craft(&grid).or_else(|| self.recipes.craft(&grid, n).filter(|r| self.station_ok(r.item)))
     }
 
     pub(crate) fn slot_get(&self, slot: Slot) -> Option<ItemStack> {
@@ -2765,6 +2773,10 @@ impl Game {
         }
         if crate::torch::index(&it.name).is_some() {
             // Torches are 3D models with a live flame (torch.rs).
+            return None;
+        }
+        if crate::shield::Look::of(&it.name, 0).is_some() {
+            // So are shields (shield.rs).
             return None;
         }
         let tool = it.tool.is_some() || it.name.ends_with("_sword") || matches!(it.name.as_str(), "stick" | "blaze_rod" | "breeze_rod" | "bone" | "mace" | "trident") || it.name.ends_with("_rod") || crate::tr_weapons::is_blade(&it.name);

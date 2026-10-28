@@ -50,11 +50,11 @@ const fn w(item: &'static str, kind: Wk, dmg: f32, cd: f32, speed: f32, debuff: 
 }
 
 const WEAPONS: &[WDef] = &[
-    w("wood_yoyo", Wk::Yoyo(6.0), 3.0, 0.0, 22.0, None),
-    w("jungle_yoyo", Wk::Yoyo(7.0), 4.0, 0.0, 24.0, Some((POISON, 4.0))),
-    w("umbral_yoyo", Wk::Yoyo(8.0), 5.5, 0.0, 26.0, None),
-    w("sanguinite_yoyo", Wk::Yoyo(8.0), 5.5, 0.0, 26.0, Some((BLEEDING, 4.0))),
-    w("magma_yoyo", Wk::Yoyo(9.0), 7.0, 0.0, 28.0, Some((MOB_BURN, 4.0))),
+    w("wood_yoyo", Wk::Yoyo(6.0), 2.4, 0.0, 22.0, None),
+    w("jungle_yoyo", Wk::Yoyo(7.0), 3.4, 0.0, 24.0, Some((POISON, 4.0))),
+    w("umbral_yoyo", Wk::Yoyo(8.0), 3.6, 0.0, 26.0, None),
+    w("sanguinite_yoyo", Wk::Yoyo(8.0), 3.6, 0.0, 26.0, Some((BLEEDING, 4.0))),
+    w("magma_yoyo", Wk::Yoyo(9.0), 5.4, 0.0, 28.0, Some((MOB_BURN, 4.0))),
     w("wood_boomerang", Wk::Boomerang(0.45), 3.0, 0.3, 18.0, None),
     w("enchanted_boomerang", Wk::Boomerang(0.5), 5.0, 0.3, 22.0, None),
     w("ice_boomerang", Wk::Boomerang(0.5), 5.0, 0.3, 22.0, Some((CHILLED, 3.0))),
@@ -65,42 +65,49 @@ const WEAPONS: &[WDef] = &[
     w("sanguinite_flail", Wk::Flail(0.36), 9.0, 0.4, 24.0, Some((BLEEDING, 4.0))),
     w("bone_flail", Wk::Flail(0.36), 8.0, 0.4, 24.0, None),
     w("sun_flail", Wk::Flail(0.4), 12.0, 0.4, 26.0, Some((MOB_BURN, 5.0))),
-    w("flintlock_pistol", Wk::Gun(1, 0.0), 6.0, 0.4, 70.0, None),
+    w("flintlock_pistol", Wk::Gun(1, 0.0), 5.0, 0.55, 70.0, None),
     w("musket", Wk::Gun(1, 0.0), 10.0, 0.9, 80.0, None),
     w("boomstick", Wk::Gun(4, 0.12), 4.0, 1.0, 60.0, None),
-    w("rapid_gun", Wk::Gun(1, 0.035), 2.5, 0.11, 70.0, None),
-    w("shuriken", Wk::Throw(6.0), 3.0, 0.25, 26.0, None),
-    w("throwing_knife", Wk::Throw(10.0), 4.5, 0.3, 24.0, None),
-    w("javelin", Wk::Throw(7.0), 6.0, 0.45, 26.0, None),
-    w("bone_javelin", Wk::Throw(7.0), 8.0, 0.45, 26.0, Some((BLEEDING, 3.0))),
-    w("sun_javelin", Wk::Throw(5.0), 16.0, 0.35, 32.0, Some((MOB_BURN, 5.0))),
+    w("rapid_gun", Wk::Gun(1, 0.035), 1.9, 0.11, 70.0, None),
+    w("shuriken", Wk::Throw(6.0), 2.4, 0.25, 26.0, None),
+    w("throwing_knife", Wk::Throw(10.0), 3.0, 0.3, 24.0, None),
+    w("javelin", Wk::Throw(7.0), 4.5, 0.45, 26.0, None),
+    w("bone_javelin", Wk::Throw(7.0), 5.0, 0.45, 26.0, Some((BLEEDING, 3.0))),
+    w("sun_javelin", Wk::Throw(5.0), 21.0, 0.35, 32.0, Some((MOB_BURN, 5.0))),
     w("bomb", Wk::Bomb(3.0, true, 2.5), 10.0, 0.8, 12.0, None),
-    w("grenade", Wk::Bomb(2.5, false, 1.6), 12.0, 0.6, 16.0, None),
+    w("grenade", Wk::Bomb(2.5, false, 1.6), 6.0, 0.6, 16.0, None),
     w("dynamite", Wk::Bomb(5.0, true, 4.0), 20.0, 1.0, 10.0, None),
     w("ballista_rod", Wk::Sentry, 5.0, 1.0, 40.0, None),
-    w("enchanted_sword", Wk::Beam(false), 4.0, 0.5, 30.0, None),
-    w("star_saber", Wk::Beam(true), 6.0, 0.6, 40.0, None),
+    w("enchanted_sword", Wk::Beam(false), 2.0, 1.0, 30.0, None),
+    w("star_saber", Wk::Beam(true), 2.5, 1.2, 40.0, None),
     // Lote 7: the last bosses' and the pillars' weapons.
-    w("crystal_yoyo", Wk::Yoyo(11.0), 12.0, 0.0, 30.0, None),
-    w("stone_fist", Wk::Flail(0.45), 18.0, 0.4, 28.0, None),
-    w("tide_boomerang", Wk::Boomerang(0.6), 16.0, 0.25, 30.0, Some((CHILLED, 4.0))),
-    w("bubble_rifle", Wk::Gun(3, 0.08), 8.0, 0.35, 60.0, None),
-    w("prism_saber", Wk::Beam(true), 14.0, 0.45, 44.0, None),
-    w("solar_eruption", Wk::Flail(0.5), 30.0, 0.35, 32.0, Some((MOB_BURN, 6.0))),
-    w("vortex_beater", Wk::Gun(1, 0.03), 9.0, 0.09, 90.0, None),
-    w("nebula_blade", Wk::Beam(false), 18.0, 0.35, 40.0, None),
-    w("stardust_yoyo", Wk::Yoyo(14.0), 22.0, 0.0, 34.0, None),
+    w("crystal_yoyo", Wk::Yoyo(11.0), 7.0, 0.0, 30.0, None),
+    w("stone_fist", Wk::Flail(0.45), 30.0, 0.4, 28.0, None),
+    w("tide_boomerang", Wk::Boomerang(0.6), 30.0, 0.25, 30.0, Some((CHILLED, 4.0))),
+    w("bubble_rifle", Wk::Gun(3, 0.08), 5.7, 0.35, 60.0, None),
+    w("prism_saber", Wk::Beam(true), 14.0, 0.8, 44.0, None),
+    w("solar_eruption", Wk::Flail(0.5), 50.0, 0.35, 32.0, Some((MOB_BURN, 6.0))),
+    w("vortex_beater", Wk::Gun(1, 0.03), 4.7, 0.09, 90.0, None),
+    w("nebula_blade", Wk::Beam(false), 18.0, 0.62, 40.0, None),
+    w("stardust_yoyo", Wk::Yoyo(14.0), 15.5, 0.0, 34.0, None),
     // Lote 14 (second round): the late swords and more sentries.
-    w("night_edge", Wk::Beam(false), 6.0, 0.45, 32.0, None),
-    w("radiant_blade", Wk::Beam(false), 8.0, 0.45, 34.0, None),
-    w("true_night_edge", Wk::Beam(false), 12.0, 0.4, 36.0, Some((POISON, 3.0))),
-    w("true_radiant_blade", Wk::Beam(false), 13.0, 0.4, 36.0, None),
-    w("terra_blade", Wk::Beam(false), 18.0, 0.32, 44.0, None),
-    w("celestial_wrath", Wk::Beam(true), 24.0, 0.3, 50.0, None),
-    w("apex_blade", Wk::Beam(true), 32.0, 0.18, 56.0, None),
+    w("night_edge", Wk::Beam(false), 3.0, 1.0, 32.0, None),
+    w("radiant_blade", Wk::Beam(false), 8.0, 0.7, 34.0, None),
+    w("true_night_edge", Wk::Beam(false), 10.0, 0.95, 36.0, Some((POISON, 3.0))),
+    w("true_radiant_blade", Wk::Beam(false), 10.0, 1.0, 36.0, None),
+    w("terra_blade", Wk::Beam(false), 9.0, 1.2, 44.0, None),
+    w("celestial_wrath", Wk::Beam(true), 16.0, 1.0, 50.0, None),
+    w("apex_blade", Wk::Beam(true), 16.0, 1.3, 56.0, None),
     w("explosive_trap_rod", Wk::Sentry, 16.0, 2.0, 30.0, Some((MOB_BURN, 3.0))),
     w("lightning_aura_rod", Wk::Sentry, 4.0, 0.35, 60.0, None),
     w("flame_sentry_rod", Wk::Sentry, 7.0, 0.8, 36.0, Some((MOB_BURN, 4.0))),
+    // The balance sheet (plan/balanceamento.md): a gun and knives for the stages that had none.
+    w("adamantite_rifle", Wk::Gun(1, 0.0), 9.0, 0.36, 80.0, None),
+    w("laser_rifle", Wk::Gun(1, 0.0), 12.0, 0.33, 90.0, None),
+    w("poison_knife", Wk::Throw(10.0), 3.8, 0.3, 24.0, Some((POISON, 4.0))),
+    w("magmarite_knife", Wk::Throw(10.0), 5.8, 0.3, 26.0, Some((MOB_BURN, 3.0))),
+    w("mythril_javelin", Wk::Throw(7.0), 13.0, 0.45, 28.0, None),
+    w("verdite_knife", Wk::Throw(10.0), 13.0, 0.3, 28.0, None),
 ];
 
 /// The colour of a sword's beam.
@@ -120,12 +127,42 @@ fn beam_tint(item: &str) -> [f32; 3] {
 /// How much harder an ore bow hits than the plain bow (None: not one of them).
 pub fn bow_power(name: &str) -> Option<f32> {
     match name {
-        "copper_bow" => Some(1.1),
-        "silver_bow" => Some(1.3),
-        "platinum_bow" => Some(1.45),
+        "copper_bow" => Some(1.08),
+        "silver_bow" => Some(1.15),
+        "platinum_bow" => Some(1.22),
         "umbral_bow" | "sanguinite_bow" => Some(1.65),
+        "magmarite_bow" => Some(2.44),
+        "cobalt_bow" => Some(2.75),
+        "mythril_bow" => Some(3.1),
+        "adamantite_bow" => Some(3.57),
+        "radiant_bow" => Some(4.6),
+        "verdite_bow" => Some(5.29),
+        "lumite_bow" => Some(7.65),
         _ => None,
     }
+}
+
+/// Damage per second on one monster and the class it counts for, for the balance sheet
+/// (balance.rs): a yoyo bites every 0.3 s, a boomerang or flail lands about one and a half
+/// hits a throw, a spread gun puts three quarters of its pellets on one monster, a sentry
+/// rod's turret shoots on its own, and a beam sword's beams come on top of its swings.
+#[cfg(test)]
+pub(crate) fn sustained_dps(name: &str) -> Option<(usize, f32)> {
+    let d = WEAPONS.iter().find(|w| w.item == name)?;
+    Some(match d.kind {
+        Wk::Yoyo(_) => (MELEE, d.dmg / 0.3),
+        Wk::Boomerang(t) | Wk::Flail(t) => (MELEE, 1.5 * d.dmg / (2.0 * t + d.cd)),
+        Wk::Gun(n, spread) => (RANGED, d.dmg * n as f32 * if spread > 0.05 { 0.75 } else { 1.0 } / d.cd),
+        Wk::Throw(_) | Wk::Bomb(..) => (RANGED, d.dmg / d.cd),
+        Wk::Sentry => (SUMMON, d.dmg / d.cd),
+        Wk::Beam(_) => (MELEE, d.dmg / d.cd),
+    })
+}
+
+/// Every weapon of this file, for balance.rs to check that each one has a stage.
+#[cfg(test)]
+pub(crate) fn all_weapons() -> impl Iterator<Item = &'static str> {
+    WEAPONS.iter().map(|w| w.item)
 }
 
 pub fn is_weapon(name: &str) -> bool {
@@ -607,7 +644,8 @@ impl Game {
         let c = cam_block.as_vec3();
         let mut out = Vec::new();
         for s in shots {
-            if matches!(s.fly, Fly::Bullet | Fly::Bolt) {
+            // Sentries have their own 3D models (tr_sentry_models).
+            if matches!(s.fly, Fly::Bullet | Fly::Bolt) || (s.fly == Fly::Sentry && crate::summons::rod_model(WEAPONS[s.def].item).is_some()) {
                 continue;
             }
             let Some(id) = self.items.id(WEAPONS[s.def].item) else { continue };
@@ -624,6 +662,31 @@ impl Game {
             };
             // Extruded like a held item, so a spinning boomerang has its thickness.
             out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [yaw, 2.0, sky, blk], layers: [layer, layer, layer, 0.0], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
+        }
+        out
+    }
+
+    /// The sentries the rods set down, as 3D models (summons.rs) turned to the nearest monster.
+    pub(crate) fn tr_sentry_models(&self, cam_block: IVec3) -> Vec<(usize, crate::entity::Bones)> {
+        let c = cam_block.as_vec3();
+        let mut out = Vec::new();
+        for s in self.t5.tr.wep.shots.iter().filter(|s| s.fly == Fly::Sentry) {
+            let d = &WEAPONS[s.def];
+            let Some(model) = crate::summons::rod_model(d.item) else { continue };
+            let Some(mesh) = self.entities.summon_mesh(model) else { continue };
+            // Its foot: the shot sits a little over the ground.
+            let foot = s.pos - Vec3::Y * 0.6;
+            let eye = s.pos;
+            let aim = self.nearest_hostile(eye, 22.0).map(|k| self.mobs.list[k].body.center() - eye).unwrap_or(Vec3::ZERO);
+            let l = self.world.light((foot + Vec3::Y * 0.5).floor().as_ivec3());
+            let pose = crate::summons::SentryPose {
+                pos: foot - c,
+                aim,
+                t: self.now + foot.x * 0.37,
+                fire: if aim == Vec3::ZERO { 0.0 } else { (1.0 - (d.cd - s.shot_t) / 0.6).clamp(0.0, 1.0) },
+                light: [(l >> 4) as f32 / 15.0, ((l & 15) as f32 / 15.0).max(0.4), 0.0, 0.0],
+            };
+            out.push((mesh, crate::summons::sentry_bones(model, &pose)));
         }
         out
     }

@@ -36,6 +36,11 @@ impl Fight {
     pub(crate) fn vel_for_test(&mut self, v: Vec3) {
         self.vel = v;
     }
+
+    /// Stop the fight's clock for a frame (a boss winding up, tr_feel3d.rs).
+    pub(crate) fn hold(&mut self, dt: f32) {
+        self.t -= dt;
+    }
 }
 
 /// (summon item, boss, where it works, what the screen says)
@@ -309,6 +314,7 @@ impl Game {
         let f = &mut self.t5.fight;
         f.t += dt;
         let dash_every = if angry { 2.2 } else { 3.5 };
+        let mut dash = None;
         if f.mode == 0 {
             // Hover: circle above and to the side.
             let a = f.t * 0.8;
@@ -319,6 +325,7 @@ impl Game {
                 f.t = 0.0;
                 f.mode = 1;
                 f.vel = (me - pos).normalize_or_zero() * if angry { 26.0 } else { 20.0 };
+                dash = Some(f.vel);
             }
         } else if f.t > 0.9 {
             f.t = 0.0;
@@ -329,6 +336,9 @@ impl Game {
         let shoot = mech && angry && calm.is_none() && f.mode == 0 && f.shot_t <= 0.0;
         if shoot {
             f.shot_t = 0.9;
+        }
+        if let Some(v) = dash {
+            self.dash_windup(i, crate::tr_feel3d::Clock::T5, v, 0.5);
         }
         let m = &mut self.mobs.list[i];
         m.aggro = true;
@@ -457,8 +467,8 @@ impl Game {
             for k in 0..if angry { 7 } else { 4 } {
                 let a = k as f32 * 2.4 + self.surv.rng.f32();
                 let r = 1.0 + self.surv.rng.f32() * 4.0;
-                let from = self.body.pos + Vec3::new(a.cos() * r, 14.0, a.sin() * r);
-                self.enemy_bolt(from, Vec3::new(0.0, -16.0, 0.0), 2, 6.0);
+                let at = self.body.pos + Vec3::new(a.cos() * r, 0.0, a.sin() * r);
+                self.sky_strike(at, 14.0, 16.0, 2, 6.0);
             }
             self.sfx(Sfx::Cast(2));
         }

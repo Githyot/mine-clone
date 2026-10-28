@@ -12,6 +12,10 @@ use crate::shapes::{CONN_NX, CONN_NZ, CONN_PX, CONN_PZ};
 
 pub const FLAG_WAVE: u32 = 1;
 pub const FLAG_LIQUID: u32 = 2;
+/// Wave and liquid together (never on a real liquid face): a rooted plant. Its base stays put and
+/// only the part above bends in the wind; the ao bits say if it stands on (1) or carries (2)
+/// another such plant, so tall stacks bend as one stem.
+pub const FLAG_PLANT: u32 = FLAG_WAVE | FLAG_LIQUID;
 /// Merged quad (greedy meshing): the shader repeats the texture once per block from the
 /// position instead of reading the vertex UVs.
 pub const FLAG_TILE: u32 = 4;
@@ -405,6 +409,7 @@ impl MeshTables {
         if t.biome_tints.is_empty() {
             t.biome_tints.push([200, 200, 200]);
         }
+        t.set_models(Vec::new());
         t
     }
 }
@@ -542,9 +547,14 @@ pub fn section_visibility(t: &MeshTables, input: &MeshInput, section: usize) -> 
 /// Mesh one 16-block-tall section of the chunk described by `input`.
 impl MeshTables {
     /// Swap in the resource packs' block models (by block id). Chunks already meshed keep the
-    /// old look until they are meshed again.
-    pub fn set_models(&self, list: Vec<(BlockId, Vec<ModelQuad>)>) {
+    /// old look until they are meshed again. Beds always keep our own model.
+    pub fn set_models(&self, mut list: Vec<(BlockId, Vec<ModelQuad>)>) {
         let mut m = ModelSet { quads: vec![None; self.shape.len()], open: vec![false; self.shape.len()] };
+        for (i, &shape) in self.shape.iter().enumerate() {
+            if shape == Shape::Bed {
+                list.push((i as BlockId, crate::bed::quads(self.variant[i], self.faces[i])));
+            }
+        }
         for (id, quads) in list {
             let i = id as usize;
             if i < m.quads.len() {
@@ -635,6 +645,12 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                         [[15, 0, 1], [1, 0, 15], [1, 16, 15], [15, 16, 1]],
                     ];
                     let uvs = [[0, 16], [16, 16], [16, 0], [0, 0]];
+                    let (flags, stack) = if wave != 0 {
+                        let stem = |j: usize| t.shape[blocks[j] as usize] == Shape::Cross && t.wave[blocks[j] as usize];
+                        (FLAG_PLANT, stem(i - P * P) as u32 | (stem(i + P * P) as u32) << 1)
+                    } else {
+                        (0, 3)
+                    };
                     for q in quads {
                         // Front and back so the plant is visible from both sides.
                         for order in [[0usize, 1, 2, 3], [1, 0, 3, 2]] {
@@ -642,11 +658,11 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                                 let c = q[k];
                                 out.solid.push(pack(
                                     [base[0] + c[0], base[1] + c[1], base[2] + c[2]],
-                                    3,
+                                    stack,
                                     uvs[k],
                                     layer,
                                     2,
-                                    wave,
+                                    flags,
                                     sky,
                                     blk,
                                     tint,
@@ -772,6 +788,9 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     let piston = matches!(shape, Shape::Piston | Shape::PistonHead | Shape::Oriented);
                     let pdir = crate::shapes::dir6_of(t.variant[idu]);
                     let facing = crate::shapes::facing_of(t.variant[idu]);
+                    // A door hinged on the left shows its picture mirrored, the handle on the
+                    // other side.
+                    let mirror = shape == Shape::Door && t.variant[idu] & crate::shapes::DOOR_HINGE_LEFT != 0;
                     for (bi, b) in boxes.iter().enumerate() {
                         let part = parts && bi > 0;
                         let (lo, hi) = ([b[0] as u32, b[1] as u32, b[2] as u32], [b[3] as u32, b[4] as u32, b[5] as u32]);
@@ -844,6 +863,8 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                                     uv = piston_side_uv(f, q, pdir);
                                 } else if f == 2 && matches!(shape, Shape::Repeater | Shape::Comparator) {
                                     uv = turn_uv([q[0], q[2]], facing);
+                                } else if mirror && f != 2 && f != 3 {
+                                    uv[0] = 16 - uv[0];
                                 }
                                 out.solid.push(pack([base[0] + q[0], base[1] + q[1], base[2] + q[2]], 3, uv, layer, f as u32, ctm, sky, blk, tint(f)));
                             }

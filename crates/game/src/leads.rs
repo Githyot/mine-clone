@@ -204,9 +204,12 @@ impl Game {
             .mobs
             .list
             .iter()
-            .filter(|m| m.alive() && m.body.pos.distance(eye) < 16.0)
+            .filter(|m| m.alive() && m.body.pos.distance(eye) < if m.still { 6.0 } else { 16.0 })
             .filter_map(|m| {
                 let def = &self.mobs.reg.defs[m.def];
+                if !self.in_sight(&[m.body.pos + Vec3::Y * def.height * def.scale.max(0.3) * 0.9, m.body.center()]) {
+                    return None;
+                }
                 m.name.clone().map(|n| (m.body.pos + Vec3::Y * (def.height * def.scale.max(0.3) + 0.35), n))
             })
             .collect();

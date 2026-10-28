@@ -97,6 +97,8 @@ pub enum Shape {
     Ladder,
     /// A cake: half a block high, losing a slice from one side per bite (variant 0-6 bites).
     Cake,
+    /// A bed: two blocks long, a head and a foot part (see `bed`).
+    Bed,
 }
 
 impl Shape {
@@ -140,6 +142,7 @@ impl Shape {
                 | Shape::FenceGate
                 | Shape::Ladder
                 | Shape::Cake
+                | Shape::Bed
         )
     }
 }

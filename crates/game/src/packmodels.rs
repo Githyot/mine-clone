@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use voxel::block::{BlockId, BlockRegistry, Shape};
+use voxel::block::{BlockId, BlockRegistry, Shape, Transparency};
 use voxel::mesh::{model_quads, ModelElement, ModelFace, ModelQuad};
 
 use crate::mods::paintings_pp::{parse_json, Json};
@@ -73,8 +73,13 @@ fn resolve(pack: &mut Pack, model: &str) -> Option<(Vec<Json>, HashMap<String, S
         let Some(j) = pack.read(&format!("assets/{ns}/models/{path}.json")).and_then(|b| String::from_utf8(b).ok()).and_then(|t| parse_json(&t)) else { break };
         if let Some(Json::Obj(t)) = j.get("textures") {
             for (k, v) in t {
-                if let Json::Str(v) = v {
-                    textures.entry(k.clone()).or_insert_with(|| v.clone());
+                // Newer packs write a texture as {"sprite": "...", "force_translucent": true}.
+                let v = match v {
+                    Json::Str(v) => Some(v.as_str()),
+                    o => text(o.get("sprite")),
+                };
+                if let Some(v) = v {
+                    textures.entry(k.clone()).or_insert_with(|| v.to_string());
                 }
             }
         }
@@ -123,7 +128,13 @@ pub(crate) fn load(reg: &BlockRegistry, base: &Path, enabled: &[String]) -> Pack
         let has = |p: &str| files.iter().any(|f| f == p);
         for (id, b) in reg.blocks.iter().enumerate() {
             let id = id as BlockId;
-            if b.variant != 0 || done.contains(&id) || matches!(b.shape, Shape::Liquid | Shape::Invisible) || b.name == "air" {
+            // Doors, trapdoors, gates and stairs turn and open through their variants: one
+            // model on the base id would draw only that one (a closed north door as the pack's
+            // first state, open and facing east) differently from all the others.
+            let turns = matches!(b.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate | Shape::Stairs);
+            // See-through blocks (stained glass, ice) stay ours: pack models only reach the
+            // solid pass, where their tinted fill would be cut away. The pack's texture is still used.
+            if b.variant != 0 || turns || done.contains(&id) || matches!(b.shape, Shape::Liquid | Shape::Invisible) || b.transparency == Transparency::Translucent || b.name == "air" {
                 continue;
             }
             let mut model = None;
@@ -196,6 +207,8 @@ pub(crate) fn load(reg: &BlockRegistry, base: &Path, enabled: &[String]) -> Pack
                 }
                 parsed.push(ModelElement { from, to, faces });
             }
+            // A model whose faces all failed to resolve would draw nothing: keep ours.
+            ok &= parsed.iter().any(|e| e.faces.iter().any(Option::is_some));
             if !ok {
                 log::info!("pack model for {} skipped (rotated or broken elements)", b.name);
                 continue;

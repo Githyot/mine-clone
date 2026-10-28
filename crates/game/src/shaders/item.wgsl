@@ -11,8 +11,10 @@ struct Item {
     // x: pitch, y: roll (a held item tilts with the camera), z: a block part's quarter turns,
     // w: 1 for a chest's parts (its inner faces are dark).
     rot: vec4<f32>,
-    // A part of a block (a swinging door, a chest lid) when piv.w is 1: corners in the block's
-    // 0..1 frame, and the pivot inside the block that pos stands for.
+    // A part of a block (a swinging door, a chest lid) when piv.w is 1 (2: its side faces'
+    // pictures mirrored, a left-hinged door): corners in the block's 0..1 frame, and the pivot
+    // inside the block that pos stands for. On a whole item, bmin is the enchantment shimmer
+    // instead: rgb its colour, w its strength (0 = none).
     bmin: vec4<f32>,
     bmax: vec4<f32>,
     piv: vec4<f32>,
@@ -23,6 +25,8 @@ struct Item {
 // Layers from 2048 on live in a second array (renderer::LAYERS_PER_ARRAY).
 @group(1) @binding(2) var itex2: texture_2d_array<f32>;
 @group(2) @binding(0) var<storage, read> items: array<Item>;
+// The material class of each texture layer (material.rs), for the glints and relief.
+@group(2) @binding(1) var<storage, read> layer_mat: array<u32>;
 
 struct IOut {
     @builtin(position) clip: vec4<f32>,
@@ -31,6 +35,9 @@ struct IOut {
     @location(2) shade: f32,
     @location(3) light: vec3<f32>,
     @location(4) dist: f32,
+    @location(5) @interpolate(flat) glint: vec4<f32>,
+    // Position relative to the camera's block.
+    @location(6) rel: vec3<f32>,
 };
 
 fn icorner(face: u32, k: u32) -> vec3<f32> {
@@ -99,6 +106,9 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
                 case 4u: { o.uv = vec2<f32>(t.x, 1.0 - t.y); }
                 default: { o.uv = vec2<f32>(1.0 - t.x, 1.0 - t.y); }
             }
+            if (it.piv.w > 1.5 && wf != 2u && wf != 3u) {
+                o.uv.x = 1.0 - o.uv.x;
+            }
         } else {
             switch face {
                 case 0u, 1u: { o.uv = vec2<f32>(c.z, 1.0 - c.y); }
@@ -140,6 +150,8 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
     }
     o.light = vec3<f32>(it.info.z, it.info.w, it.layers.w);
     o.dist = length(world - g.cam_pos.xyz);
+    o.rel = world;
+    o.glint = select(it.bmin, vec4<f32>(0.0), part);
     return o;
 }
 
@@ -155,22 +167,54 @@ fn isample(uv: vec2<f32>, layer: i32) -> vec4<f32> {
     return textureSampleLevel(itex2, isamp, uv, layer - 2048, 0.0);
 }
 
-fn ilit(c: vec3<f32>, shade: f32, light: vec3<f32>, dist: f32) -> vec4<f32> {
-    let sky = ilight(light.x) * g.fog_color.w;
-    let blk = ilight(light.y);
-    let l = max(max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82)), vec3<f32>(0.08 + light.z));
-    let rgb = c * shade * l;
-    let fog = smoothstep(g.fog.x, g.fog.y, dist);
+// The lit colour of a texel `c` of an item: light, materials (glints and relief) and the
+// enchantment shimmer, then fog. `fr` is taken before any discard (it needs derivatives).
+fn ishade(c: vec4<f32>, fr: MatFrame, in: IOut) -> vec4<f32> {
+    let sky = ilight(in.light.x) * g.fog_color.w;
+    let blk = ilight(in.light.y);
+    let l = max(max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82)), vec3<f32>(0.08 + in.light.z));
+    var rgb = c.rgb * in.shade * l;
+    let mat = select(0u, layer_mat[u32(max(in.layer, 0))], g.mat.x > 0.5 && in.light.z < 0.05);
+    if (mat != 0u) {
+        var k = 0.0;
+        var hx = 0.0;
+        var hy = 0.0;
+        if (g.mat.x > 1.5 && in.dist < 14.0) {
+            let ts = 1.0 / vec2<f32>(textureDimensions(itex, 0));
+            let w = vec3<f32>(0.3, 0.55, 0.15);
+            let h0 = dot(c.rgb, w);
+            let cx = isample(in.uv + vec2<f32>(ts.x, 0.0), in.layer);
+            let cy = isample(in.uv + vec2<f32>(0.0, ts.y), in.layer);
+            hx = select(-0.3, dot(cx.rgb, w), cx.a > 0.3) - h0;
+            hy = select(-0.3, dot(cy.rgb, w), cy.a > 0.3) - h0;
+            k = mat_relief(mat) * 1.6 * (1.0 - smoothstep(8.0, 14.0, in.dist));
+        }
+        let v = normalize(g.cam_pos.xyz - in.rel);
+        let n = mat_normal(fr, v, hx, hy, k);
+        let tilt = clamp(dot(n - mat_normal(fr, v, 0.0, 0.0, 0.0), normalize(vec3<f32>(0.3, 1.0, 0.4) + v * 0.5)), -0.5, 0.5);
+        rgb = rgb * (1.0 + tilt * 0.6);
+        let hand = g.hand_light.w - length(in.rel - g.hand_light.xyz) / 15.0;
+        let texel = floor(in.uv * vec2<f32>(textureDimensions(itex, 0)));
+        rgb = mat_shade(mat, c.rgb, rgb, in.rel, n, in.light.x, in.light.y, 1.0, max(hand, 0.0), texel);
+    }
+    if (in.glint.w > 0.0) {
+        // Enchanted: a slow band of colour sweeping across, over a faint steady tint. Kept
+        // well under white so bloom in shader packs only softens it.
+        let band = pow(0.5 + 0.5 * sin((in.uv.x + in.uv.y) * 5.0 - g.cam_pos.w * 2.2), 6.0);
+        rgb += in.glint.rgb * in.glint.w * (0.18 + 0.55 * band);
+    }
+    let fog = smoothstep(g.fog.x, g.fog.y, in.dist);
     return vec4<f32>(mix(rgb, g.fog_color.rgb, fog), 1.0);
 }
 
 @fragment
 fn fs_item(in: IOut) -> @location(0) vec4<f32> {
     let c = isample(in.uv, in.layer);
+    let fr = mat_frame(in.rel, in.uv);
     if (c.a < 0.3) {
         discard;
     }
-    return ilit(c.rgb, in.shade, in.light, in.dist);
+    return ishade(c, fr, in);
 }
 
 // A flat picture held in a hand, extruded like the classic item models: the picture on its
@@ -189,6 +233,8 @@ struct EOut {
     @location(3) @interpolate(flat) shade: vec2<f32>,
     @location(4) light: vec3<f32>,
     @location(5) dist: f32,
+    @location(6) @interpolate(flat) glint: vec4<f32>,
+    @location(7) rel: vec3<f32>,
 };
 
 fn iturn(it: Item, v: vec3<f32>) -> vec3<f32> {
@@ -246,18 +292,35 @@ fn vs_extrude(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) 
     o.shade = vec2<f32>(dir_shade(wn), dir_shade(-wn)) + vec2<f32>(it.layers.w);
     o.light = vec3<f32>(it.info.z, it.info.w, it.layers.w);
     o.dist = length(world - g.cam_pos.xyz);
+    o.glint = it.bmin;
+    o.rel = world;
     return o;
+}
+
+// As an item seen whole (fs_item's lighting and materials) with this fragment's shading.
+fn eshade(c: vec4<f32>, fr: MatFrame, e: EOut, shade: f32) -> vec4<f32> {
+    var i: IOut;
+    i.clip = e.clip;
+    i.uv = e.uv;
+    i.layer = e.layer;
+    i.shade = shade;
+    i.light = e.light;
+    i.dist = e.dist;
+    i.glint = e.glint;
+    i.rel = e.rel;
+    return ishade(c, fr, i);
 }
 
 @fragment
 fn fs_extrude(in: EOut) -> @location(0) vec4<f32> {
     let r = f32(textureDimensions(itex).x);
+    let fr = mat_frame(in.rel, in.uv);
     if (in.edge.x < 0.5) {
         let c = isample(in.uv, in.layer);
         if (c.a < 0.3) {
             discard;
         }
-        return ilit(c.rgb, in.shade.x, in.light, in.dist);
+        return eshade(c, fr, in, in.shade.x);
     }
     // The pixels on the low side (left / below) and the high side of this plane.
     let k = in.edge.y;
@@ -287,7 +350,55 @@ fn fs_extrude(in: EOut) -> @location(0) vec4<f32> {
     }
     // The wall belongs to the opaque pixel and faces away from it.
     if (lo_on) {
-        return ilit(lo.rgb, in.shade.x, in.light, in.dist);
+        return eshade(lo, fr, in, in.shade.x);
     }
-    return ilit(hi.rgb, in.shade.y, in.light, in.dist);
+    return eshade(hi, fr, in, in.shade.y);
+
+// The soft glow around items on the ground: a round sprite facing the camera, added on top
+// of the scene. pos: centre and radius; layers: rgb colour, w strength; info.z: sky light
+// there (the glow shows less in daylight).
+struct HOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) q: vec2<f32>,
+    @location(1) @interpolate(flat) col: vec4<f32>,
+    @location(2) dist: f32,
+};
+
+@vertex
+fn vs_halo(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> HOut {
+    let it = items[ii];
+    var q = array<vec2<f32>, 6>(vec2(-1.0, -1.0), vec2(1.0, -1.0), vec2(1.0, 1.0), vec2(-1.0, -1.0), vec2(1.0, 1.0), vec2(-1.0, 1.0));
+    let k = q[vi];
+    let to_cam = g.cam_pos.xyz - it.pos.xyz;
+    let d = normalize(to_cam);
+    var right = cross(vec3<f32>(0.0, 1.0, 0.0), d);
+    if (dot(right, right) < 0.0001) {
+        right = vec3<f32>(1.0, 0.0, 0.0);
+    }
+    right = normalize(right);
+    let up = cross(d, right);
+    let r = it.pos.w;
+    let world = it.pos.xyz + (right * k.x + up * k.y) * r;
+    let clip = g.view_proj * vec4<f32>(world, 1.0);
+    // Depth-tested as if a radius nearer the camera, so the ground the item lies on doesn't
+    // cut the glow in a hard line.
+    let near = g.view_proj * vec4<f32>(world + d * min(r, length(to_cam) * 0.5), 1.0);
+    var o: HOut;
+    o.clip = vec4<f32>(clip.xy / clip.w * near.w, near.z, near.w);
+    o.q = k;
+    let day = it.info.z * g.fog_color.w;
+    o.col = vec4<f32>(it.layers.rgb, it.layers.w * mix(1.0, 0.4, day));
+    o.dist = length(world - g.cam_pos.xyz);
+    return o;
+}
+
+@fragment
+fn fs_halo(in: HOut) -> @location(0) vec4<f32> {
+    let r2 = dot(in.q, in.q);
+    if (r2 >= 1.0) {
+        discard;
+    }
+    let f = (1.0 - r2) * (1.0 - r2);
+    let fog = 1.0 - smoothstep(g.fog.x, g.fog.y, in.dist);
+    return vec4<f32>(in.col.rgb, in.col.w * f * fog);
 }

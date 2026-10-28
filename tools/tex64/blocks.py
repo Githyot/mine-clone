@@ -515,48 +515,9 @@ def ore(kind, bg_fn=None, name=None, size=1.25, color=None):
 
 
 def planks(wood, name=None, base=None):
-    name = name or f"{wood}_planks"
-    rng = rng_for(name)
-    base = g16.WOODS[wood]["plank"][2] if base is None else base
-    pal = ramp(base, 12, 0.34, 0.12)
-    t = np.zeros((N, N))
-    h = np.zeros((N, N))
-    seam = np.zeros((N, N), bool)
-    for b in range(4):
-        y0, y1 = b * 16, b * 16 + 16
-        g1 = stretched_noise(rng, 32, 4)
-        g2 = stretched_noise(rng, 16, 2)
-        g3 = stretched_noise(rng, 8, 1)
-        grain = g1 * 0.45 + g2 * 0.35 + g3 * 0.2
-        tone = rng.uniform(-0.08, 0.08)
-        rows = slice(y0, y1)
-        t[rows] = 0.5 + tone + (grain[rows] - 0.5) * 0.45
-        local = YY[rows] - y0
-        bevel = np.clip(np.minimum(local + 0.5, 15.5 - local) / 2.0, 0, 1)
-        h[rows] = bevel * 2.0 + grain[rows] * 0.8
-        # Board end joint somewhere along the board.
-        sx = int(rng.integers(6, 58))
-        seam[rows, sx] = True
-        # A knot on some boards.
-        if rng.random() < 0.45:
-            kx, ky = rng.uniform(4, 60), y0 + rng.uniform(5, 11)
-            dx, dy = torus_d(kx, ky)
-            d = np.hypot(dx / 2.2, dy)
-            knot = (d < 2.2)
-            ring = (d >= 2.2) & (d < 3.6)
-            t = np.where(knot & (YY >= y0) & (YY < y1), t - 0.25, t)
-            t = np.where(ring & (YY >= y0) & (YY < y1), t + 0.06, t)
-    t = t + light(h) * 1.1
-    img = rgba(quantize(np.clip(t, 0, 1), pal, 0.3, rng))
-    # Gaps between boards: dark line, lit line under it.
-    for b in range(4):
-        y = b * 16 + 15
-        img[y, :, :3] = pal[0]
-        img[(y + 1) % N, :, :3] = pal[min(9, len(pal) - 1)] * 0.95 + img[(y + 1) % N, :, :3] * 0.05
-    img[seam, :3] = pal[1]
-    sh = np.roll(seam, 1, 1) & (YY % 16 != 15)
-    img[sh, :3] = img[sh, :3] * 0.85
-    return soften(img, "built")
+    """Each wood has its own board layout and grain: see woods.py."""
+    import woods
+    return woods.planks(wood, name, base)
 
 
 def log_side(wood, name=None):
@@ -934,6 +895,8 @@ for _w in g16.WOODS:
     REGISTRY[f"{_w}_leaves"] = lambda w=_w: leaves(w)
 for _c in g16.WOOL:
     REGISTRY[f"{_c}_wool"] = lambda c=_c: wool(c)
+import beds as _beds  # noqa: E402  (frame, sheet, pillow, blankets)
+REGISTRY.update(_beds.BLOCKS)
 
 
 # ================================================================ batch 2: nether, end, caves, farm
@@ -1352,3 +1315,8 @@ REGISTRY.update({
     "crimson_stem_top": lambda: log_top("oak", "crimson_stem_top", src_mean("crimson_planks", "#6a3048"), src_mean("crimson_stem", "#5a1c2a")),
     "warped_stem_top": lambda: log_top("oak", "warped_stem_top", src_mean("warped_planks", "#2b6b62"), src_mean("warped_stem", "#2a4a4a")),
 })
+
+# Every wood's planks, bark, end grain, doors and trapdoors with its own grain (woods.py).
+import woods  # noqa: E402
+
+woods.register(REGISTRY, lambda n: os.path.exists(os.path.join(SRC16, n + ".png")))

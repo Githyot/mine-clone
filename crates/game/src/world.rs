@@ -90,6 +90,8 @@ pub struct World {
     top: Vec<f32>,
     /// Ladders and vines.
     climb: Vec<bool>,
+    /// How each block feels underfoot (ice slides, sand and snow drag).
+    ground: Vec<voxel::physics::Ground>,
     /// Blocks that stand in water (kelp): bodies swim through them.
     wet: Vec<bool>,
     pub meshed_count: usize,
@@ -185,6 +187,7 @@ impl World {
         let top = reg.blocks.iter().map(|b| b.height as f32 / 16.0).collect();
         let climb = reg.blocks.iter().map(|b| b.shape == Shape::Ladder || matches!(b.name.as_str(), "vine" | "weeping_vines" | "twisting_vines" | "scaffolding" | "cave_vines")).collect();
         let wet = reg.blocks.iter().map(|b| b.waterlogged).collect();
+        let ground = reg.blocks.iter().map(|b| voxel::physics::Ground::of_block(&reg.blocks[b.base as usize].name, b.variant)).collect();
         let spins = reg.blocks.iter().map(|b| reg.blocks[b.base as usize].name == "windmill_sails").collect();
         World {
             tables,
@@ -207,6 +210,7 @@ impl World {
             solid,
             top,
             climb,
+            ground,
             wet,
             meshed_count: 0,
             headless: false,
@@ -784,10 +788,21 @@ impl World {
         // A door goes as a whole.
         let wb = self.reg.get(was);
         let was_frame = wb.shape == Shape::Portal || wb.name == "obsidian";
+        let (shape, variant) = (wb.shape, wb.variant);
         if wb.shape == Shape::Door {
             let other = if wb.variant & 8 != 0 { p - IVec3::Y } else { p + IVec3::Y };
             let o = self.block_or_air(other);
             if self.reg.get(o).base == wb.base && o != AIR {
+                self.set_block(other, AIR);
+            }
+        }
+        // So does a bed.
+        if shape == Shape::Bed {
+            let [dx, dz] = voxel::bed::other_half(variant);
+            let other = p + IVec3::new(dx, 0, dz);
+            let o = self.block_or_air(other);
+            let pair = self.reg.get(o).shape == Shape::Bed && self.reg.get(o).variant == variant ^ voxel::bed::HEAD;
+            if pair {
                 self.set_block(other, AIR);
             }
         }
@@ -919,6 +934,9 @@ impl Terrain for World {
     }
     fn top(&self, p: IVec3) -> f32 {
         self.block(p).map(|id| self.top[id as usize]).unwrap_or(1.0)
+    }
+    fn ground(&self, p: IVec3) -> voxel::physics::Ground {
+        self.block(p).map(|id| self.ground[id as usize]).unwrap_or(voxel::physics::Ground::FIRM)
     }
     fn boxes(&self, p: IVec3, out: &mut Vec<[f32; 6]>) {
         let Some(id) = self.block(p) else {

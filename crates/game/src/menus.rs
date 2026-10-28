@@ -28,6 +28,8 @@ pub struct NewWorldForm {
     pub survival: bool,
     /// World difficulty (tr_modes.rs): 0 Normal, 1 Especialista, 2 Mestre.
     pub mode: u8,
+    /// The test world with everything of the game set out (testworld.rs).
+    pub test: bool,
     /// 0 = name field, 1 = seed field.
     pub field: usize,
 }
@@ -90,11 +92,17 @@ impl Game {
         }
         self.world_open = false;
         let save = Arc::new(WorldSave::new(level_path_hint(&self.base, name)));
+        // A test world is laid out again from what the game has now, every time.
+        self.testw = Default::default();
+        if save.dir.join(crate::testworld::MARKER).exists() {
+            let _ = std::fs::remove_dir_all(save.dir.join("chunks"));
+            self.plan_test_world();
+        }
         let level = save.load_level();
         let seed = level.as_ref().map(|l| l.seed).or(seed).unwrap_or_else(|| {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1)
         });
-        let gen = Arc::new(Generator::new(seed, &self.reg).with_structures(self.structures.clone()).with_spread(self.settings.structure_spread()));
+        let gen = Arc::new(Generator::new(seed, &self.reg).with_structures(self.structures.clone()).with_spread(self.settings.structure_spread()).with_showcase(self.testw.layout.clone()));
         let tints: Vec<[f32; 3]> = (0..Biome::COUNT).map(|b| Biome::from_u8(b as u8).tint()).collect();
         let tables = Arc::new(MeshTables::new(&self.reg, tints));
         // Dropping the old world stops its worker threads.
@@ -108,6 +116,7 @@ impl Game {
         self.redstone = crate::redstone::Redstone::new(self.reg.clone());
         self.riding = None;
         self.seat = None;
+        self.sleep = None;
         self.tnt.clear();
         if let Some(r) = self.renderer.get_mut() {
             r.clear_chunks();
@@ -117,7 +126,8 @@ impl Game {
         let (sx, sy, sz) = gen.find_spawn();
         self.spawn_xz = (sx, sz);
         self.body = voxel::physics::Body::new(Vec3::new(sx as f32 + 0.5, sy as f32, sz as f32 + 0.5));
-        self.yaw = 0.0;
+        // The test world's rows run south from the spawn: face them.
+        self.yaw = if self.testw.on { std::f32::consts::PI } else { 0.0 };
         self.pitch = 0.0;
         self.time_of_day = 1000.0;
         self.weather = crate::weather::Weather::new(crate::weather::WeatherSave::default(), seed);
@@ -135,6 +145,7 @@ impl Game {
         self.boss = crate::bosses::BossState::new(level.as_ref().map(|l| l.bosses.clone()).unwrap_or_default());
         self.town = crate::npcs::Town::new(level.as_ref().map(|l| l.npcs.iter().map(|(n, h)| crate::npcs::NpcSave { name: n.clone(), home: *h }).collect()).unwrap_or_default());
         self.t5 = crate::terraria::Terraria::default();
+        self.elements = Default::default();
         if let Some(l) = &level {
             self.body.pos = Vec3::from(l.player_pos);
             self.body.flying = l.flying;
@@ -350,7 +361,7 @@ impl Game {
                     while self.worlds.iter().any(|w| w.name == format!("Mundo {n}")) {
                         n += 1;
                     }
-                    self.new_world = NewWorldForm { name: format!("Mundo {n}"), seed: String::new(), survival: true, mode: 0, field: 0 };
+                    self.new_world = NewWorldForm { name: format!("Mundo {n}"), seed: String::new(), survival: true, mode: 0, test: false, field: 0 };
                     self.set_screen(Screen::CreateWorld);
                 }
                 _ => self.set_screen(Screen::Title),
@@ -382,17 +393,26 @@ impl Game {
             }
             y += fh + 8.0 * s;
         }
-        let mode = format!("Modo de jogo: {}", if self.new_world.survival { "Sobrevivência" } else { "Criativo" });
-        if self.ui.button(x, y, fw, fh, &mode, mouse) && self.clicked {
-            hit = Some(0);
+        let kind = format!("Tipo de mundo: {}", if self.new_world.test { "Mundo de teste" } else { "Normal" });
+        if self.ui.button(x, y, fw, fh, &kind, mouse) && self.clicked {
+            hit = Some(4);
         }
         y += fh + 2.0 * s;
+        if !self.new_world.test {
+            let mode = format!("Modo de jogo: {}", if self.new_world.survival { "Sobrevivência" } else { "Criativo" });
+            if self.ui.button(x, y, fw, fh, &mode, mouse) && self.clicked {
+                hit = Some(0);
+            }
+            y += fh + 2.0 * s;
+        }
         let diff = format!("Dificuldade: {}", crate::tr_modes::MODE_NAMES[self.new_world.mode.min(2) as usize]);
         if self.ui.button(x, y, fw, fh, &diff, mouse) && self.clicked {
             hit = Some(3);
         }
         y += fh + 2.0 * s;
-        let hint = if self.new_world.survival { "Vida, fome de aventura e monstros à noite." } else { "Voe, todos os blocos, sem dano." };
+        let hint = if self.new_world.test {
+            "Plano e criativo: todos os blocos, itens, mobs e construções."
+        } else if self.new_world.survival { "Vida, fome de aventura e monstros à noite." } else { "Voe, todos os blocos, sem dano." };
         let hs = (s / 2.0).floor().max(1.0);
         let tw = self.ui.text_width(hint, hs);
         self.ui.text_scaled(w / 2.0 - tw / 2.0, y, hint, GRAY, hs);
@@ -409,6 +429,7 @@ impl Game {
             match i {
                 0 => self.new_world.survival = !self.new_world.survival,
                 3 => self.new_world.mode = (self.new_world.mode + 1) % 3,
+                4 => self.new_world.test = !self.new_world.test,
                 1 => self.create_world(),
                 _ => self.set_screen(Screen::Worlds),
             }
@@ -433,8 +454,13 @@ impl Game {
             let _ = std::fs::create_dir_all(&dir);
             let _ = std::fs::write(dir.join("tr.ron"), format!("(mode: {})", self.new_world.mode));
         }
+        if self.new_world.test {
+            let dir = level_path_hint(&self.base, &final_name);
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::write(dir.join(crate::testworld::MARKER), "()");
+        }
         let seed = parse_seed(&self.new_world.seed);
-        let survival = self.new_world.survival;
+        let survival = self.new_world.survival && !self.new_world.test;
         self.open_world(&final_name, seed, Some(survival));
         self.world_open = true;
         self.loaded_frames = 0;
