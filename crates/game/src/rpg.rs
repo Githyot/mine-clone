@@ -246,6 +246,21 @@ pub const ACCESSORIES: &[AccDef] = &[
     // Handy.
     acc("magnet_ring", "", &[M::Pickup(3.0)]),
     acc("lucky_coin", "Monstros deixam 25% mais moedas", &[M::Luck(1.0)]),
+    // Reauditoria 3 (tr3_folk.rs, tr3_foes.rs, tr3_tools.rs): builders' reach, the new
+    // mini-bosses' prizes and the hats and helmets monsters drop.
+    acc("toolbelt", "+1 bloco de alcance para construir", &[M::Reach(1.0)]),
+    acc("toolbox", "+1 bloco de alcance para construir", &[M::Reach(1.0)]),
+    acc("extendo_grip", "+3 blocos de alcance", &[M::Reach(3.0)]),
+    acc("architect_gizmo", "+4 blocos de alcance", &[M::Reach(4.0)]),
+    acc("paladin_shield", "Não é empurrado, +6 de defesa e aguenta golpes", &[M::NoKnock, M::Def(6.0), M::Endure(0.1)]),
+    acc("betsy_wing", "Voam 3,6 s e planam", &[M::Dmg(ALL_CLASSES, 0.03)]),
+    acc("festive_wings", "Voam 3,6 s e brilham", &[]),
+    acc("mining_helmet", "Mostra os minérios por perto", &[M::Def(1.0), M::Info(INFO_ORE)]),
+    acc("night_vision_helmet", "Defesa e mira mais certeira", &[M::Def(2.0), M::Crit(RANGED, 0.04)]),
+    acc("viking_helmet", "Golpes mais fortes", &[M::Def(2.0), M::Dmg(MELEE, 0.04)]),
+    acc("explorer_hat", "Mostra a profundidade e onde você está", &[M::Info(INFO_DEPTH | INFO_COORDS)]),
+    acc("wizard_hat_tim", "Mais mana e magias mais baratas", &[M::Mana(2.0), M::ManaCost(0.05)]),
+    acc("rifle_scope", "Agachado com uma arma: mira de longe", &[M::Crit(RANGED, 0.05)]),
     acc("sky_stone", "", &[M::Dmg(ALL_CLASSES, 0.08), M::Crit(ALL_CLASSES, 0.04), M::MeleeSpeed(0.08), M::Def(2.0), M::Regen(0.25), M::Move(0.05)]),
     // Info.
     acc("pocket_watch", "", &[M::Info(INFO_TIME)]),
@@ -802,11 +817,13 @@ impl Game {
             s.apply(&M::Reach(1.5));
         }
         if self.has_effect(WELL_FED) {
-            s.defense += 1.0;
-            s.dmg.iter_mut().for_each(|d| *d += 0.05);
-            s.crit.iter_mut().for_each(|c| *c += 0.02);
-            s.move_speed += 0.05;
-            s.regen += 0.1;
+            // Well fed, plenty satisfied, exquisitely stuffed (tr3_traps.rs meals).
+            let f = lvl(WELL_FED);
+            s.defense += f;
+            s.dmg.iter_mut().for_each(|d| *d += 0.05 * f);
+            s.crit.iter_mut().for_each(|c| *c += 0.02 * f);
+            s.move_speed += 0.05 * f;
+            s.regen += 0.1 * f;
         }
         if self.has_effect(COZY_FIRE) {
             s.regen += 0.25;

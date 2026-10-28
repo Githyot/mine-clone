@@ -342,6 +342,11 @@ impl Game {
         self.magic.bolts.push(Bolt { pos: from, vel, life: 3.0, spell: 0, hostile: Some((school, damage)) });
     }
 
+    /// A monster's (or a trap's) bolt that only flies for `life` seconds.
+    pub(crate) fn enemy_bolt_for(&mut self, from: Vec3, vel: Vec3, school: u8, damage: f32, life: f32) {
+        self.magic.bolts.push(Bolt { pos: from, vel, life, spell: 0, hostile: Some((school, damage)) });
+    }
+
     fn update_bolts(&mut self, dt: f32) {
         if self.magic.bolts.is_empty() || dt == 0.0 {
             return;

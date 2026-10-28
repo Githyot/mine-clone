@@ -1180,7 +1180,9 @@ impl Game {
                     return;
                 }
                 self.host_broadcast(&ToGuest::Chat { from: name.clone(), text: text.clone() }, None);
-                self.net_say(format!("<{name}> {text}"), WHITE);
+                if !self.net_emote(&name, &text) {
+                    self.net_say(format!("<{name}> {text}"), WHITE);
+                }
             }
             ToHost::HurtPlayer { target, amount, from } => self.pvp_resolve(id, target, amount, Vec3::from(from)),
             ToHost::SavePlayer(data) => {
@@ -1956,7 +1958,9 @@ impl Game {
                 self.net_say(t, YELLOW);
             }
             ToGuest::Chat { from, text } => {
-                if from.is_empty() {
+                if !from.is_empty() && self.net_emote(&from, &text) {
+                    // A balloon over that player (tr3_world.rs).
+                } else if from.is_empty() {
                     self.net_say(text, YELLOW);
                 } else {
                     self.net_say(format!("<{from}> {text}"), WHITE);
@@ -2333,6 +2337,19 @@ impl Game {
             return true;
         }
         false
+    }
+
+    /// An emote goes to the others as a chat line they turn into a balloon (tr3_world.rs).
+    pub(crate) fn send_emote(&mut self, e: u8) {
+        let text = format!("\u{1}E{e}");
+        match &self.net.mode {
+            Mode::Guest(g) => g.guest.send(&ToHost::Chat(text)),
+            Mode::Host(_) => {
+                let name = self.net.cfg.name.clone();
+                self.host_broadcast(&ToGuest::Chat { from: name, text }, None);
+            }
+            Mode::Off => {}
+        }
     }
 
     fn send_chat(&mut self, text: &str) {

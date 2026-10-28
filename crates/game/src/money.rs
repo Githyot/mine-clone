@@ -163,6 +163,7 @@ impl Game {
         if self.wears("lucky_coin") {
             k *= 1.25;
         }
+        k *= self.tr3_coin_factor();
         (base * k).round().max(1.0) as u64
     }
 

@@ -398,6 +398,7 @@ impl crate::Game {
     pub(crate) fn fase6_ate(&mut self, name: &str) {
         use crate::effects::*;
         self.extras_ate(name);
+        self.tr3_ate(name);
         self.prog.stats.add("foods_eaten_total", 1);
         let key = format!("ate:{name}");
         if self.prog.stats.get(&key) == 0 {

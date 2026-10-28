@@ -141,6 +141,12 @@ impl Game {
         Some(true)
     }
 
+    /// A boss woken some other way than with its item (the Old Man's curse): a fresh fight.
+    pub(crate) fn t5_fight_starts(&mut self) {
+        self.boss.called_help = false;
+        self.t5.fight = Fight { vel: Vec3::Y * 4.0, ..Default::default() };
+    }
+
     /// The links behind a worm head that was just spawned (they come right after it in the list).
     pub(crate) fn spawn_worm_body(&mut self, head: &str, at: Vec3) {
         let (body, tail, n) = segments(head);

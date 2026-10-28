@@ -97,6 +97,8 @@ pub struct Tr {
     pub(crate) comfort: crate::tr_comfort::Comfort,
     pub(crate) minis: crate::tr_minis::Minis,
     pub(crate) journey: crate::tr_journey::Journey,
+    /// The third round (tr3.rs), saved in its own tr3.ron.
+    pub(crate) r3: crate::tr3::Tr3,
     eye_nights: u32,
     /// Was it night last frame (to notice dusk).
     night_was: bool,
@@ -135,6 +137,7 @@ impl Tr {
         tr.minis.tax_owed = s.tax_owed;
         tr.comfort.placed = s.comfort.into_iter().map(|((x, y, z), k)| (glam::IVec3::new(x, y, z), k)).collect();
         tr.town.animals = s.animals.into_iter().map(|(k, (x, y, z))| (k, Vec3::new(x, y, z))).collect();
+        tr.r3 = crate::tr3::Tr3::load(dir, items);
         tr
     }
 
@@ -165,6 +168,7 @@ impl Tr {
             tax_freed: self.minis.tax_freed,
             tax_owed: self.minis.tax_owed,
         };
+        self.r3.save(dir, items);
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
             if let Err(e) = std::fs::write(dir.join("tr.ron"), text) {
@@ -195,10 +199,14 @@ impl Game {
         self.update_tr_minis(dt);
         self.update_tr_journey();
         self.update_tr_feel(dt);
+        self.update_tr3(dt, use_held);
     }
 
     /// Right click with an item of this file; true when it did something.
     pub(crate) fn tr_use(&mut self, name: &str) -> Option<bool> {
+        if let Some(r) = self.tr3_use(name) {
+            return Some(r);
+        }
         if let Some(r) = self.tr_weapon_use(name) {
             return Some(r);
         }
@@ -264,6 +272,7 @@ impl Game {
         self.endgame_boss_defeated(name);
         self.modes_boss_defeated(name);
         self.minis_boss_defeated(name);
+        self.tr3_boss_defeated(name);
         if name == "great_eye" {
             // The eye leaves some of the world's evil ore behind (and its seeds, in Terraria).
             let ore = if crate::tr_world::world_evil(self.seed) == crate::tr_world::Land::Ruin { "umbral_ore" } else { "sanguinite_ore" };
@@ -488,6 +497,7 @@ impl Game {
                 self.test_tr_endgame(scene);
             }
             s if self.test_tr_event(s) => {}
+            s if self.test_tr3(s) => {}
             _ => log::warn!("unknown MC_TR scene {scene}"),
         }
     }

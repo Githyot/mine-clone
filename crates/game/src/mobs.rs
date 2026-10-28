@@ -602,7 +602,7 @@ pub fn caster_school(name: &str) -> Option<u8> {
 pub fn registry_for_tests() -> voxel::mob::MobRegistry {
     use crate::embedded;
     let text = crate::terraria::with_extra(&crate::merge_list(embedded::MOBS_RON, embedded::FASE6_MOBS_RON), embedded::T5_MOBS_RON);
-    let text = crate::terraria::with_extra(&crate::terraria::with_extra(&crate::terraria::with_extra(&text, embedded::TR_MOBS_RON), embedded::AGUAS_MOBS_RON), embedded::VULCAO_MOBS_RON);
+    let text = crate::terraria::with_extra(&crate::terraria::with_extra(&crate::terraria::with_extra(&crate::terraria::with_extra(&text, embedded::TR_MOBS_RON), embedded::AGUAS_MOBS_RON), embedded::VULCAO_MOBS_RON), embedded::TR3_MOBS_RON);
     voxel::mob::MobRegistry::from_ron_many(&[&text, embedded::MODS_MOBS_RON, embedded::MODS_DIMS_MOBS_RON]).unwrap()
 }
 

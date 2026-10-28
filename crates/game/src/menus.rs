@@ -459,6 +459,12 @@ impl Game {
             let _ = std::fs::create_dir_all(&dir);
             let _ = std::fs::write(dir.join(crate::testworld::MARKER), "()");
         }
+        // Secret seeds ("for the worthy"...) turn on a special world (tr3_world.rs).
+        if let Some(special) = crate::tr3_world::special_seed(&self.new_world.seed) {
+            let dir = level_path_hint(&self.base, &final_name);
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::write(dir.join("tr3.ron"), format!("(world: (special: \"{special}\"))"));
+        }
         let seed = parse_seed(&self.new_world.seed);
         let survival = self.new_world.survival && !self.new_world.test;
         self.open_world(&final_name, seed, Some(survival));

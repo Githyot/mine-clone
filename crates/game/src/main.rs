@@ -78,6 +78,13 @@ mod accessories;
 mod affixes;
 mod boss_ai;
 mod tr;
+mod tr3;
+mod tr3_foes;
+mod tr3_tools;
+mod tr3_traps;
+mod tr3_world;
+mod tr3_folk;
+mod tr3_golf;
 mod tr_bosses;
 mod tr_events;
 mod tr_pets;
@@ -417,6 +424,8 @@ fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) 
     let b0 = terraria::with_extra(&b0, embedded::AGUAS_BLOCKS_RON);
     // The volcanoes (worldgen/volcano.rs, vulcao.rs).
     let b0 = terraria::with_extra(&b0, embedded::VULCAO_BLOCKS_RON);
+    // The Terraria side's third round (tr3.rs).
+    let b0 = terraria::with_extra(&b0, embedded::TR3_BLOCKS_RON);
     let i0 = terraria::with_extra(&merge_list(items[0], &fase6_text(None, "items.ron")), embedded::T5_ITEMS_RON);
     // The stats content (rpg.rs) after the Terraria side's own items.
     let i0 = terraria::with_extra(&i0, embedded::RPG_ITEMS_RON);
@@ -424,6 +433,7 @@ fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) 
     let i0 = terraria::with_extra(&i0, embedded::DEEP_ITEMS_RON);
     let i0 = terraria::with_extra(&i0, embedded::TR_ITEMS_RON);
     let i0 = terraria::with_extra(&i0, embedded::VULCAO_ITEMS_RON);
+    let i0 = terraria::with_extra(&i0, embedded::TR3_ITEMS_RON);
     let reg = BlockRegistry::from_ron_many(&[b0.as_str(), blocks[1]])?;
     let items = ItemRegistry::from_ron_many(&[i0.as_str(), items[1]], &reg)?;
     let mut recipes = Recipes::from_ron_many(&recipes, &items)?;
@@ -433,6 +443,7 @@ fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) 
     terraria::add_recipes(&mut recipes, embedded::DEEP_RECIPES_RON, &items)?;
     terraria::add_recipes(&mut recipes, embedded::TR_RECIPES_RON, &items)?;
     terraria::add_recipes(&mut recipes, embedded::VULCAO_RECIPES_RON, &items)?;
+    terraria::add_recipes(&mut recipes, embedded::TR3_RECIPES_RON, &items)?;
     let extra = fase6_text(None, "recipes.ron");
     if !extra.trim().is_empty() {
         let more = Recipes::from_ron(&extra, &items)?;
@@ -494,10 +505,11 @@ fn load_structures(base: &Path, reg: &BlockRegistry) -> Arc<voxel::structures::S
     let [text, mods] = read_pack_pair(base, "structures.ron", embedded::STRUCTURES_RON, embedded::MODS_STRUCTURES_RON);
     let text = merge_list(&text, &fase6_text(Some(base), "structures.ron"));
     let text = merge_list(&text, embedded::TR_STRUCTURES_RON);
+    let text = merge_list(&text, embedded::TR3_STRUCTURES_RON);
     let [_, dims] = read_pack_pair(base, "dims_structures.ron", "", embedded::MODS_DIMS_STRUCTURES_RON);
     let parsed = voxel::structures::Structures::from_ron_many(&[&text, &mods, &dims], reg).or_else(|e| {
         log::error!("{e}; using the built-in structures");
-        voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, embedded::TR_STRUCTURES_RON, embedded::MODS_STRUCTURES_RON, embedded::MODS_DIMS_STRUCTURES_RON], reg)
+        voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, &merge_list(embedded::TR_STRUCTURES_RON, embedded::TR3_STRUCTURES_RON), embedded::MODS_STRUCTURES_RON, embedded::MODS_DIMS_STRUCTURES_RON], reg)
     });
     Arc::new(parsed.unwrap_or_else(|e| {
         log::error!("{e}");
@@ -987,7 +999,7 @@ impl Game {
         // Mobs: a mobs.ron on disk wins, like blocks.
         let [mobs_text, mods_mobs] = read_pack_pair(&base, "mobs.ron", embedded::MOBS_RON, embedded::MODS_MOBS_RON);
         let mobs_text = terraria::with_extra(&merge_list(&mobs_text, &fase6_text(Some(&base), "mobs.ron")), embedded::T5_MOBS_RON);
-        let mobs_text = terraria::with_extra(&terraria::with_extra(&terraria::with_extra(&mobs_text, embedded::TR_MOBS_RON), embedded::AGUAS_MOBS_RON), embedded::VULCAO_MOBS_RON);
+        let mobs_text = terraria::with_extra(&terraria::with_extra(&terraria::with_extra(&terraria::with_extra(&mobs_text, embedded::TR_MOBS_RON), embedded::AGUAS_MOBS_RON), embedded::VULCAO_MOBS_RON), embedded::TR3_MOBS_RON);
         let [_, dims_mobs] = read_pack_pair(&base, "dims_mobs.ron", "", embedded::MODS_DIMS_MOBS_RON);
         let mob_reg = voxel::mob::MobRegistry::from_ron_many(&[&mobs_text, &mods_mobs, &dims_mobs]).unwrap_or_else(|e| {
             log::error!("{e}; using built-in mobs");
@@ -1700,6 +1712,10 @@ impl Game {
                 }
             }
             KeyCode::KeyB if self.screen == Screen::Playing => self.quick_buff(),
+            KeyCode::KeyI if self.screen == Screen::Playing => self.emote_key(),
+            KeyCode::Digit0 if self.screen == Screen::Playing => {
+                self.emote_pick(9);
+            }
             KeyCode::KeyF if self.screen == Screen::Playing && self.survival => self.quick_hook(),
             KeyCode::KeyC if matches!(self.screen, Screen::Playing | Screen::Inventory) => self.t5.rpg.sheet = !self.t5.rpg.sheet,
             KeyCode::KeyR if self.screen == Screen::Inventory && self.survival => self.surv.want_recipe = true,
@@ -1754,7 +1770,7 @@ impl Game {
         if let Some(i) = digits.iter().position(|&d| d == code) {
             if self.screen == Screen::Inventory {
                 self.inv_number_key = Some(i);
-            } else {
+            } else if !self.emote_pick(i) {
                 self.selected = i;
                 self.show_held_name();
             }
@@ -2820,7 +2836,7 @@ impl Game {
     /// Seconds to dig a block by hand in survival (no tools yet).
     fn dig_time(&self, id: BlockId) -> f32 {
         if self.survival {
-            return self.items.dig_time(&self.reg, id, self.held_tool().as_ref()) / self.dig_speed_bonus(id);
+            return self.items.dig_time(&self.reg, id, self.held_tool_for(id).as_ref()) / self.dig_speed_bonus(id);
         }
         let h = self.reg.get(id).hardness.max(0.0);
         if h == 0.0 {
@@ -3573,6 +3589,7 @@ impl Game {
         self.plugins_block(pos, id, true);
         let name = self.reg.get(id).name.clone();
         self.comfort_placed(pos, &name);
+        self.tr3_placed(pos, &name);
         self.anim.start_swing();
         self.pads.rumble(0.0, 0.35, 0.05);
         let m = Material::of(&self.reg.get(id).name);
@@ -4092,6 +4109,7 @@ impl Game {
             self.draw_hunter_marks(w, h);
             self.draw_sign_texts(w, h);
             self.draw_mob_names(w, h);
+            self.draw_tr3_hud(w, h);
             if self.screen == Screen::Playing {
                 self.draw_explore_hud(w, h);
             }
@@ -4705,6 +4723,7 @@ impl Game {
         let (top, horizon, daylight, sun) = self.sky();
         // Deep down the sky fades out, and the Underworld glows red like the Nether (deep.rs).
         let (top, horizon, daylight, underworld) = self.deep_sky(eye.y, top, horizon, daylight);
+        let (top, horizon) = if underworld || self.dim != voxel::worldgen::Dim::Overworld { (top, horizon) } else { self.tr3_sky(top, horizon, daylight) };
         let underwater = self.body.head_in_water;
         let rd = self.settings.render_distance as f32 * 16.0;
         // Distant terrain pushes the fog out to its own edge.
@@ -4760,7 +4779,11 @@ impl Game {
             pom: self.parallax_uniform(),
             clouds: [self.cloud_wind[0], self.cloud_wind[1], self.cloud_drift, (self.fx_time % 100_000.0) as f32],
             mat: material::uniform(self.settings.materials, self.settings.shader_quality == ShaderQuality::Fast),
-            anim: self.anim_layers(),
+            anim: {
+                let mut a = self.anim_layers();
+                a[3] = if self.dim == voxel::worldgen::Dim::Overworld { self.moon_uniform() } else { 0.0 };
+                a
+            },
             ..Default::default()
         };
         // A torch in the hand casts shadows (with Sombras on): the blocks around the player.
@@ -5380,8 +5403,8 @@ mod data_tests {
         // A bad structure (say, a row that isn't a string) would drop every building.
         let base = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
         let (reg, _, _) = load_game_data(base).unwrap();
-        let s = voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, embedded::TR_STRUCTURES_RON, embedded::MODS_STRUCTURES_RON, embedded::MODS_DIMS_STRUCTURES_RON], &reg).unwrap();
-        for name in ["templo_escamado", "lago_cintilante", "masmorra_blue", "masmorra_pink"] {
+        let s = voxel::structures::Structures::from_ron_many(&[embedded::STRUCTURES_RON, &merge_list(embedded::TR_STRUCTURES_RON, embedded::TR3_STRUCTURES_RON), embedded::MODS_STRUCTURES_RON, embedded::MODS_DIMS_STRUCTURES_RON], &reg).unwrap();
+        for name in ["templo_escamado", "lago_cintilante", "masmorra_blue", "masmorra_pink", "campo_de_golfe"] {
             assert!(s.list.iter().any(|st| st.def.name == name), "{name}");
         }
     }

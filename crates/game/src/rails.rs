@@ -407,7 +407,7 @@ impl Game {
                     } else if wall_b && !wall_a {
                         sp = -2.0;
                     }
-                } else if sp.abs() < MAX_SPEED {
+                } else if sp.abs() < MAX_SPEED * self.tr3_cart_factor() {
                     sp += BOOST * sp.signum() * dt;
                 }
             }
@@ -421,7 +421,8 @@ impl Game {
             _ => {}
         }
         sp *= (-(if rider { 0.08 } else { 0.5 }) * dt).exp();
-        sp = sp.clamp(-MAX_SPEED, MAX_SPEED);
+        let max = MAX_SPEED * if rider { self.tr3_cart_factor() } else { 1.0 };
+        sp = sp.clamp(-max, max);
         t += sp * dt;
         let mut pos = a + dir * t.clamp(0.0, len);
         if t < 0.0 || t > len {

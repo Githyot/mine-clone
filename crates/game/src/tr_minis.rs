@@ -87,7 +87,7 @@ const TAX_PER_HEAD: u64 = 10;
 
 impl Game {
     fn full_moon(&self) -> bool {
-        self.t5.tr.minis.nights % 8 == 0
+        self.moon_phase() == 0
     }
 
     pub(crate) fn update_tr_minis(&mut self, dt: f32) {

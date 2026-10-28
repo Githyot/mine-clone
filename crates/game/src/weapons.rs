@@ -219,6 +219,7 @@ impl Game {
         k *= self.dig_effects();
         k *= self.shears_speed(id);
         k *= self.skill_dig_speed(id);
+        k *= self.tr3_dig_factor();
         if self.body.head_in_water && self.armor_ench(AQUA_AFFINITY) == 0 {
             k /= 5.0;
         }
@@ -482,7 +483,7 @@ impl Game {
     fn find_arrow(&self) -> Option<(usize, Option<&'static PotionDef>)> {
         let off = self.surv.offhand.map(|s| self.items.get(s.item).name.clone());
         if let Some(n) = off {
-            if n == "arrow" || n == "spectral_arrow" {
+            if n == "arrow" || n == "spectral_arrow" || crate::tr3_tools::is_arrow(&n) {
                 return Some((usize::MAX, None));
             }
             if let Some((effects::Form::Arrow, p)) = effects::potion_of(&n) {
@@ -492,7 +493,7 @@ impl Game {
         for (i, s) in self.surv.inv.slots.iter().enumerate() {
             let Some(s) = s else { continue };
             let n = &self.items.get(s.item).name;
-            if n == "arrow" || n == "spectral_arrow" {
+            if n == "arrow" || n == "spectral_arrow" || crate::tr3_tools::is_arrow(n) {
                 return Some((i, None));
             }
             if let Some((effects::Form::Arrow, p)) = effects::potion_of(n) {
@@ -602,6 +603,14 @@ impl Game {
         }
         let potion = arrow.and_then(|a| a.1);
         let mut pickup = self.survival;
+        // A Terraria arrow (tr3_tools.rs) bites its own way and isn't picked up again.
+        let tr_arrow = arrow.and_then(|(slot, _)| {
+            let st = if slot == usize::MAX { self.surv.offhand } else { self.surv.inv.slots[slot] };
+            st.and_then(|s| crate::tr3_tools::arrow_traits(&self.items.get(s.item).name))
+        });
+        if tr_arrow.is_some() {
+            pickup = false;
+        }
         if let Some((slot, p)) = arrow {
             // The hunter's quiver sometimes saves the arrow (rpg.rs).
             let saved = self.t5.rpg.stats.ammo_save > 0.0 && self.surv.rng.f32() < self.t5.rpg.stats.ammo_save;
@@ -620,6 +629,11 @@ impl Game {
         s.crit = pull >= 1.0 || pull > 0.6 && self.surv.rng.f32() < self.t5.rpg.stats.crit[crate::rpg::RANGED];
         s.punch = self.held_ench(PUNCH);
         s.flame = self.held_ench(FLAME) > 0;
+        if let Some((k, pierce, flame)) = tr_arrow {
+            s.damage *= k;
+            s.pierce = s.pierce.max(pierce);
+            s.flame |= flame;
+        }
         self.prog.shots.push(s);
         self.wear_held(1);
         self.sfx(Sfx::Place(Material::Cloth));

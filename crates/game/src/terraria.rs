@@ -276,6 +276,7 @@ impl Game {
             if self.t5.hard.blood_moon() {
                 amount *= 1.2;
             }
+            amount = self.tr3_incoming(amount);
         }
         // Defense above the classic 20 points and endurance (rpg.rs).
         let mut amount = self.rpg_reduce(amount, from);
