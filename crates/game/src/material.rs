@@ -86,7 +86,7 @@ pub fn texture_class(name: &str) -> u32 {
     let has = |words: &[&str]| words.iter().any(|w| b.contains(w));
     if has(&["diamond"]) {
         DIAMOND
-    } else if has(&["netherite", "umbral", "sanguinite"]) {
+    } else if has(&["netherite", "umbral", "sanguinite", "magmarite"]) {
         NETHERITE
     } else if has(&["chainmail", "chain"]) {
         CHAIN
