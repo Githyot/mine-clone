@@ -8,13 +8,14 @@ use voxel::physics::Terrain;
 
 use crate::audio::Sfx;
 use crate::effects::*;
-use crate::item_render::GpuItem;
+use crate::entity::Bones;
 use crate::rpg::{MOB_BURN, SUMMON};
 use crate::Game;
 
 pub struct SentryDef {
     pub staff: &'static str,
-    /// The item whose picture is the turret.
+    /// The item whose picture is the turret (drawn in 3D by summons.rs; kept for the item art).
+    #[allow(dead_code)]
     pub sprite: &'static str,
     pub name: &'static str,
     pub damage: f32,
@@ -34,6 +35,12 @@ pub const SENTRIES: &[SentryDef] = &[
     SentryDef { staff: "ballista_cane", sprite: "sentry_ballista", name: "Balista", damage: 22.0, range: 22.0, cooldown: 2.4, inflict: 0, chain: 0, tint: [1.2, 1.0, 0.7] },
 ];
 
+/// Damage per second of one turret on one monster (balance.rs).
+#[cfg(test)]
+pub(crate) fn sentry_dps(staff: &str) -> Option<f32> {
+    SENTRIES.iter().find(|s| s.staff == staff).map(|s| s.damage / s.cooldown)
+}
+
 pub fn sentry_of(staff: &str) -> Option<usize> {
     SENTRIES.iter().position(|s| s.staff == staff)
 }
@@ -44,6 +51,20 @@ pub struct Sentry {
     cd: f32,
     /// Where it last aimed (it turns that way).
     aim: Vec3,
+    /// 1 when it fires, back down to 0 (summons.rs poses it).
+    fire: f32,
+}
+
+impl Sentry {
+    /// For test scenes: a sentry of `kind`, placed afterwards.
+    pub(crate) fn test(kind: usize) -> Sentry {
+        Sentry { kind, pos: Vec3::ZERO, cd: 1.0, aim: Vec3::ZERO, fire: 0.0 }
+    }
+
+    pub(crate) fn test_aim(&mut self, at: Vec3, fire: f32) {
+        self.aim = at;
+        self.fire = fire;
+    }
 }
 
 impl Game {
@@ -81,7 +102,7 @@ impl Game {
         while self.t5.sentries.len() >= self.sentry_slots() {
             self.t5.sentries.remove(0);
         }
-        self.t5.sentries.push(Sentry { kind, pos: at, cd: 0.6, aim: self.body.pos });
+        self.t5.sentries.push(Sentry { kind, pos: at, cd: 0.6, aim: self.body.pos, fire: 0.0 });
         let glow = self.glow_layer();
         for _ in 0..20 {
             let v = Vec3::new(self.surv.rng.f32() - 0.5, self.surv.rng.f32(), self.surv.rng.f32() - 0.5) * 3.0;
@@ -114,6 +135,7 @@ impl Game {
         for st in list.iter_mut() {
             let def = &SENTRIES[st.kind];
             st.cd -= dt;
+            st.fire = (st.fire - dt * 1.5).max(0.0);
             let eye = st.pos + Vec3::Y * 0.8;
             let Some(k) = self.nearest_hostile(eye, def.range) else { continue };
             let c = self.mobs.list[k].body.center();
@@ -122,6 +144,7 @@ impl Game {
                 continue;
             }
             st.cd = def.cooldown;
+            st.fire = 1.0;
             let mut hits = vec![k];
             // Lightning jumps on to the nearest monsters around the first.
             let mut from = c;
@@ -170,21 +193,21 @@ impl Game {
         (1..n).all(|i| !self.world.solid((a + d * (i as f32 / n as f32)).floor().as_ivec3()))
     }
 
-    /// Sentries drawn as standing pictures of their turrets, turned toward their target.
-    pub(crate) fn sentry_instances(&self, cam_block: IVec3) -> Vec<GpuItem> {
+    /// Sentries drawn as their 3D models (summons.rs), turned toward their target.
+    pub(crate) fn sentry_instances(&self, cam_block: IVec3) -> Vec<(usize, Bones)> {
         let c = cam_block.as_vec3();
         let mut out = Vec::new();
         for st in &self.t5.sentries {
-            let def = &SENTRIES[st.kind];
-            let Some(id) = self.items.id(def.sprite) else { continue };
-            let voxel::item::Look::Sprite(l) = self.items.get(id).look else { continue };
-            let layer = (self.item_base + l) as f32;
-            let p = st.pos + Vec3::Y * (0.5 + (self.now * 2.0 + st.pos.x).sin() * 0.03) - c;
-            let dir = st.aim - st.pos;
-            let yaw = dir.x.atan2(dir.z) + std::f32::consts::FRAC_PI_2;
-            let light = self.world.light(st.pos.floor().as_ivec3());
-            let (sky, blk) = ((light >> 4) as f32 / 15.0, ((light & 15) as f32 / 15.0).max(0.6));
-            out.push(GpuItem { pos: [p.x, p.y, p.z, 1.0], info: [yaw, 1.0, sky, blk], layers: [layer, layer, layer, 0.0], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
+            let Some(mesh) = self.entities.summon_mesh(st.kind + crate::summons::EMBER) else { continue };
+            let light = self.world.light((st.pos + Vec3::Y * 0.5).floor().as_ivec3());
+            let pose = crate::summons::SentryPose {
+                pos: st.pos - c,
+                aim: st.aim - (st.pos + Vec3::Y * 0.8),
+                t: self.now + st.pos.x * 0.37 + st.pos.z * 0.71,
+                fire: st.fire,
+                light: [(light >> 4) as f32 / 15.0, ((light & 15) as f32 / 15.0).max(0.4), 0.0, 0.0],
+            };
+            out.push((mesh, crate::summons::sentry_bones(st.kind + crate::summons::EMBER, &pose)));
         }
         out
     }

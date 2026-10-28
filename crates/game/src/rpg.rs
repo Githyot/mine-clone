@@ -17,7 +17,6 @@ use voxel::item::ItemStack;
 
 use crate::audio::{Material, Sfx};
 use crate::effects::*;
-use crate::item_render::GpuItem;
 use crate::Game;
 
 pub const MELEE: usize = 0;
@@ -193,7 +192,7 @@ pub const ACCESSORIES: &[AccDef] = &[
     acc("sage_pendant", "", &[M::Crit(MAGIC, 0.1), M::Mana(4.0)]),
     // Summon.
     acc("totem_necklace", "", &[M::Minions(1)]),
-    acc("spirit_bell", "", &[M::Minions(1), M::Dmg(SUMMON, 0.1)]),
+    acc("spirit_bell", "", &[M::Dmg(SUMMON, 0.12)]),
     // Defence.
     acc("iron_buckler", "", &[M::Def(2.0)]),
     acc("holy_pendant", "", &[M::IFrames(0.5)]),
@@ -276,10 +275,10 @@ pub const SETS: &[SetDef] = &[
     set("silver", "", &[M::Crit(ALL_CLASSES, 0.05)]),
     set("tungsten", "", &[M::Dmg(ALL_CLASSES, 0.05)]),
     set("platinum", "", &[M::Def(1.0), M::Mana(4.0), M::Crit(ALL_CLASSES, 0.03)]),
-    set("cobalt", "", &[M::MeleeSpeed(0.12), M::Move(0.1)]),
+    set("cobalt", "", &[M::Dmg(RANGED, 0.15), M::Crit(RANGED, 0.05), M::AmmoSave(0.2)]),
     set("palladium", "", &[M::Regen(0.35), M::Dmg(ALL_CLASSES, 0.05)]),
-    set("mythril", "", &[M::Crit(ALL_CLASSES, 0.1)]),
-    set("orichalcum", "Pétalas caem sobre o que você acerta", &[M::Dmg(ALL_CLASSES, 0.05)]),
+    set("mythril", "", &[M::Dmg(MAGIC, 0.15), M::Crit(MAGIC, 0.05), M::Mana(4.0)]),
+    set("orichalcum", "Pétalas caem sobre o que você acerta", &[M::Dmg(SUMMON, 0.12), M::Minions(1)]),
     set("adamantite", "", &[M::Dmg(MELEE, 0.15), M::MeleeSpeed(0.1)]),
     set("titanium", "", &[M::Endure(0.12), M::Dmg(ALL_CLASSES, 0.05)]),
     set("radiant", "Esquiva um golpe a cada 30 s", &[M::Dmg(ALL_CLASSES, 0.08)]),
@@ -320,27 +319,42 @@ const RESTORE: &[(&str, f32, f32, f32)] = &[
 /// Minions: (staff, picture item, name, damage, shoots from afar, effect it leaves).
 pub struct MinionDef {
     pub staff: &'static str,
+    /// Its picture item (the 3D body is in summons.rs; the picture stays for the item art).
+    #[allow(dead_code)]
     pub sprite: &'static str,
     pub name: &'static str,
     pub damage: f32,
     pub ranged: bool,
     pub cooldown: f32,
     pub inflict: u8,
+    #[allow(dead_code)]
     pub size: f32,
     pub tint: [f32; 3],
 }
 
 pub const MINIONS: &[MinionDef] = &[
-    MinionDef { staff: "wisp_staff", sprite: "minion_wisp", name: "Fogo-fátuo", damage: 4.0, ranged: true, cooldown: 1.0, inflict: 0, size: 0.5, tint: [0.6, 0.9, 1.6] },
-    MinionDef { staff: "wasp_staff", sprite: "minion_wasp", name: "Vespa", damage: 3.0, ranged: false, cooldown: 0.5, inflict: POISON, size: 0.45, tint: [1.5, 1.2, 0.3] },
-    MinionDef { staff: "imp_staff", sprite: "minion_imp", name: "Diabrete", damage: 6.0, ranged: true, cooldown: 1.2, inflict: MOB_BURN, size: 0.6, tint: [1.6, 0.5, 0.15] },
-    MinionDef { staff: "blade_staff", sprite: "minion_blade", name: "Lâmina Voadora", damage: 9.0, ranged: false, cooldown: 0.4, inflict: 0, size: 0.6, tint: [0.9, 0.9, 1.4] },
-    MinionDef { staff: "jelly_staff", sprite: "minion_jelly", name: "Geleinha", damage: 5.0, ranged: false, cooldown: 0.6, inflict: 0, size: 0.5, tint: [0.6, 0.9, 1.5] },
-    MinionDef { staff: "star_dragon_staff", sprite: "minion_dragon", name: "Dragão Estelar", damage: 16.0, ranged: false, cooldown: 0.35, inflict: CURSED_FLAMES, size: 1.0, tint: [0.4, 1.4, 1.4] },
+    MinionDef { staff: "wisp_staff", sprite: "minion_wisp", name: "Fogo-fátuo", damage: 3.0, ranged: true, cooldown: 1.0, inflict: 0, size: 0.5, tint: [0.6, 0.9, 1.6] },
+    MinionDef { staff: "wasp_staff", sprite: "minion_wasp", name: "Vespa", damage: 2.9, ranged: false, cooldown: 0.75, inflict: POISON, size: 0.45, tint: [1.5, 1.2, 0.3] },
+    MinionDef { staff: "imp_staff", sprite: "minion_imp", name: "Diabrete", damage: 4.8, ranged: true, cooldown: 1.2, inflict: MOB_BURN, size: 0.6, tint: [1.6, 0.5, 0.15] },
+    MinionDef { staff: "blade_staff", sprite: "minion_blade", name: "Lâmina Voadora", damage: 5.0, ranged: false, cooldown: 0.6, inflict: 0, size: 0.6, tint: [0.9, 0.9, 1.4] },
+    MinionDef { staff: "jelly_staff", sprite: "minion_jelly", name: "Geleinha", damage: 3.1, ranged: false, cooldown: 0.9, inflict: 0, size: 0.5, tint: [0.6, 0.9, 1.5] },
+    MinionDef { staff: "crystal_jelly_staff", sprite: "minion_jelly", name: "Geleia de Cristal", damage: 4.3, ranged: false, cooldown: 0.8, inflict: 0, size: 0.55, tint: [1.6, 0.8, 1.5] },
+    MinionDef { staff: "star_dragon_staff", sprite: "minion_dragon", name: "Dragão Estelar", damage: 5.6, ranged: false, cooldown: 0.6, inflict: CURSED_FLAMES, size: 1.0, tint: [0.4, 1.4, 1.4] },
 ];
 
-/// Whips: extra reach, a mark that makes minions go for that monster, and its bonus.
-const WHIPS: &[(&str, f32, u8)] = &[("leather_whip", 2.0, 0), ("thorn_whip", 3.0, POISON), ("bone_whip", 4.0, BLEEDING)];
+/// Whips: extra reach, a mark that makes minions go for that monster, and its bonus (a share
+/// more damage, so it keeps fast and slow minions in step).
+const WHIPS: &[(&str, f32, u8)] = &[("leather_whip", 0.1, 0), ("thorn_whip", 0.15, POISON), ("bone_whip", 0.2, BLEEDING)];
+
+/// Extra damage a whip's mark gives the minions (balance.rs).
+#[cfg(test)]
+pub(crate) fn whip_bonus(name: &str) -> Option<f32> {
+    WHIPS.iter().find(|w| w.0 == name).map(|w| w.1)
+}
+
+fn whip_bonus_pct(name: &str) -> f32 {
+    100.0 * WHIPS.iter().find(|w| w.0 == name).map_or(0.0, |w| w.1)
+}
 
 pub fn is_whip(name: &str) -> bool {
     WHIPS.iter().any(|w| w.0 == name)
@@ -672,6 +686,11 @@ pub struct Minion {
     vel: Vec3,
     cd: f32,
     phase: f32,
+    /// Attack swing, 1 when it strikes, back down to 0 (summons.rs poses it).
+    atk: f32,
+    hunting: bool,
+    /// Where it has flown, newest first (the dragon's body follows it).
+    trail: Vec<Vec3>,
 }
 
 /// The RPG state of the world that is open (inside `Terraria`).
@@ -1409,7 +1428,7 @@ impl Game {
         }
         let at = self.body.pos + Vec3::Y * 1.8;
         let phase = self.surv.rng.f32() * std::f32::consts::TAU;
-        self.t5.rpg.minions.push(Minion { kind, pos: at, vel: Vec3::ZERO, cd: 0.5, phase });
+        self.t5.rpg.minions.push(Minion { kind, pos: at, vel: Vec3::ZERO, cd: 0.5, phase, atk: 0.0, hunting: false, trail: Vec::new() });
         let glow = self.glow_layer();
         for _ in 0..16 {
             let v = Vec3::new(self.surv.rng.f32() - 0.5, self.surv.rng.f32() - 0.5, self.surv.rng.f32() - 0.5) * 3.0;
@@ -1444,9 +1463,11 @@ impl Game {
             let def = &MINIONS[mi.kind];
             mi.cd -= dt;
             mi.phase += dt * 2.0;
+            mi.atk = (mi.atk - dt * 2.5).max(0.0);
             if mi.pos.distance(me) > 40.0 {
                 mi.pos = me;
                 mi.vel = Vec3::ZERO;
+                mi.trail.clear();
             }
             let target = tagged.filter(|&(k, _)| self.mobs.list[k].body.center().distance(me) < 30.0).or_else(|| self.nearest_hostile(me, 20.0).map(|k| (k, 0.0)));
             let goal = match target {
@@ -1460,22 +1481,33 @@ impl Game {
                         c
                     }
                 }
+                None if mi.kind == crate::summons::DRAGON => {
+                    // The dragon is long: it circles wide over the player's head.
+                    let a = idx as f32 / n.max(1) as f32 * std::f32::consts::TAU + self.now * 0.7;
+                    me + Vec3::new(a.cos() * 3.2, 1.6 + (mi.phase * 0.6).sin() * 0.6, a.sin() * 3.2)
+                }
                 None => {
                     // Hover in a ring behind the player.
                     let a = idx as f32 / n.max(1) as f32 * std::f32::consts::TAU + self.now * 0.4;
                     me + Vec3::new(a.cos() * 1.6, 0.5 + (mi.phase).sin() * 0.25, a.sin() * 1.6)
                 }
             };
+            mi.hunting = target.is_some();
             let to = goal - mi.pos;
             let speed: f32 = if target.is_some() && !def.ranged { 14.0 } else { 9.0 };
             let want = to.normalize_or_zero() * speed.min(to.length() * 4.0);
             mi.vel += (want - mi.vel) * (dt * 5.0).min(1.0);
             mi.pos += mi.vel * dt;
+            if mi.trail.first().is_none_or(|q| q.distance(mi.pos) > 0.12) {
+                mi.trail.insert(0, mi.pos);
+                mi.trail.truncate(64);
+            }
             if let Some((k, bonus)) = target {
                 let c = self.mobs.list[k].body.center();
                 let reach = if def.ranged { 12.0 } else { 1.3 + self.mobs.list[k].body.half_width };
                 if mi.cd <= 0.0 && mi.pos.distance(c) < reach {
                     mi.cd = def.cooldown;
+                    mi.atk = 1.0;
                     if def.ranged {
                         let seg = c - mi.pos;
                         for j in 0..10 {
@@ -1483,7 +1515,7 @@ impl Game {
                         }
                     }
                     let from = mi.pos;
-                    let hit = (def.damage + bonus) * power;
+                    let hit = def.damage * (1.0 + bonus) * power;
                     self.mobs.list[k].hurt(hit, from);
                     if def.inflict != 0 {
                         self.add_mob_debuff(k, def.inflict, 3.0);
@@ -1499,20 +1531,28 @@ impl Game {
         self.t5.rpg.minions = minions;
     }
 
-    /// Minions drawn as little sprites of their pictures.
-    pub(crate) fn minion_instances(&self, cam_block: IVec3) -> Vec<GpuItem> {
+    /// Minions drawn as their 3D bodies (summons.rs).
+    pub(crate) fn minion_instances(&self, cam_block: IVec3) -> Vec<(usize, crate::entity::Bones)> {
         let c = cam_block.as_vec3();
         let mut out = Vec::new();
         for mi in &self.t5.rpg.minions {
-            let def = &MINIONS[mi.kind];
-            let Some(id) = self.items.id(def.sprite) else { continue };
-            let voxel::item::Look::Sprite(l) = self.items.get(id).look else { continue };
-            let layer = (self.item_base + l) as f32;
-            let p = mi.pos + Vec3::Y * (mi.phase * 2.0).sin() * 0.06 - c;
-            // Turned to face where it flies, or the player when it waits.
-            let dir = if mi.vel.length() > 0.5 { mi.vel } else { self.body.pos - mi.pos };
-            let yaw = dir.x.atan2(dir.z) + std::f32::consts::FRAC_PI_2;
-            out.push(GpuItem { pos: [p.x, p.y, p.z, def.size], info: [yaw, 1.0, 1.0, 0.8], layers: [layer, layer, layer, 0.0], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
+            let model = crate::summons::minion_model(mi.kind);
+            let Some(mesh) = self.entities.summon_mesh(model) else { continue };
+            // Facing where it flies, or the player when it waits.
+            let dir = if mi.vel.length() > 0.5 { mi.vel } else { self.body.pos + Vec3::Y * 1.4 - mi.pos };
+            let l = self.world.light(mi.pos.floor().as_ivec3());
+            let trail: Vec<Vec3> = if model == crate::summons::DRAGON { mi.trail.iter().map(|p| *p - c).collect() } else { Vec::new() };
+            let pose = crate::summons::MinionPose {
+                pos: mi.pos - c,
+                dir,
+                vel: mi.vel,
+                t: mi.phase * 0.5,
+                atk: mi.atk,
+                hunting: mi.hunting,
+                trail: &trail,
+                light: [(l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0, 0.0, 0.0],
+            };
+            out.push((mesh, crate::summons::minion_bones(model, &pose)));
         }
         out
     }
@@ -1582,11 +1622,12 @@ impl Game {
             }
         }
         if let Some(m) = MINIONS.iter().find(|m| m.staff == name) {
-            out.push((format!("Invoca: {} · Dano {:.0} · Mana 10", m.name, m.damage), BLUE));
+            out.push((format!("Invoca: {} · Dano {:.1} · Mana 10", m.name, m.damage), BLUE));
             out.push(("Usa um espaço de lacaio".to_string(), [150, 150, 150, 255]));
         }
         if is_whip(name) {
-            out.push(("Marca o monstro: seus lacaios vão atrás dele".to_string(), BLUE));
+            let bonus = whip_bonus_pct(name);
+            out.push((format!("Marca o monstro: seus lacaios vão atrás dele e causam +{bonus:.0}% de dano"), BLUE));
         }
         match name {
             "ancestral_heart" => out.push(("Abre o 6º espaço de acessório".to_string(), GREEN)),
@@ -1854,6 +1895,62 @@ impl Game {
                 for (i, mi) in self.t5.rpg.minions.iter_mut().enumerate() {
                     mi.pos = self.body.eye() + flat * 3.5 + side * (i as f32 - 1.0) * 1.2;
                     mi.vel = flat;
+                }
+            }
+            "summons" | "dragon" => {
+                // Every minion in a line before the camera (MC_RPG=summons), or the dragon
+                // alone and big in the frame (MC_RPG=dragon). MC_ANIM_T shifts their clocks.
+                self.survival = true;
+                for (k, n) in ["stardust_helmet", "stardust_chestplate", "stardust_leggings", "stardust_boots"].iter().enumerate() {
+                    if let Some(id) = self.items.id(n) {
+                        self.surv.armor[k] = Some(ItemStack::new(id, 1));
+                    }
+                }
+                for (k, n) in ["spirit_bell", "totem_necklace", "hive_heart"].iter().enumerate() {
+                    if let Some(id) = self.items.id(n) {
+                        self.t5.acc[k] = Some(ItemStack::new(id, 1));
+                    }
+                }
+                give(self, "star_dragon_staff", 0, 1);
+                self.selected = 0;
+                self.add_effect(SUMMONING, 0, 300.0, false);
+                self.t5.rpg.stats = self.compute_stats();
+                self.magic.mana = 400.0;
+                let kinds: Vec<usize> = if scene == "dragon" { vec![5] } else { (0..MINIONS.len()).collect() };
+                for &k in &kinds {
+                    self.summon_minion(k);
+                }
+                let shift: f32 = std::env::var("MC_ANIM_T").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0);
+                let side = flat.cross(Vec3::Y);
+                let eye = self.body.eye();
+                let now = self.now;
+                let n = self.t5.rpg.minions.len();
+                for (i, mi) in self.t5.rpg.minions.iter_mut().enumerate() {
+                    mi.phase = 1.3 + i as f32 * 0.9 + shift * 2.0;
+                    mi.hunting = false;
+                    mi.trail.clear();
+                    if mi.kind == crate::summons::DRAGON {
+                        // Flying across the view in a long S, the body trailing behind.
+                        let (dist, across) = if scene == "dragon" { (4.6, -1.2) } else { (6.5, 2.4) };
+                        let head = eye + flat * dist + side * across + Vec3::Y * 0.5;
+                        let dir = (-side + flat * 0.15 + Vec3::Y * 0.2).normalize();
+                        mi.pos = head;
+                        mi.vel = dir * 6.0;
+                        mi.hunting = true;
+                        let mut q = head;
+                        for j in 1..80 {
+                            let s = j as f32 * 0.1;
+                            // Back the way it came, weaving up and down and in and out.
+                            let back = (side * 1.0 + flat * (s * 1.1).cos() * 0.9 - Vec3::Y * (s * 1.4).sin() * 0.8).normalize();
+                            q += back * 0.1;
+                            mi.trail.push(q);
+                        }
+                    } else {
+                        let x = i as f32 - (n as f32 - 2.0) / 2.0;
+                        mi.pos = eye + flat * 3.4 + side * x * 1.05 - Vec3::Y * 0.2 + Vec3::Y * if i % 2 == 0 { 0.0 } else { 0.35 };
+                        // Turned three quarters toward the camera.
+                        mi.vel = (-flat + side * 0.8).normalize() * 0.6;
+                    }
                 }
             }
             "debuffs" => {

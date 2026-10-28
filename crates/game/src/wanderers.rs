@@ -167,7 +167,7 @@ impl Game {
             let aim = target + side * k as f32 * 1.4;
             let d = aim - from;
             let vel = Vec3::new(d.x / t, d.y / t + 0.5 * crate::mobs::ARROW_GRAVITY * t, d.z / t);
-            self.mobs.arrows.push(crate::mobs::Arrow { pos: from, vel, age: 0.0, stuck: false, damage: 4.0 });
+            self.mobs.arrows.push(crate::mobs::Arrow { pos: from, vel, age: 0.0, stuck: false, damage: 4.0, shooter: 0 });
         }
         self.sfx(Sfx::Place(crate::audio::Material::Cloth));
     }

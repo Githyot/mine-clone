@@ -40,6 +40,8 @@ pub struct Mobs {
     pub raining: bool,
     /// Smoothed animation for each mob (anim.rs).
     pub anim: crate::anim::Animator,
+    /// Who gets along with, fears and plays with whom (social.rs), and its clock.
+    pub(crate) social: crate::social::Director,
 }
 
 /// What happened to the player this tick.
@@ -59,6 +61,12 @@ pub struct MobOutcome {
     pub remote_hits: Vec<(usize, f32, Vec3)>,
     /// Shots of the Nether and End creatures (ghast fireballs, wither skulls...): kind, from, at.
     pub special: Vec<(crate::nether_end::ShotKind, Vec3, Vec3)>,
+    /// Little hearts to float up (animals in love, a birth): where.
+    pub hearts: Vec<Vec3>,
+    /// Babies born this tick: (def index, where).
+    pub births: Vec<(usize, Vec3)>,
+    /// Mobs that just started talking or greeting (for their voices): (def index, where).
+    pub chatter: Vec<(usize, Vec3)>,
 }
 
 pub const ARROW_GRAVITY: f32 = 20.0;
@@ -72,11 +80,21 @@ pub struct Arrow {
     /// Stuck in a block (it stays a while, then goes).
     pub stuck: bool,
     pub damage: f32,
+    /// The mob that shot it (net id; 0 for traps and dispensers). Arrows can hit other mobs,
+    /// who then settle the score with the shooter.
+    pub shooter: u32,
+}
+
+fn inside(m: &Mob, p: Vec3) -> bool {
+    let (lo, hi) = m.body.aabb();
+    p.cmpge(lo).all() && p.cmple(hi).all()
 }
 
 impl Mobs {
     /// Fly the arrows: gravity, sticking into blocks, hurting the player they reach.
     fn update_arrows(&mut self, world: &World, player: Vec3, dt: f32, out: &mut MobOutcome) {
+        let list = &mut self.list;
+        let reg = &self.reg;
         for a in self.arrows.iter_mut() {
             a.age += dt;
             if a.stuck {
@@ -95,6 +113,27 @@ impl Mobs {
                     a.age = 1000.0;
                     break;
                 }
+                // Another mob in the way (a skeleton missing the player hits the zombie
+                // in front): it gets the arrow, and a grudge against the archer.
+                {
+                    if let Some(v) = list.iter_mut().find(|m| m.alive() && !m.ghost && m.net_id != a.shooter && inside(m, a.pos)) {
+                        let died = v.hurt(a.damage, a.pos - a.vel.normalize_or_zero());
+                        if a.shooter != 0 {
+                            v.hurt_by = a.shooter;
+                            if reg.defs[v.def].attack > 0.0 && !died {
+                                v.grudge = 15.0;
+                                v.foe = a.shooter;
+                            }
+                        }
+                        if died && !v.counted {
+                            v.counted = true;
+                            out.deaths.push((v.def, v.body.pos));
+                        }
+                        out.arrow_hits += 1;
+                        a.age = 1000.0;
+                        break;
+                    }
+                }
                 if voxel::physics::Terrain::solid(world, a.pos.floor().as_ivec3()) {
                     a.pos -= step * 0.5;
                     a.stuck = true;
@@ -107,10 +146,10 @@ impl Mobs {
     }
 
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, spawning: true, peaceful: false, calm: false, hp_scale: 1.0, spawn_mult: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false, anim: Default::default() }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, spawning: true, peaceful: false, calm: false, hp_scale: 1.0, spawn_mult: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false, anim: Default::default(), social: Default::default() }
     }
 
-    fn next_rand(&mut self) -> u64 {
+    pub(crate) fn next_rand(&mut self) -> u64 {
         // splitmix64
         self.seed = self.seed.wrapping_add(0x9E3779B97F4A7C15);
         let mut z = self.seed;
@@ -119,7 +158,7 @@ impl Mobs {
         z ^ (z >> 31)
     }
 
-    fn rand_f32(&mut self) -> f32 {
+    pub(crate) fn rand_f32(&mut self) -> f32 {
         (self.next_rand() >> 40) as f32 / (1u64 << 24) as f32
     }
 
@@ -131,7 +170,7 @@ impl Mobs {
     }
 
     /// Add a mob; monsters get the world difficulty's extra health.
-    fn push_mob(&mut self, mut m: Mob) {
+    pub(crate) fn push_mob(&mut self, mut m: Mob) {
         if self.hp_scale != 1.0 && self.reg.defs[m.def].kind == Kind::Hostile {
             m.health *= self.hp_scale;
             m.max_health *= self.hp_scale;
@@ -327,10 +366,17 @@ impl Mobs {
         }
         let mut events = Vec::new();
         let day = daylight > 0.5;
-        // Hungry hunters pick the closest prey in sight.
+        self.social_pass(player, day, dt, &mut out);
+        // Hungry hunters pick the closest prey in sight; a mob with a grudge goes for its foe.
         let mut target: Vec<Option<usize>> = vec![None; self.list.len()];
         for (i, m) in self.list.iter().enumerate() {
             let def = &self.reg.defs[m.def];
+            if m.grudge > 0.0 && m.alive() {
+                target[i] = self.list.iter().position(|o| o.net_id == m.foe && o.alive() && !o.ghost && (o.body.pos - m.body.pos).length() < 24.0);
+                if target[i].is_some() {
+                    continue;
+                }
+            }
             if !m.hungry(def) {
                 continue;
             }
@@ -348,6 +394,9 @@ impl Mobs {
         let mut bites: Vec<(usize, usize, f32)> = Vec::new();
         for (i, m) in self.list.iter_mut().enumerate() {
             m.prey = target[i].map(|j| prey_pos[j]);
+            if m.prey.is_none() {
+                m.grudge = 0.0;
+            }
             // A mount under the player is moved by the player.
             if m.ridden {
                 continue;
@@ -403,7 +452,7 @@ impl Mobs {
                         let speed = 18.0;
                         let t = (flat / speed).max(0.05);
                         let vel = Vec3::new(d.x / t, d.y / t + 0.5 * ARROW_GRAVITY * t, d.z / t);
-                        self.arrows.push(Arrow { pos: from, vel, age: 0.0, stuck: false, damage });
+                        self.arrows.push(Arrow { pos: from, vel, age: 0.0, stuck: false, damage, shooter: m.net_id });
                         out.shots += 1;
                     }
                     MobEvent::Explode { pos, power } => out.explosions.push((pos, power)),
@@ -424,7 +473,20 @@ impl Mobs {
         }
         for (i, j, damage) in bites {
             let from = self.list[i].body.center();
-            if self.list[j].hurt(damage, from) && !self.list[j].counted {
+            let died = self.list[j].hurt(damage, from);
+            let (biter, foe_def) = (self.list[i].net_id, self.list[i].def);
+            let v = &mut self.list[j];
+            v.hurt_by = biter;
+            // Bitten back: anything with teeth (or a sword) answers, unless it was hunting
+            // the biter itself.
+            if !died && self.reg.defs[v.def].attack > 0.0 && !v.baby() && !self.reg.defs[v.def].prey.iter().any(|p| *p == self.reg.defs[foe_def].name) {
+                v.grudge = 12.0;
+                v.foe = biter;
+            }
+            if self.list[i].grudge > 0.0 && self.list[i].foe == self.list[j].net_id && died {
+                self.list[i].grudge = 0.0;
+            }
+            if died && !self.list[j].counted {
                 self.list[j].counted = true;
                 out.deaths.push((self.list[j].def, self.list[j].body.pos));
                 // A full hunter naps rather than hunting again soon; a town guard keeps watch.
