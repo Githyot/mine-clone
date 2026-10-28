@@ -168,6 +168,19 @@ impl Game {
         true
     }
 
+    /// A swing that hits nothing: the weapon's combo swing (so slashes and thrusts still
+    /// alternate), or the plain arm swing.
+    pub(crate) fn combat_air_swing(&mut self) {
+        let Some(w) = self.held_weapon() else {
+            self.anim.start_swing();
+            return;
+        };
+        let step = if self.now - self.mods.combat.last <= w.cooldown + COMBO_WINDOW { self.mods.combat.step } else { 0 };
+        self.mods.combat.last = self.now;
+        self.mods.combat.step = (step + 1) % 3;
+        self.anim.start_styled_swing(w.combo[step as usize % 3].style);
+    }
+
     /// Two-handed weapons need both hands: the off-hand item goes back into the bag.
     pub(crate) fn update_combat(&mut self) {
         let two = self.held_weapon().is_some_and(|w| w.two_handed);

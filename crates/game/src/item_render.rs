@@ -9,7 +9,8 @@ use crate::renderer::Renderer;
 pub struct GpuItem {
     /// xyz: centre relative to the camera's block; w: size in blocks.
     pub pos: [f32; 4],
-    /// yaw, flat (0/1), sky light 0..1, block light 0..1.
+    /// yaw, flat (0 a cube, 1 a flat picture, 2 a picture extruded pixel by pixel), sky light
+    /// 0..1, block light 0..1.
     pub info: [f32; 4],
     /// Texture layers side, top, bottom; glow.
     pub layers: [f32; 4],
@@ -25,11 +26,17 @@ pub struct GpuItem {
 
 pub struct ItemGpu {
     pipelines: [wgpu::RenderPipeline; 2],
+    /// Extruded pictures (held items): `vs_extrude`.
+    extrude: [wgpu::RenderPipeline; 2],
     layout: wgpu::BindGroupLayout,
     buf: wgpu::Buffer,
     bg: wgpu::BindGroup,
     cap: usize,
     count: u32,
+    /// The instances from here on are extruded (`prepare` puts them last).
+    split: u32,
+    /// Item texture width: the planes between pixel columns and rows.
+    res: u32,
 }
 
 impl ItemGpu {
@@ -53,14 +60,14 @@ impl ItemGpu {
             bind_group_layouts: &[&r.globals_layout, &r.tex_layout, &layout],
             push_constant_ranges: &[],
         });
-        let make = |format: wgpu::TextureFormat| {
+        let make = |format: wgpu::TextureFormat, vs: &str, fs: &str| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("item"),
                 layout: Some(&pl),
-                vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_item"), buffers: &[], compilation_options: Default::default() },
+                vertex: wgpu::VertexState { module: &shader, entry_point: Some(vs), buffers: &[], compilation_options: Default::default() },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
-                    entry_point: Some("fs_item"),
+                    entry_point: Some(fs),
                     targets: &[Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::ALL })],
                     compilation_options: Default::default(),
                 }),
@@ -77,11 +84,12 @@ impl ItemGpu {
                 cache: None,
             })
         };
-        let pipelines = [make(r.config.format), make(crate::post::HDR)];
+        let pipelines = [make(r.config.format, "vs_item", "fs_item"), make(crate::post::HDR, "vs_item", "fs_item")];
+        let extrude = [make(r.config.format, "vs_extrude", "fs_extrude"), make(crate::post::HDR, "vs_extrude", "fs_extrude")];
         let cap = 64;
         let buf = Self::make_buf(device, cap);
         let bg = Self::make_bg(device, &layout, &buf);
-        ItemGpu { pipelines, layout, buf, bg, cap, count: 0 }
+        ItemGpu { pipelines, extrude, layout, buf, bg, cap, count: 0, split: 0, res: r.texture_size }
     }
 
     fn make_buf(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
@@ -98,9 +106,22 @@ impl ItemGpu {
 
     pub fn prepare(&mut self, r: &Renderer, data: &[GpuItem]) {
         self.count = data.len() as u32;
+        self.split = self.count;
+        self.res = r.texture_size.max(1);
         if data.is_empty() {
             return;
         }
+        let extruded = |i: &GpuItem| i.info[1] > 1.5;
+        let sorted;
+        let data = if data.iter().any(extruded) {
+            // The shader's vertex stage can't see the texture: it gets the width in rot.w.
+            let res = self.res as f32;
+            sorted = data.iter().filter(|i| !extruded(i)).copied().chain(data.iter().filter(|i| extruded(i)).map(|i| GpuItem { rot: [i.rot[0], i.rot[1], i.rot[2], res], ..*i })).collect::<Vec<_>>();
+            self.split = sorted.iter().position(extruded).unwrap_or(sorted.len()) as u32;
+            &sorted[..]
+        } else {
+            data
+        };
         if data.len() > self.cap {
             self.cap = data.len().next_power_of_two();
             self.buf = Self::make_buf(&r.device, self.cap);
@@ -117,6 +138,13 @@ impl ItemGpu {
         pass.set_pipeline(&self.pipelines[hdr as usize]);
         pass.set_bind_group(1, block_tex, &[]);
         pass.set_bind_group(2, &self.bg, &[]);
-        pass.draw(0..36, 0..self.count);
+        if self.split > 0 {
+            pass.draw(0..36, 0..self.split);
+        }
+        if self.split < self.count {
+            // Two faces and a plane between every two columns and every two rows.
+            pass.set_pipeline(&self.extrude[hdr as usize]);
+            pass.draw(0..6 * (2 + 2 * (self.res + 1)), self.split..self.count);
+        }
     }
 }

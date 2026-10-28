@@ -74,6 +74,20 @@ pub struct Animator {
     /// Climbing a ledge (copied from the pose for the first-person arms).
     mantle: f32,
     ledge: f32,
+    /// 0..1 how far the held item is raised: it drops after a hit or a change of item and
+    /// comes back up as the weapon gets ready (`follow_hand`), like the classic game.
+    pub hand_height: f32,
+    hand_item: Option<u16>,
+}
+
+/// Which classic item model places what is held in first person.
+#[derive(Clone, Copy, PartialEq)]
+pub enum HandModel {
+    /// "handheld": tools and weapons, gripped at the handle.
+    Tool,
+    /// "generated": flat pictures.
+    Flat,
+    Block,
 }
 
 fn wrap(a: f32) -> f32 {
@@ -90,6 +104,22 @@ impl Animator {
         if self.swing <= 0.0 || self.swing > 0.5 {
             self.swing = 0.001;
             self.swing_style = 0;
+        }
+    }
+
+    /// Both hands are on a ledge being climbed: nothing is held up in first person.
+    pub fn hands_busy(&self) -> bool {
+        self.mantle > 0.0
+    }
+
+    /// The held item drops when it changes and rises with the weapon's readiness `ready`
+    /// (0..1); the classic game steps it at most 0.4 a tick.
+    pub fn follow_hand(&mut self, item: Option<u16>, ready: f32, dt: f32) {
+        let want = if item == self.hand_item { ready * ready * ready } else { 0.0 };
+        let step = (dt * 20.0 * 0.4).min(0.4);
+        self.hand_height += (want - self.hand_height).clamp(-step, step);
+        if self.hand_height <= 0.0 {
+            self.hand_item = item;
         }
     }
 
@@ -459,6 +489,71 @@ impl Animator {
             * Mat4::from_rotation_z(0.15)
     }
 
+    /// The held item in first person: the frame of the item model's centre (one block wide
+    /// before its scale), relative to the camera's block. At rest a tool's handle sits in the
+    /// lower right with the blade rising to the left and away, seen from its side so its
+    /// thickness shows; it drops while the weapon is not ready (`hand_height`). The swings
+    /// turn it around the fist, with the classic timing (sin of the square root and of the
+    /// square of the progress); combo swings (`swing_style` 1..3) move their own way.
+    pub fn first_person_item(&self, model: HandModel, eye: Vec3, yaw: f32, pitch: f32) -> Mat4 {
+        let deg = f32::to_radians;
+        let s = self.swing.max(0.0);
+        let f = (s * s * PI).sin();
+        let f1 = (s.sqrt() * PI).sin();
+        let env = (s * PI).sin();
+        let a = self.amount.min(1.0);
+        let sway = Vec3::new(self.walk.sin() * 0.02 * a, -self.walk.cos().abs() * 0.025 * a, 0.0);
+        let (rest, grip, fist) = hand_rest(model);
+        let fist = fist + sway + Vec3::Y * -(1.0 - self.hand_height.clamp(0.0, 1.0)) * 0.6;
+        let (shift, turn) = match self.swing_style {
+            // Slash: the blade lies down and sweeps from the right across the view.
+            1 => (Vec3::new(0.05 - 0.45 * s, 0.1, -0.1) * env, Quat::from_rotation_y(env * (0.3 - 0.9 * s)) * Quat::from_rotation_z(env * 1.3)),
+            // Thrust: straight ahead, the point first.
+            2 => (Vec3::new(-0.2, 0.12, -0.4) * env, Quat::from_rotation_x(-env * 0.9) * Quat::from_rotation_y(env * 0.3)),
+            // Uppercut: from low up past the middle.
+            3 => (Vec3::new(-0.2 * env, (-0.25 + 0.6 * s) * env, -0.15 * env), Quat::from_rotation_x(env * (0.7 - 1.6 * s))),
+            // The classic swing: the fist darts in and the blade chops down and across
+            // towards the crosshair, in the view's plane more than into it so it stays in
+            // sight past the hand.
+            _ => (
+                Vec3::new(-0.18 * f1, 0.1 * (s.sqrt() * 2.0 * PI).sin(), -0.12 * env),
+                Quat::from_rotation_z(deg(55.0 * f1 - 10.0 * f)) * Quat::from_rotation_x(deg(-30.0 * f1)),
+            ),
+        };
+        Self::camera(eye, yaw, pitch) * Mat4::from_translation(fist + shift) * Mat4::from_quat(turn) * rest * Mat4::from_translation(-grip)
+    }
+
+    /// The right arm gripping the held item placed by `first_person_item`: the fist on the
+    /// handle (a tool's lower corner, under a picture or a block), the arm reaching in from
+    /// the lower right.
+    pub fn first_person_arm_holding(&self, def: &MobDef, item: Mat4, model: HandModel, eye: Vec3, yaw: f32, pitch: f32, sky: f32, blk: f32) -> Bones {
+        let mut b = Bones { light: [sky, blk, 0.0, 0.0], ..Default::default() };
+        for m in b.m.iter_mut() {
+            *m = [[0.0f32; 4]; 4];
+        }
+        let cam = Self::camera(eye, yaw, pitch);
+        let (_, grip, _) = hand_rest(model);
+        // In camera space; the item's own turn decides which way the knuckles face.
+        let local = cam.inverse() * item;
+        let fist = local.transform_point3(grip);
+        // The shoulder keeps its place behind the fist (down, right and back), so the arm
+        // follows a swing instead of stretching across the view.
+        let shoulder = fist + Vec3::new(0.46, -0.66, 0.41);
+        let d = (fist - shoulder).normalize();
+        // The palm wraps the handle: the arm's front (+z in the model, -z after the half
+        // turn) faces the way the item's blade runs.
+        let along = local.transform_vector3(Vec3::new(1.0, 1.0, 0.0)).normalize();
+        let x = along.cross(d).normalize_or_zero();
+        let z = d.cross(x);
+        let turn = if x == Vec3::ZERO { Quat::from_rotation_arc(Vec3::NEG_Y, d) } else { Quat::from_mat3(&glam::Mat3::from_cols(x, -d, z)) };
+        let p = &def.parts[R_ARM];
+        let pivot = Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32, p.pivot.2 as f32);
+        let fist_px = Vec3::new(0.0, -8.5, 0.0);
+        let place = Mat4::from_translation(fist) * Mat4::from_quat(turn) * Mat4::from_rotation_y(PI) * Mat4::from_scale(Vec3::splat(1.0 / 16.0)) * Mat4::from_translation(-fist_px - pivot);
+        b.m[R_ARM] = (cam * place).to_cols_array_2d();
+        b
+    }
+
     pub fn first_person_arm(&self, def: &MobDef, eye: Vec3, yaw: f32, pitch: f32, sky: f32, blk: f32) -> Bones {
         let mut b = Bones { light: [sky, blk, 0.0, 0.0], ..Default::default() };
         let zero = [[0.0f32; 4]; 4];
@@ -521,6 +616,38 @@ impl Animator {
     }
 }
 
+/// A held item at rest in first person: its turn and scale (from the item model's centre
+/// frame), the point of it the fist holds (in that frame, one block wide), and where the fist
+/// is in camera space.
+fn hand_rest(model: HandModel) -> (Mat4, Vec3, Vec3) {
+    // The turn that lays the picture's `along` and its face (+z) onto `to` and `facing`.
+    let lay = |along: Vec3, to: Vec3, facing: Vec3| {
+        let to = to.normalize();
+        let n = (facing - to * facing.dot(to)).normalize();
+        let from = glam::Mat3::from_cols(along, Vec3::Z.cross(along), Vec3::Z);
+        let onto = glam::Mat3::from_cols(to, n.cross(to), n);
+        Quat::from_mat3(&(onto * from.transpose()))
+    };
+    match model {
+        // The blade (the picture's diagonal) rises up, left and away; its face turned to
+        // the left so the edge shows.
+        HandModel::Tool => {
+            let q = lay(Vec3::new(1.0, 1.0, 0.0).normalize(), Vec3::new(-0.25, 0.8, -0.55), Vec3::new(-1.0, 0.15, 0.3));
+            (Mat4::from_quat(q) * Mat4::from_scale(Vec3::splat(0.6)), Vec3::new(-0.3, -0.3, 0.0), Vec3::new(0.44, -0.29, -0.66))
+        }
+        // A picture stands up in the hand, turned a little towards the middle.
+        HandModel::Flat => {
+            let q = lay(Vec3::Y, Vec3::new(-0.1, 1.0, -0.15), Vec3::new(-0.55, 0.15, 0.8));
+            (Mat4::from_quat(q) * Mat4::from_scale(Vec3::splat(0.42)), Vec3::new(0.0, -0.4, 0.0), Vec3::new(0.5, -0.4, -0.78))
+        }
+        // A block sits on the fist, turned 45° and tipped towards the eye.
+        HandModel::Block => {
+            let q = Quat::from_rotation_x(0.25) * Quat::from_rotation_y(f32::to_radians(45.0));
+            (Mat4::from_quat(q) * Mat4::from_scale(Vec3::splat(0.34)), Vec3::new(0.0, -0.62, 0.1), Vec3::new(0.52, -0.42, -0.92))
+        }
+    }
+}
+
 /// How far ahead of the body the ledge's edge is (blocks, negative once the body has swung
 /// past it), and 0..1 through the swing over the top.
 fn mantle_reach(u: f32) -> (f32, f32) {
@@ -545,5 +672,42 @@ impl Animator {
         let a = self.amount.min(1.2);
         let right = Vec3::new(yaw.cos(), 0.0, -yaw.sin());
         right * self.walk.sin() * 0.035 * a + Vec3::Y * -(self.walk.cos().abs()) * 0.05 * a
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn held_item_drops_on_change_and_rises_when_ready() {
+        let mut a = Animator::default();
+        for _ in 0..20 {
+            a.follow_hand(Some(1), 1.0, 0.05);
+        }
+        assert!((a.hand_height - 1.0).abs() < 1e-4);
+        // Another item: down first, then back up.
+        a.follow_hand(Some(2), 1.0, 0.05);
+        assert!(a.hand_height < 1.0);
+        for _ in 0..20 {
+            a.follow_hand(Some(2), 1.0, 0.05);
+        }
+        assert!((a.hand_height - 1.0).abs() < 1e-4);
+        // Not ready after a hit: it hangs low.
+        for _ in 0..20 {
+            a.follow_hand(Some(2), 0.2, 0.05);
+        }
+        assert!(a.hand_height < 0.05);
+    }
+
+    #[test]
+    fn sword_rests_lower_right_with_the_fist_on_the_handle() {
+        let a = Animator { hand_height: 1.0, ..Default::default() };
+        let m = a.first_person_item(HandModel::Tool, Vec3::ZERO, 0.0, 0.0);
+        let (_, grip, fist) = hand_rest(HandModel::Tool);
+        assert!(m.transform_point3(grip).distance(fist) < 1e-4);
+        // The tip is above, left of and further away than the handle.
+        let tip = m.transform_point3(Vec3::new(0.45, 0.45, 0.0));
+        assert!(tip.y > fist.y && tip.x < fist.x && tip.z < fist.z);
     }
 }

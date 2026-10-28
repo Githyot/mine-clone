@@ -174,6 +174,11 @@ fn def_of(name: &str) -> Option<usize> {
     WEAPONS.iter().position(|w| w.item == name)
 }
 
+/// A sword swung for its beam (terra blade, night's edge...): held by the hilt like a tool.
+pub(crate) fn is_blade(name: &str) -> bool {
+    def_of(name).is_some_and(|i| matches!(WEAPONS[i].kind, Wk::Beam(_)))
+}
+
 impl Game {
     /// Right click with one of these weapons: say we handle it (the firing is in the update).
     pub(crate) fn tr_weapon_use(&mut self, name: &str) -> Option<bool> {
@@ -617,7 +622,8 @@ impl Game {
                 Fly::Sentry => (1.2, 0.0, 0.0, 0.0),
                 _ => (0.45, s.age * 6.0, 0.0, 0.0),
             };
-            out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [yaw, 1.0, sky, blk], layers: [layer, layer, layer, 0.0], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
+            // Extruded like a held item, so a spinning boomerang has its thickness.
+            out.push(GpuItem { pos: [p.x, p.y, p.z, size], info: [yaw, 2.0, sky, blk], layers: [layer, layer, layer, 0.0], rot: [pitch, roll, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
         }
         out
     }

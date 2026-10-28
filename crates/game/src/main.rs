@@ -2261,6 +2261,8 @@ impl Game {
         let feet = self.body.pos.floor().as_ivec3();
         let pose = self.pose(self.extras.burning > 0.0 || self.world.fluid(self.world.block_or_air(feet)) == 2 || self.world.fluid(self.world.block_or_air(feet + IVec3::Y)) == 2);
         self.anim.update(&pose, dt);
+        let ready = if self.survival { self.attack_charge() } else { 1.0 };
+        self.anim.follow_hand(self.held_stack().map(|s| s.item), ready, dt);
 
         // Water: splash going in, strokes while swimming, drips coming out, bubbles below.
         let in_water = self.body.in_water;
@@ -2347,6 +2349,8 @@ impl Game {
         if attack && self.attack_cd <= 0.0 && ready && self.deflect_shot() {
             self.attack_cd = 0.3;
         }
+        // A fresh click always swings the weapon, at a mob or at the air.
+        let mut swung = false;
         if attack && self.attack_cd <= 0.0 && ready {
             // Plants don't block a swing: the hit goes through grass and flowers to the mob.
             let world = &self.world;
@@ -2358,6 +2362,7 @@ impl Game {
             .map(|t| t.distance)
             .unwrap_or(f32::MAX);
             if self.pvp_swing(block_dist) || self.combat_swing(block_dist) {
+                swung = true;
             } else if let Some((i, t)) = self.mobs.pick(self.body.eye(), self.forward(), self.weapon_reach()) {
                 if t < block_dist {
                     self.attack_cd = if self.survival { 0.1 } else { 0.45 };
@@ -2390,6 +2395,7 @@ impl Game {
                     self.last_hit = Some((def.display_name.clone(), m.health.max(0.0), m.max_health, self.now + 3.0));
                     self.sfx(Sfx::MobHit);
                     self.anim.start_swing();
+                    swung = true;
                     self.pads.rumble(0.3, 0.6, 0.1);
                     if self.survival {
                         self.after_melee(i, dmg);
@@ -2400,10 +2406,13 @@ impl Game {
                 }
             }
         }
-        if attack && self.survival && self.attack_pressed && self.target.is_none() {
-            // A swing at the air still uses up the weapon's readiness.
-            self.surv.attack_t = 0.0;
-            self.anim.start_swing();
+        if attack && self.attack_pressed && !swung && self.target.is_none() {
+            // A swing at the air, in any mode, still uses up the weapon's readiness (and
+            // moves a combo weapon on to its next swing).
+            if self.survival {
+                self.surv.attack_t = 0.0;
+            }
+            self.combat_air_swing();
         }
         self.attack_pressed = false;
         // Survival: hold to dig, with a knock every few moments, like the classic game.
@@ -4603,6 +4612,15 @@ impl Game {
         let (stand_models, stand_held) = self.stand_instances(block, rd + 16.0);
         items.extend(stand_models);
         net_held.extend(stand_held);
+        // Before the arm and the item are placed, so both see the frozen swing.
+        if let Some(k) = self.args.swing {
+            self.anim.swing = k;
+            // MC_SWING_STYLE=0..3: which combo swing the frozen frame shows.
+            if let Some(st) = std::env::var("MC_SWING_STYLE").ok().and_then(|v| v.parse().ok()) {
+                self.anim.swing_style = st;
+            }
+            self.anim.hand_height = 1.0;
+        }
         let mut held_third = None;
         // Drawn but casting no shadow (first-person arm, inventory figure), and the other way
         // round (the body in first person still casts its shadow).
@@ -4648,7 +4666,10 @@ impl Game {
                     overlay.push((pd, arms));
                     overlay.push(inst);
                 } else {
-                    let arm = self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, light[0], light[1]);
+                    let arm = match self.first_person_holding(def, eye, block, light[0], light[1]) {
+                        Some(arm) if self.camera_mode == 0 => arm,
+                        _ => self.anim.first_person_arm(def, eye - block.as_vec3(), self.yaw, self.pitch, light[0], light[1]),
+                    };
                     // Same size against the fist as the other held items in first person.
                     if let Some((t, mesh)) = self.held_torch().and_then(|t| Some((t, self.entities.torch_mesh(t)?))).filter(|_| self.camera_mode == 0) {
                         let pv = def.parts[2].pivot;
@@ -4746,9 +4767,6 @@ impl Game {
         let mut drops = self.drop_instances(block);
         drops.extend(figure_backdrop);
         drops.extend(self.tnt_instances(block));
-        if let Some(k) = self.args.swing {
-            self.anim.swing = k;
-        }
         if !third && self.screen == Screen::Playing && !self.hide_hud && self.camera_mode == 0 {
             drops.extend(self.held_item_instance(eye, block));
         }
