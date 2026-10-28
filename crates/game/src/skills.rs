@@ -391,14 +391,14 @@ impl Game {
             let left = if l >= MAX_LEVEL { "máximo".to_string() } else { format!("{}/{}", xp - xp_for(l), xp_for(l + 1) - xp_for(l)) };
             self.ui.text(right - self.ui.text_width(&left, s), y, &left, GRAY);
             let f = if l >= MAX_LEVEL { 1.0 } else { (xp - xp_for(l)) as f32 / (xp_for(l + 1) - xp_for(l)) as f32 };
-            self.ui.rect(tx, y + 10.0 * s, tw, 3.0 * s, [50, 48, 60, 255]);
-            self.ui.rect(tx, y + 10.0 * s, tw * f, 3.0 * s, if l >= MAX_LEVEL { [240, 200, 80, 255] } else { [110, 190, 255, 255] });
+            self.ui.rect(tx, y + 10.0 * s, tw, 2.0 * s, [50, 48, 60, 255]);
+            self.ui.rect(tx, y + 10.0 * s, tw * f, 2.0 * s, if l >= MAX_LEVEL { [240, 200, 80, 255] } else { [110, 190, 255, 255] });
             let reward = if l == 0 { format!("Nível 1: {}", k.reward(1)) } else { k.reward(l) };
             let mut reward = reward;
             while self.ui.text_width(&reward, s) > tw && reward.chars().count() > 4 {
                 reward.pop();
             }
-            self.ui.text(tx, y + 16.0 * s, &reward, [150, 200, 150, 255]);
+            self.ui.text(tx, y + 14.0 * s, &reward, [150, 200, 150, 255]);
         }
         self.ui.text_centered(w / 2.0, py + ph - 11.0 * s, "Y ou Esc: fechar", GRAY);
     }
