@@ -170,23 +170,16 @@ fn isample(uv: vec2<f32>, layer: i32) -> vec4<f32> {
     return textureSampleLevel(itex2, isamp, uv, layer - 2048, 0.0);
 }
 
-@fragment
-fn fs_item(in: IOut) -> @location(0) vec4<f32> {
-    var c: vec4<f32>;
-    if (in.layer < 2048) {
-        c = textureSampleLevel(itex, isamp, in.uv, in.layer, 0.0);
-    } else {
-        c = textureSampleLevel(itex2, isamp, in.uv, in.layer - 2048, 0.0);
-    }
-    let fr = mat_frame(in.rel, in.uv);
-    if (c.a < 0.3) {
-        discard;
-    }
+// The lit colour of a texel `c` of an item: light, materials (glints and relief) and the
+// enchantment shimmer, then fog. `fr` is taken before any discard (it needs derivatives).
+// `wall`: an extruded item's side wall, whose picture is one pixel stretched (no relief or
+// glints there: they would sparkle).
+fn ishade(c: vec4<f32>, fr: MatFrame, in: IOut, wall: bool) -> vec4<f32> {
     let sky = ilight(in.light.x) * g.fog_color.w;
     let blk = ilight(in.light.y);
     let l = max(max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82)), vec3<f32>(0.08 + in.light.z));
     var rgb = c.rgb * in.shade * l;
-    let mat = select(0u, layer_mat[u32(max(in.layer, 0))], g.mat.x > 0.5 && in.light.z < 0.05);
+    let mat = select(0u, layer_mat[u32(max(in.layer, 0))], g.mat.x > 0.5 && in.light.z < 0.05 && !wall);
     if (mat != 0u) {
         var k = 0.0;
         var hx = 0.0;
@@ -217,6 +210,154 @@ fn fs_item(in: IOut) -> @location(0) vec4<f32> {
     }
     let fog = smoothstep(g.fog.x, g.fog.y, in.dist);
     return vec4<f32>(mix(rgb, g.fog_color.rgb, fog), 1.0);
+}
+
+@fragment
+fn fs_item(in: IOut) -> @location(0) vec4<f32> {
+    let c = isample(in.uv, in.layer);
+    let fr = mat_frame(in.rel, in.uv);
+    if (c.a < 0.3) {
+        discard;
+    }
+    return ishade(c, fr, in, false);
+}
+
+// A flat picture held in a hand, extruded like the classic item models: the picture on its
+// front and back, 1/16 of its width apart, and a side wall along every pixel edge where an
+// opaque pixel meets a clear one. Quads 0 and 1 are the faces; then one plane between every
+// two columns, then one between every two rows. Each plane is drawn whole and the fragment
+// keeps only the stretches where the two pixels beside it differ.
+
+struct EOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+    @location(1) @interpolate(flat) layer: i32,
+    // x: 0 face, 1 plane between columns, 2 plane between rows; y: which column or row.
+    @location(2) @interpolate(flat) edge: vec2<f32>,
+    // Shading facing +axis and -axis (a face uses x).
+    @location(3) @interpolate(flat) shade: vec2<f32>,
+    @location(4) light: vec3<f32>,
+    @location(5) dist: f32,
+    @location(6) @interpolate(flat) glint: vec4<f32>,
+    @location(7) rel: vec3<f32>,
+};
+
+fn iturn(it: Item, v: vec3<f32>) -> vec3<f32> {
+    let cr = cos(it.rot.y);
+    let sr = sin(it.rot.y);
+    var l = vec3<f32>(v.x * cr - v.y * sr, v.x * sr + v.y * cr, v.z);
+    let cp = cos(it.rot.x);
+    let sp = sin(it.rot.x);
+    l = vec3<f32>(l.x, l.y * cp - l.z * sp, l.y * sp + l.z * cp);
+    let cy = cos(it.info.x);
+    let sy = sin(it.info.x);
+    return vec3<f32>(l.x * cy + l.z * sy, l.y, -l.x * sy + l.z * cy);
+}
+
+// The terrain's face shading (top 1, north/south 0.8, east/west 0.6, bottom 0.5), for any
+// direction, so a turning item is lit like the blocks around it.
+fn dir_shade(n: vec3<f32>) -> f32 {
+    return n.x * n.x * 0.6 + n.z * n.z * 0.8 + n.y * n.y * select(0.5, 1.0, n.y > 0.0);
+}
+
+@vertex
+fn vs_extrude(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> EOut {
+    let it = items[ii];
+    // The item texture's width (item_render.rs puts it here for extruded items).
+    let res = u32(it.rot.w);
+    let q = vi / 6u;
+    var sq = array<vec2<f32>, 6>(vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(1.0, 1.0), vec2(0.0, 0.0), vec2(1.0, 1.0), vec2(0.0, 1.0));
+    let s = sq[vi % 6u];
+    let h = 1.0 / 32.0;
+    let r = f32(res);
+    var c: vec3<f32>;
+    var n: vec3<f32>;
+    var o: EOut;
+    if (q < 2u) {
+        let z = select(-h, h, q == 0u);
+        c = vec3<f32>(s.x, s.y, 0.5 + z);
+        n = vec3<f32>(0.0, 0.0, select(-1.0, 1.0, q == 0u));
+        o.edge = vec2<f32>(0.0, 0.0);
+    } else if (q < 3u + res) {
+        let i = f32(q - 2u);
+        c = vec3<f32>(i / r, s.x, 0.5 + mix(-h, h, s.y));
+        n = vec3<f32>(1.0, 0.0, 0.0);
+        o.edge = vec2<f32>(1.0, i);
+    } else {
+        let j = f32(q - 3u - res);
+        c = vec3<f32>(s.x, j / r, 0.5 + mix(-h, h, s.y));
+        n = vec3<f32>(0.0, 1.0, 0.0);
+        o.edge = vec2<f32>(2.0, j);
+    }
+    let world = it.pos.xyz + iturn(it, (c - vec3<f32>(0.5)) * it.pos.w);
+    let wn = normalize(iturn(it, n));
+    o.clip = g.view_proj * vec4<f32>(world, 1.0);
+    o.uv = vec2<f32>(c.x, 1.0 - c.y);
+    o.layer = i32(it.layers.x);
+    o.shade = vec2<f32>(dir_shade(wn), dir_shade(-wn)) + vec2<f32>(it.layers.w);
+    o.light = vec3<f32>(it.info.z, it.info.w, it.layers.w);
+    o.dist = length(world - g.cam_pos.xyz);
+    o.glint = it.bmin;
+    o.rel = world;
+    return o;
+}
+
+// As an item seen whole (fs_item's lighting and materials) with this fragment's shading.
+fn eshade(c: vec4<f32>, fr: MatFrame, e: EOut, shade: f32) -> vec4<f32> {
+    var i: IOut;
+    i.clip = e.clip;
+    i.uv = e.uv;
+    i.layer = e.layer;
+    i.shade = shade;
+    i.light = e.light;
+    i.dist = e.dist;
+    i.glint = e.glint;
+    i.rel = e.rel;
+    return ishade(c, fr, i, e.edge.x > 0.5);
+}
+
+@fragment
+fn fs_extrude(in: EOut) -> @location(0) vec4<f32> {
+    let r = f32(textureDimensions(itex).x);
+    let fr = mat_frame(in.rel, in.uv);
+    if (in.edge.x < 0.5) {
+        let c = isample(in.uv, in.layer);
+        if (c.a < 0.3) {
+            discard;
+        }
+        return eshade(c, fr, in, in.shade.x);
+    }
+    // The pixels on the low side (left / below) and the high side of this plane.
+    let k = in.edge.y;
+    var lo_uv: vec2<f32>;
+    var hi_uv: vec2<f32>;
+    if (in.edge.x < 1.5) {
+        let v = (floor(in.uv.y * r) + 0.5) / r;
+        lo_uv = vec2<f32>((k - 0.5) / r, v);
+        hi_uv = vec2<f32>((k + 0.5) / r, v);
+    } else {
+        let u = (floor(in.uv.x * r) + 0.5) / r;
+        lo_uv = vec2<f32>(u, 1.0 - (k - 0.5) / r);
+        hi_uv = vec2<f32>(u, 1.0 - (k + 0.5) / r);
+    }
+    var lo = vec4<f32>(0.0);
+    var hi = vec4<f32>(0.0);
+    if (k > 0.5) {
+        lo = isample(lo_uv, in.layer);
+    }
+    if (k < r - 0.5) {
+        hi = isample(hi_uv, in.layer);
+    }
+    let lo_on = lo.a >= 0.3;
+    let hi_on = hi.a >= 0.3;
+    if (lo_on == hi_on) {
+        discard;
+    }
+    // The wall belongs to the opaque pixel and faces away from it.
+    if (lo_on) {
+        return eshade(lo, fr, in, in.shade.x);
+    }
+    return eshade(hi, fr, in, in.shade.y);
 }
 
 // The soft glow around items on the ground: a round sprite facing the camera, added on top

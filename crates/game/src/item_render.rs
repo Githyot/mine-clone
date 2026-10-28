@@ -9,7 +9,8 @@ use crate::renderer::Renderer;
 pub struct GpuItem {
     /// xyz: centre relative to the camera's block; w: size in blocks.
     pub pos: [f32; 4],
-    /// yaw, flat (0/1), sky light 0..1, block light 0..1.
+    /// yaw, flat (0 a cube, 1 a flat picture, 2 a picture extruded pixel by pixel), sky light
+    /// 0..1, block light 0..1.
     pub info: [f32; 4],
     /// Texture layers side, top, bottom; glow.
     pub layers: [f32; 4],
@@ -27,6 +28,8 @@ pub struct ItemGpu {
     pipelines: [wgpu::RenderPipeline; 2],
     /// The soft glow around items on the ground: additive, depth-tested but not written.
     halo_pipelines: [wgpu::RenderPipeline; 2],
+    /// Extruded pictures (held items): `vs_extrude`.
+    extrude: [wgpu::RenderPipeline; 2],
     layout: wgpu::BindGroupLayout,
     buf: wgpu::Buffer,
     /// The material class of each texture layer (material.rs).
@@ -36,6 +39,10 @@ pub struct ItemGpu {
     count: u32,
     /// Glows, stored after the `count` items.
     halos: u32,
+    /// The items from here to `count` are extruded (`prepare` puts them last).
+    split: u32,
+    /// Item texture width: the planes between pixel columns and rows.
+    res: u32,
 }
 
 impl ItemGpu {
@@ -72,14 +79,14 @@ impl ItemGpu {
             color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::SrcAlpha, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
             alpha: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::Zero, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
         };
-        let make = |format: wgpu::TextureFormat, halo: bool| {
+        let make = |format: wgpu::TextureFormat, halo: bool, vs: &str, fs: &str| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(if halo { "item glow" } else { "item" }),
                 layout: Some(&pl),
-                vertex: wgpu::VertexState { module: &shader, entry_point: Some(if halo { "vs_halo" } else { "vs_item" }), buffers: &[], compilation_options: Default::default() },
+                vertex: wgpu::VertexState { module: &shader, entry_point: Some(vs), buffers: &[], compilation_options: Default::default() },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
-                    entry_point: Some(if halo { "fs_halo" } else { "fs_item" }),
+                    entry_point: Some(fs),
                     targets: &[Some(wgpu::ColorTargetState { format, blend: halo.then_some(add), write_mask: wgpu::ColorWrites::ALL })],
                     compilation_options: Default::default(),
                 }),
@@ -96,13 +103,14 @@ impl ItemGpu {
                 cache: None,
             })
         };
-        let pipelines = [make(r.config.format, false), make(crate::post::HDR, false)];
-        let halo_pipelines = [make(r.config.format, true), make(crate::post::HDR, true)];
+        let pipelines = [make(r.config.format, false, "vs_item", "fs_item"), make(crate::post::HDR, false, "vs_item", "fs_item")];
+        let halo_pipelines = [make(r.config.format, true, "vs_halo", "fs_halo"), make(crate::post::HDR, true, "vs_halo", "fs_halo")];
+        let extrude = [make(r.config.format, false, "vs_extrude", "fs_extrude"), make(crate::post::HDR, false, "vs_extrude", "fs_extrude")];
         let cap = 64;
         let buf = Self::make_buf(device, cap);
         let mats = Self::make_mats(device, &[crate::material::NONE]);
         let bg = Self::make_bg(device, &layout, &buf, &mats);
-        ItemGpu { pipelines, halo_pipelines, layout, buf, mats, bg, cap, count: 0, halos: 0 }
+        ItemGpu { pipelines, halo_pipelines, extrude, layout, buf, mats, bg, cap, count: 0, halos: 0, split: 0, res: r.texture_size }
     }
 
     fn make_buf(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
@@ -136,9 +144,29 @@ impl ItemGpu {
     pub fn prepare(&mut self, r: &Renderer, data: &[GpuItem], halos: usize) {
         self.halos = halos.min(data.len()) as u32;
         self.count = data.len() as u32 - self.halos;
+        self.split = self.count;
+        self.res = r.texture_size.max(1);
         if data.is_empty() {
             return;
         }
+        let extruded = |i: &GpuItem| i.info[1] > 1.5;
+        let (solid, glows) = data.split_at(self.count as usize);
+        let sorted;
+        let data = if solid.iter().any(extruded) {
+            // The shader's vertex stage can't see the texture: it gets the width in rot.w.
+            let res = self.res as f32;
+            sorted = solid
+                .iter()
+                .filter(|i| !extruded(i))
+                .copied()
+                .chain(solid.iter().filter(|i| extruded(i)).map(|i| GpuItem { rot: [i.rot[0], i.rot[1], i.rot[2], res], ..*i }))
+                .chain(glows.iter().copied())
+                .collect::<Vec<_>>();
+            self.split = sorted[..self.count as usize].iter().position(extruded).unwrap_or(self.count as usize) as u32;
+            &sorted[..]
+        } else {
+            data
+        };
         if data.len() > self.cap {
             self.cap = data.len().next_power_of_two();
             self.buf = Self::make_buf(&r.device, self.cap);
@@ -166,6 +194,13 @@ impl ItemGpu {
         pass.set_pipeline(&self.pipelines[hdr as usize]);
         pass.set_bind_group(1, block_tex, &[]);
         pass.set_bind_group(2, &self.bg, &[]);
-        pass.draw(0..36, 0..self.count);
+        if self.split > 0 {
+            pass.draw(0..36, 0..self.split);
+        }
+        if self.split < self.count {
+            // Two faces and a plane between every two columns and every two rows.
+            pass.set_pipeline(&self.extrude[hdr as usize]);
+            pass.draw(0..6 * (2 + 2 * (self.res + 1)), self.split..self.count);
+        }
     }
 }

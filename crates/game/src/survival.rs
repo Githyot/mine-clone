@@ -2631,20 +2631,43 @@ struct HeldLook {
     layers: [f32; 3],
 }
 
+impl HeldLook {
+    fn model(&self) -> crate::player_model::HandModel {
+        use crate::player_model::HandModel;
+        match self.kind {
+            HeldKind::Tool => HandModel::Tool,
+            HeldKind::Flat => HandModel::Flat,
+            HeldKind::Block => HandModel::Block,
+        }
+    }
+}
+
 impl Game {
-    /// The item in hand in first person: held in the fist of the first-person arm, with the
-    /// same item placement as in third person, so the hand shows gripping it.
+    /// The item in hand in first person, placed like the classic game's hand (see
+    /// `Animator::first_person_item`); the arm grips it (`first_person_holding`).
     pub(crate) fn held_item_instance(&self, eye: Vec3, cam_block: IVec3) -> Option<GpuItem> {
-        let pd = self.mobs.reg.id("player")?;
-        let def = &self.mobs.reg.defs[pd];
-        let bones = self.anim.first_person_arm(def, eye - cam_block.as_vec3(), self.yaw, self.pitch, 0.0, 0.0);
-        let pv = def.parts[2].pivot;
+        if self.anim.hands_busy() {
+            return None;
+        }
+        let look = self.held_look()?;
+        let place = self.anim.first_person_item(look.model(), eye - cam_block.as_vec3(), self.yaw, self.pitch);
         let l = self.world.light(eye.floor().as_ivec3());
         let eat = if self.surv.eat > 0.0 { (self.surv.eat * 14.0).sin().abs() * 0.04 } else { 0.0 };
         // The food gets smaller as it is eaten.
         let left = 1.0 - 0.45 * (self.surv.eat / 1.6).clamp(0.0, 1.0);
-        // So close to the eye the item would fill the screen at its third-person size.
-        self.held_in_fist(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 0.6 * left, l, Vec3::Y * eat)
+        self.held_gpu_item(place * glam::Mat4::from_scale(Vec3::splat(left)), 1.0, look, l, Vec3::Y * eat)
+    }
+
+    /// The first-person arm with its fist around the held item, when the item is drawn as
+    /// one (not an instrument or a torch, which have their own hold).
+    pub(crate) fn first_person_holding(&self, def: &voxel::mob::MobDef, eye: Vec3, cam_block: IVec3, sky: f32, blk: f32) -> Option<crate::entity::Bones> {
+        if self.anim.hands_busy() {
+            return None;
+        }
+        let look = self.held_look()?;
+        let e = eye - cam_block.as_vec3();
+        let place = self.anim.first_person_item(look.model(), e, self.yaw, self.pitch);
+        Some(self.anim.first_person_arm_holding(def, place, look.model(), e, self.yaw, self.pitch, sky, blk))
     }
 
     /// Skeletons' bows and the arrows in flight or stuck in blocks.
@@ -2756,7 +2779,7 @@ impl Game {
             // So are shields (shield.rs).
             return None;
         }
-        let tool = it.tool.is_some() || it.name.ends_with("_sword") || matches!(it.name.as_str(), "stick" | "blaze_rod" | "breeze_rod" | "bone" | "mace" | "trident") || it.name.ends_with("_rod");
+        let tool = it.tool.is_some() || it.name.ends_with("_sword") || matches!(it.name.as_str(), "stick" | "blaze_rod" | "breeze_rod" | "bone" | "mace" | "trident") || it.name.ends_with("_rod") || crate::tr_weapons::is_blade(&it.name);
         Some(match it.look {
             Look::Block(b) => {
                 let bl = self.reg.get(b);
@@ -2785,7 +2808,8 @@ impl Game {
         let blk = ((l & 15) as f32 / 15.0).max(self.hand_light_level());
         Some(GpuItem {
             pos: [p.x, p.y, p.z, size],
-            info: [yaw, if look.flat { 1.0 } else { 0.0 }, (l >> 4) as f32 / 15.0, blk],
+            // Flat pictures in a hand are extruded pixel by pixel (item_render.rs).
+            info: [yaw, if look.flat { 2.0 } else { 0.0 }, (l >> 4) as f32 / 15.0, blk],
             layers: [look.layers[0], look.layers[1], look.layers[2], 0.0],
             rot: [pitch, roll, 0.0, 0.0],
             ..bytemuck::Zeroable::zeroed()
