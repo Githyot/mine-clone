@@ -80,6 +80,8 @@ mod tr_comfort;
 mod tr_minis;
 mod tr_journey;
 mod tr_weapons;
+#[cfg(test)]
+mod balance;
 mod tr_world;
 mod glyphs;
 mod hardmode;
