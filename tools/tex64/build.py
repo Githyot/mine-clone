@@ -15,6 +15,8 @@ How it works (safe to re-run any time; output is deterministic):
    tints, distant terrain colours and the map keep working the same.
 4. The 64x64 result is written back to packs/vanilla/textures/{block,item}/.
 
+5. Items are then turned into chunky pixel art (pixel.py: 32x32 pixels grown to 64x64).
+
 Mob skins, armour and the interface are built by entities.py and gui.py (also called from here).
 """
 
@@ -105,6 +107,10 @@ def make(job):
     else:
         return kind, name, "missing"
     assert img.shape == (64, 64, 4), (name, img.shape)
+    if kind == "item":
+        # Items are real pixel art: big square pixels, a small palette, a crisp outline (pixel.py).
+        from pixel import pixelate
+        img = pixelate(img)
     save(img, os.path.join(PACK, kind, name + ".png"))
     return kind, name, how
 
