@@ -447,6 +447,7 @@ impl Game {
                 Open::Chest(p) if self.screen == Screen::Inventory => Some(p.to_array()),
                 _ => None,
             },
+            shield: crate::shield::net_pack(&self.shields_worn(), self.extras.blocking),
         }
     }
 
@@ -1989,7 +1990,7 @@ impl Game {
         let dt = self.frame_times.last().copied().unwrap_or(0.016).min(0.1);
         let ids: Vec<u32> = self.net.remotes.keys().copied().collect();
         for id in ids {
-            let (pose, swing, armor, item) = {
+            let (pose, swing, armor, item, shield) = {
                 let r = &self.net.remotes[&id];
                 let s = &r.state;
                 if s.dim != my_dim || s.has(flags::HIDDEN) || (r.shown - self.body.pos).length() > 160.0 {
@@ -2014,7 +2015,12 @@ impl Game {
                     torch: crate::torch::index(&s.held).is_some(),
                     ..Default::default()
                 };
-                (pose, s.swing, s.armor.clone(), s.held.clone())
+                let shield = crate::shield::net_unpack(s.shield);
+                let pose = match shield {
+                    Some((_, crate::shield::Mount::Hand { left }, true)) => player_model::Pose { shield_up: 1.0, shield_left: left, ..pose },
+                    _ => pose,
+                };
+                (pose, s.swing, s.armor.clone(), s.held.clone(), shield)
             };
             let l = self.world.light((pose.pos + Vec3::Y).floor().as_ivec3());
             let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
@@ -2035,6 +2041,10 @@ impl Game {
                         models.push((m, bones));
                     }
                 }
+            }
+            // Their shield (shield.rs): only the first one shown travels.
+            if let Some((look, mount, up)) = shield {
+                models.extend(self.shield_instances(&[(look, mount)], &bones, Game::arm_pivots(def), if up { 1.0 } else { 0.0 }));
             }
             models.push((pd, bones));
             // A torch is a 3D model with its flame (torch.rs).
