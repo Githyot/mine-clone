@@ -11,9 +11,10 @@ struct Item {
     // x: pitch, y: roll (a held item tilts with the camera), z: a block part's quarter turns,
     // w: 1 for a chest's parts (its inner faces are dark).
     rot: vec4<f32>,
-    // A part of a block (a swinging door, a chest lid) when piv.w is 1: corners in the block's
-    // 0..1 frame, and the pivot inside the block that pos stands for. On a whole item, bmin is
-    // the enchantment shimmer instead: rgb its colour, w its strength (0 = none).
+    // A part of a block (a swinging door, a chest lid) when piv.w is 1 (2: its side faces'
+    // pictures mirrored, a left-hinged door): corners in the block's 0..1 frame, and the pivot
+    // inside the block that pos stands for. On a whole item, bmin is the enchantment shimmer
+    // instead: rgb its colour, w its strength (0 = none).
     bmin: vec4<f32>,
     bmax: vec4<f32>,
     piv: vec4<f32>,
@@ -104,6 +105,9 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
                 case 3u: { o.uv = vec2<f32>(t.x, 1.0 - t.z); }
                 case 4u: { o.uv = vec2<f32>(t.x, 1.0 - t.y); }
                 default: { o.uv = vec2<f32>(1.0 - t.x, 1.0 - t.y); }
+            }
+            if (it.piv.w > 1.5 && wf != 2u && wf != 3u) {
+                o.uv.x = 1.0 - o.uv.x;
             }
         } else {
             switch face {

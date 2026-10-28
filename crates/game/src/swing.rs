@@ -172,6 +172,7 @@ impl Game {
             let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
             let front = if s.lid.is_some() { bl.faces[4] as f32 } else { 0.0 };
             let turn = -(facing as f32) * FRAC_PI_2;
+            let mirror = s.lid.is_none() && bl.shape == Shape::Door && bl.variant & voxel::shapes::DOOR_HINGE_LEFT != 0;
             let centre = s.pos.as_vec3() + Vec3::splat(0.5) - cam_block.as_vec3();
             for p in parts {
                 let piv = p.pivot / 16.0;
@@ -188,7 +189,8 @@ impl Game {
                     rot: [p.pitch, 0.0, facing as f32, if s.lid.is_some() { 1.0 } else { 0.0 }],
                     bmin: [p.b[0] / 16.0, p.b[1] / 16.0, p.b[2] / 16.0, 0.0],
                     bmax: [p.b[3] / 16.0, p.b[4] / 16.0, p.b[5] / 16.0, front],
-                    piv: [piv.x, piv.y, piv.z, 1.0],
+                    // 2: a left-hinged door, its picture mirrored like the terrain draws it.
+                    piv: [piv.x, piv.y, piv.z, if mirror { 2.0 } else { 1.0 }],
                 });
             }
             if s.lid.is_some() {
@@ -359,8 +361,11 @@ impl Game {
 fn parts_of(shape: Shape, variant: u8, a: f32) -> Vec<Part> {
     let still = |b: [f32; 6]| Part { b, pivot: Vec3::splat(8.0), yaw: 0.0, pitch: 0.0 };
     match shape {
-        // Hinged at the east edge of its north side.
-        Shape::Door => vec![Part { b: [0.0, 0.0, 0.0, 16.0, 16.0, 3.0], pivot: Vec3::new(14.5, 8.0, 1.5), yaw: a, pitch: 0.0 }],
+        // Hinged at the east edge of its north side, or the west edge for a left hinge.
+        Shape::Door => {
+            let (x, yaw) = if variant & voxel::shapes::DOOR_HINGE_LEFT != 0 { (1.5, -a) } else { (14.5, a) };
+            vec![Part { b: [0.0, 0.0, 0.0, 16.0, 16.0, 3.0], pivot: Vec3::new(x, 8.0, 1.5), yaw, pitch: 0.0 }]
+        }
         // Hinged along the south edge, swinging up (or down from the top half).
         Shape::Trapdoor => {
             if variant & 8 != 0 {
