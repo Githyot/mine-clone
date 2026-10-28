@@ -323,6 +323,8 @@ pub struct Mob {
     /// Summoned by an item (pets and Terraria mounts): nothing can hurt or hit it, it hunts
     /// nothing and the game moves it.
     pub ghost: bool,
+    /// On show in the test world: stands where it was put, no AI (like a NoAI tag).
+    pub still: bool,
 }
 
 static NEXT_NET_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
@@ -387,6 +389,7 @@ impl Mob {
             net_id: NEXT_NET_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             size: 1.0,
             ghost: false,
+            still: false,
         }
     }
 
@@ -451,6 +454,12 @@ impl Mob {
             self.dead_age += dt;
             // Keep falling while the death animation plays.
             self.body.step(world, &Input::default(), dt);
+            return;
+        }
+        if self.still {
+            self.on_fire = 0.0;
+            self.debuffs.clear();
+            self.body.vel = Vec3::ZERO;
             return;
         }
         if self.ghost {

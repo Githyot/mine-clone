@@ -19,6 +19,8 @@ pub struct Mobs {
     seed: u64,
     grass: BlockId,
     pub enabled: bool,
+    /// Mobs come by themselves (off in the test world).
+    pub spawning: bool,
     /// Arrows in flight or stuck in blocks.
     pub arrows: Vec<Arrow>,
     /// Peaceful difficulty: no monsters at all.
@@ -105,7 +107,7 @@ impl Mobs {
     }
 
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, peaceful: false, calm: false, hp_scale: 1.0, spawn_mult: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false, anim: Default::default() }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, spawning: true, peaceful: false, calm: false, hp_scale: 1.0, spawn_mult: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false, anim: Default::default() }
     }
 
     fn next_rand(&mut self) -> u64 {
@@ -315,7 +317,7 @@ impl Mobs {
             self.list.retain(|m| reg.defs[m.def].kind != Kind::Hostile);
         }
         self.spawn_cd -= dt;
-        if self.spawn_cd <= 0.0 {
+        if self.spawn_cd <= 0.0 && self.spawning {
             self.spawn_cd = 1.0 / self.spawn_mult.clamp(0.25, 4.0);
             self.natural_spawn(world, player, daylight);
             for k in 0..self.others.len() {
@@ -438,7 +440,7 @@ impl Mobs {
             let reach = if keep { DESPAWN_DIST + 48.0 } else { DESPAWN_DIST };
             let far = (m.body.pos - player).length() > reach && !reg.defs[m.def].town && others.iter().all(|(p, _)| (m.body.pos - *p).length() > reach);
             let fell = m.body.pos.y < voxel::chunk::MIN_Y as f32 - 64.0;
-            !(gone || far || fell)
+            !(gone || (far && !m.still) || fell)
         });
         out
     }
@@ -517,3 +519,4 @@ pub fn registry_for_tests() -> voxel::mob::MobRegistry {
     let text = crate::terraria::with_extra(&crate::merge_list(embedded::MOBS_RON, embedded::FASE6_MOBS_RON), embedded::T5_MOBS_RON);
     voxel::mob::MobRegistry::from_ron_many(&[&text, embedded::MODS_MOBS_RON, embedded::MODS_DIMS_MOBS_RON]).unwrap()
 }
+

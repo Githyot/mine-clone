@@ -37,6 +37,13 @@ pub struct Dropped {
     pub spin_rest: f32,
 }
 
+/// What `drop_instances` needs of a drop.
+struct Shown {
+    stack: ItemStack,
+    spin: f32,
+    spin_rest: f32,
+}
+
 pub struct Orb {
     pub pos: Vec3,
     pub vel: Vec3,
@@ -1704,15 +1711,21 @@ impl Game {
         let orb_layer = (self.item_base as usize + self.items.textures.len()) as f32;
         let hand = self.hand_light_level();
         let eye = self.body.eye();
-        for d in &self.surv.drops {
-            let it = self.items.get(d.stack.item);
+        // The drops, then the things lying on show in the test world (testworld.rs).
+        let shown = self.test_ground_near(c);
+        let all = self.surv.drops.iter().map(|d| {
             // Lying flat once landed (Item Drops style), or the classic floating spin.
             let lying = self.settings.flat_drops && (d.body.on_ground || d.body.vel.length_squared() < 0.01) && !d.body.in_water;
-            let bob = if lying { 0.0 } else { (d.age * 2.5).sin() * 0.06 + 0.18 };
-            let p = d.body.pos + Vec3::Y * bob - c;
-            let l = self.world.light((d.body.pos + Vec3::Y * 0.2).floor().as_ivec3());
+            (d.body.pos, d.stack, lying, d.age, d.spin, d.spin_rest)
+        });
+        for (pos, stack, lying, age, spin, spin_rest) in all.chain(shown.into_iter().map(|(p, st, yaw)| (p, st, true, 0.0, yaw, yaw))) {
+            let d = Shown { stack, spin, spin_rest };
+            let it = self.items.get(d.stack.item);
+            let bob = if lying { 0.0 } else { (age * 2.5).sin() * 0.06 + 0.18 };
+            let p = pos + Vec3::Y * bob - c;
+            let l = self.world.light((pos + Vec3::Y * 0.2).floor().as_ivec3());
             let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
-            let blk = blk.max(hand - (d.body.pos - eye).length() / 15.0);
+            let blk = blk.max(hand - (pos - eye).length() / 15.0);
             let (flat, layers, mut size) = match it.look {
                 Look::Block(b) => {
                     let bl = self.reg.get(b);
