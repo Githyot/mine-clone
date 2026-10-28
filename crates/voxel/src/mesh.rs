@@ -772,6 +772,9 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     let piston = matches!(shape, Shape::Piston | Shape::PistonHead | Shape::Oriented);
                     let pdir = crate::shapes::dir6_of(t.variant[idu]);
                     let facing = crate::shapes::facing_of(t.variant[idu]);
+                    // A door hinged on the left shows its picture mirrored, the handle on the
+                    // other side.
+                    let mirror = shape == Shape::Door && t.variant[idu] & crate::shapes::DOOR_HINGE_LEFT != 0;
                     for (bi, b) in boxes.iter().enumerate() {
                         let part = parts && bi > 0;
                         let (lo, hi) = ([b[0] as u32, b[1] as u32, b[2] as u32], [b[3] as u32, b[4] as u32, b[5] as u32]);
@@ -844,6 +847,8 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                                     uv = piston_side_uv(f, q, pdir);
                                 } else if f == 2 && matches!(shape, Shape::Repeater | Shape::Comparator) {
                                     uv = turn_uv([q[0], q[2]], facing);
+                                } else if mirror && f != 2 && f != 3 {
+                                    uv[0] = 16 - uv[0];
                                 }
                                 out.solid.push(pack([base[0] + q[0], base[1] + q[1], base[2] + q[2]], 3, uv, layer, f as u32, ctm, sky, blk, tint(f)));
                             }

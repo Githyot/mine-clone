@@ -4,6 +4,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod ambient;
+mod doors;
 mod companions;
 mod options;
 mod sentries;
@@ -1819,6 +1820,9 @@ impl Game {
                 if std::env::var("MC_SHADOWS").is_ok() {
                     self.build_shadow_test();
                 }
+                if std::env::var("MC_DOORS").is_ok() {
+                    self.build_door_test();
+                }
                 if self.args.shapes {
                     self.build_shapes();
                 }
@@ -3241,9 +3245,11 @@ impl Game {
             if self.world.block_or_air(above) != AIR || self.body.intersects_block(above) {
                 return None;
             }
+            let v = v | self.door_hinge(pos, v, at);
             let (lower, top) = (self.variant_id(id, v), self.variant_id(id, v | 8));
             if self.world.set_block(pos, lower) {
                 self.world.set_block(above, top);
+                self.pair_doors(pos);
                 return self.placed(pos, id);
             }
             return None;
@@ -3303,6 +3309,7 @@ impl Game {
                 let ov = self.variant_id(base, v ^ 8);
                 self.world.set_block(other, ov);
             }
+            self.door_follow(hit.block);
         }
         self.anim.start_swing();
         self.sfx(Sfx::Place(Material::Wood));
@@ -3381,6 +3388,11 @@ impl Game {
         put(w, -4, 1, 9, "oak_door:10");
         put(w, -2, 0, 9, "oak_door:6");
         put(w, -2, 1, 9, "oak_door:14");
+        // A double door, open: hinged on the outside, swinging apart.
+        put(w, -6, 0, 9, "oak_door:22");
+        put(w, -6, 1, 9, "oak_door:30");
+        put(w, -5, 0, 9, "oak_door:6");
+        put(w, -5, 1, 9, "oak_door:14");
         put(w, 0, 0, 9, "oak_trapdoor");
         put(w, 1, 0, 9, "oak_trapdoor:8");
         put(w, 2, 0, 9, "oak_trapdoor:6");

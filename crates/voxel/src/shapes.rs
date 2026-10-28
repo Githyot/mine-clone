@@ -14,7 +14,9 @@ pub fn variant_count(shape: Shape) -> u8 {
     match shape {
         Shape::Slab => 3,
         Shape::Stairs | Shape::Layer | Shape::Roof => 8,
-        Shape::Door | Shape::Trapdoor => 16,
+        // Doors: facing | open 4 | upper half 8 | hinge on the left 16.
+        Shape::Door => 32,
+        Shape::Trapdoor => 16,
         // Fence gates: facing | open 4.
         Shape::FenceGate => 8,
         // Wire: power 0..15. Lever and button: facing | on 4 | on a wall 8. Repeater: facing |
@@ -58,6 +60,11 @@ pub fn liquid_height(variant: u8) -> u32 {
 pub fn facing_of(variant: u8) -> u8 {
     variant & 3
 }
+
+/// A door's variant bit for a hinge on the left (seen by the player who placed it); without it
+/// the hinge is on the right. Two doors side by side with their hinges on the outside make a
+/// double door.
+pub const DOOR_HINGE_LEFT: u8 = 16;
 
 /// The six ways a piston faces: north, east, south, west, up, down (low three bits).
 pub const DIRS6: [[i32; 3]; 6] = [[0, 0, -1], [1, 0, 0], [0, 0, 1], [-1, 0, 0], [0, 1, 0], [0, -1, 0]];
@@ -188,8 +195,14 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
         }
         Shape::Door => {
             let open = variant & 4 != 0;
-            // Closed it sits on the side the player faced; open it swings against its hinge.
-            let b = if open { [13, 0, 0, 16, 16, 16] } else { [0, 0, 0, 16, 16, 3] };
+            // Closed it sits on the side the player faced; open it swings against its hinge,
+            // on the right as you place it, or the left with DOOR_HINGE_LEFT.
+            let left = variant & DOOR_HINGE_LEFT != 0;
+            let b = match (open, left) {
+                (false, _) => [0, 0, 0, 16, 16, 3],
+                (true, false) => [13, 0, 0, 16, 16, 16],
+                (true, true) => [0, 0, 0, 3, 16, 16],
+            };
             out.push(rotate(b, f));
         }
         Shape::FenceGate => {

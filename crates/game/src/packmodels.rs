@@ -123,7 +123,11 @@ pub(crate) fn load(reg: &BlockRegistry, base: &Path, enabled: &[String]) -> Pack
         let has = |p: &str| files.iter().any(|f| f == p);
         for (id, b) in reg.blocks.iter().enumerate() {
             let id = id as BlockId;
-            if b.variant != 0 || done.contains(&id) || matches!(b.shape, Shape::Liquid | Shape::Invisible) || b.name == "air" {
+            // Doors, trapdoors, gates and stairs turn and open through their variants: one
+            // model on the base id would draw only that one (a closed north door as the pack's
+            // first state, open and facing east) differently from all the others.
+            let turns = matches!(b.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate | Shape::Stairs);
+            if b.variant != 0 || turns || done.contains(&id) || matches!(b.shape, Shape::Liquid | Shape::Invisible) || b.name == "air" {
                 continue;
             }
             let mut model = None;
