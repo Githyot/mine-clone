@@ -135,6 +135,7 @@ impl Game {
         self.boss = crate::bosses::BossState::new(level.as_ref().map(|l| l.bosses.clone()).unwrap_or_default());
         self.town = crate::npcs::Town::new(level.as_ref().map(|l| l.npcs.iter().map(|(n, h)| crate::npcs::NpcSave { name: n.clone(), home: *h }).collect()).unwrap_or_default());
         self.t5 = crate::terraria::Terraria::default();
+        self.elements = Default::default();
         if let Some(l) = &level {
             self.body.pos = Vec3::from(l.player_pos);
             self.body.flying = l.flying;

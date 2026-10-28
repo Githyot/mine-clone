@@ -357,7 +357,13 @@ impl Game {
                 "ignite" => {
                     for &m in &mobs {
                         self.hurt_mob(m, 1.0, caster, 0);
-                        self.mobs.list[m].on_fire = self.mobs.list[m].on_fire.max(5.0 * (1.0 + aug.ext));
+                        let mob = &mut self.mobs.list[m];
+                        if mob.wet <= 0.0 && mob.on_fire > 0.0 {
+                            mob.on_fire = mob.on_fire.max(5.0 * (1.0 + aug.ext));
+                        }
+                    }
+                    if !matches!(target, Target::Mob(_) | Target::Player) {
+                        self.element_hit(at, crate::elements::El::Fire, radius.max(1.0), 1.0 + aug.amp);
                     }
                 }
                 "freeze" => {
@@ -467,24 +473,9 @@ impl Game {
         self.sfx(Sfx::SpellHit(3));
     }
 
+    /// Water freezes over and lava crusts, both for a while (elements.rs).
     fn freeze_around(&mut self, b: IVec3, r: i32) {
-        let water = self.reg.id_or_air("water");
-        let lava = self.reg.id_or_air("lava");
-        let (ice, obsidian) = (self.reg.id_or_air("ice"), self.reg.id_or_air("obsidian"));
-        for dx in -r..=r {
-            for dz in -r..=r {
-                for dy in -1..=1 {
-                    let p = b + IVec3::new(dx, dy, dz);
-                    let id = self.world.block_or_air(p);
-                    // Any water level freezes; still lava cools to obsidian.
-                    if self.reg.get(id).base == water || id == water {
-                        self.world.set_block(p, ice);
-                    } else if id == lava {
-                        self.world.set_block(p, obsidian);
-                    }
-                }
-            }
-        }
+        self.element_hit(b.as_vec3() + Vec3::splat(0.5), crate::elements::El::Frost, r as f32 + 0.5, 1.5);
     }
 
     /// Break blocks with a spell: as hard as a pickaxe of `tier` can take.

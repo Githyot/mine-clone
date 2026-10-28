@@ -61,6 +61,11 @@ impl Farm {
         f
     }
 
+    /// The crop's next stage (AIR when it is fully grown).
+    pub fn next_stage(&self, id: BlockId) -> BlockId {
+        self.next.get(id as usize).copied().unwrap_or(AIR)
+    }
+
     pub fn is_crop(&self, id: BlockId) -> bool {
         self.first.get(id as usize).is_some_and(|&b| b != AIR)
     }

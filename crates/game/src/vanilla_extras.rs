@@ -171,8 +171,13 @@ impl Extras {
         id != AIR && (id == self.kelp || id == self.bamboo || self.berries[..3].contains(&id))
     }
 
-    fn is_fire(&self, id: BlockId) -> bool {
+    pub(crate) fn is_fire(&self, id: BlockId) -> bool {
         id != AIR && (id == self.fire || id == self.soul_fire)
+    }
+
+    /// Can fire eat this block (wood, leaves, wool, grass...)?
+    pub(crate) fn is_flammable(&self, id: BlockId) -> bool {
+        self.flammable.get(id as usize).copied().unwrap_or(false)
     }
 }
 
@@ -783,7 +788,7 @@ impl Game {
         }
     }
 
-    fn update_fire(&mut self, dt: f32) {
+    pub(crate) fn update_fire(&mut self, dt: f32) {
         // Standing in fire sets you burning; water puts it out.
         let feet = self.body.pos.floor().as_ivec3();
         let touching = [feet, feet + IVec3::Y].iter().any(|&p| self.extras.is_fire(self.world.block_or_air(p)));
