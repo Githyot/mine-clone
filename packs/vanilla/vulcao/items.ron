@@ -1,0 +1,12 @@
+// The volcanoes' items. Made by tools/gen_vulcao.py.
+(items: [
+    (name: "sulfur", display_name: Some("Enxofre")),
+    (name: "salamander_scale", display_name: Some("Escama de Salamandra")),
+    (name: "salamander_cloak", display_name: Some("Capa de Salamandra"), max_stack: Some(1)),
+    (name: "obsidian_idol", display_name: Some("Ídolo de Obsidiana"), max_stack: Some(16)),
+    (name: "magma_heart", display_name: Some("Coração de Magma"), max_stack: Some(1)),
+    (name: "volcanic_hammer", display_name: Some("Martelo Vulcânico"), tool: Some((kind: Pickaxe, tier: 4, speed: 9.0, damage: 9.0, durability: 1800))),
+    (name: "magma_salamander_spawn_egg", display_name: Some("Ovo de Salamandra de Magma"), texture: Some("magma_salamander_spawn_egg")),
+    (name: "basalt_golem_spawn_egg", display_name: Some("Ovo de Golem de Basalto"), texture: Some("basalt_golem_spawn_egg")),
+    (name: "ember_wisp_spawn_egg", display_name: Some("Ovo de Fagulha"), texture: Some("ember_wisp_spawn_egg")),
+])

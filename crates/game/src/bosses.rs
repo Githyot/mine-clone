@@ -236,6 +236,7 @@ impl Game {
         }
         self.t5_boss_defeated(name);
         self.nether_end_boss_defeated(name);
+        self.vulcao_boss_defeated(name);
         self.sfx(Sfx::Thunder(0.3));
     }
 

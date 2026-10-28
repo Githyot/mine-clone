@@ -57,7 +57,7 @@ const SUMMONS: &[(&str, &str, &str)] = &[
 
 /// Bosses whose whole fight is in this file (bosses.rs leaves them alone).
 pub fn own_ai(name: &str) -> bool {
-    matches!(name, "deep_worm" | "mech_worm" | "mech_eye" | "bone_king" | "mech_skull" | "celestial_herald") || crate::tr_bosses::own_ai(name)
+    matches!(name, "deep_worm" | "mech_worm" | "mech_eye" | "bone_king" | "mech_skull" | "celestial_herald") || crate::tr_bosses::own_ai(name) || crate::vulcao::own_ai(name)
 }
 
 fn is_worm_head(name: &str) -> bool {

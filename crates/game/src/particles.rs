@@ -117,7 +117,14 @@ impl Particles {
 
     fn push(&mut self, p: Particle) {
         if self.list.len() >= MAX {
-            self.list.swap_remove(0);
+            // Make room by dropping the one closest to its end, not whichever sits first.
+            let mut worst = 0;
+            for (i, q) in self.list.iter().enumerate() {
+                if q.life < self.list[worst].life {
+                    worst = i;
+                }
+            }
+            self.list.swap_remove(worst);
         }
         self.list.push(p);
     }

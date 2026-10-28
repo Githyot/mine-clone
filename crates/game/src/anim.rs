@@ -607,6 +607,10 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
     // World placement.
     let rel = mob.body.pos - cam_block.as_vec3();
     let mut model = Mat4::from_translation(rel) * Mat4::from_rotation_y(mob.yaw);
+    if mob.roll != 0.0 {
+        let mid = Vec3::Y * def.height * 0.5;
+        model = model * Mat4::from_translation(mid) * Mat4::from_rotation_x(mob.roll) * Mat4::from_translation(-mid);
+    }
     if !alive {
         // The knees give, then it topples sideways and settles with a little bounce.
         let d = (mob.dead_age / DEATH_TIME).clamp(0.0, 1.0);
@@ -1098,7 +1102,7 @@ mod tests {
     use super::*;
 
     fn defs() -> Vec<MobDef> {
-        let texts: Vec<String> = ["mobs.ron", "mods/mobs.ron", "etapa5/mobs.ron", "fase6/mobs.ron", "tr/mobs.ron", "aguas/mobs.ron"]
+        let texts: Vec<String> = ["mobs.ron", "mods/mobs.ron", "etapa5/mobs.ron", "fase6/mobs.ron", "tr/mobs.ron", "aguas/mobs.ron", "vulcao/mobs.ron"]
             .iter()
             .filter_map(|f| std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/vanilla").join(f)).ok())
             .collect();
