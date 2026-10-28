@@ -267,6 +267,10 @@ impl Generator {
         let mut out = Vec::new();
         let structs = self.structures();
         let hits = |p: &Placement, f: IVec2| p.origin.x <= pos.x * 16 + 15 && p.origin.x + f.x > pos.x * 16 && p.origin.z <= pos.y * 16 + 15 && p.origin.z + f.y > pos.y * 16;
+        if let Some(sc) = &self.showcase {
+            // The test world: one of each, where the game set them out.
+            return sc.buildings.iter().filter(|p| hits(p, structs.list[p.index].footprint(p.turns))).copied().collect();
+        }
         let side = structs.max_side;
         for (si, s) in structs.list.iter().enumerate() {
             if s.def.piece_only {
@@ -363,6 +367,9 @@ impl Generator {
     }
 
     fn try_place(&self, si: usize, s: &Structure, rx: i32, rz: i32, r: i32) -> Option<Placement> {
+        if self.showcase.is_some() {
+            return None;
+        }
         let mut rng = Rng::for_pos(self.seed, rx, rz, 7000 + si as u64);
         if rng.f32() >= s.def.chance {
             return None;
@@ -512,6 +519,10 @@ impl Generator {
     pub fn props_near(&self, x: i32, z: i32, range: i32) -> Vec<Prop> {
         let structs = self.structures();
         let mut out = Vec::new();
+        let mut found: Vec<Placement> = Vec::new();
+        if let Some(sc) = &self.showcase {
+            found = sc.buildings.clone();
+        }
         for (si, s) in structs.list.iter().enumerate() {
             if s.def.props.is_empty() || s.def.piece_only {
                 continue;
@@ -519,24 +530,29 @@ impl Generator {
             let r = s.def.spacing.max(2) * 16 * self.spread / 100;
             for rz in (z - range).div_euclid(r)..=(z + range).div_euclid(r) {
                 for rx in (x - range).div_euclid(r)..=(x + range).div_euclid(r) {
-                    let Some(p) = self.try_place(si, s, rx, rz, r) else { continue };
-                    for (k, d) in s.def.props.iter().enumerate() {
-                        // Turn the plan point and the facing the way the building was turned:
-                        // each quarter turn maps (u, v) on a w by d plan to (d - v, u).
-                        let (mut u, mut v) = (d.at.0, d.at.2);
-                        let (mut fx, mut fz) = (d.yaw.to_radians().sin(), d.yaw.to_radians().cos());
-                        let (mut w, mut dd) = (s.size.x as f32, s.size.z as f32);
-                        for _ in 0..p.turns {
-                            (u, v) = (dd - v, u);
-                            (fx, fz) = (-fz, fx);
-                            (w, dd) = (dd, w);
-                        }
-                        let _ = w;
-                        let pos = Vec3::new(p.origin.x as f32 + u, p.origin.y as f32 + d.at.1, p.origin.z as f32 + v);
-                        if (pos.x - x as f32).abs() <= range as f32 && (pos.z - z as f32).abs() <= range as f32 {
-                            out.push(Prop { kind: d.kind.clone(), pos, yaw: fx.atan2(fz), key: (p.origin, k) });
-                        }
+                    if let Some(p) = self.try_place(si, s, rx, rz, r) {
+                        found.push(p);
                     }
+                }
+            }
+        }
+        for p in found {
+            let s = &structs.list[p.index];
+            for (k, d) in s.def.props.iter().enumerate() {
+                // Turn the plan point and the facing the way the building was turned:
+                // each quarter turn maps (u, v) on a w by d plan to (d - v, u).
+                let (mut u, mut v) = (d.at.0, d.at.2);
+                let (mut fx, mut fz) = (d.yaw.to_radians().sin(), d.yaw.to_radians().cos());
+                let (mut w, mut dd) = (s.size.x as f32, s.size.z as f32);
+                for _ in 0..p.turns {
+                    (u, v) = (dd - v, u);
+                    (fx, fz) = (-fz, fx);
+                    (w, dd) = (dd, w);
+                }
+                let _ = w;
+                let pos = Vec3::new(p.origin.x as f32 + u, p.origin.y as f32 + d.at.1, p.origin.z as f32 + v);
+                if (pos.x - x as f32).abs() <= range as f32 && (pos.z - z as f32).abs() <= range as f32 {
+                    out.push(Prop { kind: d.kind.clone(), pos, yaw: fx.atan2(fz), key: (p.origin, k) });
                 }
             }
         }

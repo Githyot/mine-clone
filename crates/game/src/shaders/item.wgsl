@@ -11,9 +11,10 @@ struct Item {
     // x: pitch, y: roll (a held item tilts with the camera), z: a block part's quarter turns,
     // w: the top of open storage's dark inside (0 for none; bmin.w is its floor).
     rot: vec4<f32>,
-    // A part of a block (a swinging door, a chest lid) when piv.w is 1 (2: a box inside a box): corners in the block's
-    // 0..1 frame, and the pivot inside the block that pos stands for. On a whole item, bmin is
-    // the enchantment shimmer instead: rgb its colour, w its strength (0 = none).
+    // A part of a block (a swinging door, a chest lid) when piv.w is 1 (2: its side faces'
+    // pictures mirrored, a left-hinged door; 3: a box inside a box, a drawer): corners in the
+    // block's 0..1 frame, and the pivot inside the block that pos stands for. On a whole item,
+    // bmin is the enchantment shimmer instead: rgb its colour, w its strength (0 = none).
     bmin: vec4<f32>,
     bmax: vec4<f32>,
     piv: vec4<f32>,
@@ -105,6 +106,9 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
                 case 4u: { o.uv = vec2<f32>(t.x, 1.0 - t.y); }
                 default: { o.uv = vec2<f32>(1.0 - t.x, 1.0 - t.y); }
             }
+            if (abs(it.piv.w - 2.0) < 0.5 && wf != 2u && wf != 3u) {
+                o.uv.x = 1.0 - o.uv.x;
+            }
         } else {
             switch face {
                 case 0u, 1u: { o.uv = vec2<f32>(c.z, 1.0 - c.y); }
@@ -128,10 +132,10 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
     if (part && it.rot.w > 0.05) {
         // Inside open storage: faces inside the box (not on its outside or rim) are in
         // shadow, deepest at the floor (bmin.w) and lighter towards the top (rot.w); the
-        // underside of a lid is dim. A box inside a box (piv.w 2, a drawer) keeps its own
+        // underside of a lid is dim. A box inside a box (piv.w 3, a drawer) keeps its own
         // sides out of it.
         var inner = false;
-        let edge = select(0.01, 0.07, it.piv.w > 1.5);
+        let edge = select(0.01, 0.07, it.piv.w > 2.5);
         switch face {
             case 0u, 1u: { inner = inb.x > edge && inb.x < 1.0 - edge; }
             case 4u, 5u: { inner = inb.z > 0.01 && inb.z < 0.99; }

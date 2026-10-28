@@ -160,7 +160,7 @@ impl Game {
                 let k = smooth(t / LID_MOVE);
                 let look = crate::storage::look(s.store, bl, if up { k } else { 1.0 - k });
                 let light = self.store_light(s.pos, bl, look.facing);
-                push_parts(&mut out, &look.parts, centre, look.facing, light, look.layers, look.cavity, false);
+                push_parts(&mut out, &look.parts, centre, look.facing, light, look.layers, look.cavity, false, false);
                 self.store_contents(s.store, s.pos, &look, centre, light, &mut out);
                 continue;
             }
@@ -171,7 +171,9 @@ impl Game {
             let l = if bl.opaque { self.world.light(s.pos + IVec3::Y) } else { self.world.light(s.pos) };
             let light = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
             let layers = [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32, 0.0];
-            push_parts(&mut out, &parts_of(bl.shape, bl.variant, a), centre, facing, light, layers, (0.0, 0.0), true);
+            // A left-hinged door: its picture mirrored like the terrain draws it.
+            let mirror = bl.shape == Shape::Door && bl.variant & voxel::shapes::DOOR_HINGE_LEFT != 0;
+            push_parts(&mut out, &parts_of(bl.shape, bl.variant, a), centre, facing, light, layers, (0.0, 0.0), true, mirror);
         }
         self.pot_instances(cam_block, &mut out);
         out
@@ -181,8 +183,9 @@ impl Game {
 /// The boxes of a moving block for the item renderer, turned `facing` quarter turns around its
 /// centre. `turn_tex`: the texture turns with it, as the terrain turns doors; storage keeps
 /// the faces the terrain gives it. `cavity`: floor and top of a dark inside (top 0: none).
+/// `mirror`: side faces' pictures mirrored (a left-hinged door).
 #[allow(clippy::too_many_arguments)]
-fn push_parts(out: &mut Vec<GpuItem>, parts: &[Part], centre: Vec3, facing: u8, light: (f32, f32), layers: [f32; 4], cavity: (f32, f32), turn_tex: bool) {
+fn push_parts(out: &mut Vec<GpuItem>, parts: &[Part], centre: Vec3, facing: u8, light: (f32, f32), layers: [f32; 4], cavity: (f32, f32), turn_tex: bool, mirror: bool) {
     let turn = -(facing as f32) * FRAC_PI_2;
     for p in parts {
         let piv = p.pivot / 16.0;
@@ -196,8 +199,8 @@ fn push_parts(out: &mut Vec<GpuItem>, parts: &[Part], centre: Vec3, facing: u8, 
             rot: [p.pitch, 0.0, if turn_tex { facing as f32 } else { 0.0 }, cavity.1],
             bmin: [p.b[0] / 16.0, p.b[1] / 16.0, p.b[2] / 16.0, cavity.0],
             bmax: [p.b[3] / 16.0, p.b[4] / 16.0, p.b[5] / 16.0, layers[3]],
-            // piv.w: 1 a block part, 2 a box inside a box.
-            piv: [piv.x, piv.y, piv.z, if p.inset { 2.0 } else { 1.0 }],
+            // piv.w: 1 a block part, 2 mirrored, 3 a box inside a box.
+            piv: [piv.x, piv.y, piv.z, if p.inset { 3.0 } else if mirror { 2.0 } else { 1.0 }],
         });
     }
 }
@@ -313,8 +316,11 @@ impl Game {
 fn parts_of(shape: Shape, variant: u8, a: f32) -> Vec<Part> {
     let still = |b: [f32; 6]| Part { b, pivot: Vec3::splat(8.0), yaw: 0.0, pitch: 0.0, shift: Vec3::ZERO, inset: false };
     match shape {
-        // Hinged at the east edge of its north side.
-        Shape::Door => vec![Part { b: [0.0, 0.0, 0.0, 16.0, 16.0, 3.0], pivot: Vec3::new(14.5, 8.0, 1.5), yaw: a, pitch: 0.0, shift: Vec3::ZERO, inset: false }],
+        // Hinged at the east edge of its north side, or the west edge for a left hinge.
+        Shape::Door => {
+            let (x, yaw) = if variant & voxel::shapes::DOOR_HINGE_LEFT != 0 { (1.5, -a) } else { (14.5, a) };
+            vec![Part { b: [0.0, 0.0, 0.0, 16.0, 16.0, 3.0], pivot: Vec3::new(x, 8.0, 1.5), yaw, pitch: 0.0, shift: Vec3::ZERO, inset: false }]
+        }
         // Hinged along the south edge, swinging up (or down from the top half).
         Shape::Trapdoor => {
             if variant & 8 != 0 {

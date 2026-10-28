@@ -46,7 +46,7 @@ pub const TABS: [Tab; 13] = [
 ];
 
 impl Tab {
-    fn title(self) -> &'static str {
+    pub(crate) fn title(self) -> &'static str {
         match self {
             Tab::Building => "Blocos de construção",
             Tab::Colored => "Blocos coloridos",
@@ -104,7 +104,7 @@ const PANEL: (f32, f32) = (195.0, 136.0);
 
 impl Game {
     /// Which tab an item belongs to (None: not shown, like the hidden orientations of a block).
-    fn creative_tab_of(&self, id: ItemId) -> Option<Tab> {
+    pub(crate) fn creative_tab_of(&self, id: ItemId) -> Option<Tab> {
         let it = self.items.get(id);
         let name = it.name.as_str();
         if name.ends_with("_spawn_egg") {
@@ -152,7 +152,7 @@ impl Game {
         Some(if natural { Tab::Natural } else { Tab::Building })
     }
 
-    fn creative_list(&self, tab: Tab) -> Vec<ItemId> {
+    pub(crate) fn creative_list(&self, tab: Tab) -> Vec<ItemId> {
         let all = 1..self.items.items.len() as ItemId;
         match tab {
             Tab::Search => {

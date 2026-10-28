@@ -26,6 +26,7 @@ mod bench;
 mod storage;
 mod swing;
 mod stands;
+mod testworld;
 mod pale;
 mod selectors;
 mod audio;
@@ -50,6 +51,7 @@ mod copper;
 mod commands;
 mod creative;
 mod dimension;
+mod doors;
 mod end;
 mod farm;
 mod fishing;
@@ -660,6 +662,8 @@ struct Game {
     swings: swing::Swings,
     /// What armor stands wear (stands.rs).
     stands: stands::Stands,
+    /// The test world's layout, when one is open (testworld.rs).
+    testw: testworld::TestWorld,
     heal_wave: f32,
     /// Action waiting for a button press in the controller menu.
     rebinding: Option<Action>,
@@ -1106,6 +1110,7 @@ impl Game {
             last_health: 0.0,
             swings: Default::default(),
             stands: Default::default(),
+            testw: Default::default(),
             pale,
             heal_wave: -10.0,
             rebinding: None,
@@ -1245,6 +1250,20 @@ impl Game {
             voice: Default::default(),
         };
         game.apply_shader();
+        if start_dim == voxel::worldgen::Dim::Overworld && game.world.save.dir.join(testworld::MARKER).exists() {
+            // A test world is laid out again on opening (testworld.rs).
+            let (name, open) = (game.world_name.clone(), game.world_open);
+            let (pos, yaw, pitch, spawn) = (game.body.pos, game.yaw, game.pitch, game.needs_spawn);
+            game.open_world(&name, None, None);
+            game.world_open = open;
+            if game.args.pos.is_some() {
+                game.body.pos = pos;
+                game.needs_spawn = spawn;
+            }
+            if game.args.look.is_some() {
+                (game.yaw, game.pitch) = (yaw, pitch);
+            }
+        }
         if start_dim != voxel::worldgen::Dim::Overworld {
             game.load_dim(start_dim, false);
         }
@@ -1892,6 +1911,9 @@ impl Game {
                 if std::env::var("MC_SHADOWS").is_ok() {
                     self.build_shadow_test();
                 }
+                if std::env::var("MC_DOORS").is_ok() {
+                    self.build_door_test();
+                }
                 if self.args.shapes {
                     self.build_shapes();
                 }
@@ -2142,6 +2164,7 @@ impl Game {
                 self.update_leads(dt);
                 self.update_map(dt);
                 self.update_pets(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.update_test_world();
                 self.stands_update();
             }
             self.update_mods(if self.args.screenshot.is_some() { 0.0 } else { dt });
@@ -3374,9 +3397,11 @@ impl Game {
             if self.world.block_or_air(above) != AIR || self.body.intersects_block(above) {
                 return None;
             }
+            let v = v | self.door_hinge(pos, v, at);
             let (lower, top) = (self.variant_id(id, v), self.variant_id(id, v | 8));
             if self.world.set_block(pos, lower) {
                 self.world.set_block(above, top);
+                self.pair_doors(pos);
                 return self.placed(pos, id);
             }
             return None;
@@ -3436,6 +3461,7 @@ impl Game {
                 let ov = self.variant_id(base, v ^ 8);
                 self.world.set_block(other, ov);
             }
+            self.door_follow(hit.block);
         }
         self.anim.start_swing();
         self.sfx(Sfx::Place(Material::Wood));
@@ -3514,6 +3540,11 @@ impl Game {
         put(w, -4, 1, 9, "oak_door:10");
         put(w, -2, 0, 9, "oak_door:6");
         put(w, -2, 1, 9, "oak_door:14");
+        // A double door, open: hinged on the outside, swinging apart.
+        put(w, -6, 0, 9, "oak_door:22");
+        put(w, -6, 1, 9, "oak_door:30");
+        put(w, -5, 0, 9, "oak_door:6");
+        put(w, -5, 1, 9, "oak_door:14");
         put(w, 0, 0, 9, "oak_trapdoor");
         put(w, 1, 0, 9, "oak_trapdoor:8");
         put(w, 2, 0, 9, "oak_trapdoor:6");
