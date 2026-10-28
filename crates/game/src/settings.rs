@@ -130,6 +130,9 @@ pub struct Settings {
     pub language: String,
     /// Captions for the sounds around: what made it and from which side.
     pub subtitles: bool,
+    /// Life in the air (ambient_life.rs): falling leaves, insects, birds, fish, dust. 0 off,
+    /// 1 a little, 2 normal, 3 a lot.
+    pub ambient_life: u8,
     /// Calm camera and interface: no view bobbing, shaking, sprint zoom or bouncing icons.
     pub reduce_motion: bool,
     /// Keyboard keys moved from their defaults: action → key (`keybinds.rs`).
@@ -181,6 +184,7 @@ impl Default for Settings {
             ui_animations: true,
             language: "pt".into(),
             subtitles: false,
+            ambient_life: 2,
             reduce_motion: false,
             key_binds: BTreeMap::new(),
             voice: Default::default(),

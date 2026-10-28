@@ -51,6 +51,7 @@ pub enum Id {
     Relief,
     Lod,
     Drops,
+    AmbientLife,
     Master,
     Music,
     Vol(SoundCat),
@@ -213,6 +214,11 @@ impl Game {
                 ),
                 b(Id::ViewBobbing, format!("Balanço da visão: {}", onoff(st.view_bobbing))),
                 b(Id::Drops, format!("Itens no chão: {}", if st.flat_drops { "Deitados" } else { "Flutuando" })),
+                self.opt_button(
+                    Id::AmbientLife,
+                    format!("Vida no ambiente: {}", crate::ambient_life::LEVELS[st.ambient_life.min(3) as usize].0),
+                    "Folhas caindo, vaga-lumes, borboletas, abelhas, pássaros, peixes e poeira no ar.",
+                ),
                 self.opt_button(Id::TextureRes, format!("Resolução das texturas: {}x", st.texture_resolution), "Diminua em computadores com pouca memória de vídeo."),
                 self.opt_button(Id::Packs, format!("Texturas: {}...", self.textures_name.trim_end_matches(".zip")), "Escolher um pacote de texturas."),
                 header("Shaders e efeitos"),
@@ -322,6 +328,7 @@ impl Game {
             Id::Relief => self.settings.relief = !self.settings.relief,
             Id::ViewBobbing => self.settings.view_bobbing = !self.settings.view_bobbing,
             Id::Drops => self.settings.flat_drops = !self.settings.flat_drops,
+            Id::AmbientLife => self.settings.ambient_life = (self.settings.ambient_life + 1) % 4,
             Id::TextureRes => {
                 let st = &mut self.settings;
                 st.texture_resolution = match st.texture_resolution {

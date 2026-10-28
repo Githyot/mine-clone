@@ -42,6 +42,8 @@ pub(crate) fn caption(s: Sfx) -> Option<&'static str> {
             Fx::LavaPop => "Lava borbulhando",
             Fx::FireCrackle => "Fogo crepitando",
             Fx::Waves => "Ondas",
+            Fx::FishSplash => "Peixe pulando",
+            Fx::Wings => "Asas de pássaros",
             Fx::Heartbeat => "Coração batendo",
             Fx::Gasp => "Fôlego",
             Fx::Land(k) if k > 0.4 => "Queda",
