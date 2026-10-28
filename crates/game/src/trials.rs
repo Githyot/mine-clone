@@ -329,7 +329,7 @@ impl crate::Game {
         } else {
             for k in 0..3 {
                 let d = Vec3::new((k as f32 - 1.0) * 0.6, -12.0, 0.3);
-                self.mobs.arrows.push(crate::mobs::Arrow { pos: at + Vec3::X * (k as f32 - 1.0), vel: d, age: 0.0, stuck: false, damage: 3.0 });
+                self.mobs.arrows.push(crate::mobs::Arrow { pos: at + Vec3::X * (k as f32 - 1.0), vel: d, age: 0.0, stuck: false, damage: 3.0, shooter: 0 });
             }
         }
         self.sfx(Sfx::Cast(3));

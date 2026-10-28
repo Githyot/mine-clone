@@ -46,6 +46,22 @@ impl Shot {
     }
 }
 
+/// A fully drawn plain bow's arrow (ore bows multiply it, tr_weapons::bow_power).
+const BOW_DAMAGE: f32 = 6.0;
+const CROSSBOW_DAMAGE: f32 = 9.0;
+
+/// Damage per second of a bow drawn fully each second, or a crossbow reloaded each 1.25 s, for
+/// the balance sheet (balance.rs). A full draw is always critical: on average a quarter more
+/// and a point.
+#[cfg(test)]
+pub(crate) fn bow_dps(name: &str) -> Option<f32> {
+    match name {
+        "bow" => Some(BOW_DAMAGE * 1.25 + 1.0),
+        "crossbow" => Some(CROSSBOW_DAMAGE / 1.35),
+        _ => crate::tr_weapons::bow_power(name).map(|k| BOW_DAMAGE * k * 1.25 + 1.0),
+    }
+}
+
 /// Undead for smite, arthropods for bane of arthropods.
 fn arthropod(name: &str) -> bool {
     matches!(name, "spider" | "cave_spider" | "silverfish" | "endermite" | "bee")
@@ -599,7 +615,7 @@ impl Game {
         let power = self.held_ench(POWER) as f32;
         let ranged = self.t5.rpg.stats.dmg[crate::rpg::RANGED];
         let ore = crate::tr_weapons::bow_power(&self.held_key()).unwrap_or(1.0);
-        s.damage = (6.0 * pull) * if power > 0.0 { 1.0 + 0.25 * (power + 1.0) } else { 1.0 } * ranged * ore;
+        s.damage = (BOW_DAMAGE * pull) * if power > 0.0 { 1.0 + 0.25 * (power + 1.0) } else { 1.0 } * ranged * ore;
         s.crit = pull >= 1.0 || pull > 0.6 && self.surv.rng.f32() < self.t5.rpg.stats.crit[crate::rpg::RANGED];
         s.punch = self.held_ench(PUNCH);
         s.flame = self.held_ench(FLAME) > 0;
@@ -617,7 +633,7 @@ impl Game {
         let angles: &[f32] = if multi { &[-0.17, 0.0, 0.17] } else { &[0.0] };
         for &a in angles {
             let dir = Vec3::new(f.x * a.cos() - f.z * a.sin(), f.y, f.x * a.sin() + f.z * a.cos()).normalize_or_zero();
-            let mut s = Shot::new(self.body.eye() + dir * 0.3, dir * 63.0, ShotKind::Arrow { potion: None, pickup: a == 0.0 && self.survival }, 9.0 * self.t5.rpg.stats.dmg[crate::rpg::RANGED]);
+            let mut s = Shot::new(self.body.eye() + dir * 0.3, dir * 63.0, ShotKind::Arrow { potion: None, pickup: a == 0.0 && self.survival }, CROSSBOW_DAMAGE * self.t5.rpg.stats.dmg[crate::rpg::RANGED]);
             s.pierce = pierce;
             s.crit = self.surv.rng.f32() < self.t5.rpg.stats.crit[crate::rpg::RANGED];
             self.prog.shots.push(s);

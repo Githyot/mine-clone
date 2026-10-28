@@ -960,7 +960,7 @@ impl Game {
         if self.extras_mob_use() {
             return true;
         }
-        if self.lead_use() || self.stand_use() || self.pet_use() || self.village_use() || self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
+        if self.lead_use() || self.stand_use() || self.animal_use() || self.pet_use() || self.village_use() || self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
             return true;
         }
         if self.plugins_use_item() {
@@ -1707,8 +1707,8 @@ impl Game {
         for d in &self.surv.drops {
             let it = self.items.get(d.stack.item);
             // Lying flat once landed (Item Drops style), or the classic floating spin.
-            let lying = self.settings.flat_drops && (d.body.on_ground || d.body.vel.length_squared() < 0.01) && !d.body.in_water;
-            let bob = if lying { 0.0 } else { (d.age * 2.5).sin() * 0.06 + 0.18 };
+            let (lying, bob) = self.drop_lift(d);
+            let glint = if crate::enchanting::is_enchanted(&d.stack) { crate::drop_fx::ENCH_GLINT } else { [0.0; 4] };
             let p = d.body.pos + Vec3::Y * bob - c;
             let l = self.world.light((d.body.pos + Vec3::Y * 0.2).floor().as_ivec3());
             let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
@@ -1736,10 +1736,10 @@ impl Game {
                     let yaw = d.spin_rest + kf * 0.7;
                     let (lift, pitch, spread) = if flat > 0.5 { (0.02 + kf * 0.02, -std::f32::consts::FRAC_PI_2, 0.07) } else { (size * 0.5, 0.0, size * 1.1) };
                     let off = Vec3::new(yaw.cos(), 0.0, yaw.sin()) * kf * spread;
-                    out.push(GpuItem { pos: [p.x + off.x, p.y + lift, p.z + off.z, size], info: [yaw, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [pitch, 0.0, 0.0, 0.0], ..bytemuck::Zeroable::zeroed() });
+                    out.push(GpuItem { pos: [p.x + off.x, p.y + lift, p.z + off.z, size], info: [yaw, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [pitch, 0.0, 0.0, 0.0], bmin: glint, ..bytemuck::Zeroable::zeroed() });
                 } else {
                     let off = Vec3::new(kf * 0.05, kf * 0.04, -kf * 0.05);
-                    out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
+                    out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0; 4], bmin: glint, ..bytemuck::Zeroable::zeroed() });
                 }
             }
         }

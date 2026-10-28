@@ -13,6 +13,8 @@ struct Bones {
 @group(1) @binding(0) var skins: texture_2d_array<f32>;
 @group(1) @binding(1) var skin_samp: sampler;
 @group(2) @binding(0) var<storage, read> inst: array<Bones>;
+// The material class of each skin layer (material.rs), for the glints and relief.
+@group(2) @binding(1) var<storage, read> layer_mat: array<u32>;
 // The sun's shadow map (scenefx.rs); a 1×1 dummy when shadows are off.
 @group(3) @binding(0) var shadow_map: texture_depth_2d;
 @group(3) @binding(1) var shadow_cmp: sampler_comparison;
@@ -93,11 +95,13 @@ fn entity_sun(rel: vec3<f32>, sky_light: f32) -> f32 {
 @fragment
 fn fs_entity(in: EOut) -> @location(0) vec4<f32> {
     let c = textureSample(skins, skin_samp, in.uv, in.layer);
+    let fr = mat_frame(in.rel, in.uv);
     if (c.a < 0.5) {
         discard;
     }
     let daylight = g.fog_color.w;
-    let sky = light_curve(in.light.x) * daylight * entity_sun(in.rel, in.light.x);
+    let sun_seen = entity_sun(in.rel, in.light.x);
+    let sky = light_curve(in.light.x) * daylight * sun_seen;
     // The torch in the player's hand lights mobs (and the player) near it as well.
     let hand = g.hand_light.w - length(in.rel - g.hand_light.xyz) / 15.0;
     let blk = light_curve(max(in.light.y, hand));
@@ -115,6 +119,31 @@ fn fs_entity(in: EOut) -> @location(0) vec4<f32> {
         l = max(l, vec3<f32>(0.85));
     }
     var rgb = base * in.shade * l;
+    let mat = select(0u, layer_mat[in.layer], g.mat.x > 0.5 && mode < 1.5);
+    if (mat != 0u) {
+        // Relief from the skin's own light and dark texels, fading out past a dozen blocks.
+        var k = 0.0;
+        var hx = 0.0;
+        var hy = 0.0;
+        if (g.mat.x > 1.5 && in.dist < 14.0) {
+            let ts = 1.0 / vec2<f32>(textureDimensions(skins, 0));
+            let w = vec3<f32>(0.3, 0.55, 0.15);
+            let h0 = dot(c.rgb, w);
+            let cx = textureSampleGrad(skins, skin_samp, in.uv + vec2<f32>(ts.x, 0.0), in.layer, fr.du1, fr.du2);
+            let cy = textureSampleGrad(skins, skin_samp, in.uv + vec2<f32>(0.0, ts.y), in.layer, fr.du1, fr.du2);
+            // A see-through neighbour (a plate's edge) counts as a step down.
+            hx = select(-0.3, dot(cx.rgb, w), cx.a > 0.5) - h0;
+            hy = select(-0.3, dot(cy.rgb, w), cy.a > 0.5) - h0;
+            k = mat_relief(mat) * 1.6 * (1.0 - smoothstep(8.0, 14.0, in.dist));
+        }
+        let v = normalize(g.cam_pos.xyz - in.rel);
+        let n = mat_normal(fr, v, hx, hy, k);
+        // A gentle shading of the relief itself, for matte materials too.
+        let tilt = clamp(dot(n - mat_normal(fr, v, 0.0, 0.0, 0.0), normalize(vec3<f32>(0.3, 1.0, 0.4) + v * 0.5)), -0.5, 0.5);
+        rgb = rgb * (1.0 + tilt * 0.6);
+        let texel = floor(in.uv * vec2<f32>(textureDimensions(skins, 0)));
+        rgb = mat_shade(mat, base, rgb, in.rel, n, in.light.x, max(in.light.y, 0.0), sun_seen, max(hand, 0.0), texel);
+    }
     rgb = mix(rgb, vec3<f32>(1.0, 0.25, 0.2), in.light.z * 0.6);
     rgb = mix(rgb, vec3<f32>(1.0), in.light.w);
     let fog = smoothstep(g.fog.x, g.fog.y, in.dist);
