@@ -85,6 +85,10 @@ pub struct Settings {
     pub view_bobbing: bool,
     /// Items on the ground lie flat and still (like the Item Drops mod) instead of floating.
     pub flat_drops: bool,
+    /// Items on the ground show their name (and how many) above them when close.
+    pub drop_labels: bool,
+    /// Items on the ground give off a soft glow, stronger and coloured when enchanted or rare.
+    pub drop_glow: bool,
     /// Animals and monsters spawn in the world.
     pub mobs: bool,
     /// Textures get a little carved relief near the camera.
@@ -163,6 +167,8 @@ impl Default for Settings {
             show_clouds: true,
             view_bobbing: true,
             flat_drops: true,
+            drop_labels: true,
+            drop_glow: true,
             mobs: true,
             gui_scale: 0,
             controller: ControllerSettings::default(),
