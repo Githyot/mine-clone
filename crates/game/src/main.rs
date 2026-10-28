@@ -25,6 +25,7 @@ mod nature;
 mod bench;
 mod swing;
 mod stands;
+mod testworld;
 mod pale;
 mod selectors;
 mod audio;
@@ -659,6 +660,8 @@ struct Game {
     swings: swing::Swings,
     /// What armor stands wear (stands.rs).
     stands: stands::Stands,
+    /// The test world's layout, when one is open (testworld.rs).
+    testw: testworld::TestWorld,
     heal_wave: f32,
     /// Action waiting for a button press in the controller menu.
     rebinding: Option<Action>,
@@ -1105,6 +1108,7 @@ impl Game {
             last_health: 0.0,
             swings: Default::default(),
             stands: Default::default(),
+            testw: Default::default(),
             pale,
             heal_wave: -10.0,
             rebinding: None,
@@ -1244,6 +1248,20 @@ impl Game {
             voice: Default::default(),
         };
         game.apply_shader();
+        if start_dim == voxel::worldgen::Dim::Overworld && game.world.save.dir.join(testworld::MARKER).exists() {
+            // A test world is laid out again on opening (testworld.rs).
+            let (name, open) = (game.world_name.clone(), game.world_open);
+            let (pos, yaw, pitch, spawn) = (game.body.pos, game.yaw, game.pitch, game.needs_spawn);
+            game.open_world(&name, None, None);
+            game.world_open = open;
+            if game.args.pos.is_some() {
+                game.body.pos = pos;
+                game.needs_spawn = spawn;
+            }
+            if game.args.look.is_some() {
+                (game.yaw, game.pitch) = (yaw, pitch);
+            }
+        }
         if start_dim != voxel::worldgen::Dim::Overworld {
             game.load_dim(start_dim, false);
         }
@@ -2141,6 +2159,7 @@ impl Game {
                 self.update_leads(dt);
                 self.update_map(dt);
                 self.update_pets(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.update_test_world();
                 self.stands_update();
             }
             self.update_mods(if self.args.screenshot.is_some() { 0.0 } else { dt });
