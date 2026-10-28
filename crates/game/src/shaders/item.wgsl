@@ -169,12 +169,14 @@ fn isample(uv: vec2<f32>, layer: i32) -> vec4<f32> {
 
 // The lit colour of a texel `c` of an item: light, materials (glints and relief) and the
 // enchantment shimmer, then fog. `fr` is taken before any discard (it needs derivatives).
-fn ishade(c: vec4<f32>, fr: MatFrame, in: IOut) -> vec4<f32> {
+// `wall`: an extruded item's side wall, whose picture is one pixel stretched (no relief or
+// glints there: they would sparkle).
+fn ishade(c: vec4<f32>, fr: MatFrame, in: IOut, wall: bool) -> vec4<f32> {
     let sky = ilight(in.light.x) * g.fog_color.w;
     let blk = ilight(in.light.y);
     let l = max(max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82)), vec3<f32>(0.08 + in.light.z));
     var rgb = c.rgb * in.shade * l;
-    let mat = select(0u, layer_mat[u32(max(in.layer, 0))], g.mat.x > 0.5 && in.light.z < 0.05);
+    let mat = select(0u, layer_mat[u32(max(in.layer, 0))], g.mat.x > 0.5 && in.light.z < 0.05 && !wall);
     if (mat != 0u) {
         var k = 0.0;
         var hx = 0.0;
@@ -214,7 +216,7 @@ fn fs_item(in: IOut) -> @location(0) vec4<f32> {
     if (c.a < 0.3) {
         discard;
     }
-    return ishade(c, fr, in);
+    return ishade(c, fr, in, false);
 }
 
 // A flat picture held in a hand, extruded like the classic item models: the picture on its
@@ -308,7 +310,7 @@ fn eshade(c: vec4<f32>, fr: MatFrame, e: EOut, shade: f32) -> vec4<f32> {
     i.dist = e.dist;
     i.glint = e.glint;
     i.rel = e.rel;
-    return ishade(c, fr, i);
+    return ishade(c, fr, i, e.edge.x > 0.5);
 }
 
 @fragment
@@ -353,6 +355,7 @@ fn fs_extrude(in: EOut) -> @location(0) vec4<f32> {
         return eshade(lo, fr, in, in.shade.x);
     }
     return eshade(hi, fr, in, in.shade.y);
+}
 
 // The soft glow around items on the ground: a round sprite facing the camera, added on top
 // of the scene. pos: centre and radius; layers: rgb colour, w strength; info.z: sky light
