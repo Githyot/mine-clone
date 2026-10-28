@@ -55,6 +55,10 @@ pub enum Fx {
     InvClose,
     /// Worn armour shifting as you walk: true for metal, false for leather.
     Armor(bool),
+    /// A fish slapping back into the water: a low wet plop.
+    FishSplash,
+    /// A flock passing over: soft, low wingbeats.
+    Wings,
     /// Feet sliding over ice; the value is how fast (0..1). A soft, low scrape.
     Slide(f32),
 }
@@ -170,6 +174,8 @@ pub fn synth(fx: Fx, seed: u32) -> Vec<f32> {
         Fx::InvOpen => flap(r, true),
         Fx::InvClose => flap(r, false),
         Fx::Armor(metal) => armor(r, metal),
+        Fx::FishSplash => fish_splash(r),
+        Fx::Wings => wings(r),
         Fx::Slide(s) => slide(r, s.clamp(0.0, 1.0)),
     };
     out.into_iter().map(|s| s.clamp(-1.0, 1.0)).collect()
@@ -359,6 +365,60 @@ fn plop(out: &mut [f32], start: usize, f0: f32, amp: f32, len: f32) {
         phase += f0 * (1.0 + 1.8 * t / len) / RATE;
         *o += (phase * TAU).sin() * amp * (-t / (len * 0.3)).exp() * (t * 2000.0).min(1.0);
     }
+}
+
+/// A fish falling back into the water: a short burst of dull spray over a low "plop", and a
+/// couple of drops after. All of it kept low (nothing over about 1.5 kHz).
+fn fish_splash(rng: &mut Rng) -> Vec<f32> {
+    let dur = 0.55;
+    let mut out = vec![0.0; samples(dur)];
+    let mut lp = LowPass::new(rng.range(700.0, 1000.0));
+    for (i, o) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE;
+        *o += lp.run(rng.noise()) * 2.2 * (t / 0.004).min(1.0) * (-t / 0.045).exp();
+    }
+    plop(&mut out, samples(0.01), rng.range(150.0, 230.0), 0.45, 0.14);
+    for _ in 0..2 {
+        let at = samples(rng.range(0.12, 0.3));
+        plop(&mut out, at, rng.range(260.0, 380.0), 0.07, 0.05);
+    }
+    let mut soft = LowPass::new(1500.0);
+    out.iter_mut().for_each(|x| *x = soft.run(*x));
+    edges(&mut out, 0.02);
+    out
+}
+
+/// Wingbeats of a few birds flying over: each beat a soft, low push of air, the birds slightly
+/// out of step, swelling as they come over and fading as they go.
+fn wings(rng: &mut Rng) -> Vec<f32> {
+    let dur = rng.range(2.2, 3.0);
+    let n = samples(dur);
+    let mut out = vec![0.0; n];
+    let birds = 3 + (rng.next() * 3.0) as usize;
+    for _ in 0..birds {
+        let rate = rng.range(4.5, 6.5);
+        let mut t = rng.range(0.0, 0.3);
+        let amp = rng.range(0.5, 1.0);
+        while t < dur - 0.1 {
+            let mut band = Band::new(120.0, rng.range(450.0, 650.0));
+            let at = samples(t);
+            for k in 0..samples(0.09) {
+                let Some(o) = out.get_mut(at + k) else { break };
+                let s = k as f32 / RATE;
+                *o += band.run(rng.noise()) * amp * (s / 0.012).min(1.0) * (-s / 0.03).exp();
+            }
+            t += 1.0 / rate * rng.range(0.9, 1.1);
+            // Now and then a bird glides for a moment.
+            if rng.next() < 0.12 {
+                t += rng.range(0.3, 0.6);
+            }
+        }
+    }
+    for (i, o) in out.iter_mut().enumerate() {
+        *o *= (i as f32 / n as f32 * PI).sin().powf(1.2) * 1.6;
+    }
+    edges(&mut out, 0.05);
+    out
 }
 
 fn drip(rng: &mut Rng) -> Vec<f32> {

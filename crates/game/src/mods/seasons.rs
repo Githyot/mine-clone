@@ -171,7 +171,7 @@ impl Game {
         if !(6..=8).contains(&part) && part != 9 {
             return;
         }
-        let rate = if part == 9 { 20.0 } else { 60.0 };
+        let rate = if part == 9 { 20.0 } else { 60.0 } * self.life_amount();
         self.mods.seasons.leaf_t += dt * rate;
         let n = self.mods.seasons.leaf_t as i32;
         self.mods.seasons.leaf_t -= n as f32;
@@ -190,7 +190,8 @@ impl Game {
                 continue;
             }
             let (layer, _) = self.block_look(id);
-            self.particles.mote(p.as_vec3() + Vec3::new(jit.x, -0.05, jit.z), layer, tint, 0.06, 0.7, 7.0);
+            let size = 0.15 + jit.x * 0.07;
+            self.particles.leaf(p.as_vec3() + Vec3::new(jit.x, -0.05, jit.z), layer, tint, size);
         }
     }
 

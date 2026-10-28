@@ -4,6 +4,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod ambient;
+mod ambient_life;
 mod material;
 mod companions;
 mod options;
@@ -95,6 +96,7 @@ mod furniture;
 mod gear;
 mod weather;
 mod windmill;
+mod wind;
 mod entity;
 mod instruments;
 mod torch;
@@ -738,6 +740,7 @@ struct Game {
     arrive_plain: bool,
     /// Fractional count of ambient blocks still to look at (ambient.rs).
     ambient_t: f32,
+    life: ambient_life::Life,
     room_t: f32,
     walker_t: f32,
     melody_cd: f32,
@@ -1154,6 +1157,7 @@ impl Game {
             respawn_home: false,
             arrive_plain: false,
             ambient_t: 0.0,
+            life: Default::default(),
             room_t: 0.0,
             walker_t: 0.0,
             melody_cd: 0.0,
@@ -1820,6 +1824,7 @@ impl Game {
             if matches!(self.screen, Screen::Playing | Screen::Inventory) {
                 self.portal_step(dt);
                 self.update_ambient(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.update_life(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_musicians(dt);
                 self.update_immersion(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
@@ -1917,10 +1922,20 @@ impl Game {
                 }
                 if std::env::var("MC_AMBIENT").is_ok() {
                     // Test hook: a few seconds of ambient bits already in the air.
-                    for _ in 0..80 {
+                    let secs: f32 = std::env::var("MC_AMBIENT").ok().and_then(|v| v.parse().ok()).unwrap_or(4.0);
+                    for _ in 0..(secs * 20.0) as usize {
                         self.update_ambient(0.05);
+                        self.update_life(0.05);
+                        if self.weather.rain > 0.3 && !self.weather.snowing_here {
+                            self.rain_splashes(0.05);
+                        }
                         self.particles.update(&self.world, 0.05);
                     }
+                    log::info!("ambient life after {secs}s: {}", self.particles.census());
+                }
+                if let Ok(what) = std::env::var("MC_LIFE") {
+                    // Test hook: birds, a leaping fish, butterflies and bees in front (ambient_life.rs).
+                    self.test_life(&what);
                 }
                 if std::env::var("MC_FARM").is_ok() {
                     // Test hook: a small field in front, some of it ripe.
@@ -3645,6 +3660,13 @@ impl Game {
                 continue;
             }
             let at = Vec3::new(x as f32 + self.surv.rng.f32(), y as f32 + 1.0, z as f32 + self.surv.rng.f32());
+            if self.world.fluid(self.world.block_or_air(IVec3::new(x, y, z))) == 1 {
+                // Rain on water: a small ring spreading where each drop lands.
+                if self.life_amount() > 0.0 && self.surv.rng.chance(0.5 * self.life_amount().min(1.0)) {
+                    self.particles.ripple(at - Vec3::Y * 0.1, 0.25 + self.surv.rng.f32() * 0.15);
+                }
+                continue;
+            }
             self.particles.rain_drop(at, water);
         }
     }
