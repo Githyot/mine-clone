@@ -87,6 +87,7 @@ pub struct Tr {
     pub(crate) pets: crate::tr_pets::Pets,
     pub(crate) town: crate::tr_town::TownLife,
     pub(crate) end: crate::tr_endgame::Endgame,
+    pub(crate) feel: crate::tr_feel3d::Feel,
     pub(crate) fish: crate::tr_fishing::Fishing,
     pub(crate) inv: crate::tr_invasions::Invasions,
     pub(crate) util: crate::tr_utility::Utility,
@@ -193,6 +194,7 @@ impl Game {
         self.update_tr_comfort(dt);
         self.update_tr_minis(dt);
         self.update_tr_journey();
+        self.update_tr_feel(dt);
     }
 
     /// Right click with an item of this file; true when it did something.
@@ -478,6 +480,7 @@ impl Game {
             "dungeon" => self.test_tr_dungeon(),
             "comfort" => self.test_tr_comfort(),
             "minis" => self.test_tr_minis(),
+            "feel3d" | "worm3d" => self.test_tr_feel(scene),
             "harvest" | "winter" | "pirates" | "martians" | "crystal" => {
                 self.test_invasion(scene);
             }

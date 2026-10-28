@@ -750,6 +750,18 @@ MINI-CHEFES, TROFÉUS E DATAS FESTIVAS (lado Terraria)
   De 10 de outubro a 1 de novembro os monstros às vezes deixam Sacos de Gostosuras; de 15
     a 31 de dezembro, Presentes.
 
+LUTAS EM 3D (lado Terraria)
+  Os chefes avisam antes dos golpes grandes, porque em primeira pessoa você não vê a arena
+  inteira como no Terraria:
+  - Antes de uma investida (Grande Olho, Olho Mecânico, Duque das Marés, Imperatriz
+    Prismática, mergulho da Rainha Geleia) o chefe para e brilha em vermelho, e um rastro
+    mostra o caminho. Dê um passo para o lado.
+  - O que cai do céu (estrelas do Arauto, lanças da Imperatriz) marca no chão onde vai cair.
+  - Pisões (Rei Geleia, soco do Ídolo Escamado) mandam uma onda pelo chão: pule por cima.
+  - Os vermes cavam túneis de verdade na terra e na pedra, e o chão treme em cima deles.
+  - Quando o chefe sai da sua vista, setas ao lado da barra apontam para ele (< ou >, ^ se
+    estiver acima, v se estiver abaixo) com a distância.
+
 ESPADAS DO FIM, SENTINELAS, GLADIADOR E MONTARIAS (lado Terraria)
   Lâmina da Noite: Espada de Sombraço (ou de Sanguinita) + Katana Azul + Lâmina da Colmeia +
     Espada de Magmarita. Lâmina Radiante: barras radiantes como uma espada.
