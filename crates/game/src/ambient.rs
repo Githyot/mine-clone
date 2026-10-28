@@ -1,5 +1,5 @@
-//! Small things in the air around the player (Subtle Effects idea): leaves drifting down
-//! under trees, fireflies over grass on warm nights, embers rising off lava, dust in caves,
+//! Small things in the air around the player (Subtle Effects idea; leaves, insects, birds and
+//! fish are in ambient_life.rs): embers rising off lava, dust in caves,
 //! ash in the Nether and violet specks in the End, water dripping from wet ceilings, steam
 //! where water meets lava, sparks off lit furnaces and braziers, glints off glowing blocks and
 //! amethyst, and your breath fogging in the cold. A few random blocks near the player are
@@ -118,11 +118,9 @@ impl Game {
             self.room_t = 0.4;
             self.measure_room();
         }
-        self.ambient_t += dt * SAMPLES;
+        self.ambient_t += dt * SAMPLES * self.life_amount().min(1.5);
         let n = self.ambient_t as usize;
         self.ambient_t -= n as f32;
-        let a = self.time_of_day / 24000.0 * std::f32::consts::TAU;
-        let night = (a.sin() * 2.2 + 0.45) < 0.25;
         let me = self.body.pos.floor().as_ivec3();
         let glow = self.glow_layer();
         // Breath in the cold: a little puff every second or two in snowy places and high up.
@@ -217,27 +215,10 @@ impl Game {
                 self.particles.glow(p.as_vec3() + Vec3::new(jit.x, 1.05, jit.z), Vec3::new(0.0, 0.25, 0.0), glow, tint, 0.025, 1.2);
                 continue;
             }
-            if b.name.ends_with("_leaves") && below == AIR && roll < 0.12 {
-                let (layer, tint) = self.block_look(id);
-                self.particles.mote(p.as_vec3() + Vec3::new(jit.x, -0.05, jit.z), layer, tint, 0.05, 0.9, 6.0);
-            } else if self.world.fluid(id) == 2 && above == AIR && roll < 0.25 {
+            if self.world.fluid(id) == 2 && above == AIR && roll < 0.25 {
                 // Embers off lava.
                 let v = Vec3::new(jit.x - 0.5, 1.6 + jit.y, jit.z - 0.5);
                 self.particles.glow(p.as_vec3() + Vec3::new(jit.x, 1.0, jit.z), v, glow, [1.0, 0.55, 0.15], 0.04, 1.4);
-            } else if night && self.dim == Dim::Overworld && (b.shape == Shape::Cross || b.name == "grass_block") && above == AIR && roll < 0.035 {
-                let biome = self.world.gen.base_biome_at(p.x, p.z);
-                let warm = matches!(biome, Biome::Plains | Biome::Forest | Biome::Swamp | Biome::DarkForest | Biome::Jungle | Biome::BirchForest | Biome::CherryGrove | Biome::MangroveSwamp);
-                if warm && !self.weather.state.raining {
-                    // A firefly, blinking on for a moment and wandering off.
-                    let v = Vec3::new(jit.x - 0.5, jit.y * 0.4, jit.z - 0.5) * 1.6;
-                    self.particles.glow(p.as_vec3() + Vec3::new(jit.x, 1.2 + jit.y, jit.z), v, glow, [0.75, 1.0, 0.3], 0.045, 2.2);
-                }
-            } else if !night && self.dim == Dim::Overworld && b.shape == Shape::Cross && above == AIR && roll < 0.05 && is_flower(&b.name) && !self.weather.state.raining {
-                // A butterfly (Naturalist idea) fluttering up off a flower.
-                const WINGS: [[f32; 3]; 5] = [[1.0, 0.6, 0.15], [0.35, 0.55, 1.0], [1.0, 1.0, 0.9], [1.0, 0.85, 0.2], [0.85, 0.35, 0.9]];
-                let tint = WINGS[((jit.x * 97.0) as usize) % WINGS.len()];
-                let (layer, _) = self.block_look(self.reg.id_or_air("white_wool"));
-                self.particles.mote(p.as_vec3() + Vec3::new(jit.x, 0.7, jit.z), layer, tint, 0.07, -0.25, 3.5);
             } else if self.reg.light_of(id) >= 13 && b.shape == Shape::Torch && roll < 0.08 {
                 // A wisp of smoke off a torch flame.
                 let (layer, _) = self.block_look(self.reg.id_or_air("stone"));
@@ -245,8 +226,4 @@ impl Game {
             }
         }
     }
-}
-
-fn is_flower(name: &str) -> bool {
-    !(name.contains("grass") || name.contains("fern") || name.contains("sapling") || name.contains("_stage") || name.contains("mushroom") || name.contains("bush") || name.contains("chorus"))
 }

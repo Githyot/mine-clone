@@ -299,6 +299,9 @@ struct GuestState {
     host_mobs: bool,
     /// Mob health as the host last told us: lower now means we hit it.
     mob_health: HashMap<u32, f32>,
+    /// Spell states (fire, chill, wet, frozen) as the host last told us: higher now means one
+    /// of our spells set them.
+    mob_status: HashMap<u32, [f32; 4]>,
     /// Where each mob should be (smoothed towards every frame).
     mob_target: HashMap<u32, (Vec3, f32)>,
     containers: HashMap<IVec3, u64>,
@@ -444,6 +447,7 @@ impl Game {
             held: name(&self.held_stack()),
             armor: std::array::from_fn(|i| name(&self.surv.armor[i])),
             chest: self.open_store_block().map(|p| p.to_array()),
+            shield: crate::shield::net_pack(&self.shields_worn(), self.extras.blocking),
         }
     }
 
@@ -1149,6 +1153,14 @@ impl Game {
                     self.host().credit.insert(mob, (id, now));
                 }
             }
+            ToHost::MobStatus { mob, fire, chill, wet, frozen } => {
+                if let Some(m) = self.mobs.list.iter_mut().find(|m| m.net_id == mob) {
+                    m.on_fire = fire.clamp(0.0, 30.0);
+                    m.chill = m.chill.max(chill.clamp(0.0, 30.0));
+                    m.wet = m.wet.max(wet.clamp(0.0, 30.0));
+                    m.frozen = m.frozen.max(frozen.clamp(0.0, 10.0));
+                }
+            }
             ToHost::Container { dim, pos, data } => {
                 let p = IVec3::from(pos);
                 if dim == self.dim.as_u8() {
@@ -1293,6 +1305,9 @@ impl Game {
                     sleeping: m.sleeping,
                     aggro: m.aggro,
                     on_fire: m.on_fire,
+                    chill: m.chill,
+                    wet: m.wet,
+                    frozen: m.frozen,
                     act: m.social.act.code(),
                     talking: m.social.speaking(),
                     size: m.size,
@@ -1545,6 +1560,7 @@ impl Game {
             cont_t: 0.0,
             host_mobs: false,
             mob_health: HashMap::new(),
+            mob_status: HashMap::new(),
             mob_target: HashMap::new(),
             containers: HashMap::new(),
             addr,
@@ -1643,6 +1659,20 @@ impl Game {
                 let now = self.mobs.list.iter().find(|m| m.net_id == id).map(|m| m.health).unwrap_or(0.0);
                 self.guest().mob_health.insert(id, now);
                 self.guest_ref().guest.send(&ToHost::HurtMob { mob: id, amount, from: me.to_array() });
+            }
+            // Our spells' fire, frost and water on them (elements.rs).
+            let mut set = Vec::new();
+            for m in &self.mobs.list {
+                if let Some(old) = self.guest_ref().mob_status.get(&m.net_id) {
+                    let now = [m.on_fire, m.chill, m.wet, m.frozen];
+                    if now.iter().zip(old).any(|(a, b)| *a > b + 0.5) || now[0] < old[0] - 0.5 && now[2] > 0.0 {
+                        set.push((m.net_id, now));
+                    }
+                }
+            }
+            for (id, now) in set {
+                self.guest().mob_status.insert(id, now);
+                self.guest_ref().guest.send(&ToHost::MobStatus { mob: id, fire: now[0], chill: now[1], wet: now[2], frozen: now[3] });
             }
             // Smooth mobs towards where the host has them.
             let k = 1.0 - (-dt * 12.0).exp();
@@ -1802,6 +1832,9 @@ impl Game {
                     m.sleeping = s.sleeping;
                     m.aggro = s.aggro;
                     m.on_fire = s.on_fire;
+                    m.chill = s.chill;
+                    m.wet = s.wet;
+                    m.frozen = s.frozen;
                     // Social poses: a chat partner speaks when the host says so.
                     m.social.act = voxel::mob::Act::from_code(s.act);
                     m.social.age = 2.0;
@@ -1811,10 +1844,12 @@ impl Game {
                     m.grow = s.grow;
                     let g = self.guest();
                     g.mob_health.insert(s.id, s.health);
+                    g.mob_status.insert(s.id, [s.on_fire, s.chill, s.wet, s.frozen]);
                     g.mob_target.insert(s.id, (pos, s.yaw));
                 }
                 let g = self.guest();
                 g.mob_health.retain(|id, _| ids.contains(id));
+                g.mob_status.retain(|id, _| ids.contains(id));
                 g.mob_target.retain(|id, _| ids.contains(id));
             }
             ToGuest::Sky { time, raining, thunder } => {
@@ -1997,7 +2032,7 @@ impl Game {
         let dt = self.frame_times.last().copied().unwrap_or(0.016).min(0.1);
         let ids: Vec<u32> = self.net.remotes.keys().copied().collect();
         for id in ids {
-            let (pose, swing, armor, item) = {
+            let (pose, swing, armor, item, shield) = {
                 let r = &self.net.remotes[&id];
                 let s = &r.state;
                 if s.dim != my_dim || s.has(flags::HIDDEN) || (r.shown - self.body.pos).length() > 160.0 {
@@ -2022,7 +2057,12 @@ impl Game {
                     torch: crate::torch::index(&s.held).is_some(),
                     ..Default::default()
                 };
-                (pose, s.swing, s.armor.clone(), s.held.clone())
+                let shield = crate::shield::net_unpack(s.shield);
+                let pose = match shield {
+                    Some((_, crate::shield::Mount::Hand { left }, true)) => player_model::Pose { shield_up: 1.0, shield_left: left, ..pose },
+                    _ => pose,
+                };
+                (pose, s.swing, s.armor.clone(), s.held.clone(), shield)
             };
             let l = self.world.light((pose.pos + Vec3::Y).floor().as_ivec3());
             let (sky, blk) = ((l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0);
@@ -2043,6 +2083,10 @@ impl Game {
                         models.push((m, bones));
                     }
                 }
+            }
+            // Their shield (shield.rs): only the first one shown travels.
+            if let Some((look, mount, up)) = shield {
+                models.extend(self.shield_instances(&[(look, mount)], &bones, Game::arm_pivots(def), if up { 1.0 } else { 0.0 }));
             }
             models.push((pd, bones));
             // A torch is a 3D model with its flame (torch.rs).

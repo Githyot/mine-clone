@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use voxel::worldgen::{Biome, Dim};
 
 use crate::audio::Sfx;
+use crate::tr_feel3d::Clock;
 use crate::Game;
 
 pub fn own_ai(name: &str) -> bool {
@@ -51,6 +52,13 @@ pub struct Endgame {
     spawn_t: f32,
     herald_in: Option<f32>,
     spirit_t: f32,
+}
+
+impl Endgame {
+    /// Stop the fight's clock for a frame (a boss winding up, tr_feel3d.rs).
+    pub(crate) fn hold(&mut self, dt: f32) {
+        self.t -= dt;
+    }
 }
 
 impl Game {
@@ -253,6 +261,10 @@ impl Game {
                 if fire {
                     self.fan(pos + Vec3::Y * 1.5, 5, 0.18, 18.0, 3, attack * 0.7);
                 }
+                if dive {
+                    let v = self.t5.tr.end.vel;
+                    self.dash_windup(i, Clock::End, v, 0.5);
+                }
             } else {
                 if eg.t > 0.8 {
                     eg.mode = 0;
@@ -290,9 +302,7 @@ impl Game {
             if dist < 6.0 && !p2 {
                 // A punch: the ground shakes and the fist lands.
                 self.puff(pos + Vec3::Y, 30, 7.0, [1.4, 0.9, 0.5]);
-                self.sfx(Sfx::Explode);
-                self.t5.tr.fight.reset_contact();
-                self.tr_contact(me, 1.0, attack * 1.4);
+                self.shockwave(pos, 9.0, attack * 1.2);
             } else {
                 self.fan(head, 2, 0.08, 30.0, 0, attack * 0.8);
             }
@@ -320,7 +330,9 @@ impl Game {
                     eg.t = 0.0;
                     eg.left = if p2 { 4 } else { 3 };
                     eg.vel = (me - pos).normalize_or_zero() * dash;
+                    let v = eg.vel;
                     self.sfx(Sfx::Splash(0.8));
+                    self.dash_windup(i, Clock::End, v, 0.5);
                 } else {
                     self.glide(i, spot, 2.0, dt);
                 }
@@ -337,6 +349,8 @@ impl Game {
                         eg.mode = 0;
                     } else {
                         eg.vel = (me - pos).normalize_or_zero() * dash;
+                        let v = eg.vel;
+                        self.dash_windup(i, Clock::End, v, 0.3);
                     }
                 } else if eg.t > 0.5 {
                     eg.vel *= 1.0 - (6.0 * dt).min(1.0);
@@ -367,6 +381,8 @@ impl Game {
             eg.left = 3;
             if eg.mode == 2 {
                 eg.vel = (me - pos).normalize_or_zero() * 30.0;
+                let v = eg.vel;
+                self.dash_windup(i, Clock::End, v, 0.5);
             }
         }
         match mode {
@@ -391,7 +407,7 @@ impl Game {
                 if self.t5.tr.end.shot_t <= 0.0 {
                     self.t5.tr.end.shot_t = 0.14 / speed;
                     let off = Vec3::new(self.surv.rng.f32() - 0.5, 0.0, self.surv.rng.f32() - 0.5) * 16.0;
-                    self.enemy_bolt(me + off + Vec3::Y * 14.0, Vec3::NEG_Y * 22.0, 2, attack * 0.7);
+                    self.sky_strike(me + off, 14.0, 22.0, 2, attack * 0.7);
                 }
             }
             _ => {
@@ -403,6 +419,8 @@ impl Game {
                         eg.mode = 0;
                     } else {
                         eg.vel = (me - pos).normalize_or_zero() * 30.0;
+                        let v = eg.vel;
+                        self.dash_windup(i, Clock::End, v, 0.3);
                     }
                 }
                 self.move_boss(i, dt);

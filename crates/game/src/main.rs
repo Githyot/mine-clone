@@ -4,10 +4,12 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod ambient;
+mod ambient_life;
 mod material;
 mod companions;
 mod options;
 mod sentries;
+mod shield;
 mod vanity;
 mod wings;
 mod anim;
@@ -29,6 +31,7 @@ mod selectors;
 mod audio;
 mod backpacks;
 mod controller;
+mod elements;
 mod enchanting;
 mod drop_fx;
 mod effects;
@@ -81,6 +84,7 @@ mod tr_dungeon;
 mod tr_comfort;
 mod tr_minis;
 mod tr_journey;
+mod tr_feel3d;
 mod tr_weapons;
 #[cfg(test)]
 mod balance;
@@ -96,6 +100,7 @@ mod furniture;
 mod gear;
 mod weather;
 mod windmill;
+mod wind;
 mod entity;
 mod instruments;
 mod torch;
@@ -671,6 +676,8 @@ struct Game {
     /// 20 at the start, up to 40 with life crystals.
     max_health: f32,
     magic: magic::Magic,
+    /// What spells do to the world (elements.rs): spells' blocks that thaw back later.
+    elements: elements::Elements,
     boss: bosses::BossState,
     /// The Terraria side (Etapa 5): accessories, glyph spells, hard mode and its events.
     t5: terraria::Terraria,
@@ -739,6 +746,7 @@ struct Game {
     arrive_plain: bool,
     /// Fractional count of ambient blocks still to look at (ambient.rs).
     ambient_t: f32,
+    life: ambient_life::Life,
     room_t: f32,
     walker_t: f32,
     melody_cd: f32,
@@ -1110,6 +1118,7 @@ impl Game {
             health,
             max_health,
             magic: magic::Magic::new(max_mana),
+            elements: Default::default(),
             boss: bosses::BossState::new(bosses_beaten),
             t5: terraria::Terraria::default(),
             ne: nether_end::NetherEnd::default(),
@@ -1155,6 +1164,7 @@ impl Game {
             respawn_home: false,
             arrive_plain: false,
             ambient_t: 0.0,
+            life: Default::default(),
             room_t: 0.0,
             walker_t: 0.0,
             melody_cd: 0.0,
@@ -1505,6 +1515,7 @@ impl Game {
         self.surv.save(&self.world.save.dir, &self.items);
         self.progress_save();
         self.t5_save();
+        self.elements_save();
         self.prog.save(&level_path_hint(&self.base, &self.world_name), &self.items);
         self.extras.save(&self.world.save.dir, &level_path_hint(&self.base, &self.world_name));
         self.save_mods();
@@ -1821,6 +1832,7 @@ impl Game {
             if matches!(self.screen, Screen::Playing | Screen::Inventory) {
                 self.portal_step(dt);
                 self.update_ambient(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.update_life(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_musicians(dt);
                 self.update_immersion(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
@@ -1912,16 +1924,31 @@ impl Game {
                     // Test hook: hold this item (any item name) in the selected slot.
                     self.surv.inv.slots[self.selected] = Some(voxel::item::ItemStack::new(it, 1));
                 }
+                if let Ok(spec) = std::env::var("MC_SHIELD") {
+                    // Test hook: a shield in the off hand, `item[:colour[:design 1..12:colour]]`
+                    // (MC_SHIELD_MAIN puts it in the main hand instead).
+                    self.test_shield(&spec, std::env::var("MC_SHIELD_MAIN").is_ok());
+                }
                 if std::env::var("MC_NOHUD").is_ok() {
                     // Test hook: no HUD, for clean third-person shots.
                     self.hide_hud = true;
                 }
                 if std::env::var("MC_AMBIENT").is_ok() {
                     // Test hook: a few seconds of ambient bits already in the air.
-                    for _ in 0..80 {
+                    let secs: f32 = std::env::var("MC_AMBIENT").ok().and_then(|v| v.parse().ok()).unwrap_or(4.0);
+                    for _ in 0..(secs * 20.0) as usize {
                         self.update_ambient(0.05);
+                        self.update_life(0.05);
+                        if self.weather.rain > 0.3 && !self.weather.snowing_here {
+                            self.rain_splashes(0.05);
+                        }
                         self.particles.update(&self.world, 0.05);
                     }
+                    log::info!("ambient life after {secs}s: {}", self.particles.census());
+                }
+                if let Ok(what) = std::env::var("MC_LIFE") {
+                    // Test hook: birds, a leaping fish, butterflies and bees in front (ambient_life.rs).
+                    self.test_life(&what);
                 }
                 if std::env::var("MC_FARM").is_ok() {
                     // Test hook: a small field in front, some of it ripe.
@@ -1938,6 +1965,10 @@ impl Game {
                 if let Ok(scene) = std::env::var("MC_FASE6") {
                     // Test hook: a Phase 6 scene (stations, effects, advancements, mobs).
                     self.test_fase6(&scene);
+                }
+                if let Ok(scene) = std::env::var("MC_ELEMENTS") {
+                    // Test hook: a pond and a spell cast into it (elements.rs; MC_PLACE=frames).
+                    self.test_elements(&scene);
                 }
                 if std::env::var("MC_PALE").is_ok() {
                     // Test hook: the pale garden's and resin's new blocks.
@@ -2097,6 +2128,7 @@ impl Game {
             let use_held = self.mouse_held[1] || self.pad_held.contains(&Action::Use);
             self.surv_update(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
             self.update_magic(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
+            self.update_elements(if self.args.screenshot.is_some() { 0.0 } else { dt });
             self.update_fase6(if self.args.screenshot.is_some() { 0.0 } else { dt }, use_held);
             if sim {
                 self.update_boss(if self.args.screenshot.is_some() { 0.0 } else { dt });
@@ -2878,6 +2910,8 @@ impl Game {
             sitting: self.riding.is_some() || self.seat.is_some() || self.mods.aircraft.pilot.is_some() || self.t5.comp.mount.is_some(),
             holding: self.held_stack().is_some(),
             torch: self.held_torch().is_some(),
+            shield_up: if self.shields_worn().iter().any(|(l, m)| l.kind == 0 && matches!(m, shield::Mount::Hand { .. })) { self.extras.raise } else { 0.0 },
+            shield_left: !self.held_stack().is_some_and(|s| self.items.get(s.item).name == "shield"),
             mantle: self.body.mantle.map_or(0.0, |m| m.progress().max(1e-3)),
             ledge: self.body.mantle.map_or(0.0, |m| m.ledge - self.body.pos.y),
         }
@@ -3646,6 +3680,13 @@ impl Game {
                 continue;
             }
             let at = Vec3::new(x as f32 + self.surv.rng.f32(), y as f32 + 1.0, z as f32 + self.surv.rng.f32());
+            if self.world.fluid(self.world.block_or_air(IVec3::new(x, y, z))) == 1 {
+                // Rain on water: a small ring spreading where each drop lands.
+                if self.life_amount() > 0.0 && self.surv.rng.chance(0.5 * self.life_amount().min(1.0)) {
+                    self.particles.ripple(at - Vec3::Y * 0.1, 0.25 + self.surv.rng.f32() * 0.15);
+                }
+                continue;
+            }
             self.particles.rain_drop(at, water);
         }
     }
@@ -4690,6 +4731,9 @@ impl Game {
             let place_frames = std::env::var("MC_PLACE").ok().and_then(|v| v.parse::<i32>().ok());
             let k = PLACED.load(std::sync::atomic::Ordering::Relaxed);
             if let (Some(n), true) = (place_frames, k >= 0) {
+                if let Ok(scene) = std::env::var("MC_ELEMENTS") {
+                    self.elements_frame(k, &scene);
+                }
                 capture = true;
                 PLACED.store(k + 1, std::sync::atomic::Ordering::Relaxed);
                 exit_after = k >= n;
@@ -4700,6 +4744,8 @@ impl Game {
                     // world around is loaded; then wait for the floor to mesh again.
                     self.test_social(&scene);
                     self.loaded_frames = 0;
+                } else if place_frames.is_some() && std::env::var("MC_ELEMENTS").is_ok() {
+                    PLACED.store(0, std::sync::atomic::Ordering::Relaxed);
                 } else if place_frames.is_some() {
                     let name = std::env::var("MC_PLACE_BLOCK").unwrap_or("oak_planks".into());
                     if let (true, Some(hit)) = (name == "break", self.target) {
@@ -4743,6 +4789,7 @@ impl Game {
             if !third && self.renderer.fx.level > 0 {
                 let bones = self.anim.bones(def, &pose, block, 1.0, 1.0);
                 shadow_only.extend(self.armor_instances(&bones));
+                shadow_only.extend(self.shield_instances(&self.shields_worn(), &bones, Game::arm_pivots(def), self.extras.raise));
                 shadow_only.push((pd, bones));
             }
             if third {
@@ -4762,6 +4809,7 @@ impl Game {
                     }
                 }
                 items.extend(self.armor_instances(&bones));
+                items.extend(self.shield_instances(&self.shields_worn(), &bones, Game::arm_pivots(def), self.extras.raise));
                 items.push((pd, bones));
             } else if self.screen == Screen::Playing && !self.hide_hud {
                 // The arm always shows; a held item sits in its fist (held_item_instance).
@@ -4783,7 +4831,13 @@ impl Game {
                         overlay.push((mesh, tb));
                         torch_top = Some((t, top + block.as_vec3(), 0.5));
                     }
-                    overlay.push((pd, arm));
+                    // A shield in either hand (shield.rs); held in the main hand it takes the
+                    // place of the arm, as in the classic game.
+                    let (shields, main_shield) = self.shield_first_person(eye - block.as_vec3(), light, Vec3::ZERO);
+                    overlay.extend(shields);
+                    if !main_shield {
+                        overlay.push((pd, arm));
+                    }
                 }
             }
         }
@@ -4841,6 +4895,7 @@ impl Game {
                 *mm = (m * glam::Mat4::from_cols_array_2d(mm)).to_cols_array_2d();
             }
             overlay.extend(self.armor_instances(&b));
+            overlay.extend(self.shield_instances(&self.shields_worn(), &b, Game::arm_pivots(def), 0.0));
             overlay.push((pd, b));
             let back = center + f * (world_h * 1.3) - block.as_vec3();
             figure_backdrop = Some(item_render::GpuItem { pos: [back.x, back.y, back.z, world_h * 1.22 * (d + world_h * 1.3) / d], info: [0.0, 0.0, 0.0, 0.0], layers: [0.0; 4], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });

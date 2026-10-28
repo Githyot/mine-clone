@@ -144,8 +144,13 @@ fn fs_entity(in: EOut) -> @location(0) vec4<f32> {
         let texel = floor(in.uv * vec2<f32>(textureDimensions(skins, 0)));
         rgb = mat_shade(mat, base, rgb, in.rel, n, in.light.x, max(in.light.y, 0.0), sun_seen, max(hand, 0.0), texel);
     }
-    rgb = mix(rgb, vec3<f32>(1.0, 0.25, 0.2), in.light.z * 0.6);
-    rgb = mix(rgb, vec3<f32>(1.0), in.light.w);
+    rgb = mix(rgb, vec3<f32>(1.0, 0.25, 0.2), max(in.light.z, 0.0) * 0.6);
+    // Negative z: soaked (a little darker and glossier blue). Negative w: frozen in ice.
+    rgb = rgb * (1.0 - max(-in.light.z, 0.0) * vec3<f32>(0.28, 0.22, 0.12));
+    rgb = mix(rgb, vec3<f32>(1.0), max(in.light.w, 0.0));
+    let ice = max(-in.light.w, 0.0);
+    let lum = dot(rgb, vec3<f32>(0.299, 0.587, 0.114));
+    rgb = mix(rgb, vec3<f32>(0.55, 0.8, 1.0) * (lum * 0.8 + 0.25 * l.b), ice * 0.75);
     let fog = smoothstep(g.fog.x, g.fog.y, in.dist);
     return vec4<f32>(mix(rgb, g.fog_color.rgb, fog), 1.0);
 }
