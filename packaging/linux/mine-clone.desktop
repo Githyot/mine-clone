@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Mine Clone
+GenericName=Block game
+Comment=A Minecraft-like block game written in Rust
+Comment[pt_BR]=Um jogo de blocos no estilo Minecraft feito em Rust
+Exec=mine-clone
+Icon=mine-clone
+Terminal=false
+Categories=Game;
+Keywords=minecraft;voxel;blocks;sandbox;
+StartupWMClass=mine-clone
