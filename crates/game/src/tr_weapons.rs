@@ -115,8 +115,8 @@ const WEAPONS: &[WDef] = &[
     // weapons of L18's mini-bosses.
     w("blowpipe", Wk::Gun(1, 0.0), 3.4, 0.6, 40.0, None),
     w("minishark", Wk::Gun(1, 0.04), 1.3, 0.11, 70.0, None),
-    w("star_cannon", Wk::Gun(1, 0.0), 9.0, 0.55, 45.0, None),
-    w("megashark", Wk::Gun(1, 0.04), 2.6, 0.09, 80.0, None),
+    w("star_cannon", Wk::Gun(1, 0.0), 6.3, 0.55, 45.0, None),
+    w("megashark", Wk::Gun(1, 0.04), 2.2, 0.09, 80.0, None),
     w("flamethrower", Wk::Gun(1, 0.1), 2.0, 0.1, 22.0, Some((MOB_BURN, 4.0))),
     w("sniper_rifle", Wk::Gun(1, 0.0), 20.0, 0.75, 140.0, None),
     w("coin_gun", Wk::Gun(1, 0.03), 3.4, 0.12, 80.0, None),

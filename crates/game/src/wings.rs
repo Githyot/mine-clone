@@ -50,6 +50,8 @@ pub const WINGS: &[WingDef] = &[
     w("frozen_wings", 3.4, 7.5, 1.4, Style::Feather, [[60, 120, 170], [130, 200, 236], [220, 248, 255]], true),
     w("flame_wings", 3.4, 8.0, 1.45, Style::Feather, [[140, 30, 10], [236, 110, 30], [255, 220, 120]], true),
     w("breaker_wings", 4.0, 8.5, 1.55, Style::Membrane, [[36, 30, 48], [90, 70, 120], [170, 140, 220]], false),
+    w("betsy_wing", 3.6, 8.0, 1.5, Style::Membrane, [[60, 14, 6], [150, 50, 18], [220, 120, 50]], false),
+    w("festive_wings", 3.6, 8.0, 1.5, Style::Leaf, [[16, 60, 24], [40, 130, 50], [240, 210, 90]], true),
     w("celestial_wings", 4.8, 9.0, 1.7, Style::Feather, [[40, 90, 120], [90, 200, 210], [210, 255, 250]], true),
 ];
 
@@ -270,7 +272,7 @@ mod lote11_tests {
             let id = items.id(n).unwrap_or_else(|| panic!("missing item {n}"));
             // Everything but the turret pictures and the boss-only wings can be made.
             let made = recipes.shaped.iter().any(|r| r.result.item == id) || recipes.shapeless.iter().any(|r| r.result.item == id);
-            let dropped = ["breaker_wings", "feather_wings", "angel_wings"].contains(&n.as_str()) || n.starts_with("sentry_");
+            let dropped = ["breaker_wings", "feather_wings", "angel_wings", "betsy_wing", "festive_wings"].contains(&n.as_str()) || n.starts_with("sentry_");
             assert!(made || dropped, "{n} has no recipe");
         }
     }

@@ -226,8 +226,9 @@ def blocks_art():
         a.poly([(16, 2), (28, 6), (16, 11)], shade_fill(RED, lambda xs, ys: 0.9 - (xs - 16) / 16 - (ys - 2) / 30), "#2a0404")
         a.px(18, 4, "#ff9090")
 
-    out = {"golf_turf_top": turf_top, "golf_turf_side": turf_side, "golf_cup_top": cup_top,
-           "golf_tee": art_block(tee), "golf_flag": art_block(flag)}
+    out = {n: art_block(fn) for n, fn in BLOCK_ICONS.items()}
+    out.update({"golf_turf_top": turf_top, "golf_turf_side": turf_side, "golf_cup_top": cup_top,
+           "golf_tee": art_block(tee), "golf_flag": art_block(flag)})
     for k, (pal, edge) in {"bronze": (["#3a1e0a", "#6a3a14", "#9a5a24", "#c8823a", "#eab070"], "#1a0c04"),
                            "silver": (["#3a3e46", "#626a76", "#9aa2ae", "#c8d0da", "#f0f4f8"], "#16181c"),
                            "gold": (GOLD, "#3a2604")}.items():
@@ -615,7 +616,7 @@ mob("pinky", "Pinky", "Pinky", pinky, "kind: Hostile, health: 150, speed: 2.6, a
     eggs=("#ee82bc", "#a83a7a"))
 
 # Things they drop, sell or pour.
-item("ale", "Cerveja", "Ale", 16)
+item("ale", "Cerveja", "Ale", 16, "food: Some((hunger: 1, saturation: 0.5))")
 item("explorer_hat", "Chapéu de Explorador", "Archaeologist's Hat", 1)
 item("wizard_hat_tim", "Chapéu do Tim", "Wizard Hat", 1)
 item("mining_helmet", "Capacete de Minerador", "Mining Helmet", 1)
@@ -1211,6 +1212,303 @@ ICONS.update({
     "razorpine": sprite(lambda a: pine_icon(a)),
     "spooky_staff": sprite(lambda a: staff_icon(a, ["#120c10", "#22161e", "#34222e", "#48303e", "#5c4050"], ["#6a2a04", "#c45a0a", "#ff9a20", "#ffd060", "#ffffff"])),
 })
+
+
+
+
+def net_icon(a):
+    lin(5, 28, 18, 15, 1.8, shade_fill(WOOD, lambda xs, ys: 0.8 - (xs - 5) / 30), "#140c06", a)
+    a.disc(22, 10, 7.5, shade_fill(STEEL, lambda xs, ys: 0.6), "#16181c")
+    a.disc(22, 10, 6.3, shade_fill(["#c8c8c0", "#e8e8e0", "#ffffff"], lambda xs, ys: 0.4 + 0.4 * ((xs + ys) % 3 < 1)), "#8a8a84")
+
+
+def critter_icon(a, key, pal):
+    if "butterfly" in key:
+        a.poly([(16, 15), (4, 5), (6, 15), (4, 25), (16, 18), (28, 25), (26, 15), (28, 5)], shade_fill(pal, lit(10, 9, 10)), pal[0])
+        lin(16, 9, 16, 24, 1.6, shade_fill(["#141414", "#2a2a2a", "#404040"], lambda xs, ys: 0.5), "#000000", a)
+    elif key == "firefly":
+        a.poly([(10, 12), (20, 10), (24, 16), (14, 20)], shade_fill(["#2a2a14", "#4a4a20", "#6a6a2a"], lambda xs, ys: 0.6), "#0a0a04")
+        a.disc(11, 18, 5.0, shade_fill(pal, lit(11, 17, 5)), pal[0])
+        a.poly([(14, 8), (22, 4), (24, 9), (17, 12)], shade_fill(["#a8b8c0", "#d0e0e8", "#f0f8ff"], lambda xs, ys: 0.6), "#5a6a70")
+    elif key == "snail":
+        a.poly([(4, 24), (26, 24), (28, 27), (4, 27)], shade_fill(["#4a5a2a", "#6a7a4a", "#8a9a62"], lambda xs, ys: 0.6), "#1a2008")
+        a.disc(15, 16, 8.0, shade_fill(pal, lit(13, 13, 8)), pal[0])
+        lin(25, 24, 28, 15, 1.2, shade_fill(["#6a7a4a", "#8a9a62"], lambda xs, ys: 0.6), "#1a2008", a)
+    elif key == "grasshopper":
+        a.poly([(5, 20), (24, 14), (27, 17), (8, 23)], shade_fill(pal, lit(14, 16, 8)), pal[0])
+        lin(14, 20, 8, 28, 1.4, shade_fill(pal, lambda xs, ys: 0.4), pal[0], a)
+        lin(18, 18, 22, 28, 1.4, shade_fill(pal, lambda xs, ys: 0.4), pal[0], a)
+        a.px(25, 15, "#000000")
+    else:
+        a.disc(14, 19, 7.0, shade_fill(pal, lit(12, 16, 7)), pal[0])
+        a.disc(21, 12, 4.5, shade_fill(pal, lit(20, 11, 4)), pal[0])
+        a.poly([(5, 22), (2, 8), (8, 4), (10, 16)], shade_fill(pal, lambda xs, ys: 0.8), pal[0])
+        a.px(22, 11, "#000000")
+
+
+def food_icon(a, kind, pal):
+    if kind == "bowl":
+        a.poly([(4, 15), (28, 15), (24, 26), (8, 26)], shade_fill(WOOD, lambda xs, ys: 0.8 - (xs - 4) / 30), "#140c06")
+        a.poly([(5, 13), (27, 13), (27, 16), (5, 16)], shade_fill(pal, lambda xs, ys: 0.6 + 0.3 * np.sin(xs)), pal[0])
+        for x, y in ((11, 12), (17, 11), (22, 12)):
+            a.px(x, y, pal[-1])
+    elif kind == "plate":
+        a.disc(16, 20, 12.0, shade_fill(["#a8a8b0", "#d8d8de", "#f2f2f6"], lambda xs, ys: 0.7), "#55555c")
+        a.poly([(8, 18), (22, 12), (26, 18), (12, 24)], shade_fill(pal, lit(16, 15, 8)), pal[0])
+    elif kind == "egg":
+        a.disc(16, 17, 11.0, shade_fill(["#d8d8d0", "#eeeee6", "#ffffff"], lambda xs, ys: 0.6), "#8a8a84")
+        a.disc(15, 16, 5.0, shade_fill(pal, lit(14, 15, 5)), pal[0])
+    elif kind == "drink":
+        a.poly([(11, 6), (21, 6), (23, 28), (9, 28)], shade_fill(["#7aa0b0", "#a8c8d4", "#d8eef4"], lambda xs, ys: 0.5), "#3a5a66")
+        a.poly([(10, 12), (22, 12), (23, 27), (9, 27)], shade_fill(pal, lambda xs, ys: 0.9 - (xs - 9) / 20), pal[0])
+        a.px(12, 14, pal[-1])
+    else:
+        a.poly([(5, 18), (12, 8), (24, 6), (28, 14), (20, 24), (9, 26)], shade_fill(pal, lit(14, 11, 10)), pal[0])
+        lin(22, 20, 28, 27, 2.0, shade_fill(["#d8d2bc", "#f0ecdc", "#ffffff"], lambda xs, ys: 0.7), "#5a5446", a)
+
+
+# ==============================================================================================
+# L21: traps, statues, teleporters, stations, food and critters
+# ==============================================================================================
+
+TRAP_STONE = ["#2a2a30", "#3e3e46", "#56565e", "#70707a", "#8a8a94"]
+LIHZ = ["#3a1e08", "#5a3010", "#7a4818", "#9a6424", "#c08a3a"]
+BLOCK_ICONS = {}  # block texture name -> fn(Art) (32x32 art grown to 64, drawn by blocks_art)
+
+
+def face(pal, edge, inner=None):
+    """A full block face: bricks of `pal` with a dark rim, and something drawn in the middle."""
+    def draw(a):
+        a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(pal, lambda xs, ys: 0.55 + 0.25 * np.sin(xs * 0.7) * np.sin(ys * 0.9)), edge)
+        for y in (8, 16, 24):
+            a.poly([(0, y), (32, y), (32, y + 1), (0, y + 1)], shade_fill(pal, lambda xs, ys: 0.1), pal[0])
+        for k, y in enumerate((0, 8, 16, 24)):
+            for x in ((8, 24) if k % 2 == 0 else (0, 16)):
+                a.poly([(x, y), (x + 1, y), (x + 1, y + 8), (x, y + 8)], shade_fill(pal, lambda xs, ys: 0.1), pal[0])
+        if inner:
+            inner(a)
+    return draw
+
+
+def hole(a):
+    a.disc(16, 16, 5.0, shade_fill(["#040404", "#0a0a0a", "#141414"], lambda xs, ys: 0.3), "#000000")
+    a.disc(16, 16, 2.0, "#000000", "#000000")
+
+
+def slots(a):
+    for x in (9, 15, 21):
+        a.poly([(x, 8), (x + 2, 8), (x + 2, 24), (x, 24)], "#060606", "#000000")
+
+
+def grate(a):
+    a.poly([(7, 7), (25, 7), (25, 25), (7, 25)], shade_fill(["#3a0a04", "#7a1a08", "#c43a10"], lambda xs, ys: 0.5), "#000000")
+    for x in (10, 15, 20):
+        a.poly([(x, 7), (x + 2, 7), (x + 2, 25), (x, 25)], shade_fill(STEEL, lambda xs, ys: 0.4), "#000000")
+
+
+def round_mark(a):
+    a.disc(16, 16, 9.0, shade_fill(["#3a3a40", "#5a5a64", "#7a7a86", "#a0a0ac"], lit(13, 13, 9)), "#101014")
+
+
+def tele_top(a):
+    a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(STEEL, lambda xs, ys: 0.5), "#16181c")
+    a.disc(16, 16, 11.0, shade_fill(["#0a2a4a", "#1a5a8a", "#3a9ad0", "#8ad8ff", "#e0f8ff"], lit(16, 16, 11)), "#04101e")
+    a.disc(16, 16, 5.0, shade_fill(["#3a9ad0", "#8ad8ff", "#e0f8ff", "#ffffff"], lit(16, 16, 5)), "#04101e")
+
+
+def tele_side(a):
+    a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(STEEL, lambda xs, ys: 0.45 + ys / 80), "#16181c")
+    a.poly([(0, 4), (32, 4), (32, 7), (0, 7)], shade_fill(["#1a5a8a", "#3a9ad0", "#8ad8ff"], lambda xs, ys: 0.8), "#04101e")
+
+
+def extr_side(a):
+    a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(STEEL, lambda xs, ys: 0.5 - ys / 90), "#16181c")
+    a.poly([(4, 6), (28, 6), (28, 20), (4, 20)], shade_fill(["#3a2a10", "#6a5020", "#9a7a30", "#c8a048"], lambda xs, ys: 0.6), "#140c04")
+    for x in (7, 13, 19, 25):
+        a.disc(x, 26, 2.2, shade_fill(GOLD, lit(x - 1, 25, 2)), "#3a2604")
+
+
+def extr_top(a):
+    a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(STEEL, lambda xs, ys: 0.6), "#16181c")
+    a.poly([(8, 8), (24, 8), (20, 24), (12, 24)], shade_fill(["#040404", "#141414", "#242424"], lambda xs, ys: 0.4), "#000000")
+
+
+def keg_side(a):
+    a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(WOOD, lambda xs, ys: 0.4 + 0.3 * np.sin(xs * 0.4)), "#140c06")
+    for y in (5, 26):
+        a.poly([(0, y), (32, y), (32, y + 2), (0, y + 2)], shade_fill(STEEL, lambda xs, ys: 0.5), "#16181c")
+    a.poly([(14, 14), (19, 14), (19, 18), (14, 18)], shade_fill(["#8a6a2a", "#c09a40", "#e8c868"], lambda xs, ys: 0.6), "#3a2604")
+
+
+def keg_top(a):
+    a.disc(16, 16, 15.5, shade_fill(WOOD, lambda xs, ys: 0.55 + 0.2 * np.sin(np.hypot(xs - 16, ys - 16) * 1.2)), "#140c06")
+
+
+def pot(a):
+    a.poly([(5, 12), (27, 12), (25, 28), (7, 28)], shade_fill(["#141418", "#26262e", "#3a3a46", "#56566a", "#8a8aa0"], lambda xs, ys: 0.9 - (xs - 5) / 30), "#04040a")
+    a.poly([(3, 10), (29, 10), (29, 13), (3, 13)], shade_fill(["#26262e", "#3a3a46", "#56566a"], lambda xs, ys: 0.6), "#04040a")
+    a.poly([(7, 8), (25, 8), (25, 10), (7, 10)], shade_fill(["#6a4a1a", "#a07a30", "#d0aa50"], lambda xs, ys: 0.7), "#2a1a04")
+    for x, y in ((12, 5), (17, 3), (21, 6)):
+        a.px(x, y, "#d8d8de")
+    a.poly([(10, 29), (13, 29), (12, 31), (11, 31)], shade_fill(["#a83a08", "#ff9a20"], lambda xs, ys: 0.6), "#3a0a02")
+    a.poly([(19, 29), (22, 29), (21, 31), (20, 31)], shade_fill(["#a83a08", "#ff9a20"], lambda xs, ys: 0.6), "#3a0a02")
+
+
+def jar(glow_pal, bugs):
+    def draw(a):
+        a.poly([(9, 8), (23, 8), (24, 28), (8, 28)], shade_fill(["#7aa0b0", "#a8c8d4", "#d8eef4"], lambda xs, ys: 0.4 + 0.3 * (xs < 12)), "#3a5a66")
+        a.poly([(10, 5), (22, 5), (22, 8), (10, 8)], shade_fill(WOOD, lambda xs, ys: 0.6), "#140c06")
+        a.disc(16, 19, 6.0, shade_fill(glow_pal, lit(16, 19, 6)), glow_pal[1])
+        for x, y in bugs:
+            a.px(x, y, glow_pal[-1])
+    return draw
+
+
+TRAPS = (("dart_trap", "Armadilha de Dardos", "Dart Trap", TRAP_STONE, hole),
+         ("spear_trap", "Armadilha de Lanças", "Spear Trap", LIHZ, slots),
+         ("flame_trap", "Armadilha de Chamas", "Flame Trap", LIHZ, grate),
+         ("geyser_trap", "Gêiser", "Geyser", TRAP_STONE, grate),
+         ("boulder_trap", "Armadilha de Pedregulho", "Boulder Trap", TRAP_STONE, round_mark))
+for n, dn, en, pal, mark in TRAPS:
+    block(n, dn, en, f'hardness: 2.5, tool: Some(Pickaxe), tier: 1, textures: (top: Some("{n}_top"), side: Some("{n}"), bottom: Some("{n}_top"))')
+    BLOCK_ICONS[n] = face(pal, "#000000", mark)
+    BLOCK_ICONS[n + "_top"] = face(pal, "#000000", mark if n == "geyser_trap" else None)
+shaped(["SSS", "SAS", "SRS"], {"S": "stone", "A": "arrow", "R": "redstone"}, "dart_trap")
+shaped(["SSS", "SIS", "SRS"], {"S": "stone_bricks", "I": "iron_ingot", "R": "redstone"}, "spear_trap")
+shaped(["SSS", "SLS", "SRS"], {"S": "stone_bricks", "L": "lava_bucket", "R": "redstone"}, "flame_trap")
+shaped(["SSS", "SLS", "SRS"], {"S": "stone", "L": "magma_block", "R": "redstone"}, "geyser_trap")
+shaped(["SSS", "SCS", "SRS"], {"S": "stone", "C": "cobblestone", "R": "redstone"}, "boulder_trap")
+block("teleporter", "Teletransportador", "Teleporter", 'hardness: 3.0, tool: Some(Pickaxe), light: 7, textures: (top: Some("teleporter_top"), side: Some("teleporter_side"), bottom: Some("teleporter_side"))')
+BLOCK_ICONS["teleporter_top"] = tele_top
+BLOCK_ICONS["teleporter_side"] = tele_side
+shaped(["IEI", "IRI", "III"], {"I": "iron_ingot", "E": "ender_pearl", "R": "redstone"}, "teleporter", 2)
+block("extractinator", "Extrator", "Extractinator", 'hardness: 3.0, tool: Some(Pickaxe), textures: (top: Some("extractinator_top"), side: Some("extractinator_side"), bottom: Some("extractinator_top"))')
+BLOCK_ICONS["extractinator_top"] = extr_top
+BLOCK_ICONS["extractinator_side"] = extr_side
+shaped(["III", "HRH", "III"], {"I": "iron_ingot", "H": "hopper", "R": "redstone"}, "extractinator")
+block("keg", "Barril de Cerveja", "Keg", 'hardness: 2.0, tool: Some(Axe), textures: (top: Some("keg_top"), side: Some("keg_side"), bottom: Some("keg_top"))')
+BLOCK_ICONS["keg_top"] = keg_top
+BLOCK_ICONS["keg_side"] = keg_side
+shaped(["PPP", "I I", "PPP"], {"P": "oak_planks", "I": "iron_ingot"}, "keg")
+block("cooking_pot", "Caldeirão de Cozinha", "Cooking Pot", 'shape: Cross, transparency: Cutout, solid: false, hardness: 2.0, tool: Some(Pickaxe), textures: (all: Some("cooking_pot"))')
+BLOCK_ICONS["cooking_pot"] = pot
+shaped(["I I", "I I", "III"], {"I": "iron_ingot"}, "cooking_pot")
+block("firefly_jar", "Vidro de Vaga-lumes", "Firefly in a Bottle", 'shape: Cross, transparency: Cutout, solid: false, light: 12, hardness: 0.3, textures: (all: Some("firefly_jar"))')
+block("butterfly_jar", "Vidro de Borboleta", "Butterfly Jar", 'shape: Cross, transparency: Cutout, solid: false, light: 5, hardness: 0.3, textures: (all: Some("butterfly_jar"))')
+BLOCK_ICONS["firefly_jar"] = jar(["#5a6a0a", "#a0c020", "#e0ff60", "#ffffc0"], ((13, 17), (19, 20), (16, 22), (14, 14)))
+BLOCK_ICONS["butterfly_jar"] = jar(["#2a3a8a", "#4a6ad0", "#8ab0ff", "#e0f0ff"], ((15, 18), (17, 18)))
+shapeless(["glass_bottle", "critter_firefly"], "firefly_jar")
+shapeless(["glass_bottle", "critter_butterfly"], "butterfly_jar")
+
+
+# Statues: a stone figure of a creature; power it and it lets out one of them.
+def statue(shape):
+    def draw(a):
+        a.poly([(8, 26), (24, 26), (25, 31), (7, 31)], shade_fill(TRAP_STONE, lambda xs, ys: 0.6 - (xs - 7) / 40), "#101014")
+        shape(a)
+    return draw
+
+
+def st_jelly(a):
+    a.poly([(8, 25), (10, 15), (16, 11), (22, 15), (24, 25)], shade_fill(TRAP_STONE, lit(13, 15, 9)), "#101014")
+    a.px(13, 19, "#101014")
+    a.px(19, 19, "#101014")
+
+
+def st_bat(a):
+    a.poly([(3, 10), (12, 14), (16, 12), (20, 14), (29, 10), (24, 20), (16, 18), (8, 20)], shade_fill(TRAP_STONE, lit(14, 13, 9)), "#101014")
+    lin(16, 18, 16, 26, 2.0, shade_fill(TRAP_STONE, lambda xs, ys: 0.5), "#101014", a)
+
+
+def st_skel(a):
+    a.disc(16, 7, 4.0, shade_fill(TRAP_STONE, lit(15, 6, 4)), "#101014")
+    a.poly([(12, 11), (20, 11), (19, 19), (13, 19)], shade_fill(TRAP_STONE, lambda xs, ys: 0.6), "#101014")
+    for x in (13, 18):
+        a.poly([(x, 19), (x + 2, 19), (x + 2, 26), (x, 26)], shade_fill(TRAP_STONE, lambda xs, ys: 0.5), "#101014")
+    for x in (9, 21):
+        a.poly([(x, 11), (x + 2, 11), (x + 2, 18), (x, 18)], shade_fill(TRAP_STONE, lambda xs, ys: 0.5), "#101014")
+
+
+def st_rabbit(a):
+    a.disc(16, 20, 6.0, shade_fill(TRAP_STONE, lit(14, 18, 6)), "#101014")
+    a.disc(19, 13, 3.5, shade_fill(TRAP_STONE, lit(18, 12, 3)), "#101014")
+    for x in (18, 21):
+        a.poly([(x, 3), (x + 2, 3), (x + 2, 11), (x, 11)], shade_fill(TRAP_STONE, lambda xs, ys: 0.6), "#101014")
+
+
+def st_butterfly(a):
+    a.poly([(16, 14), (5, 6), (7, 16), (5, 24), (16, 18), (27, 24), (25, 16), (27, 6)], shade_fill(TRAP_STONE, lit(12, 10, 10)), "#101014")
+    lin(16, 10, 16, 26, 1.6, shade_fill(TRAP_STONE, lambda xs, ys: 0.4), "#101014", a)
+
+
+STATUES = (("statue_jelly", "Estátua de Geleia", "Slime Statue", "jelly_blue", st_jelly),
+           ("statue_bat", "Estátua de Morcego", "Bat Statue", "cave_bat", st_bat),
+           ("statue_skeleton", "Estátua de Esqueleto", "Skeleton Statue", "skeleton", st_skel),
+           ("statue_rabbit", "Estátua de Coelho", "Bunny Statue", "rabbit", st_rabbit),
+           ("statue_butterfly", "Estátua de Borboleta", "Butterfly Statue", "critter_butterfly", st_butterfly))
+for n, dn, en, _, shape in STATUES:
+    block(n, dn, en, f'shape: Cross, transparency: Cutout, solid: false, hardness: 2.0, tool: Some(Pickaxe), textures: (all: Some("{n}"))')
+    BLOCK_ICONS[n] = statue(shape)
+    shaped(["SSS", "SRS", "SSS"], {"S": "stone", "R": "redstone"}, n) if n == "statue_jelly" else None
+
+# Critters, the bug net, and bait.
+CRIT = "kind: Passive, spawn: Never, attack: 0, xp: 1, coins: Some(0)"
+ff = Model()
+ff.box((2, 2, 3), (-1, 0, -1), look("ffbody", ["#2a2a14", "#4a4a20", "#6a6a2a"]))
+ff.box((2, 2, 2), (-1, 0, -3), look("ffglow", ["#a0c020", "#e0ff60", "#ffffc0"]))
+for k, x in enumerate((-3, 1)):
+    ff.box((2, 1, 2), (x, 2, -1), look("ffwing", ["#a8b8c0", "#d0e0e8", "#f0f8ff"]), f"Wing({k})", (x + (2 if k == 0 else 0), 2, 0))
+mob("critter_firefly", "Vaga-lume", "Firefly", ff, f"{CRIT}, health: 2, speed: 1.2, width: 0.25, height: 0.25, flies: true, hover: 1.5, lit: true")
+for key, dn, en, pal, egg_ in (("butterfly", "Borboleta", "Butterfly", ["#1a3a8a", "#2a5ad0", "#5a8af0", "#a0c8ff"], None),
+                               ("gold_butterfly", "Borboleta Dourada", "Gold Butterfly", GOLD[1:], None)):
+    m = Model()
+    m.box((1, 1, 4), (0, 0, -2), look(key + "b", ["#141414", "#2a2a2a", "#404040"]))
+    for k, x in enumerate((-5, 1)):
+        m.box((5, 1, 5), (x, 1, -2), look(key + "w", pal, pattern="petals"), f"Wing({k})", (x + (5 if k == 0 else 0), 1, 0))
+    mob(f"critter_{key}", dn, en, m, f"{CRIT}, health: 2, speed: 1.6, width: 0.3, height: 0.25, flies: true, hover: 1.2" + (", lit: true" if "gold" in key else ""))
+gh = quadruped((3, 2, 6), (2, 2, 2), 1, 1, look("ghb", ["#3a5a14", "#4e7a1e", "#6a9a2a"]), look("ghh", ["#3a5a14", "#4e7a1e", "#6a9a2a"], eyes=((10, 10, 10), None)), look("ghl", ["#2a4a0e", "#3a5a14", "#4e7a1e"]))
+mob("critter_grasshopper", "Gafanhoto", "Grasshopper", gh, f"{CRIT}, health: 2, speed: 2.4, width: 0.3, height: 0.25, hops: true, flee_range: 4.0")
+for key, dn, en, pal in (("squirrel", "Esquilo", "Squirrel", ["#5a3a1a", "#7a5226", "#9a6c36", "#c09058"]),
+                         ("gold_squirrel", "Esquilo Dourado", "Gold Squirrel", GOLD[1:])):
+    sq = quadruped((4, 4, 6), (4, 4, 4), 2, 1, look(key + "b", pal), look(key + "h", pal, eyes=((10, 10, 10), None)), look(key + "l", pal[:3]), ears=(1, 2, 1), tail=(3, 6, 3))
+    mob(f"critter_{key}", dn, en, sq, f"{CRIT}, health: 4, speed: 3.0, width: 0.35, height: 0.4, hops: true, flee_range: 6.0, climbs: true" + (", lit: true" if "gold" in key else ""))
+sn = Model()
+sn.box((3, 2, 6), (-1, 0, -3), look("snbody", ["#6a7a4a", "#8a9a62", "#aaba7e"]))
+sn.box((4, 4, 4), (-2, 2, -3), look("snshell", ["#5a3a1a", "#7a5226", "#9a6c36", "#c09058"], pattern="rings"))
+mob("critter_snail", "Caracol", "Snail", sn, f"{CRIT}, health: 2, speed: 0.4, width: 0.3, height: 0.3, climbs: true")
+
+item("bug_net", "Rede de Insetos", "Bug Net", 1)
+shaped([" SW", " SS", "S  "], {"S": "stick", "W": "string"}, "bug_net")
+ICONS["bug_net"] = sprite(lambda a: net_icon(a))
+for key, dn, en, pal in (("firefly", "Vaga-lume", "Firefly", ["#5a6a0a", "#a0c020", "#e0ff60", "#ffffc0", "#ffffff"]),
+                         ("butterfly", "Borboleta", "Butterfly", ["#0a1a5a", "#1a3a8a", "#2a5ad0", "#5a8af0", "#a0c8ff"]),
+                         ("gold_butterfly", "Borboleta Dourada", "Gold Butterfly", GOLD),
+                         ("grasshopper", "Gafanhoto", "Grasshopper", ["#1a3a0a", "#3a5a14", "#4e7a1e", "#6a9a2a", "#9ac850"]),
+                         ("squirrel", "Esquilo", "Squirrel", ["#3a2210", "#5a3a1a", "#7a5226", "#9a6c36", "#c09058"]),
+                         ("gold_squirrel", "Esquilo Dourado", "Gold Squirrel", GOLD),
+                         ("snail", "Caracol", "Snail", ["#3a2210", "#5a3a1a", "#7a5226", "#9a6c36", "#c09058"])):
+    item(f"critter_{key}", dn, en, 16 if "gold" not in key else 4)
+    ICONS[f"critter_{key}"] = sprite(lambda a, k=key, p=pal: critter_icon(a, k, p))
+
+# Boulders roll from a boulder trap.
+bo = Model()
+bo.box((14, 14, 14), (-7, 0, -7), look("boulder", ["#3a3a40", "#56565e", "#70707a", "#8a8a94"], pattern="carved"), "Head", (0, 7, 0))
+mob("rolling_boulder", "Pedregulho", "Boulder", bo, "kind: Neutral, health: 9999, speed: 0, attack: 0, xp: 0, width: 0.9, height: 0.9, spawn: Never, coins: Some(0)")
+
+# Food in three tiers (tr3_traps.rs gives each tier its buff).
+for n, dn, en, hunger, sat, art, rec in (
+        ("bowl_of_soup", "Tigela de Sopa", "Bowl of Soup", 7, 8.0, ("bowl", ["#7a4a1a", "#a8682a", "#d09048", "#f0b870", "#fff0c0"]), ["bowl", "cod", "brown_mushroom"]),
+        ("grilled_squirrel", "Esquilo Assado", "Grilled Squirrel", 6, 7.0, ("meat", ["#3a1a0a", "#6a3214", "#9a4e22", "#c8763a", "#f0a868"]), ["critter_squirrel", "coal"]),
+        ("fried_egg", "Ovo Frito", "Fried Egg", 5, 6.0, ("egg", ["#c89a20", "#e8c040", "#ffe070", "#fff8d8", "#ffffff"]), ["egg", "coal"]),
+        ("bunny_stew", "Ensopado de Coelho", "Bunny Stew", 9, 11.0, ("bowl", ["#5a2a10", "#8a4a20", "#b06a30", "#d89050", "#f8c890"]), ["bowl", "cooked_rabbit", "carrot", "potato"]),
+        ("seafood_dinner", "Jantar de Frutos do Mar", "Seafood Dinner", 10, 12.0, ("plate", ["#8a3a1a", "#c05a2a", "#e88a4a", "#ffb878", "#ffe8c8"]), ["cooked_salmon", "cooked_cod", "kelp", "bowl"]),
+        ("pad_thai", "Macarrão Tailandês", "Pad Thai", 9, 11.0, ("bowl", ["#a87a2a", "#d0a040", "#f0c860", "#fff0a0", "#ffffff"]), ["bowl", "wheat", "egg", "carrot"]),
+        ("golden_delight", "Delícia Dourada", "Golden Delight", 12, 16.0, ("meat", GOLD), ["critter_gold_squirrel", "golden_carrot"]),
+        ("lobster_tail", "Cauda de Lagosta", "Lobster Tail", 11, 14.0, ("meat", ["#5a0a0a", "#9a1a14", "#d03a28", "#f07050", "#ffb0a0"]), ["tropical_fish", "salmon", "coal"]),
+        ("grape_juice", "Suco de Uva", "Grape Juice", 8, 14.0, ("drink", ["#2a0a3a", "#4a145a", "#702a8a", "#a050c0", "#e0a0ff"]), ["glass_bottle", "sweet_berries", "sweet_berries", "sugar"])):
+    item(n, dn, en, 16, f"food: Some((hunger: {hunger}, saturation: {sat}))")
+    shapeless(rec, n)
+    ICONS[n] = sprite(lambda a, l=art: food_icon(a, *l))
 
 
 # ==============================================================================================

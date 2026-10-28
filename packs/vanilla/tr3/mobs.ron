@@ -675,4 +675,81 @@
             (size: (8, 1, 1), origin: (5, 4, 4), uv: (36, 18), anim: SpiderLeg(5), pivot: (5, 4, 4)),
         ],
     ),
+    (
+        name: "critter_firefly", display_name: "Vaga-lume", kind: Passive, spawn: Never, attack: 0, xp: 1, coins: Some(0), health: 2, speed: 1.2, width: 0.25, height: 0.25, flies: true, hover: 1.5, lit: true,
+        parts: [
+            (size: (2, 2, 3), origin: (-1, 0, -1), uv: (0, 0)),
+            (size: (2, 2, 2), origin: (-1, 0, -3), uv: (10, 0)),
+            (size: (2, 1, 2), origin: (-3, 2, -1), uv: (18, 0), anim: Wing(0), pivot: (-1, 2, 0)),
+            (size: (2, 1, 2), origin: (1, 2, -1), uv: (18, 0), anim: Wing(1), pivot: (1, 2, 0)),
+        ],
+    ),
+    (
+        name: "critter_butterfly", display_name: "Borboleta", kind: Passive, spawn: Never, attack: 0, xp: 1, coins: Some(0), health: 2, speed: 1.6, width: 0.3, height: 0.25, flies: true, hover: 1.2,
+        parts: [
+            (size: (1, 1, 4), origin: (0, 0, -2), uv: (0, 0)),
+            (size: (5, 1, 5), origin: (-5, 1, -2), uv: (10, 0), anim: Wing(0), pivot: (0, 1, 0)),
+            (size: (5, 1, 5), origin: (1, 1, -2), uv: (10, 0), anim: Wing(1), pivot: (1, 1, 0)),
+        ],
+    ),
+    (
+        name: "critter_gold_butterfly", display_name: "Borboleta Dourada", kind: Passive, spawn: Never, attack: 0, xp: 1, coins: Some(0), health: 2, speed: 1.6, width: 0.3, height: 0.25, flies: true, hover: 1.2, lit: true,
+        parts: [
+            (size: (1, 1, 4), origin: (0, 0, -2), uv: (0, 0)),
+            (size: (5, 1, 5), origin: (-5, 1, -2), uv: (10, 0), anim: Wing(0), pivot: (0, 1, 0)),
+            (size: (5, 1, 5), origin: (1, 1, -2), uv: (10, 0), anim: Wing(1), pivot: (1, 1, 0)),
+        ],
+    ),
+    (
+        name: "critter_grasshopper", display_name: "Gafanhoto", kind: Passive, spawn: Never, attack: 0, xp: 1, coins: Some(0), health: 2, speed: 2.4, width: 0.3, height: 0.25, hops: true, biomes: ["Plains", "Meadow", "Savanna", "Sunflower Plains"], weight: 3, group: (1, 2), flee_range: 4.0,
+        parts: [
+            (size: (3, 2, 6), origin: (-2, 1, -3), uv: (0, 0)),
+            (size: (2, 2, 2), origin: (-1, 2, 2), uv: (18, 0), anim: Head, pivot: (0, 3, 3)),
+            (size: (1, 1, 1), origin: (-2, 0, -2), uv: (26, 0), anim: Leg(0), pivot: (-2, 1, -2)),
+            (size: (1, 1, 1), origin: (0, 0, -2), uv: (26, 0), anim: Leg(1), pivot: (0, 1, -2)),
+            (size: (1, 1, 1), origin: (-2, 0, 1), uv: (26, 0), anim: Leg(1), pivot: (-2, 1, 1)),
+            (size: (1, 1, 1), origin: (0, 0, 1), uv: (26, 0), anim: Leg(0), pivot: (0, 1, 1)),
+        ],
+    ),
+    (
+        name: "critter_squirrel", display_name: "Esquilo", kind: Passive, spawn: Never, attack: 0, xp: 1, coins: Some(0), health: 4, speed: 3.0, width: 0.35, height: 0.4, hops: true, flee_range: 6.0, climbs: true, biomes: ["Forest", "Birch Forest", "Dark Forest", "Flower Forest", "Old Growth Taiga"], weight: 4, group: (1, 2),
+        parts: [
+            (size: (4, 4, 6), origin: (-2, 2, -3), uv: (0, 0)),
+            (size: (4, 4, 4), origin: (-2, 4, 2), uv: (20, 0), anim: Head, pivot: (0, 6, 3)),
+            (size: (1, 2, 1), origin: (-2, 8, 3), uv: (36, 0), anim: Head, pivot: (0, 6, 3)),
+            (size: (1, 2, 1), origin: (1, 8, 3), uv: (36, 0), anim: Head, pivot: (0, 6, 3)),
+            (size: (1, 2, 1), origin: (-2, 0, -2), uv: (40, 0), anim: Leg(0), pivot: (-2, 2, -2)),
+            (size: (1, 2, 1), origin: (1, 0, -2), uv: (40, 0), anim: Leg(1), pivot: (1, 2, -2)),
+            (size: (1, 2, 1), origin: (-2, 0, 1), uv: (40, 0), anim: Leg(1), pivot: (-2, 2, 1)),
+            (size: (1, 2, 1), origin: (1, 0, 1), uv: (40, 0), anim: Leg(0), pivot: (1, 2, 1)),
+            (size: (3, 6, 3), origin: (-2, 0, -6), uv: (44, 0)),
+        ],
+    ),
+    (
+        name: "critter_gold_squirrel", display_name: "Esquilo Dourado", kind: Passive, spawn: Never, attack: 0, xp: 1, coins: Some(0), health: 4, speed: 3.0, width: 0.35, height: 0.4, hops: true, flee_range: 6.0, climbs: true, lit: true,
+        parts: [
+            (size: (4, 4, 6), origin: (-2, 2, -3), uv: (0, 0)),
+            (size: (4, 4, 4), origin: (-2, 4, 2), uv: (20, 0), anim: Head, pivot: (0, 6, 3)),
+            (size: (1, 2, 1), origin: (-2, 8, 3), uv: (36, 0), anim: Head, pivot: (0, 6, 3)),
+            (size: (1, 2, 1), origin: (1, 8, 3), uv: (36, 0), anim: Head, pivot: (0, 6, 3)),
+            (size: (1, 2, 1), origin: (-2, 0, -2), uv: (40, 0), anim: Leg(0), pivot: (-2, 2, -2)),
+            (size: (1, 2, 1), origin: (1, 0, -2), uv: (40, 0), anim: Leg(1), pivot: (1, 2, -2)),
+            (size: (1, 2, 1), origin: (-2, 0, 1), uv: (40, 0), anim: Leg(1), pivot: (-2, 2, 1)),
+            (size: (1, 2, 1), origin: (1, 0, 1), uv: (40, 0), anim: Leg(0), pivot: (1, 2, 1)),
+            (size: (3, 6, 3), origin: (-2, 0, -6), uv: (44, 0)),
+        ],
+    ),
+    (
+        name: "critter_snail", display_name: "Caracol", kind: Passive, spawn: Never, attack: 0, xp: 1, coins: Some(0), health: 2, speed: 0.4, width: 0.3, height: 0.3, climbs: true,
+        parts: [
+            (size: (3, 2, 6), origin: (-1, 0, -3), uv: (0, 0)),
+            (size: (4, 4, 4), origin: (-2, 2, -3), uv: (18, 0)),
+        ],
+    ),
+    (
+        name: "rolling_boulder", display_name: "Pedregulho", kind: Neutral, health: 9999, speed: 0, attack: 0, xp: 0, width: 0.9, height: 0.9, spawn: Never, coins: Some(0),
+        parts: [
+            (size: (14, 14, 14), origin: (-7, 0, -7), uv: (0, 0), anim: Head, pivot: (0, 7, 0)),
+        ],
+    ),
 ])
