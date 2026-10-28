@@ -624,6 +624,10 @@ struct Game {
     place_cd: f32,
     target: Option<RayHit>,
     step_dist: f32,
+    /// Distance slid over ice since the last slide sound.
+    slide_dist: f32,
+    /// How far the feet have sunk into sand or snow (the camera eases down by it).
+    sink: f32,
     /// Distance walked through plants since the last rustle.
     rustle_dist: f32,
 
@@ -1054,6 +1058,8 @@ impl Game {
             place_cd: 0.0,
             target: None,
             step_dist: 0.0,
+            slide_dist: 0.0,
+            sink: 0.0,
             rustle_dist: 0.0,
             pads: Controllers::new(),
             key_map: keybinds::KeyMap::default(),
@@ -2229,7 +2235,23 @@ impl Game {
             self.body.in_water = self.body.head_in_water || voxel::physics::Terrain::liquid(&self.world, self.body.pos.floor().as_ivec3());
         }
         let moved = (self.body.pos - before) * Vec3::new(1.0, 0.0, 1.0);
-        if self.body.on_ground && was_ground && !self.body.flying {
+        // Feet sliding on ice (stopping, turning, setting off): a soft scrape and ice shavings
+        // instead of footsteps.
+        let sliding = self.body.on_ground && was_ground && !self.body.flying && self.body.ground.slippery() && self.body.slide > 1.2;
+        if sliding {
+            self.slide_dist += moved.length();
+            if self.slide_dist > 1.3 {
+                self.slide_dist = 0.0;
+                let k = (self.body.slide / 6.0).min(1.0);
+                self.sfx_here(Sfx::Fx(sfx_extra::Fx::Slide(k)), 0.3 + 0.25 * k);
+                self.slide_shavings();
+            }
+        } else {
+            self.slide_dist = 1.0;
+        }
+        let sink = if self.body.on_ground && !self.body.flying { self.body.ground.sink } else { 0.0 };
+        self.sink += (sink - self.sink) * (dt * 8.0).min(1.0);
+        if self.body.on_ground && was_ground && !self.body.flying && !sliding {
             self.step_dist += moved.length();
             if self.step_dist > 1.7 {
                 self.step_dist = 0.0;
@@ -4371,7 +4393,7 @@ impl Game {
 
         // Eye height eases between standing, sneaking and lying down instead of jumping.
         let stand = if self.body.flying { voxel::physics::EYE_HEIGHT } else { voxel::physics::EYE_HEIGHT - 0.25 * self.crouch };
-        let head = self.body.pos + Vec3::Y * (stand + (0.42 - stand) * self.prone_t);
+        let head = self.body.pos + Vec3::Y * (stand + (0.42 - stand) * self.prone_t - self.sink);
         let playing_view = self.world_open && !matches!(self.screen, Screen::Loading);
         let third = playing_view && self.camera_mode != 0;
         let mut view_fwd = self.forward();
@@ -5017,6 +5039,23 @@ mod data_tests {
         for name in ["templo_escamado", "lago_cintilante", "masmorra_blue", "masmorra_pink"] {
             assert!(s.list.iter().any(|st| st.def.name == name), "{name}");
         }
+    }
+
+    #[test]
+    fn ice_sand_and_snow_blocks_have_their_feel() {
+        // The game's own blocks get the ground feel by name: a renamed block would lose it.
+        let base = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+        let (reg, _, _) = load_game_data(base).unwrap();
+        use voxel::physics::Ground;
+        for n in ["ice", "packed_ice", "blue_ice", "frosted_ice"] {
+            let b = reg.get(reg.id(n).unwrap_or_else(|| panic!("{n} missing")));
+            assert!(Ground::of_block(&b.name, b.variant).slippery(), "{n}");
+        }
+        for n in ["sand", "red_sand", "snow", "soul_sand", "slime_block"] {
+            let b = reg.get(reg.id(n).unwrap_or_else(|| panic!("{n} missing")));
+            assert_ne!(Ground::of_block(&b.name, b.variant), Ground::FIRM, "{n}");
+        }
+        assert!(reg.id("snow_layer").is_some());
     }
 
     #[test]
