@@ -696,7 +696,8 @@ impl Game {
         let tool = self.held_tool();
         let drops = self.items.drops(&self.reg, id, tool.as_ref(), &mut self.surv.rng);
         let drops = self.ench_drops(id, drops);
-        let drops = self.extras_drops(id, drops);
+        let mut drops = self.extras_drops(id, drops);
+        self.skill_block_broken(id, &mut drops);
         self.fase6_block_broken(pos, id);
         let c = pos.as_vec3() + Vec3::splat(0.5);
         let harvested = self.items.can_harvest(&self.reg, id, tool.as_ref());

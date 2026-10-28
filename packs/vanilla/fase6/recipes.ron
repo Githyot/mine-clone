@@ -87,6 +87,8 @@
         (pattern: ["#  ", "## ", "###"], key: {'#': "tuff_bricks"}, result: "tuff_brick_stairs", count: 4),
     ],
     shapeless: [
+        // The atlas remembers every place it was carried through (atlas.rs).
+        (ingredients: ["book", "map"], result: "atlas"),
         (ingredients: ["emerald_block"], result: "emerald", count: 9),
         (ingredients: ["lapis_block"], result: "lapis_lazuli", count: 9),
         (ingredients: ["book", "ink_sac", "feather"], result: "writable_book"),

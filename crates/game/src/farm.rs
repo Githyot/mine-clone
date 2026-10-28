@@ -75,7 +75,7 @@ impl Farm {
         self.first.get(id as usize) == Some(&id) && id != AIR && self.soil[id as usize] == self.farmland
     }
 
-    fn ripe(&self, id: BlockId) -> bool {
+    pub fn ripe(&self, id: BlockId) -> bool {
         self.ripe.get(id as usize).copied().unwrap_or(false)
     }
 }

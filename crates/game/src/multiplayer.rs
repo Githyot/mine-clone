@@ -1520,6 +1520,7 @@ impl Game {
         }
         let mut mine = Vec::new();
         for &(def, pos) in deaths {
+            self.net_share_kill(def, pos);
             let who = self
                 .mobs
                 .list
@@ -1533,6 +1534,49 @@ impl Game {
             }
         }
         mine
+    }
+
+    /// Ofícios in a group (the Aged idea of a party sharing experience): when a monster dies,
+    /// every other player within 32 blocks and on the same team (or all teamless) gets a
+    /// quarter of its health as Combate experience. The one who dealt the damage already got
+    /// theirs from hitting it.
+    fn net_share_kill(&mut self, def: usize, pos: Vec3) {
+        let d = &self.mobs.reg.defs[def];
+        if d.town || d.kind == voxel::mob::Kind::Passive {
+            return;
+        }
+        let xp = ((d.health * 0.25).round() as u32).max(1);
+        let killer = self.mobs.list.iter().find(|m| m.def == def && m.body.pos == pos && !m.alive()).and_then(|m| self.host_ref().credit.get(&m.net_id)).map(|(id, _)| *id);
+        let dim = self.dim.as_u8();
+        let board = &self.net.board;
+        let team = |name: &str| board.team_of(name).map(|t| t.name.clone());
+        // Everyone close by, with their team.
+        let mut near: Vec<(Option<ConnId>, Option<String>)> = Vec::new();
+        if self.body.pos.distance(pos) < 32.0 {
+            near.push((None, team(&self.net.cfg.name)));
+        }
+        for (id, g) in &self.host_ref().guests {
+            if let Some(st) = &g.state {
+                if st.dim == dim && Vec3::from(st.pos).distance(pos) < 32.0 {
+                    near.push((Some(*id), team(&g.name)));
+                }
+            }
+        }
+        // Alone, there is nobody to share with.
+        if near.len() < 2 {
+            return;
+        }
+        let Some(killer_team) = near.iter().find(|n| n.0 == killer).map(|n| n.1.clone()) else { return };
+        let skill = crate::skills::Skill::Combat.index() as u8;
+        for (id, t) in near {
+            if id == killer || t != killer_team {
+                continue;
+            }
+            match id {
+                Some(id) => self.host_ref().host.send(id, &ToGuest::SkillShare { skill, xp }),
+                None => self.skill_gain(crate::skills::Skill::Combat, xp),
+            }
+        }
     }
 
     // ---- joining --------------------------------------------------------------------------
@@ -1872,6 +1916,11 @@ impl Game {
                 }
                 if d < 64.0 {
                     self.sfx(Sfx::Explode);
+                }
+            }
+            ToGuest::SkillShare { skill, xp } => {
+                if let Some(&k) = crate::skills::ALL.get(skill as usize) {
+                    self.skill_gain(k, xp.min(500));
                 }
             }
             ToGuest::Killed { mob, pos } => {
