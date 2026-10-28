@@ -44,6 +44,8 @@ struct Globals {
     // Material feel of items and armour (material.rs): x 0 off, 1 glints, 2 also relief and
     // sparkles.
     mat: vec4<f32>,
+    // Animated textures: layer + 1 of x fire, y soul fire, z lava (0 = none).
+    anim: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;

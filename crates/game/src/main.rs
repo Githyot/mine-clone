@@ -108,6 +108,7 @@ mod entity;
 mod instruments;
 mod torch;
 mod summons;
+mod fire_fx;
 mod item_render;
 mod juice;
 mod menus;
@@ -763,6 +764,8 @@ struct Game {
     musicians: instruments::Musicians,
     /// Flames owed to the held torch (fractions carry over between frames), and a count of
     /// them for the sparks and smoke in between (torch.rs).
+    /// Fire blocks' flames and embers (fire_fx.rs).
+    fire_fx: fire_fx::FireFx,
     torch_fx: f32,
     torch_sparks: u32,
     /// Screenshots: the held torch's fire has been lit up once already.
@@ -1180,6 +1183,7 @@ impl Game {
             walker_t: 0.0,
             melody_cd: 0.0,
             musicians: Default::default(),
+            fire_fx: Default::default(),
             torch_fx: 0.0,
             torch_sparks: 0,
             torch_lit: false,
@@ -1858,6 +1862,7 @@ impl Game {
                 self.portal_step(dt);
                 self.update_ambient(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_life(if self.args.screenshot.is_some() { 0.0 } else { dt });
+                self.update_fire_fx(dt, self.args.screenshot.is_some());
                 self.update_musicians(dt);
                 self.update_immersion(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
@@ -4680,6 +4685,7 @@ impl Game {
             pom: self.parallax_uniform(),
             clouds: [self.cloud_wind[0], self.cloud_wind[1], self.cloud_drift, (self.fx_time % 100_000.0) as f32],
             mat: material::uniform(self.settings.materials, self.settings.shader_quality == ShaderQuality::Fast),
+            anim: self.anim_layers(),
             ..Default::default()
         };
         // A torch in the hand casts shadows (with Sombras on): the blocks around the player.

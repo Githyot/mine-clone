@@ -64,6 +64,9 @@ pub struct Globals {
     /// Material feel of items and armour (material.rs): x 0 off, 1 glints, 2 also relief and
     /// sparkles.
     pub mat: [f32; 4],
+    /// Animated block textures (fire_fx.rs): texture layer + 1 of x fire, y soul fire, z lava
+    /// (0 = none, so the default animates nothing).
+    pub anim: [f32; 4],
 }
 
 #[repr(C)]
