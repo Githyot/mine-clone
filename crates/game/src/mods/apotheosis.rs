@@ -589,7 +589,7 @@ impl Game {
                 // Above the health bar.
                 let top = m.body.pos + Vec3::Y * (def.height + 0.95);
                 let dist = (top - eye).length();
-                if dist > 32.0 {
+                if dist > 32.0 || !self.in_sight(&[m.body.pos + Vec3::Y * def.height * 0.9, m.body.center()]) {
                     continue;
                 }
                 let c = vp * (top - cam_block.as_vec3()).extend(1.0);

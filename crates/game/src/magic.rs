@@ -61,33 +61,36 @@ struct SpellDef {
 const SPELLS: &[SpellDef] = &[
     SpellDef { item: "ruby_wand", school: 0, cost: 3.0, cooldown: 0.4, damage: 4.0, speed: 26.0, life: 1.2, shot: Shot::Bolt },
     SpellDef { item: "sapphire_wand", school: 1, cost: 3.0, cooldown: 0.4, damage: 4.0, speed: 26.0, life: 1.2, shot: Shot::Bolt },
-    SpellDef { item: "topaz_wand", school: 2, cost: 2.0, cooldown: 0.22, damage: 3.0, speed: 40.0, life: 0.8, shot: Shot::Bolt },
+    SpellDef { item: "topaz_wand", school: 2, cost: 2.0, cooldown: 0.22, damage: 2.5, speed: 40.0, life: 0.8, shot: Shot::Bolt },
     SpellDef { item: "amethyst_wand", school: 3, cost: 4.0, cooldown: 0.5, damage: 5.0, speed: 16.0, life: 2.5, shot: Shot::Homing },
     SpellDef { item: "emerald_wand", school: 4, cost: 3.0, cooldown: 0.45, damage: 4.0, speed: 24.0, life: 1.2, shot: Shot::Bolt },
     SpellDef { item: "fire_staff", school: 0, cost: 8.0, cooldown: 1.0, damage: 10.0, speed: 14.0, life: 2.5, shot: Shot::Burst(3.0) },
     SpellDef { item: "frost_staff", school: 1, cost: 8.0, cooldown: 0.9, damage: 4.0, speed: 24.0, life: 1.0, shot: Shot::Fan(5) },
     SpellDef { item: "thunder_tome", school: 5, cost: 10.0, cooldown: 1.2, damage: 12.0, speed: 0.0, life: 0.0, shot: Shot::Strike },
-    SpellDef { item: "guardian_staff", school: 4, cost: 6.0, cooldown: 0.6, damage: 6.0, speed: 26.0, life: 1.2, shot: Shot::Fan(3) },
+    SpellDef { item: "guardian_staff", school: 4, cost: 6.0, cooldown: 0.6, damage: 5.2, speed: 26.0, life: 1.2, shot: Shot::Fan(3) },
     // Not a held item: the warship's cannon (mods/aircraft.rs) fires these.
     SpellDef { item: "@warship_cannon", school: 0, cost: 0.0, cooldown: 0.0, damage: 8.0, speed: 34.0, life: 1.6, shot: Shot::Burst(2.5) },
-    SpellDef { item: "flame_tome", school: 0, cost: 1.0, cooldown: 0.08, damage: 1.5, speed: 12.0, life: 0.35, shot: Shot::Flame },
+    SpellDef { item: "flame_tome", school: 0, cost: 1.0, cooldown: 0.08, damage: 0.9, speed: 12.0, life: 0.35, shot: Shot::Flame },
     SpellDef { item: "blink_scroll", school: 3, cost: 6.0, cooldown: 1.0, damage: 0.0, speed: 0.0, life: 0.0, shot: Shot::Blink(14.0) },
     SpellDef { item: "heal_scroll", school: 4, cost: 8.0, cooldown: 2.0, damage: 6.0, speed: 0.0, life: 0.0, shot: Shot::Heal },
     SpellDef { item: "ward_tome", school: 1, cost: 10.0, cooldown: 4.0, damage: 10.0, speed: 0.0, life: 0.0, shot: Shot::Ward },
     SpellDef { item: "chain_tome", school: 2, cost: 7.0, cooldown: 0.8, damage: 6.0, speed: 0.0, life: 0.0, shot: Shot::Chain(4) },
-    SpellDef { item: "meteor_staff", school: 0, cost: 14.0, cooldown: 1.6, damage: 18.0, speed: 30.0, life: 3.0, shot: Shot::Meteor(4.5) },
-    SpellDef { item: "spirit_staff", school: 3, cost: 12.0, cooldown: 3.0, damage: 4.0, speed: 0.0, life: 20.0, shot: Shot::Spirits(3) },
-    SpellDef { item: "ice_spike_staff", school: 1, cost: 10.0, cooldown: 1.2, damage: 7.0, speed: 22.0, life: 0.8, shot: Shot::Ring(14) },
+    SpellDef { item: "meteor_staff", school: 0, cost: 14.0, cooldown: 1.4, damage: 40.0, speed: 30.0, life: 3.0, shot: Shot::Meteor(4.5) },
+    SpellDef { item: "spirit_staff", school: 3, cost: 12.0, cooldown: 3.0, damage: 8.0, speed: 0.0, life: 20.0, shot: Shot::Spirits(3) },
+    SpellDef { item: "ice_spike_staff", school: 1, cost: 10.0, cooldown: 1.0, damage: 10.0, speed: 22.0, life: 0.8, shot: Shot::Ring(14) },
     SpellDef { item: "void_tome", school: 3, cost: 14.0, cooldown: 2.5, damage: 2.0, speed: 6.0, life: 4.0, shot: Shot::Vortex },
     SpellDef { item: "hive_staff", school: 4, cost: 5.0, cooldown: 0.35, damage: 4.0, speed: 16.0, life: 2.5, shot: Shot::Homing },
     SpellDef { item: "water_bolt", school: 1, cost: 5.0, cooldown: 0.4, damage: 6.0, speed: 20.0, life: 3.0, shot: Shot::Bolt },
     SpellDef { item: "demon_scythe", school: 3, cost: 9.0, cooldown: 0.7, damage: 8.0, speed: 12.0, life: 2.5, shot: Shot::Fan(2) },
-    SpellDef { item: "ruin_thorn", school: 3, cost: 5.0, cooldown: 0.5, damage: 5.0, speed: 22.0, life: 1.0, shot: Shot::Fan(3) },
+    SpellDef { item: "ruin_thorn", school: 3, cost: 5.0, cooldown: 0.5, damage: 4.3, speed: 22.0, life: 1.0, shot: Shot::Fan(3) },
     SpellDef { item: "blight_rod", school: 4, cost: 7.0, cooldown: 0.9, damage: 6.0, speed: 14.0, life: 2.5, shot: Shot::Burst(2.0) },
-    SpellDef { item: "sun_stone_staff", school: 0, cost: 12.0, cooldown: 0.8, damage: 22.0, speed: 20.0, life: 2.0, shot: Shot::Burst(4.0) },
-    SpellDef { item: "meteor_blaster", school: 0, cost: 4.0, cooldown: 0.22, damage: 4.0, speed: 36.0, life: 1.0, shot: Shot::Bolt },
-    SpellDef { item: "colossus_staff", school: 1, cost: 9.0, cooldown: 0.8, damage: 6.0, speed: 26.0, life: 1.0, shot: Shot::Fan(5) },
+    SpellDef { item: "sun_stone_staff", school: 0, cost: 12.0, cooldown: 0.8, damage: 35.0, speed: 20.0, life: 2.0, shot: Shot::Burst(4.0) },
+    SpellDef { item: "meteor_blaster", school: 0, cost: 4.0, cooldown: 0.22, damage: 3.5, speed: 36.0, life: 1.0, shot: Shot::Bolt },
+    SpellDef { item: "colossus_staff", school: 1, cost: 9.0, cooldown: 0.8, damage: 7.0, speed: 26.0, life: 1.0, shot: Shot::Fan(5) },
     SpellDef { item: "star_tome", school: 5, cost: 9.0, cooldown: 0.5, damage: 9.0, speed: 22.0, life: 2.5, shot: Shot::Stars(4) },
+    // The balance sheet (plan/balanceamento.md): the deep worm's and the ice golem's staffs.
+    SpellDef { item: "worm_staff", school: 4, cost: 7.0, cooldown: 0.8, damage: 11.0, speed: 18.0, life: 2.0, shot: Shot::Burst(2.5) },
+    SpellDef { item: "blizzard_staff", school: 1, cost: 5.0, cooldown: 0.35, damage: 9.0, speed: 24.0, life: 2.0, shot: Shot::Homing },
 ];
 
 /// The element a spell carries into the world (elements.rs).
@@ -97,6 +100,30 @@ fn element(sp: &SpellDef) -> El {
     } else {
         crate::elements::of_school(sp.school)
     }
+}
+
+/// Damage per second on one monster and mana per second of a caster held down, for the
+/// balance sheet (balance.rs). Fans put part of their bolts on one monster, homing stars
+/// nearly all of them; the spirits stay 20 s and strike every 0.9 s. None for the spells that
+/// don't hurt (blink, heal, ward) and the warship's cannon.
+#[cfg(test)]
+pub(crate) fn sustained_dps(item: &str) -> Option<(f32, f32)> {
+    let sp = SPELLS.iter().find(|s| s.item == item && !s.item.starts_with('@'))?;
+    let hits = match sp.shot {
+        Shot::Blink(_) | Shot::Heal | Shot::Ward => return None,
+        Shot::Fan(n) => 1.0 + (n as f32 - 1.0) * 0.35,
+        Shot::Stars(n) => n as f32 * 0.9,
+        Shot::Spirits(n) => return Some((n as f32 * sp.damage / 0.9, sp.cost / sp.life)),
+        Shot::Vortex => sp.life / VORTEX_TICK,
+        _ => 1.0,
+    };
+    Some((sp.damage * hits / sp.cooldown, sp.cost / sp.cooldown))
+}
+
+/// Every caster, for balance.rs to check that each one has a stage.
+#[cfg(test)]
+pub(crate) fn all_casters() -> impl Iterator<Item = &'static str> {
+    SPELLS.iter().map(|s| s.item).filter(|i| !i.starts_with('@'))
 }
 
 /// What a caster does, for its tooltip.
@@ -120,6 +147,9 @@ pub struct Spirit {
     cd: f32,
     damage: f32,
 }
+
+/// Seconds between the void orb's bites.
+const VORTEX_TICK: f32 = 0.4;
 
 /// The void book's orb: drifts slowly, pulls monsters in and hurts the ones at its heart.
 pub struct Vortex {
@@ -784,7 +814,7 @@ impl Game {
             v.tick -= dt;
             let hit = v.tick <= 0.0;
             if hit {
-                v.tick = 0.4;
+                v.tick = VORTEX_TICK;
             }
             for k in 0..self.mobs.list.len() {
                 let m = &self.mobs.list[k];
