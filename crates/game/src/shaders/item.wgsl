@@ -24,6 +24,8 @@ struct Item {
 // Layers from 2048 on live in a second array (renderer::LAYERS_PER_ARRAY).
 @group(1) @binding(2) var itex2: texture_2d_array<f32>;
 @group(2) @binding(0) var<storage, read> items: array<Item>;
+// The material class of each texture layer (material.rs), for the glints and relief.
+@group(2) @binding(1) var<storage, read> layer_mat: array<u32>;
 
 struct IOut {
     @builtin(position) clip: vec4<f32>,
@@ -33,6 +35,8 @@ struct IOut {
     @location(3) light: vec3<f32>,
     @location(4) dist: f32,
     @location(5) @interpolate(flat) glint: vec4<f32>,
+    // Position relative to the camera's block.
+    @location(6) rel: vec3<f32>,
 };
 
 fn icorner(face: u32, k: u32) -> vec3<f32> {
@@ -142,6 +146,7 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
     }
     o.light = vec3<f32>(it.info.z, it.info.w, it.layers.w);
     o.dist = length(world - g.cam_pos.xyz);
+    o.rel = world;
     o.glint = select(it.bmin, vec4<f32>(0.0), part);
     return o;
 }
@@ -149,6 +154,13 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
 fn ilight(l: f32) -> f32 {
     let x = 1.0 - l;
     return (1.0 - x) / (x * 3.0 + 1.0);
+}
+
+fn isample(uv: vec2<f32>, layer: i32) -> vec4<f32> {
+    if (layer < 2048) {
+        return textureSampleLevel(itex, isamp, uv, layer, 0.0);
+    }
+    return textureSampleLevel(itex2, isamp, uv, layer - 2048, 0.0);
 }
 
 @fragment
@@ -159,6 +171,7 @@ fn fs_item(in: IOut) -> @location(0) vec4<f32> {
     } else {
         c = textureSampleLevel(itex2, isamp, in.uv, in.layer - 2048, 0.0);
     }
+    let fr = mat_frame(in.rel, in.uv);
     if (c.a < 0.3) {
         discard;
     }
@@ -166,6 +179,29 @@ fn fs_item(in: IOut) -> @location(0) vec4<f32> {
     let blk = ilight(in.light.y);
     let l = max(max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82)), vec3<f32>(0.08 + in.light.z));
     var rgb = c.rgb * in.shade * l;
+    let mat = select(0u, layer_mat[u32(max(in.layer, 0))], g.mat.x > 0.5 && in.light.z < 0.05);
+    if (mat != 0u) {
+        var k = 0.0;
+        var hx = 0.0;
+        var hy = 0.0;
+        if (g.mat.x > 1.5 && in.dist < 14.0) {
+            let ts = 1.0 / vec2<f32>(textureDimensions(itex, 0));
+            let w = vec3<f32>(0.3, 0.55, 0.15);
+            let h0 = dot(c.rgb, w);
+            let cx = isample(in.uv + vec2<f32>(ts.x, 0.0), in.layer);
+            let cy = isample(in.uv + vec2<f32>(0.0, ts.y), in.layer);
+            hx = select(-0.3, dot(cx.rgb, w), cx.a > 0.3) - h0;
+            hy = select(-0.3, dot(cy.rgb, w), cy.a > 0.3) - h0;
+            k = mat_relief(mat) * 1.6 * (1.0 - smoothstep(8.0, 14.0, in.dist));
+        }
+        let v = normalize(g.cam_pos.xyz - in.rel);
+        let n = mat_normal(fr, v, hx, hy, k);
+        let tilt = clamp(dot(n - mat_normal(fr, v, 0.0, 0.0, 0.0), normalize(vec3<f32>(0.3, 1.0, 0.4) + v * 0.5)), -0.5, 0.5);
+        rgb = rgb * (1.0 + tilt * 0.6);
+        let hand = g.hand_light.w - length(in.rel - g.hand_light.xyz) / 15.0;
+        let texel = floor(in.uv * vec2<f32>(textureDimensions(itex, 0)));
+        rgb = mat_shade(mat, c.rgb, rgb, in.rel, n, in.light.x, in.light.y, 1.0, max(hand, 0.0), texel);
+    }
     if (in.glint.w > 0.0) {
         // Enchanted: a slow band of colour sweeping across, over a faint steady tint. Kept
         // well under white so bloom in shader packs only softens it.
