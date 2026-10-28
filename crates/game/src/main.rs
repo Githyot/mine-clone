@@ -243,6 +243,8 @@ struct Args {
     shader: Option<String>,
     /// Distant terrain past the render distance, in blocks (0 = off).
     lod: Option<i32>,
+    /// Distant terrain detail preset 0..2 (`lod::DETAILS`).
+    lod_detail: Option<u8>,
     /// Block depth level 0..3 (test screenshots and benchmarks).
     parallax: Option<u8>,
 }
@@ -310,6 +312,7 @@ fn parse_args() -> Args {
             "--open" => a.open = it.next(),
             "--shader" => a.shader = it.next(),
             "--lod" => a.lod = it.next().and_then(|s| s.parse().ok()),
+            "--lod-detail" => a.lod_detail = it.next().and_then(|s| s.parse().ok()),
             "--parallax" => a.parallax = it.next().and_then(|s| s.parse().ok()),
             "--help" | "-h" => {
                 println!(
@@ -319,7 +322,7 @@ fn parse_args() -> Args {
                      Benchmark: mine-clone --bench [seconds] [--world NAME] (report in bench/)\n\
                      Testing: [--screenshot out.png] [--pos x,y,z] [--look yaw,pitch] [--time ticks] [--fly] [--demo] [--inventory] [--pause] [--debug]\n\
                      \x20        [--survival] [--kit] [--open table|furnace|chest] [--mobs] [--perf] [--prone] [--camera N]\n\
-                     \x20        [--shader NAME|off] [--shaders-menu] [--lod BLOCKS] [--parallax 0-3]"
+                     \x20        [--shader NAME|off] [--shaders-menu] [--lod BLOCKS] [--lod-detail 0-2] [--parallax 0-3]"
                 );
                 std::process::exit(0);
             }
@@ -575,6 +578,8 @@ enum ShaderRow {
     Opt(usize),
     /// Distant terrain distance.
     Lod,
+    /// Distant terrain detail preset.
+    LodDetail,
     /// Graphics extras (Sildur's, Better Clouds and Continuity ideas).
     Shadows,
     Reflections,
@@ -850,6 +855,9 @@ impl Game {
         }
         if let Some(l) = args.lod {
             settings.lod_distance = l.max(0);
+        }
+        if let Some(d) = args.lod_detail {
+            settings.lod_detail = d.min(lod::DETAILS.len() as u8 - 1);
         }
         if let Some(p) = args.parallax {
             settings.parallax = p.min(3);
@@ -2615,6 +2623,7 @@ impl Game {
                 ShaderRow::Lod,
                 false,
             ),
+            (format!("Detalhe LOD: {}", lod::DETAILS[(self.settings.lod_detail as usize).min(lod::DETAILS.len() - 1)].0), ShaderRow::LodDetail, false),
             (format!("Sombras: {}", settings::SHADOW_LEVELS[self.settings.shadows.min(2) as usize]), ShaderRow::Shadows, false),
             (format!("Reflexos na água: {}", onoff(self.settings.water_reflections)), ShaderRow::Reflections, false),
             (format!("Suavização TAA: {}{}", onoff(self.settings.taa), if cur.is_none() { " (com shader)" } else { "" }), ShaderRow::Taa, false),
@@ -2750,6 +2759,7 @@ impl Game {
             }
             ShaderRow::Emissive => self.settings.emissive_textures = !self.settings.emissive_textures,
             ShaderRow::Parallax => self.settings.parallax = (self.settings.parallax.min(3) + 1) % 4,
+            ShaderRow::LodDetail => self.settings.lod_detail = (self.settings.lod_detail + 1) % lod::DETAILS.len() as u8,
             ShaderRow::Lod => {
                 let d = &lod::DISTANCES;
                 let cur = d.iter().position(|&x| x >= self.settings.lod_distance).unwrap_or(0);
@@ -4433,7 +4443,7 @@ impl Game {
         let (fog_color, fog_start, fog_end) = self.effect_fog(fog_color, fog_start, fog_end);
         // Real chunks surely cover this radius (see World::update); distant terrain starts here.
         let lod_inner = (self.settings.render_distance as f32 - 0.5) * 16.0;
-        self.lod.update(&self.renderer.device, eye, lod_inner, if extra > 0.0 { view_end } else { 0.0 });
+        self.lod.update(&self.renderer.device, eye, lod_inner, if extra > 0.0 { view_end } else { 0.0 }, self.settings.lod_detail as usize);
         let mut effects = self.terrain_effects();
         effects[3] = lod_inner;
         let mut g = Globals {
@@ -4793,6 +4803,9 @@ impl Game {
             shot
         };
         self.last_frame_info = (info.sections_drawn, info.quads_drawn, info.lod_drawn);
+        if self.bench.started {
+            self.bench.lod_frame(info.lod_drawn, info.lod_quads);
+        }
         if let Some((w, h, px)) = shot {
             let k = std::env::var("MC_PLACE").ok().map(|_| self.loaded_frames);
             let path = if let (Some(k), Some(p)) = (k, self.args.screenshot.as_ref()) {

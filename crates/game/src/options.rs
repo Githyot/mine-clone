@@ -50,6 +50,7 @@ pub enum Id {
     Emissive,
     Relief,
     Lod,
+    LodDetail,
     Drops,
     Master,
     Music,
@@ -240,6 +241,11 @@ impl Game {
                     },
                     "Terreno simplificado além da distância de visão.",
                 ),
+                self.opt_button(
+                    Id::LodDetail,
+                    format!("Detalhe do terreno distante: {}", crate::lod::DETAILS[(st.lod_detail as usize).min(crate::lod::DETAILS.len() - 1)].0),
+                    "Leve: menos polígonos e memória, para PCs fracos. Alto: mais detalhe ao longe.",
+                ),
             ],
             Tab::Audio => {
                 let custom = self.audio.as_ref().map(|a| a.custom_track_count()).unwrap_or(0);
@@ -319,6 +325,7 @@ impl Game {
             Id::Reflections => return shader_row(self, ShaderRow::Reflections),
             Id::Taa => return shader_row(self, ShaderRow::Taa),
             Id::Emissive => return shader_row(self, ShaderRow::Emissive),
+            Id::LodDetail => self.settings.lod_detail = (self.settings.lod_detail + 1) % crate::lod::DETAILS.len() as u8,
             Id::Relief => self.settings.relief = !self.settings.relief,
             Id::ViewBobbing => self.settings.view_bobbing = !self.settings.view_bobbing,
             Id::Drops => self.settings.flat_drops = !self.settings.flat_drops,

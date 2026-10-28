@@ -103,6 +103,8 @@ pub struct Settings {
     pub shader_quality: ShaderQuality,
     /// Low-detail distant terrain drawn this many blocks past the render distance (0 = off).
     pub lod_distance: i32,
+    /// Distant terrain detail: 0 light (weak computers), 1 normal, 2 high (`lod::DETAILS`).
+    pub lod_detail: u8,
     /// Buildings farther apart in new chunks (Sparse Structures idea).
     pub sparse_structures: bool,
     /// Multiplayer guest: the host's structure spacing, while connected (never saved).
@@ -170,6 +172,7 @@ impl Default for Settings {
             shader_options: BTreeMap::new(),
             shader_quality: ShaderQuality::Fancy,
             lod_distance: 0,
+            lod_detail: 1,
             sparse_structures: false,
             spread_override: None,
             layered_clouds: false,
