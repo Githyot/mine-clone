@@ -1102,7 +1102,7 @@ mod tests {
     use super::*;
 
     fn defs() -> Vec<MobDef> {
-        let texts: Vec<String> = ["mobs.ron", "mods/mobs.ron", "etapa5/mobs.ron", "fase6/mobs.ron", "tr/mobs.ron", "aguas/mobs.ron", "vulcao/mobs.ron"]
+        let texts: Vec<String> = ["mobs.ron", "mods/mobs.ron", "etapa5/mobs.ron", "fase6/mobs.ron", "tr/mobs.ron", "aguas/mobs.ron", "vulcao/mobs.ron", "tr3/mobs.ron"]
             .iter()
             .filter_map(|f| std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/vanilla").join(f)).ok())
             .collect();

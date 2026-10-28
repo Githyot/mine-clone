@@ -46,6 +46,8 @@ const MOUNTS: &[(&str, &str)] = &[
     ("fluffy_carrot", "mount_bunny"),
     ("turtle_saddle", "mount_turtle"),
     ("star_key", "mount_ufo"),
+    // Third round (tr3.rs).
+    ("golf_cart_key", "mount_golf_cart"),
 ];
 
 /// How bright a light pet is (None: not one).
@@ -64,6 +66,13 @@ fn is_pet_mob(name: &str) -> bool {
 
 fn is_mount_mob(name: &str) -> bool {
     MOUNTS.iter().any(|m| m.1 == name)
+}
+
+impl Pets {
+    /// Test scenes: keep pets and mounts where they were put.
+    pub(crate) fn test_keep(&mut self) {
+        self.test = true;
+    }
 }
 
 #[derive(Default)]

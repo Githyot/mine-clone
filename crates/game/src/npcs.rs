@@ -124,7 +124,7 @@ impl Game {
         self.find_houses();
         // One newcomer per check, into a house nobody lives in.
         let first = ["npc_guide", "npc_merchant", "npc_nurse", "npc_wizard", "npc_smith", "npc_farmer", "npc_guard", "npc_tinkerer", "npc_mechanic", "npc_sorceress"];
-        for name in first.into_iter().chain(crate::tr_town::NPCS.iter().map(|n| n.0)) {
+        for name in first.into_iter().chain(crate::tr_town::NPCS.iter().map(|n| n.0)).chain(crate::tr3::NPCS.iter().map(|n| n.0)) {
             if self.town_has(name) || !self.npc_wish_met(name) {
                 continue;
             }
@@ -245,6 +245,9 @@ impl Game {
         // They turn to look at you.
         let to = self.body.pos - self.mobs.list[i].body.pos;
         self.mobs.list[i].yaw = to.x.atan2(to.z);
+        if self.tr3_talk(&name, &dn) {
+            return true;
+        }
         match name.as_str() {
             "npc_guide" => {
                 let at = self.mobs.list[i].body.pos;

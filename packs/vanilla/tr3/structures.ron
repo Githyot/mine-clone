@@ -1,0 +1,19 @@
+// The Terraria side, third round (plan/terraria-completo.md, L17-L22). Made by tools/gen_tr3.py:
+// edit it and run it again.
+(structures: [
+    (
+        name: "campo_de_golfe",
+        biomes: ["Plains", "Meadow", "Sunflower Plains", "Flower Forest", "Savanna"],
+        spacing: 40,
+        chance: 0.35,
+        palette: [('T', "golf_turf"), ('G', "grass_block"), ('S', "sand"), ('C', "golf_cup"), ('F', "golf_flag"), ('e', "golf_tee"), ('P', "oak_planks"), ('W', "oak_log"), ('R', "oak_slab"), ('K', "chest"), ('t', "torch")],
+        layers: [
+            ["    GTTTTTTTGPPPP", "    GTTTTTTTGPPPP", "    GTTTTTTTGPPPP", "    GTTTTTTTTPPPP", "    GTTTTTTTTG   ", "    GGTTTTTTTGG  ", "    GGTTTTTTTGG  ", "    GGTTTTTTTTG  ", "     GTTTTTTTTG  ", "     GTTTTTTTTGG ", "     GTTTTTTTTGG ", "     GTTTTTTTTTG ", "     GTTTTTTTTTG ", "     GTTTTTTTTTG ", "     GGTTTTTTTTGG", "     GGTTTTTTTTGG", "     GGTTTTTTTTGG", "     GGTTTTTTTTGG", "     GGTTTTTTTTGG", "     GGTTTTTTTTGG", "     GGTTTTTTTTGG", "     GTTTTTTTTTGG", "    SSSSTTTTTTTGG", "    SSSSTTTTTTTGG", "    SSSSTTTTTTTGG", "    SSSSTTTTTTTGG", "    SSSSTTTTTTTGG", "    GGTTTTTTTTTGG", "    GGTTTTTTTTTG ", "    GGTTTTTSSTTG ", "    GGTTTTSSSSGG ", "    GGTTTTSSSSGG ", "    GTTTTTSSSSGG ", "    GTTTTTTSSTG  ", "    GTTTTTTTTTG  ", "   GGTTTTTTTTGG  ", "   GGTTTTTTTTGG  ", "   GGTTTTTTTTG   ", "   GGTTTTTTTGG   ", "   GGTTTCTTTGG   ", "   GTTTTTTTTG    ", "   GTTTTTTTTS    ", "   GTTTTTTTSG    ", "   GTTTTTTTGG    ", "  GGTTTTTTTG     ", "  GGTTTTTTGG     "],
+            [".............WWWW", ".............WtKW", "........e....W..W", ".............W.WW", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", "........F........", ".................", ".................", ".................", ".................", ".................", "................."],
+            [".............RRRR", ".............RRRR", ".............RRRR", ".............RRRR", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", ".................", "................."],
+        ],
+        sink: 1,
+        rough: 3,
+        loot: [(item: "golf_ball", min: 2, max: 5), (item: "golf_club_iron"), (item: "golf_club_putter", chance: 0.6), (item: "golf_club_driver", chance: 0.4), (item: "golf_club_wedge", chance: 0.4), (item: "golf_tee", min: 2, max: 4), (item: "bread", min: 1, max: 3)],
+    ),
+])

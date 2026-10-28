@@ -119,6 +119,11 @@ const MOODS: &[(&str, &str, &[&str], &[&str])] = &[
     ("npc_mycologist", "cave", &["npc_guide", "npc_witch_doctor"], &["npc_dryad"]),
     ("npc_winter_elder", "snow", &["npc_party_girl", "npc_princess"], &["npc_pirate"]),
     ("npc_tax_collector", "forest", &["npc_merchant", "npc_party_girl"], &["npc_angler", "npc_princess"]),
+    ("npc_tavernkeep", "forest", &["npc_golfer", "npc_demolitionist"], &["npc_guide"]),
+    ("town_jelly_nerd", "forest", &["town_jelly_elder"], &[]),
+    ("town_jelly_cool", "forest", &["town_jelly_nerd"], &[]),
+    ("town_jelly_elder", "forest", &["town_jelly_cool"], &[]),
+    ("npc_golfer", "forest", &["npc_angler", "npc_painter", "npc_zoologist"], &["npc_merchant"]),
 ];
 
 const PYLONS: &[&str] = &["forest", "desert", "snow", "jungle", "ocean", "cave"];
@@ -147,7 +152,7 @@ impl Game {
         self.town.npcs.iter().any(|n| n.name == name)
     }
 
-    fn carries(&self, pred: impl Fn(&str) -> bool) -> bool {
+    pub(crate) fn carries(&self, pred: impl Fn(&str) -> bool) -> bool {
         self.surv.inv.slots.iter().flatten().any(|s| pred(&self.items.get(s.item).name))
     }
 
@@ -174,7 +179,7 @@ impl Game {
             "npc_mycologist" => self.t5.hard.on && self.carries(|n| n.ends_with("mushroom")),
             "npc_tax_collector" => self.t5.hard.on && self.t5.tr.minis.tax_freed,
             "npc_winter_elder" => crate::tr_minis::holiday() == crate::tr_minis::Holiday::Christmas || beaten("ice_queen"),
-            _ => false,
+            _ => self.tr3_npc_wish(name),
         }
     }
 
@@ -245,7 +250,7 @@ impl Game {
         let mut offers: Vec<(&'static str, u8, u32)> = if name == "npc_peddler" {
             self.t5.tr.town.peddler.clone()
         } else {
-            crate::npcs::SHOPS.iter().chain(crate::hardmode::SHOPS).chain(SHOPS).find(|s| s.0 == name)?.1.to_vec()
+            crate::npcs::SHOPS.iter().chain(crate::hardmode::SHOPS).chain(SHOPS).chain(crate::tr3::SHOPS).find(|s| s.0 == name)?.1.to_vec()
         };
         let (f, line) = self.npc_mood(name);
         // Happy folk sell the pylon of the land they live in.

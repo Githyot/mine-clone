@@ -247,6 +247,12 @@ impl Game {
         self.steer_invaders(dt, shoot_tick, key, center);
     }
 
+    /// The wave event under way: its key, wave and centre.
+    pub(crate) fn event_now(&self) -> Option<(&'static str, u8, Vec3)> {
+        let i = self.t5.tr.inv.now.as_ref()?;
+        Some((EVENTS[i.ev].key, i.wave, i.center))
+    }
+
     fn spawn_invader(&mut self, name: &str, around: Vec3, flies: bool) -> bool {
         let a = self.surv.rng.f32() * std::f32::consts::TAU;
         let r = 16.0 + self.surv.rng.f32() * 8.0;

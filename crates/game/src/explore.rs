@@ -22,7 +22,7 @@ pub struct MapCache {
 impl Game {
     /// The spyglass: true while it is held up.
     pub(crate) fn spyglass_up(&self) -> bool {
-        self.rdown && self.held_name().as_deref() == Some("spyglass")
+        (self.rdown && self.held_name().as_deref() == Some("spyglass")) || self.scope_up()
     }
 
     fn map_colour(&self, x: i32, z: i32) -> [u8; 4] {

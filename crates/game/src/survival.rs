@@ -693,7 +693,7 @@ impl Game {
     }
 
     pub(crate) fn surv_block_broken(&mut self, pos: IVec3, id: BlockId) {
-        let tool = self.held_tool();
+        let tool = self.held_tool_for(id);
         let drops = self.items.drops(&self.reg, id, tool.as_ref(), &mut self.surv.rng);
         let drops = self.ench_drops(id, drops);
         let mut drops = self.extras_drops(id, drops);
@@ -2704,6 +2704,7 @@ impl Game {
         out.extend(self.bobber_instance(cam_block));
         out.extend(self.shot_instances(cam_block));
         out.extend(self.tr_weapon_instances(cam_block));
+        out.extend(self.golf_instances(cam_block));
         out.extend(self.tr_wing_instances(cam_block));
         if let Some(arrow) = sprite("arrow") {
             let c = cam_block.as_vec3();

@@ -1,0 +1,11 @@
+// The Terraria side, third round (plan/terraria-completo.md, L17-L22). Made by tools/gen_tr3.py:
+// edit it and run it again.
+(blocks: [
+    (name: "golf_turf", display_name: Some("Grama de Golfe"), hardness: 0.6, tool: Some(Shovel), drops: Some([(item: "golf_turf")]), textures: (top: Some("golf_turf_top"), side: Some("golf_turf_side"), bottom: Some("dirt"))),
+    (name: "golf_cup", display_name: Some("Buraco de Golfe"), hardness: 0.6, tool: Some(Shovel), textures: (top: Some("golf_cup_top"), side: Some("golf_turf_side"), bottom: Some("dirt"))),
+    (name: "golf_tee", display_name: Some("Tee de Golfe"), shape: Cross, transparency: Cutout, solid: false, hardness: 0.0, textures: (all: Some("golf_tee"))),
+    (name: "golf_flag", display_name: Some("Bandeira de Golfe"), shape: Cross, transparency: Cutout, solid: false, hardness: 0.2, textures: (all: Some("golf_flag"))),
+    (name: "golf_trophy_bronze", display_name: Some("Troféu de Golfe de Bronze"), shape: Cross, transparency: Cutout, solid: false, hardness: 0.5, textures: (all: Some("golf_trophy_bronze"))),
+    (name: "golf_trophy_silver", display_name: Some("Troféu de Golfe de Prata"), shape: Cross, transparency: Cutout, solid: false, hardness: 0.5, textures: (all: Some("golf_trophy_silver"))),
+    (name: "golf_trophy_gold", display_name: Some("Troféu de Golfe de Ouro"), shape: Cross, transparency: Cutout, solid: false, hardness: 0.5, textures: (all: Some("golf_trophy_gold"))),
+])

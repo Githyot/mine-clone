@@ -34,6 +34,9 @@ enum Wk {
     Sentry,
     /// Swung: a beam (false) or a star from the sky (true).
     Beam(bool),
+    /// Fires its ammo as a blast (tr3_tools::gun_ammo): blast size, flies straight (a rocket)
+    /// or arcs and bounces (a grenade).
+    Launcher(f32, bool),
 }
 
 struct WDef {
@@ -108,6 +111,22 @@ const WEAPONS: &[WDef] = &[
     w("magmarite_knife", Wk::Throw(10.0), 5.8, 0.3, 26.0, Some((MOB_BURN, 3.0))),
     w("mythril_javelin", Wk::Throw(7.0), 13.0, 0.45, 28.0, None),
     w("verdite_knife", Wk::Throw(10.0), 13.0, 0.3, 28.0, None),
+    // Reauditoria 3, L20 (tr3_tools.rs): the guns and launchers Terraria still had, and the
+    // weapons of L18's mini-bosses.
+    w("blowpipe", Wk::Gun(1, 0.0), 3.4, 0.6, 40.0, None),
+    w("minishark", Wk::Gun(1, 0.04), 1.3, 0.11, 70.0, None),
+    w("star_cannon", Wk::Gun(1, 0.0), 9.0, 0.55, 45.0, None),
+    w("megashark", Wk::Gun(1, 0.04), 2.6, 0.09, 80.0, None),
+    w("flamethrower", Wk::Gun(1, 0.1), 2.0, 0.1, 22.0, Some((MOB_BURN, 4.0))),
+    w("sniper_rifle", Wk::Gun(1, 0.0), 20.0, 0.75, 140.0, None),
+    w("coin_gun", Wk::Gun(1, 0.03), 3.4, 0.12, 80.0, None),
+    w("elf_gun", Wk::Gun(1, 0.05), 3.0, 0.09, 75.0, Some((MOB_BURN, 3.0))),
+    w("rocket_launcher", Wk::Launcher(2.6, true), 20.0, 0.8, 30.0, None),
+    w("grenade_launcher", Wk::Launcher(2.2, false), 16.0, 0.65, 22.0, None),
+    w("paladin_hammer", Wk::Boomerang(0.6), 26.0, 0.25, 28.0, None),
+    w("betsy_wrath", Wk::Beam(false), 8.0, 0.7, 34.0, Some((MOB_BURN, 5.0))),
+    w("razorpine", Wk::Beam(false), 7.0, 0.6, 36.0, Some((CHILLED, 3.0))),
+    w("spooky_staff", Wk::Sentry, 8.0, 0.75, 36.0, None),
 ];
 
 /// The colour of a sword's beam.
@@ -120,6 +139,8 @@ fn beam_tint(item: &str) -> [f32; 3] {
         "celestial_wrath" => [2.0, 0.8, 2.0],
         "apex_blade" => [1.2, 1.8, 2.4],
         "star_saber" | "prism_saber" => [2.0, 1.8, 0.8],
+        "betsy_wrath" => [2.4, 0.9, 0.3],
+        "razorpine" => [0.5, 1.8, 0.7],
         _ => [0.7, 1.1, 2.2],
     }
 }
@@ -156,6 +177,7 @@ pub(crate) fn sustained_dps(name: &str) -> Option<(usize, f32)> {
         Wk::Throw(_) | Wk::Bomb(..) => (RANGED, d.dmg / d.cd),
         Wk::Sentry => (SUMMON, d.dmg / d.cd),
         Wk::Beam(_) => (MELEE, d.dmg / d.cd),
+        Wk::Launcher(..) => (RANGED, d.dmg / d.cd),
     })
 }
 
@@ -163,6 +185,10 @@ pub(crate) fn sustained_dps(name: &str) -> Option<(usize, f32)> {
 #[cfg(test)]
 pub(crate) fn all_weapons() -> impl Iterator<Item = &'static str> {
     WEAPONS.iter().map(|w| w.item)
+}
+
+pub fn is_gun(name: &str) -> bool {
+    def_of(name).is_some_and(|i| matches!(WEAPONS[i].kind, Wk::Gun(..) | Wk::Launcher(..)))
 }
 
 pub fn is_weapon(name: &str) -> bool {
@@ -309,9 +335,11 @@ impl Game {
                 self.sfx(Sfx::Place(Material::Cloth));
             }
             Wk::Gun(pellets, spread) => {
-                let ammo = if self.survival { self.find_ammo(&["meteor_shot", "musket_ball"]) } else { Some((usize::MAX, 1)) };
+                let own = crate::tr3_tools::gun_ammo(d.item);
+                let names = own.map_or(&["meteor_shot", "musket_ball"][..], |a| a.0);
+                let ammo = if self.survival { self.find_ammo(names) } else { Some((usize::MAX, if own.is_some() { 0 } else { 1 })) };
                 let Some((slot, kind)) = ammo else {
-                    self.toast("Sem munição (balas de mosquete)", 1.5);
+                    self.toast(format!("Sem munição ({})", own.map_or("balas de mosquete", |a| a.1)), 1.5);
                     self.t5.tr.wep.cd = 0.6;
                     return;
                 };
@@ -323,9 +351,28 @@ impl Game {
                     let r = &mut self.surv.rng;
                     let j = Vec3::new(r.f32() - 0.5, r.f32() - 0.5, r.f32() - 0.5) * 2.0 * spread;
                     let dir = (f + j).normalize_or_zero();
-                    self.add_shot(Fly::Bullet, i, eye + dir * 0.5 - Vec3::Y * 0.1, dir * d.speed, 1.2, RANGED);
+                    let life = if d.item == "flamethrower" { 0.35 } else { 1.2 };
+                    self.add_shot(Fly::Bullet, i, eye + dir * 0.5 - Vec3::Y * 0.1, dir * d.speed, life, RANGED);
                     if let Some(s) = self.t5.tr.wep.shots.last_mut() {
-                        if kind == 0 {
+                        if own.is_some() {
+                            // The guns with their own ammo: coins hit by their worth, flames pass
+                            // through, stars glow.
+                            match d.item {
+                                "coin_gun" => {
+                                    s.dmg *= crate::tr3_tools::coin_factor(kind);
+                                    s.tint = [[1.8, 1.0, 0.6], [1.6, 1.6, 1.7], [2.0, 1.7, 0.6], [1.4, 1.9, 2.0]][kind.min(3)];
+                                }
+                                "flamethrower" => {
+                                    s.pierce = 3;
+                                    s.tint = [2.4, 1.0, 0.3];
+                                }
+                                "star_cannon" => {
+                                    s.pierce = 1;
+                                    s.tint = [2.2, 2.0, 0.9];
+                                }
+                                _ => s.tint = [1.2, 1.4, 0.8],
+                            }
+                        } else if kind == 0 {
                             s.pierce = 2;
                             s.dmg += 2.0;
                             s.tint = [2.0, 0.9, 0.3];
@@ -338,6 +385,22 @@ impl Game {
                 self.particles.glow(eye + f * 0.9 - Vec3::Y * 0.15, f * 2.0, glow, [2.0, 1.4, 0.6], 0.12, 0.08);
                 self.sfx(Sfx::Piston(true));
                 self.anim.start_swing();
+            }
+            Wk::Launcher(_, rocket) => {
+                let (names, what) = crate::tr3_tools::gun_ammo(d.item).unwrap_or((&["rocket"], "foguetes"));
+                let ammo = if self.survival { self.find_ammo(names) } else { Some((usize::MAX, 0)) };
+                let Some((slot, _)) = ammo else {
+                    self.toast(format!("Sem munição ({what})"), 1.5);
+                    self.t5.tr.wep.cd = 0.6;
+                    return;
+                };
+                if slot != usize::MAX {
+                    self.surv.inv.take(slot, 1);
+                }
+                let up = if rocket { Vec3::ZERO } else { Vec3::Y * 2.5 };
+                self.add_shot(Fly::Bomb, i, eye + f * 0.8, f * d.speed + up, if rocket { 3.0 } else { 1.4 }, RANGED);
+                self.anim.start_swing();
+                self.sfx(Sfx::Piston(true));
             }
             Wk::Throw(_) | Wk::Bomb(..) => {
                 if self.survival {
@@ -547,9 +610,26 @@ impl Game {
                         alive = false;
                     }
                 }
+                Fly::Bomb if matches!(d.kind, Wk::Launcher(_, true)) => {
+                    // A rocket: straight on, a smoke trail, it bursts on whatever it meets.
+                    let next = s.pos + s.vel * dt;
+                    if self.world.solid(next.floor().as_ivec3()) || !self.mobs_touching(next, 0.3).is_empty() {
+                        alive = false;
+                    } else {
+                        s.pos = next;
+                    }
+                    self.particles.glow(s.pos - s.vel.normalize_or_zero() * 0.4, -s.vel * 0.05, glow, [2.0, 1.0, 0.4], 0.07, 0.25);
+                    self.particles.glow(s.pos - s.vel.normalize_or_zero() * 0.8, Vec3::Y * 0.4, glow, [0.5, 0.5, 0.55], 0.12, 0.8);
+                    if !alive {
+                        blasts.push((s.pos, s.def));
+                    }
+                }
                 Fly::Bomb => {
                     s.vel.y -= 18.0 * dt;
                     let next = s.pos + s.vel * dt;
+                    if matches!(d.kind, Wk::Launcher(..)) && !self.mobs_touching(next, 0.3).is_empty() {
+                        alive = false;
+                    }
                     if self.world.solid(next.floor().as_ivec3()) {
                         // Bounce a little, then settle.
                         if self.world.solid(IVec3::new(next.x.floor() as i32, s.pos.y.floor() as i32, next.z.floor() as i32)) {
@@ -613,7 +693,11 @@ impl Game {
 
     fn tr_blast(&mut self, at: Vec3, def: usize) {
         let d = &WEAPONS[def];
-        let Wk::Bomb(power, breaks, _) = d.kind else { return };
+        let (power, breaks) = match d.kind {
+            Wk::Bomb(power, breaks, _) => (power, breaks),
+            Wk::Launcher(power, _) => (power, false),
+            _ => return,
+        };
         if breaks {
             self.explode(at, power);
             return;
