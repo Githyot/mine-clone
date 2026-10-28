@@ -816,9 +816,15 @@ struct Game {
     shader_scroll: usize,
     lod: lod::Lod,
 
-    start: Instant,
     last: Instant,
     now: f32,
+    /// Clock of the world's moving looks (water, plants, rain, clouds): stops while the
+    /// single-player game is paused.
+    fx_time: f64,
+    /// How far the wind has carried the clouds (blocks at speed 1) and the classic clouds' drift.
+    /// Added up frame by frame so the speed never depends on how long the game has run.
+    cloud_wind: [f32; 2],
+    cloud_drift: f32,
     frame_times: Vec<f32>,
     fps: f32,
     last_frame_info: (usize, usize, usize),
@@ -1186,9 +1192,11 @@ impl Game {
             shader_error: None,
             shader_scroll: 0,
             lod,
-            start: now,
             last: now,
             now: 0.0,
+            fx_time: 0.0,
+            cloud_wind: [0.0; 2],
+            cloud_drift: 0.0,
             frame_times: Vec::new(),
             fps: 0.0,
             last_frame_info: (0, 0, 0),
@@ -1705,6 +1713,23 @@ impl Game {
     }
 
 
+    /// Singleplayer: the pause menu (and the option screens opened from it) stop the world.
+    /// With friends in it, it keeps going.
+    fn world_paused(&self) -> bool {
+        self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Friends | Screen::Options | Screen::Controls | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders)
+    }
+
+    /// Moves the clouds with the wind: one direction for every layer, turning very slowly,
+    /// faster in the rain. The shader multiplies this by each layer's speed.
+    fn advance_clouds(&mut self, dt: f32) {
+        self.fx_time += dt as f64;
+        let a = 0.35 + ((self.fx_time * 0.0021).sin() * 0.5) as f32;
+        let k = dt * (1.0 + self.weather.rain * 0.8);
+        self.cloud_wind[0] += a.cos() * k;
+        self.cloud_wind[1] += a.sin() * k;
+        self.cloud_drift += dt;
+    }
+
     fn update(&mut self, dt: f32) {
         self.now += dt;
         self.update_subtitles(dt);
@@ -1735,8 +1760,10 @@ impl Game {
         let sim = self.net_simulates();
         if self.world_open && self.screen != Screen::Loading {
             let shot = self.args.screenshot.is_some();
-            self.weather.update(&self.world, eye, dt, shot);
-            self.windmills_update(dt);
+            // The pause menu stops the weather and the windmills too.
+            let wdt = if self.world_paused() { 0.0 } else { dt };
+            self.weather.update(&self.world, eye, wdt, shot);
+            self.windmills_update(wdt);
             if self.dim != voxel::worldgen::Dim::Overworld {
                 // No weather under the Nether's roof (it carries on at home).
                 self.weather.rain = 0.0;
@@ -2013,9 +2040,12 @@ impl Game {
 
         // Singleplayer: the pause menu (and the option screens opened from it) stop the world.
         // With friends in it, it keeps going.
-        let paused = self.world_open && !self.net.active() && matches!(self.screen, Screen::Paused | Screen::Friends | Screen::Options | Screen::Controls | Screen::Packs | Screen::Keys | Screen::Voice | Screen::Shaders);
+        let paused = self.world_paused();
         if !paused && self.net.rules.daylight_cycle {
             self.time_of_day = (self.time_of_day + dt * 20.0) % 24000.0;
+        }
+        if !paused {
+            self.advance_clouds(dt);
         }
         if self.args.time.is_some() && self.args.screenshot.is_some() {
             self.time_of_day = self.args.time.unwrap();
@@ -4459,7 +4489,7 @@ impl Game {
         let mut effects = self.terrain_effects();
         effects[3] = lod_inner;
         let mut g = Globals {
-            cam_pos: [eye.x - block.x as f32, eye.y - block.y as f32, eye.z - block.z as f32, (self.now % 3600.0) + self.start.elapsed().as_secs_f32() * 0.0],
+            cam_pos: [eye.x - block.x as f32, eye.y - block.y as f32, eye.z - block.z as f32, (self.fx_time % 3600.0) as f32],
             cam_world: [eye.x, eye.y, eye.z, CLOUD_HEIGHT],
             fog_color: [fog_color[0], fog_color[1], fog_color[2], if nether || end || other { 0.0 } else { daylight }],
             fog: [fog_start, fog_end, if underwater { 1.0 } else { 0.0 }, if nether || end || other { 1.0 } else { settings::brightness_lift(self.settings.brightness) }],
@@ -4474,6 +4504,7 @@ impl Game {
             dyn_lights: self.dynamic_lights(eye, block),
             extra: [self.settings.layered_clouds as u8 as f32, self.settings.emissive_textures as u8 as f32, 0.0, self.season_uniform()],
             pom: self.parallax_uniform(),
+            clouds: [self.cloud_wind[0], self.cloud_wind[1], self.cloud_drift, (self.fx_time % 100_000.0) as f32],
             ..Default::default()
         };
         // A torch in the hand casts shadows (with Sombras on): the blocks around the player.
