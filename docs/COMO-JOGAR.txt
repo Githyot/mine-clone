@@ -813,6 +813,31 @@ ATLAS
   Setas movem, + e - mudam o zoom, Espaço volta para você, N desenha uma marca numerada onde
     você está, Delete apaga a marca mais perto, Esc ou botão direito fecha.
 
+VULCÕES
+  Longe do começo do mundo há vulcões: cones altos, de basalto e cinza, com uma cratera de
+    lava no topo. Alguns nascem no meio do mar, como ilhas. Em volta ficam os Campos de
+    Cinza, com troncos queimados, pedra-pomes e flores-de-brasa.
+  Fumarolas (blocos que soltam vapor) jogam você uns doze blocos para cima, e a queda depois
+    não machuca. Use-as para subir o cone. Quebradas com picareta, viram trampolins que você
+    pode colocar onde quiser.
+  Tubos de lava abrem na encosta e sobem por dentro da montanha: túneis redondos com o chão
+    brilhando, que levam a uma câmara de magma debaixo da cratera.
+  De vez em quando o vulcão perto de você entra em erupção. O chão treme, sobe fumaça da
+    cratera, cai cinza e voam bombas de lava. Antes de cada bomba cair, o lugar brilha
+    laranja no chão: saia de cima.
+  Criaturas: Salamandra de Magma (perto da lava; só ataca se você bater nela), Golem de
+    Basalto (vira uma bola de pedra e desce a encosta rolando atrás de você, depois se
+    levanta) e Fagulha (voa e atira fogo, à noite e nas erupções).
+  Enxofre sai do minério amarelo perto das fumarolas. Enxofre + carvão = 2 pólvoras.
+  Escamas de Salamandra (8) + couro = Capa de Salamandra: +3 de defesa, sem dano de fogo e
+    metade do dano das bombas de lava.
+  Ídolo de Obsidiana (3 obsidianas, 1 enxofre, 3 basaltos): use dentro da cratera para
+    acordar o Titã de Magma. Ele anda pela lava atrás de você, atira bombas, bate no chão
+    (pule a onda), chama golens que rolam para dentro da cratera e, na metade da vida, faz a
+    lava subir. Derrotado, a lava que subiu vira obsidiana. Deixa o Coração de Magma
+    (fumarolas te lançam mais alto, bombas não te derrubam) e às vezes o Martelo Vulcânico
+    (quebra 3x3 e põe fogo nos monstros).
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

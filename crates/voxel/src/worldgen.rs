@@ -19,9 +19,11 @@ mod nether;
 mod otherside;
 pub mod showcase;
 mod variants;
+mod volcano;
 mod waters;
 pub use caves::CaveBiome;
 pub use distant_lands::is_distant;
+pub use volcano::{Volcano, ASH_REACH};
 pub use end::{end_pillars, EndPillar, END_EXIT_Y, END_PLATFORM};
 pub use aether::AETHER_ARRIVAL_Y;
 pub use otherside::OTHERSIDE_ROOF;
@@ -134,10 +136,13 @@ pub enum Biome {
     ErodedBadlands = 58,
     WindsweptSavanna = 59,
     PaleGarden = 60,
+    // Lote 14 (worldgen/volcano.rs): the volcano's cone and the ash fields round its foot.
+    Volcano = 61,
+    AshFields = 62,
 }
 
 impl Biome {
-    pub const COUNT: usize = 61;
+    pub const COUNT: usize = 63;
 
     pub fn from_u8(v: u8) -> Biome {
         match v {
@@ -201,6 +206,8 @@ impl Biome {
             58 => Biome::ErodedBadlands,
             59 => Biome::WindsweptSavanna,
             60 => Biome::PaleGarden,
+            61 => Biome::Volcano,
+            62 => Biome::AshFields,
             _ => Biome::Plains,
         }
     }
@@ -268,6 +275,8 @@ impl Biome {
             Biome::ErodedBadlands => "Eroded Badlands",
             Biome::WindsweptSavanna => "Windswept Savanna",
             Biome::PaleGarden => "Pale Garden",
+            Biome::Volcano => "Volcano",
+            Biome::AshFields => "Ash Fields",
         }
     }
 
@@ -347,6 +356,8 @@ impl Biome {
             Biome::ErodedBadlands => [1.14, 0.94, 0.62],
             Biome::WindsweptSavanna => [1.12, 1.0, 0.64],
             Biome::PaleGarden => [0.84, 0.86, 0.82],
+            Biome::Volcano => [0.9, 0.86, 0.74],
+            Biome::AshFields => [0.82, 0.8, 0.7],
         }
     }
 
@@ -603,6 +614,7 @@ pub struct Generator {
     aether: aether::AetherPalette,
     otherside: otherside::OthersidePalette,
     distant: distant_lands::DistantPalette,
+    volc: volcano::VolcPalette,
     deep: deep::DeepNoise,
     deep_pal: deep::DeepPalette,
     deep_loot: Vec<Vec<crate::structures::LootDef>>,
@@ -708,6 +720,7 @@ impl Generator {
             aether: aether::AetherPalette::new(reg),
             otherside: otherside::OthersidePalette::new(reg),
             distant: distant_lands::DistantPalette::new(reg),
+            volc: volcano::VolcPalette::new(reg),
             deep: deep::DeepNoise::new(seed),
             deep_pal: deep::DeepPalette::new(reg, seed),
             deep_loot: deep::deep_loot(),
@@ -791,6 +804,7 @@ impl Generator {
             h += (target - h) * river.min(1.0).powf(0.7);
         }
         let pantanal = self.pantanal_shape(x, z, climate, hum, detail, &mut h);
+        let cone = self.volcano_shape(x, z, &mut h);
         let height = (h as i32).clamp(4, CHUNK_HEIGHT as i32 - 20);
 
         let temp = climate - (height - 90).max(0) as f32 / 120.0;
@@ -846,6 +860,7 @@ impl Generator {
             Biome::Plains
         };
         let biome = self.distant_biome(biome, x, z, temp, height, pantanal);
+        let biome = cone.and_then(|c| self.volcano_biome(&c, height)).unwrap_or(biome);
         let variant = self.variant_of(biome, x, z, temp, hum, height, mount_mask);
         // The high, sharp mountain tops count as peaks.
         Column { height, biome: variant.base(), variant }
@@ -903,7 +918,7 @@ impl Generator {
     fn top_blocks(&self, col: &Column, wx: i32, wz: i32) -> (BlockId, BlockId, i32) {
         let p = &self.pal;
         let h = col.height;
-        if let Some(t) = self.variant_top_blocks(col, wx, wz) {
+        if let Some(t) = self.variant_top_blocks(col, wx, wz).or_else(|| self.volcano_top_blocks(col, wx, wz)) {
             return t;
         }
         match col.biome {
@@ -984,6 +999,12 @@ impl Generator {
         }
         let (top, _, _) = self.top_blocks(&col, wx, wz);
         let h = col.height;
+        // A crater's lava lake, seen from afar: its glowing top.
+        if col.biome == Biome::Volcano {
+            if let Some(c) = self.cone_at(wx, wz).filter(|c| c.in_crater && h < c.v.lava) {
+                return Surface { height: c.v.lava, biome: col.variant, top: self.volc_magma(), liquid: None, trees: None };
+            }
+        }
         let top = if h < SEA_LEVEL && (top == p.grass || top == p.snow_grass) { p.dirt } else { top };
         let liquid = (h < SEA_LEVEL).then_some(if matches!(col.biome, Biome::Snowy | Biome::Taiga | Biome::FrozenOcean | Biome::SnowyPeaks) { p.ice } else { p.water });
         // Tree attempts per chunk in `decorate`, out of the forest's 9.
@@ -1133,6 +1154,9 @@ impl Generator {
         }
 
         self.place_ores(&mut chunk, &mut rng, &cols);
+        for (i, col) in cols.iter().enumerate() {
+            self.volcano_fill(&mut chunk, i % 16, i / 16, col, base_x + (i % 16) as i32, base_z + (i / 16) as i32);
+        }
         // The depths: the top of them now, the rest when someone goes down (deep.rs).
         let lo = deep_lo.min(crate::chunk::BASE_SECTION);
         let filler = crate::chunk::PalettedSection::filled(p.stone);
@@ -1146,6 +1170,7 @@ impl Generator {
         self.decorate(&mut chunk, &mut rng, &cols, pos);
         self.decorate_ecologics(&mut chunk, &cols, pos);
         self.decorate_waters(&mut chunk, &cols, pos);
+        self.decorate_volcano(&mut chunk, &cols, pos);
         self.place_structures(&mut chunk);
         chunk
     }

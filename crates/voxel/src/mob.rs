@@ -167,6 +167,9 @@ pub struct MobDef {
     /// on the bottom instead of floating up (the drowned, crabs).
     #[serde(default = "d_false")]
     pub bottom: bool,
+    /// Glows by itself (creatures of fire and magma): drawn lit in the dark.
+    #[serde(default)]
+    pub lit: bool,
 }
 
 /// How a mob moves, for the animation. All optional.
@@ -423,6 +426,8 @@ pub struct Mob {
     /// A baby: seconds left until grown (0 for adults), and its parent's net id.
     pub grow: f32,
     pub parent: u32,
+    /// Turned head over heels this far (radians, about its middle): a rolling boulder.
+    pub roll: f32,
 }
 
 static NEXT_NET_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
@@ -523,6 +528,7 @@ impl Mob {
             breed_cd: 0.0,
             grow: 0.0,
             parent: 0,
+            roll: 0.0,
         }
     }
 

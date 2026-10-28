@@ -239,6 +239,9 @@ pub const ACCESSORIES: &[AccDef] = &[
     acc("mind_ward", "Quando você se machuca, confunde os monstros por perto", &[M::Dodge(0.05)]),
     acc("hive_pack", "Quando você se machuca, solta abelhas que picam", &[]),
     acc("fur_cloak", "", &[M::Def(2.0), M::Immune(&[CHILLED, FROZEN, FROSTBURN])]),
+    // The volcanoes (vulcao.rs).
+    acc("salamander_cloak", "Bombas de lava e o fogo doem bem menos", &[M::Def(3.0), M::Fire]),
+    acc("magma_heart", "Fumarolas te lançam mais alto e bombas de lava não te derrubam", &[M::Regen(1.0), M::Dmg(MELEE, 0.06), M::Fire]),
     acc("climbing_gear", "Escala paredes, desliza com Shift e salta da parede com Espaço", &[M::NoFall]),
     // Handy.
     acc("magnet_ring", "", &[M::Pickup(3.0)]),

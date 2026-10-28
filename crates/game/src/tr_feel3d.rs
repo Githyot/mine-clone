@@ -91,6 +91,11 @@ impl Game {
         self.t5.tr.feel.marks.push(Mark { at: Vec3::new(at.x, ground + 0.05, at.z), t: height / speed, tint });
     }
 
+    /// A glowing warning on the ground at `at` for `secs` (where something will land).
+    pub(crate) fn ground_mark(&mut self, at: Vec3, secs: f32, tint: [f32; 3]) {
+        self.t5.tr.feel.marks.push(Mark { at, t: secs, tint });
+    }
+
     /// A ring runs out along the ground from `at`; it hurts whoever stands on the ground where it
     /// passes. A jump clears it.
     pub(crate) fn shockwave(&mut self, at: Vec3, max: f32, dmg: f32) {

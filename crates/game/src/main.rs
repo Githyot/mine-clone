@@ -38,6 +38,7 @@ mod skills;
 mod prof;
 mod presets;
 mod atlas;
+mod vulcao;
 mod enchanting;
 mod drop_fx;
 mod effects;
@@ -414,12 +415,15 @@ fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) 
     let b0 = terraria::with_extra(&b0, embedded::TR_BLOCKS_RON);
     // Water plants of the lakes, rivers and seas (worldgen/waters.rs).
     let b0 = terraria::with_extra(&b0, embedded::AGUAS_BLOCKS_RON);
+    // The volcanoes (worldgen/volcano.rs, vulcao.rs).
+    let b0 = terraria::with_extra(&b0, embedded::VULCAO_BLOCKS_RON);
     let i0 = terraria::with_extra(&merge_list(items[0], &fase6_text(None, "items.ron")), embedded::T5_ITEMS_RON);
     // The stats content (rpg.rs) after the Terraria side's own items.
     let i0 = terraria::with_extra(&i0, embedded::RPG_ITEMS_RON);
     let i0 = terraria::with_extra(&i0, embedded::LOTE11_ITEMS_RON);
     let i0 = terraria::with_extra(&i0, embedded::DEEP_ITEMS_RON);
     let i0 = terraria::with_extra(&i0, embedded::TR_ITEMS_RON);
+    let i0 = terraria::with_extra(&i0, embedded::VULCAO_ITEMS_RON);
     let reg = BlockRegistry::from_ron_many(&[b0.as_str(), blocks[1]])?;
     let items = ItemRegistry::from_ron_many(&[i0.as_str(), items[1]], &reg)?;
     let mut recipes = Recipes::from_ron_many(&recipes, &items)?;
@@ -428,6 +432,7 @@ fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) 
     terraria::add_recipes(&mut recipes, embedded::LOTE11_RECIPES_RON, &items)?;
     terraria::add_recipes(&mut recipes, embedded::DEEP_RECIPES_RON, &items)?;
     terraria::add_recipes(&mut recipes, embedded::TR_RECIPES_RON, &items)?;
+    terraria::add_recipes(&mut recipes, embedded::VULCAO_RECIPES_RON, &items)?;
     let extra = fase6_text(None, "recipes.ron");
     if !extra.trim().is_empty() {
         let more = Recipes::from_ron(&extra, &items)?;
@@ -694,6 +699,7 @@ struct Game {
     prof: prof::Prof,
     presets: presets::PresetState,
     atlas: atlas::Atlas,
+    vulcao: vulcao::Vulcao,
     boss: bosses::BossState,
     /// The Terraria side (Etapa 5): accessories, glyph spells, hard mode and its events.
     t5: terraria::Terraria,
@@ -981,7 +987,7 @@ impl Game {
         // Mobs: a mobs.ron on disk wins, like blocks.
         let [mobs_text, mods_mobs] = read_pack_pair(&base, "mobs.ron", embedded::MOBS_RON, embedded::MODS_MOBS_RON);
         let mobs_text = terraria::with_extra(&merge_list(&mobs_text, &fase6_text(Some(&base), "mobs.ron")), embedded::T5_MOBS_RON);
-        let mobs_text = terraria::with_extra(&terraria::with_extra(&mobs_text, embedded::TR_MOBS_RON), embedded::AGUAS_MOBS_RON);
+        let mobs_text = terraria::with_extra(&terraria::with_extra(&terraria::with_extra(&mobs_text, embedded::TR_MOBS_RON), embedded::AGUAS_MOBS_RON), embedded::VULCAO_MOBS_RON);
         let [_, dims_mobs] = read_pack_pair(&base, "dims_mobs.ron", "", embedded::MODS_DIMS_MOBS_RON);
         let mob_reg = voxel::mob::MobRegistry::from_ron_many(&[&mobs_text, &mods_mobs, &dims_mobs]).unwrap_or_else(|e| {
             log::error!("{e}; using built-in mobs");
@@ -1146,6 +1152,7 @@ impl Game {
             prof: Default::default(),
             presets: Default::default(),
             atlas: Default::default(),
+            vulcao: Default::default(),
             boss: bosses::BossState::new(bosses_beaten),
             t5: terraria::Terraria::default(),
             ne: nether_end::NetherEnd::default(),
@@ -2059,6 +2066,10 @@ impl Game {
                     // Test hook: the crafts' experience, their page open (skills.rs).
                     self.test_skills(&v);
                 }
+                if let Ok(s) = std::env::var("MC_VULCAO") {
+                    // Test hook: a volcano scene (vulcao.rs: crater, slope, tube, erupt, titan, golem, far).
+                    self.test_vulcao(&s);
+                }
                 if std::env::var("MC_ATLAS").is_ok() {
                     // Test hook: an atlas in hand with the land around inked, open (atlas.rs).
                     self.test_atlas();
@@ -2213,6 +2224,7 @@ impl Game {
                 self.update_progress(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_skills(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_atlas(dt);
+                self.update_vulcao(dt);
             }
             self.prof.mark("chefes, progresso, ofícios");
             if sim && self.dim == voxel::worldgen::Dim::Overworld {
@@ -2585,6 +2597,7 @@ impl Game {
                     let dmg = if crit { base * 1.5 } else { base };
                     self.prog.was_full = charge > 0.9;
                     let dmg = if self.survival { self.weapon_melee_bonus(i, dmg) } else { dmg };
+                    self.vulcao_melee_hit(i);
                     let sprint_hit = self.sprinting && charge > 0.9;
                     if crit || sprint_hit {
                         let at = self.mobs.list[i].body.pos + Vec3::Y * 0.9;
@@ -2687,7 +2700,7 @@ impl Game {
             }
         }
         if use_ && self.place_cd <= 0.0 {
-            if self.atlas_use() || self.mods_use() {
+            if self.atlas_use() || self.vulcao_use() || self.mods_use() {
                 self.place_cd = 0.3;
             } else if self.cart_use() || self.boat_use() || self.sit_use() {
                 self.place_cd = 0.3;

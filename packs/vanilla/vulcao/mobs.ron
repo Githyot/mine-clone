@@ -1,0 +1,67 @@
+// The volcanoes' creatures (crates/game/src/vulcao.rs moves and spawns them). Made by
+// tools/gen_vulcao.py: edit it and run it again.
+(mobs: [
+    (
+        name: "magma_salamander", display_name: "Salamandra de Magma", kind: Neutral, health: 18, speed: 2.3, width: 0.9, height: 0.7, spawn: Never, attack: 4, biomes: ["Volcano"], drops: [(item: "salamander_scale", min: 1, max: 2), (item: "magma_cream", min: 0, max: 1)], xp: 6, swims: true, lit: true, motion: (style: Some("crawler")),
+        parts: [
+            (size: (6, 4, 14), origin: (-3, 3, -7), uv: (0, 0)),
+            (size: (6, 3, 5), origin: (-3, 4, 7), uv: (40, 0), anim: Head, pivot: (0, 5, 7)),
+            (size: (4, 2, 2), origin: (-2, 4, 12), uv: (0, 18), anim: Head, pivot: (0, 5, 7)),
+            (size: (2, 3, 2), origin: (-5, 0, 3), uv: (12, 18), anim: Leg(0), pivot: (-4, 3, 4)),
+            (size: (2, 3, 2), origin: (3, 0, 3), uv: (12, 18), anim: Leg(1), pivot: (4, 3, 4)),
+            (size: (2, 3, 2), origin: (-5, 0, -5), uv: (12, 18), anim: Leg(1), pivot: (-4, 3, -4)),
+            (size: (2, 3, 2), origin: (3, 0, -5), uv: (12, 18), anim: Leg(0), pivot: (4, 3, -4)),
+            (size: (3, 2, 7), origin: (-1, 4, -14), uv: (20, 18)),
+            (size: (2, 1, 5), origin: (-1, 4, -19), uv: (40, 18)),
+            (size: (2, 2, 10), origin: (-1, 7, -5), uv: (0, 27)),
+        ],
+        layers: [(part: 0, inflate: 0.5)],
+    ),
+    (
+        name: "basalt_golem", display_name: "Golem de Basalto", kind: Hostile, health: 46, speed: 1.15, width: 1.2, height: 2.0, spawn: Never, attack: 7, biomes: ["Volcano", "Ash Fields"], drops: [(item: "basalt", min: 2, max: 4), (item: "sulfur", min: 0, max: 2)], xp: 12, coins: Some(60), motion: (heavy: Some(0.8)),
+        parts: [
+            (size: (14, 12, 9), origin: (-7, 9, -4), uv: (0, 0)),
+            (size: (8, 7, 7), origin: (-4, 18, -1), uv: (0, 21), anim: Head, pivot: (0, 19, 2)),
+            (size: (5, 15, 5), origin: (-12, 5, -2), uv: (30, 21), anim: Arm(0), pivot: (-9, 19, 0)),
+            (size: (5, 15, 5), origin: (7, 5, -2), uv: (30, 21), anim: Arm(1), pivot: (9, 19, 0)),
+            (size: (5, 9, 5), origin: (-6, 0, -2), uv: (0, 41), anim: Leg(0), pivot: (-3, 9, 0)),
+            (size: (5, 9, 5), origin: (1, 0, -2), uv: (0, 41), anim: Leg(1), pivot: (3, 9, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.6)],
+    ),
+    (
+        name: "basalt_golem_ball", display_name: "Golem de Basalto", kind: Hostile, health: 46, speed: 1.0, width: 1.2, height: 1.2, spawn: Never, attack: 9, scale: 1.3, biomes: ["Volcano"], drops: [(item: "basalt", min: 2, max: 4), (item: "sulfur", min: 0, max: 2)], xp: 12, coins: Some(60), motion: (style: Some("static")),
+        parts: [
+            (size: (10, 10, 10), origin: (-5, 0, -5), uv: (0, 0)),
+            (size: (12, 6, 6), origin: (-6, 2, -3), uv: (0, 20)),
+            (size: (6, 6, 12), origin: (-3, 2, -6), uv: (0, 32)),
+            (size: (6, 12, 6), origin: (-3, -1, -3), uv: (36, 32)),
+        ],
+        layers: [(part: 0, inflate: 0.6)],
+    ),
+    (
+        name: "ember_wisp", display_name: "Fagulha", kind: Hostile, health: 12, speed: 2.8, width: 0.6, height: 0.8, spawn: Never, attack: 4, ranged: true, flies: true, hover: 3.0, range: 14.0, biomes: ["Volcano", "Ash Fields"], drops: [(item: "sulfur", min: 0, max: 1), (item: "gunpowder", min: 0, max: 1)], xp: 7, lit: true, motion: (style: Some("floater")),
+        parts: [
+            (size: (5, 5, 5), origin: (-2, 6, -2), uv: (0, 0), anim: Head, pivot: (0, 8, 0)),
+            (size: (7, 7, 7), origin: (-3, 5, -3), uv: (20, 0)),
+            (size: (3, 6, 3), origin: (-1, 0, -1), uv: (48, 0)),
+            (size: (2, 5, 4), origin: (-6, 7, -2), uv: (0, 14), anim: Wing(0), pivot: (-3, 9, 0)),
+            (size: (2, 5, 4), origin: (4, 7, -2), uv: (0, 14), anim: Wing(1), pivot: (3, 9, 0)),
+        ],
+    ),
+    (
+        name: "magma_titan", display_name: "Titã de Magma", kind: Hostile, health: 1150, speed: 1.4, width: 4.4, height: 11.0, spawn: Never, attack: 11, scale: 4.4, boss: true, biomes: ["Volcano"], drops: [(item: "magma_heart"), (item: "volcanic_hammer", chance: 0.5), (item: "obsidian", min: 8, max: 16), (item: "sulfur", min: 6, max: 12)], xp: 180, coins: Some(40000), lit: true,
+        parts: [
+            (size: (12, 10, 7), origin: (-6, 8, -3), uv: (0, 0)),
+            (size: (8, 7, 7), origin: (-4, 18, -3), uv: (0, 17), anim: Head, pivot: (0, 18, 0)),
+            (size: (5, 13, 5), origin: (-11, 4, -2), uv: (30, 17), anim: Arm(0), pivot: (-8, 17, 0)),
+            (size: (5, 13, 5), origin: (6, 4, -2), uv: (30, 17), anim: Arm(1), pivot: (8, 17, 0)),
+            (size: (5, 8, 5), origin: (-5, 0, -2), uv: (0, 35), anim: Leg(0), pivot: (-2, 8, 0)),
+            (size: (5, 8, 5), origin: (0, 0, -2), uv: (0, 35), anim: Leg(1), pivot: (2, 8, 0)),
+            (size: (4, 3, 4), origin: (-11, 17, -2), uv: (20, 35), anim: Arm(0), pivot: (-8, 17, 0)),
+            (size: (4, 3, 4), origin: (7, 17, -2), uv: (20, 35), anim: Arm(1), pivot: (8, 17, 0)),
+            (size: (6, 2, 5), origin: (-3, 25, -2), uv: (36, 35), anim: Head, pivot: (0, 18, 0)),
+        ],
+        layers: [(part: 0, inflate: 0.8), (part: 1, inflate: 0.6)],
+    ),
+])

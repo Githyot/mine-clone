@@ -1,0 +1,6 @@
+// The volcanoes' blocks (crates/voxel/src/worldgen/volcano.rs). Made by tools/gen_vulcao.py.
+(blocks: [
+    (name: "pumice", display_name: Some("Pedra-Pomes"), hardness: 0.8, tool: Some(Pickaxe)),
+    (name: "sulfur_ore", display_name: Some("Minério de Enxofre"), hardness: 2.5, tool: Some(Pickaxe), drops: Some([(item: "sulfur", min: 1, max: 3)])),
+    (name: "fumarole", display_name: Some("Fumarola"), hardness: 1.6, tool: Some(Pickaxe), light: 4, textures: (top: Some("fumarole_top"), side: Some("fumarole_side"), bottom: Some("basalt_top"))),
+])

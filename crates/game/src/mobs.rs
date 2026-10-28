@@ -559,7 +559,9 @@ impl Mobs {
             .map(|m| {
                 let def = &self.reg.defs[m.def];
                 let l = world.light((m.body.pos + Vec3::Y * (def.height * 0.6)).floor().as_ivec3());
-                (m.def, anim.bones(m, def, m.def, cam_block, (l >> 4) as f32 / 15.0, (l & 15) as f32 / 15.0))
+                // Fire creatures light themselves.
+                let blk = if def.lit { 0.9f32.max((l & 15) as f32 / 15.0) } else { (l & 15) as f32 / 15.0 };
+                (m.def, anim.bones(m, def, m.def, cam_block, (l >> 4) as f32 / 15.0, blk))
             })
             .collect()
     }
@@ -586,6 +588,7 @@ pub fn caster_school(name: &str) -> Option<u8> {
         "swamp_witch" => Some(4),
         "invoker" => Some(3),
         "ember_wraith" => Some(0),
+        "ember_wisp" => Some(0),
         // The wizards of the spellbooks mod (mods/spellbooks.rs casts their bigger spells).
         "pyromancer" => Some(0),
         "cryomancer" => Some(1),
@@ -599,7 +602,7 @@ pub fn caster_school(name: &str) -> Option<u8> {
 pub fn registry_for_tests() -> voxel::mob::MobRegistry {
     use crate::embedded;
     let text = crate::terraria::with_extra(&crate::merge_list(embedded::MOBS_RON, embedded::FASE6_MOBS_RON), embedded::T5_MOBS_RON);
-    let text = crate::terraria::with_extra(&crate::terraria::with_extra(&text, embedded::TR_MOBS_RON), embedded::AGUAS_MOBS_RON);
+    let text = crate::terraria::with_extra(&crate::terraria::with_extra(&crate::terraria::with_extra(&text, embedded::TR_MOBS_RON), embedded::AGUAS_MOBS_RON), embedded::VULCAO_MOBS_RON);
     voxel::mob::MobRegistry::from_ron_many(&[&text, embedded::MODS_MOBS_RON, embedded::MODS_DIMS_MOBS_RON]).unwrap()
 }
 

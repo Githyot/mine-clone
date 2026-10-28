@@ -1,0 +1,12 @@
+// The volcanoes' recipes. Made by tools/gen_vulcao.py.
+(
+    shaped: [
+        (pattern: ["SSS", "SCS", "SSS"], key: {'S': "salamander_scale", 'C': "leather"}, result: "salamander_cloak"),
+        (pattern: [" O ", "OSO", "BBB"], key: {'O': "obsidian", 'S': "sulfur", 'B': "basalt"}, result: "obsidian_idol"),
+    ],
+    shapeless: [
+        (ingredients: ["sulfur", "charcoal"], result: "gunpowder", count: 2),
+        (ingredients: ["sulfur", "coal"], result: "gunpowder", count: 2),
+        (ingredients: ["pumice", "pumice", "pumice", "pumice"], result: "gravel", count: 4),
+    ],
+)

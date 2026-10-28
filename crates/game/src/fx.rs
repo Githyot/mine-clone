@@ -380,6 +380,8 @@ impl Game {
                     target = target.max(0.45);
                 }
                 target = target.max(self.weather.rain * 0.3);
+                // Ash over the volcanoes (vulcao.rs).
+                target = target.max(self.vulcao.haze);
             }
         }
         let step = dt * 0.25;
