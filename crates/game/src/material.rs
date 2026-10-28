@@ -40,7 +40,7 @@ pub fn armor_class(name: &str) -> u32 {
         "leather" => LEATHER,
         "chainmail" => CHAIN,
         "diamond" => DIAMOND,
-        "netherite" | "umbral" | "sanguinite" => NETHERITE,
+        "netherite" | "umbral" | "sanguinite" | "magmarite" => NETHERITE,
         "golden" | "radiant" | "gladiator" => GOLD,
         "copper" | "bronze" | "meteor" | "resonarium" => COPPER,
         "iron" | "lead" | "silver" | "tungsten" | "platinum" | "cobalt" | "palladium" | "mythril" | "orichalcum" | "adamantite" | "titanium"
@@ -86,7 +86,7 @@ pub fn texture_class(name: &str) -> u32 {
     let has = |words: &[&str]| words.iter().any(|w| b.contains(w));
     if has(&["diamond"]) {
         DIAMOND
-    } else if has(&["netherite", "umbral", "sanguinite"]) {
+    } else if has(&["netherite", "umbral", "sanguinite", "magmarite"]) {
         NETHERITE
     } else if has(&["chainmail", "chain"]) {
         CHAIN

@@ -99,6 +99,7 @@ mod windmill;
 mod entity;
 mod instruments;
 mod torch;
+mod summons;
 mod item_render;
 mod juice;
 mod menus;
@@ -109,6 +110,7 @@ mod voice;
 mod mods;
 mod lod;
 mod mobs;
+mod social;
 mod nether_end;
 mod paintings;
 mod particles;
@@ -248,6 +250,8 @@ struct Args {
     shader: Option<String>,
     /// Distant terrain past the render distance, in blocks (0 = off).
     lod: Option<i32>,
+    /// Distant terrain detail preset 0..2 (`lod::DETAILS`).
+    lod_detail: Option<u8>,
     /// Block depth level 0..3 (test screenshots and benchmarks).
     parallax: Option<u8>,
 }
@@ -315,6 +319,7 @@ fn parse_args() -> Args {
             "--open" => a.open = it.next(),
             "--shader" => a.shader = it.next(),
             "--lod" => a.lod = it.next().and_then(|s| s.parse().ok()),
+            "--lod-detail" => a.lod_detail = it.next().and_then(|s| s.parse().ok()),
             "--parallax" => a.parallax = it.next().and_then(|s| s.parse().ok()),
             "--help" | "-h" => {
                 println!(
@@ -324,7 +329,7 @@ fn parse_args() -> Args {
                      Benchmark: mine-clone --bench [seconds] [--world NAME] (report in bench/)\n\
                      Testing: [--screenshot out.png] [--pos x,y,z] [--look yaw,pitch] [--time ticks] [--fly] [--demo] [--inventory] [--pause] [--debug]\n\
                      \x20        [--survival] [--kit] [--open table|furnace|chest] [--mobs] [--perf] [--prone] [--camera N]\n\
-                     \x20        [--shader NAME|off] [--shaders-menu] [--lod BLOCKS] [--parallax 0-3]"
+                     \x20        [--shader NAME|off] [--shaders-menu] [--lod BLOCKS] [--lod-detail 0-2] [--parallax 0-3]"
                 );
                 std::process::exit(0);
             }
@@ -580,6 +585,8 @@ enum ShaderRow {
     Opt(usize),
     /// Distant terrain distance.
     Lod,
+    /// Distant terrain detail preset.
+    LodDetail,
     /// Graphics extras (Sildur's, Better Clouds and Continuity ideas).
     Shadows,
     Reflections,
@@ -865,6 +872,9 @@ impl Game {
         }
         if let Some(l) = args.lod {
             settings.lod_distance = l.max(0);
+        }
+        if let Some(d) = args.lod_detail {
+            settings.lod_detail = d.min(lod::DETAILS.len() as u8 - 1);
         }
         if let Some(m) = std::env::var("MC_MATERIALS").ok().and_then(|v| v.parse::<u8>().ok()) {
             // Test hook: the materials option (0 off, 1 simple, 2 full) for comparison shots.
@@ -2116,10 +2126,11 @@ impl Game {
                 self.update_wanderers(if self.args.screenshot.is_some() { 0.0 } else { dt }, daylight);
             }
             // Screenshots hold the world still so the picture is stable.
-            let mdt = if self.args.screenshot.is_some() { 0.0 } else { dt };
+            let mdt = if self.args.screenshot.is_some() { social::film_dt() } else { dt };
             self.before_mobs();
             self.mobs.raining = self.dim == voxel::worldgen::Dim::Overworld && self.weather.rain > 0.2;
             let out = self.mobs.update(&self.world, self.body.pos, creative, daylight, mdt);
+            self.social_effects(&out);
             for (dmg, from) in out.damage {
                 self.mob_hit_effects(from);
                 self.rpg_mob_hit(from);
@@ -2174,7 +2185,7 @@ impl Game {
         // Mob animation runs on frame time (smooth for guests too), and holds still with the
         // world in a paused single-player game.
         if self.world_open && !menus_stop {
-            let adt = if self.args.screenshot.is_some() { 0.0 } else { dt };
+            let adt = if self.args.screenshot.is_some() { social::film_dt() } else { dt };
             self.mobs.animate(self.body.pos, adt);
         }
 
@@ -2692,6 +2703,7 @@ impl Game {
                 ShaderRow::Lod,
                 false,
             ),
+            (format!("Detalhe LOD: {}", lod::DETAILS[(self.settings.lod_detail as usize).min(lod::DETAILS.len() - 1)].0), ShaderRow::LodDetail, false),
             (format!("Sombras: {}", settings::SHADOW_LEVELS[self.settings.shadows.min(2) as usize]), ShaderRow::Shadows, false),
             (format!("Reflexos na água: {}", onoff(self.settings.water_reflections)), ShaderRow::Reflections, false),
             (format!("Suavização TAA: {}{}", onoff(self.settings.taa), if cur.is_none() { " (com shader)" } else { "" }), ShaderRow::Taa, false),
@@ -2827,6 +2839,7 @@ impl Game {
             }
             ShaderRow::Emissive => self.settings.emissive_textures = !self.settings.emissive_textures,
             ShaderRow::Parallax => self.settings.parallax = (self.settings.parallax.min(3) + 1) % 4,
+            ShaderRow::LodDetail => self.settings.lod_detail = (self.settings.lod_detail + 1) % lod::DETAILS.len() as u8,
             ShaderRow::Lod => {
                 let d = &lod::DISTANCES;
                 let cur = d.iter().position(|&x| x >= self.settings.lod_distance).unwrap_or(0);
@@ -3195,7 +3208,7 @@ impl Game {
         }
         // An arrow on its way, frozen in the air, for the test picture.
         let from = self.body.pos + fwd * 4.0 + side * 1.5 + Vec3::Y * 1.6;
-        self.mobs.arrows.push(mobs::Arrow { pos: from, vel: (-fwd * 0.3 + side * 1.0 + Vec3::Y * 0.1) * 0.001, age: 0.0, stuck: true, damage: 0.0 });
+        self.mobs.arrows.push(mobs::Arrow { pos: from, vel: (-fwd * 0.3 + side * 1.0 + Vec3::Y * 0.1) * 0.001, age: 0.0, stuck: true, damage: 0.0, shooter: 0 });
     }
 
     /// Place a block where the player is aiming. Returns where it went.
@@ -4547,7 +4560,7 @@ impl Game {
         let (fog_color, fog_start, fog_end) = self.effect_fog(fog_color, fog_start, fog_end);
         // Real chunks surely cover this radius (see World::update); distant terrain starts here.
         let lod_inner = (self.settings.render_distance as f32 - 0.5) * 16.0;
-        self.lod.update(&self.renderer.device, eye, lod_inner, if extra > 0.0 { view_end } else { 0.0 });
+        self.lod.update(&self.renderer.device, eye, lod_inner, if extra > 0.0 { view_end } else { 0.0 }, self.settings.lod_detail as usize);
         let mut effects = self.terrain_effects();
         effects[3] = lod_inner;
         let mut g = Globals {
@@ -4692,7 +4705,13 @@ impl Game {
                 PLACED.store(k + 1, std::sync::atomic::Ordering::Relaxed);
                 exit_after = k >= n;
             } else if (self.loaded_frames > 30 && self.world.pending_jobs() == 0 && self.lod.is_complete() && self.fluids.time >= self.args.wait as f64) || self.loaded_frames > 1500 {
-                if place_frames.is_some() {
+                static SOCIAL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                if let Some(scene) = std::env::var("MC_SOCIAL").ok().filter(|_| !SOCIAL.swap(true, std::sync::atomic::Ordering::Relaxed)) {
+                    // Test hook: mobs getting on with each other (social.rs), set up once the
+                    // world around is loaded; then wait for the floor to mesh again.
+                    self.test_social(&scene);
+                    self.loaded_frames = 0;
+                } else if place_frames.is_some() {
                     let name = std::env::var("MC_PLACE_BLOCK").unwrap_or("oak_planks".into());
                     if let (true, Some(hit)) = (name == "break", self.target) {
                         // MC_PLACE_BLOCK=break: break the block aimed at instead.
@@ -4711,8 +4730,11 @@ impl Game {
         }
         let selection = if self.screen == Screen::Playing || self.args.screenshot.is_some() { self.target.map(|t| t.block) } else { None };
         let mut items = self.mobs.instances(&self.world, block, rd + 16.0);
+        // Pets and mounts with a better body in summons.rs: theirs comes out, that one goes in.
+        items.retain(|(d, _)| self.mobs.reg.defs.get(*d).is_none_or(|def| summons::pet_model(&def.name).is_none()));
         let musician = self.musician_instances(&mut items, block);
         let mob_items = self.arrow_and_bow_instances(&items, block);
+        items.extend(self.pet_models(block, rd + 16.0));
         items.extend(musician);
         let (net_models, mut net_held) = self.net_instances(block);
         items.extend(net_models);
@@ -4796,6 +4818,10 @@ impl Game {
         items.extend(self.wagon_instances(block, rd + 16.0));
         items.extend(self.aircraft_instances(block));
         items.extend(self.windmill_instances(block, eye, rd + 16.0));
+        // Summoned minions and sentries, with their own bodies (summons.rs).
+        items.extend(self.minion_instances(block));
+        items.extend(self.sentry_instances(block));
+        items.extend(self.tr_sentry_models(block));
         // The player figure in the inventory, in 3D, turning its head toward the mouse.
         let mut figure_backdrop = None;
         if let (Some((bx, by, bw, bh)), Some(pd)) = (self.surv.figure_box.take(), self.mobs.reg.id("player")) {
@@ -4876,8 +4902,6 @@ impl Game {
         }
         drops.extend(held_third);
         drops.extend(mob_items);
-        drops.extend(self.minion_instances(block));
-        drops.extend(self.sentry_instances(block));
         drops.extend(net_held);
         if let (Some(k), Some(h)) = (self.args.mine, self.target) {
             let id = self.world.block_or_air(h.block);
@@ -4918,6 +4942,9 @@ impl Game {
             shot
         };
         self.last_frame_info = (info.sections_drawn, info.quads_drawn, info.lod_drawn);
+        if self.bench.started {
+            self.bench.lod_frame(info.lod_drawn, info.lod_quads);
+        }
         if let Some((w, h, px)) = shot {
             let k = std::env::var("MC_PLACE").ok().map(|_| self.loaded_frames);
             let path = if let (Some(k), Some(p)) = (k, self.args.screenshot.as_ref()) {
