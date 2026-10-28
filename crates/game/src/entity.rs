@@ -1261,14 +1261,14 @@ impl EntityRenderer {
     pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, hdr: bool, block_tex: &'a wgpu::BindGroup, fx: &'a wgpu::BindGroup) {
         self.particles.draw(pass, hdr, block_tex);
         self.items.draw(pass, hdr, block_tex);
-        if self.draws.is_empty() {
-            return;
+        if !self.draws.is_empty() {
+            pass.set_pipeline(&self.pipelines[hdr as usize]);
+            pass.set_bind_group(1, &self.skin_bg, &[]);
+            pass.set_bind_group(2, &self.inst_bg, &[]);
+            pass.set_bind_group(3, fx, &[]);
+            self.draw_list(pass, &self.draws);
         }
-        pass.set_pipeline(&self.pipelines[hdr as usize]);
-        pass.set_bind_group(1, &self.skin_bg, &[]);
-        pass.set_bind_group(2, &self.inst_bg, &[]);
-        pass.set_bind_group(3, fx, &[]);
-        self.draw_list(pass, &self.draws);
+        self.items.draw_halos(pass, hdr, block_tex);
     }
 
     /// Into the sun's shadow map (the pass has the globals bound).

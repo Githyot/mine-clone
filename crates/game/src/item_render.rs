@@ -25,6 +25,8 @@ pub struct GpuItem {
 
 pub struct ItemGpu {
     pipelines: [wgpu::RenderPipeline; 2],
+    /// The soft glow around items on the ground: additive, depth-tested but not written.
+    halo_pipelines: [wgpu::RenderPipeline; 2],
     layout: wgpu::BindGroupLayout,
     buf: wgpu::Buffer,
     /// The material class of each texture layer (material.rs).
@@ -32,6 +34,8 @@ pub struct ItemGpu {
     bg: wgpu::BindGroup,
     cap: usize,
     count: u32,
+    /// Glows, stored after the `count` items.
+    halos: u32,
 }
 
 impl ItemGpu {
@@ -63,21 +67,26 @@ impl ItemGpu {
             bind_group_layouts: &[&r.globals_layout, &r.tex_layout, &layout],
             push_constant_ranges: &[],
         });
-        let make = |format: wgpu::TextureFormat| {
+        // Glows add light on top: colour times alpha, the alpha channel left alone.
+        let add = wgpu::BlendState {
+            color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::SrcAlpha, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+            alpha: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::Zero, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+        };
+        let make = |format: wgpu::TextureFormat, halo: bool| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("item"),
+                label: Some(if halo { "item glow" } else { "item" }),
                 layout: Some(&pl),
-                vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_item"), buffers: &[], compilation_options: Default::default() },
+                vertex: wgpu::VertexState { module: &shader, entry_point: Some(if halo { "vs_halo" } else { "vs_item" }), buffers: &[], compilation_options: Default::default() },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
-                    entry_point: Some("fs_item"),
-                    targets: &[Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+                    entry_point: Some(if halo { "fs_halo" } else { "fs_item" }),
+                    targets: &[Some(wgpu::ColorTargetState { format, blend: halo.then_some(add), write_mask: wgpu::ColorWrites::ALL })],
                     compilation_options: Default::default(),
                 }),
                 primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: true,
+                    depth_write_enabled: !halo,
                     depth_compare: wgpu::CompareFunction::Less,
                     stencil: Default::default(),
                     bias: Default::default(),
@@ -87,12 +96,13 @@ impl ItemGpu {
                 cache: None,
             })
         };
-        let pipelines = [make(r.config.format), make(crate::post::HDR)];
+        let pipelines = [make(r.config.format, false), make(crate::post::HDR, false)];
+        let halo_pipelines = [make(r.config.format, true), make(crate::post::HDR, true)];
         let cap = 64;
         let buf = Self::make_buf(device, cap);
         let mats = Self::make_mats(device, &[crate::material::NONE]);
         let bg = Self::make_bg(device, &layout, &buf, &mats);
-        ItemGpu { pipelines, layout, buf, mats, bg, cap, count: 0 }
+        ItemGpu { pipelines, halo_pipelines, layout, buf, mats, bg, cap, count: 0, halos: 0 }
     }
 
     fn make_buf(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
@@ -122,8 +132,10 @@ impl ItemGpu {
         self.bg = Self::make_bg(&r.device, &self.layout, &self.buf, &self.mats);
     }
 
-    pub fn prepare(&mut self, r: &Renderer, data: &[GpuItem]) {
-        self.count = data.len() as u32;
+    /// `data`: items, then `halos` glows at its end.
+    pub fn prepare(&mut self, r: &Renderer, data: &[GpuItem], halos: usize) {
+        self.halos = halos.min(data.len()) as u32;
+        self.count = data.len() as u32 - self.halos;
         if data.is_empty() {
             return;
         }
@@ -133,6 +145,17 @@ impl ItemGpu {
             self.bg = Self::make_bg(&r.device, &self.layout, &self.buf, &self.mats);
         }
         r.queue.write_buffer(&self.buf, 0, bytemuck::cast_slice(data));
+    }
+
+    /// The glows, after everything solid (they don't write depth).
+    pub fn draw_halos<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, hdr: bool, block_tex: &'a wgpu::BindGroup) {
+        if self.halos == 0 {
+            return;
+        }
+        pass.set_pipeline(&self.halo_pipelines[hdr as usize]);
+        pass.set_bind_group(1, block_tex, &[]);
+        pass.set_bind_group(2, &self.bg, &[]);
+        pass.draw(0..6, self.count..self.count + self.halos);
     }
 
     /// Needs the block texture bind group in slot 1.
