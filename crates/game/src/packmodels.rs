@@ -130,8 +130,9 @@ pub(crate) fn load(reg: &BlockRegistry, base: &Path, enabled: &[String]) -> Pack
             let id = id as BlockId;
             // Doors, trapdoors, gates and stairs turn and open through their variants: one
             // model on the base id would draw only that one (a closed north door as the pack's
-            // first state, open and facing east) differently from all the others.
-            let turns = matches!(b.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate | Shape::Stairs);
+            // first state, open and facing east) differently from all the others. Anvils and
+            // hoppers too (a pack's hopper also drew without its funnel).
+            let turns = matches!(b.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate | Shape::Stairs | Shape::Anvil | Shape::Hopper);
             // See-through blocks (stained glass, ice) stay ours: pack models only reach the
             // solid pass, where their tinted fill would be cut away. The pack's texture is still used.
             if b.variant != 0 || turns || done.contains(&id) || matches!(b.shape, Shape::Liquid | Shape::Invisible) || b.transparency == Transparency::Translucent || b.name == "air" {

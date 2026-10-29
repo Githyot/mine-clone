@@ -446,27 +446,9 @@ def ench_bottom():
 
 @blockfn("anvil_side")
 def anvil_side():
-    img = canvas()
-    rows = [
-        "################",
-        "################",
-        "################",
-        "################",
-        "....########....",
-        ".....######.....",
-        ".....######.....",
-        ".....######.....",
-        ".....######.....",
-        ".....######.....",
-        "...##########...",
-        "..############..",
-        "..############..",
-        "..############..",
-        "..############..",
-        "................",
-    ]
-    shade_mask(img, mask_from_rows(rows), IRON[:5], rng_for("anvil_side"), speck=0.1)
-    return img
+    # Plain forged iron: the anvil is built from boxes (Shape::Anvil), so the picture is the
+    # metal, not a cut-out of the anvil's outline.
+    return noise_tex("anvil_side", IRON[0:4], ((4, 0.4), (2, 0.4), (1, 0.2)), 0.5)
 
 
 def _anvil_top(name, cracks):

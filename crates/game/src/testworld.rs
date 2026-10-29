@@ -213,6 +213,10 @@ impl Game {
                 let label = it.display_name.clone();
                 let (x, z) = plan.slot(&label);
                 plan.sc.set(x, Y, z, b);
+                // MC_FIND=anvil,hopper prints where those blocks stand, for screenshots.
+                if std::env::var("MC_FIND").is_ok_and(|f| f.split(',').any(|n| n == self.reg.get(b).name)) {
+                    eprintln!("MC_FIND {} {x} {Y} {z}", self.reg.get(b).name);
+                }
             }
         }
 

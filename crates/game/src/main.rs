@@ -3423,6 +3423,8 @@ impl Game {
             Shape::Chair => facing(-f.x, -f.z),
             // A bench runs across your view.
             Shape::Bench => facing(f.x, f.z) ^ 1,
+            // An anvil lies across your view, its long side toward you.
+            Shape::Anvil => facing(f.x, f.z),
             // A sign hangs on the wall clicked, or stands facing you.
             Shape::Sign | Shape::Banner => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) | 4 } else if hit.normal.y > 0 { facing(f.x, f.z) } else { return None },
             // A shelf goes on the wall you clicked.

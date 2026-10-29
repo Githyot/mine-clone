@@ -1320,3 +1320,141 @@ REGISTRY.update({
 import woods  # noqa: E402
 
 woods.register(REGISTRY, lambda n: os.path.exists(os.path.join(SRC16, n + ".png")))
+
+
+# ================================================================ anvils
+# The anvil is drawn from boxes (Shape::Anvil), and each box face shows the part of the picture
+# under it, so these have no frame or outline: forged iron all over, a polished face on top.
+
+
+def _hammered(rng, count, min_d, depth):
+    """Height of a hammered surface: shallow round dents where the hammer landed."""
+    _, d1, _, _ = worley(rng, count, min_d)
+    return -np.clip(1 - d1 / (min_d * 0.9), 0, 1) ** 2 * depth
+
+
+def anvil_side():
+    rng = rng_for("anvil_side")
+    pal = ramp("#3b3d43", 10, 0.30, 0.10, sat=0.9)
+    h = _hammered(rng, 22, 11, 2.2) + fbm(rng, ((16, 0.5), (8, 0.3), (4, 0.2))) * 0.8
+    # Scale left by the forge: a few darker blotches.
+    scale = clusters(rng, 6, 0.18)
+    t = 0.48 + light(h, 1.0) * 1.1 - occlusion(h, 2) * 0.10 - scale * 0.10
+    return paint(t, pal, rng, 0.3)
+
+
+def anvil_top(name="anvil_top", cracks=0):
+    rng = rng_for(name)
+    pal = ramp("#686c74", 12, 0.38, 0.08, sat=0.9)
+    h = _hammered(rng, 14, 14, 1.0) + fbm(rng, ((16, 0.5), (8, 0.3), (4, 0.2))) * 0.4
+    t = 0.55 + light(h, 1.0) * 1.0
+    # Worn bright where the work is struck, in the middle.
+    t = t + np.clip(1 - np.hypot(XX - 31.5, YY - 31.5) / 30, 0, 1) * 0.12
+    crack = np.zeros((N, N), bool)
+    for _ in range(cracks):
+        x, y = rng.integers(8, 56, 2)
+        ang = rng.random() * np.pi
+        for _ in range(3):
+            nx, ny = x + np.cos(ang) * rng.integers(5, 10), y + np.sin(ang) * rng.integers(5, 10)
+            crack |= segment_dist(x, y, nx, ny) < 0.9
+            x, y, ang = nx, ny, ang + (rng.random() - 0.5) * 1.2
+    img = paint(t, pal, rng, 0.25)
+    # Cracks: a dark line with a lit lower lip.
+    lip = np.roll(np.roll(crack, 1, 0), 1, 1) & ~crack
+    img[lip, :3] = pal[-3]
+    img[crack, :3] = pal[0]
+    return img
+
+
+REGISTRY.update({
+    "anvil_side": anvil_side,
+    "anvil_top": anvil_top,
+    "chipped_anvil_top": lambda: anvil_top("chipped_anvil_top", 3),
+    "damaged_anvil_top": lambda: anvil_top("damaged_anvil_top", 7),
+})
+
+
+# ================================================================ small things built from boxes
+# End crystal, beacon, shimmer crystal and dungeon lantern are drawn from boxes now
+# (Shape::Cage, Beacon, Crystal, Lantern), so each picture is the stuff of one part, filling the
+# whole face, instead of a cut-out drawing of the thing.
+
+
+def _gem(name, base, cells=9, glow=0.0):
+    """Flat crystal facets with bright edges, lit from the middle by `glow`."""
+    rng = rng_for(name)
+    pal = ramp(base, 12, 0.55, 0.12, sat=1.2)
+    ids, d1, d2, _ = worley(rng, cells, 64 / np.sqrt(cells) * 0.8)
+    tone = (ids * 0.37) % 1.0
+    edge = (d2 - d1) < 1.6
+    t = 0.35 + tone * 0.35 + np.clip(1 - np.hypot(XX - 31.5, YY - 31.5) / 34, 0, 1) * glow
+    t = np.where(edge, 0.97, t)
+    return paint(t, pal, rng, 0.2)
+
+
+def end_crystal():
+    return _gem("end_crystal", "#c070d0", 7, 0.35)
+
+
+def end_crystal_cage():
+    # Glass cage: a dark violet frame round the edges of its box (x 2..14, y 3..15), clear glass
+    # with a few pale streaks between.
+    rng = rng_for("end_crystal_cage")
+    img = canvas()
+    f = (np.isin(XX // 4, (2, 13)) | np.isin(YY // 4, (1, 2, 12, 13))) & (XX >= 8) & (XX < 56) & (YY >= 4) & (YY < 56)
+    pal = ramp("#3a2244", 8, 0.3, 0.1)
+    t = 0.35 + fbm(rng, ((8, 0.5), (4, 0.5))) * 0.3 + light(f.astype(float) * 2, 1.0) * 0.6
+    img = paint(t, pal, rng, 0.2, 0.0)
+    img[f, 3] = 255
+    streak = (np.abs(((XX + YY) % 32) - 6) < 1.2) & ~f
+    img[streak, :3] = hexrgb("#e8d0f4")
+    img[streak, 3] = 255
+    return img
+
+
+def beacon_core():
+    return _gem("beacon", "#5ae0e8", 5, 0.55)
+
+
+def shimmer_crystal():
+    rng = rng_for("shimmer_crystal")
+    # Long facets running up the points, shifting pink -> lilac -> cyan.
+    band = stretched_noise(rng, 8, 64)
+    hue = (XX / 64 + band * 0.6) % 1.0
+    cols = [hexrgb(c) for c in ("#f4a8e0", "#c8a8f8", "#9ae4f4", "#f4a8e0")]
+    k = hue * 3
+    i = np.floor(k).astype(int)
+    fr = (k - i)[..., None]
+    rgb = np.take(np.array(cols), i, 0) * (1 - fr) + np.take(np.array(cols), i + 1, 0) * fr
+    edge = np.isin(XX % 16, (0, 15))
+    shade = 0.82 + 0.25 * ((XX // 16) % 2) + 0.1 * (band - 0.5)
+    _, d1, d2, _ = worley(rng, 10, 14)
+    shade = shade - ((d2 - d1) < 1.4) * 0.18
+    rgb = rgb * shade[..., None]
+    rgb[edge] = hexrgb("#fff4ff")
+    for x, y in rng.integers(2, 62, (10, 2)):
+        rgb[y, x] = rgb[y - 1, x] = rgb[y, x - 1] = hexrgb("#ffffff")
+    return rgba(np.clip(rgb, 0, 255))
+
+
+def _recolour(src_name, name, base):
+    """A lantern from our own lantern design, recoloured: metal and glow mapped onto a ramp."""
+    from upscale import upscale
+    from PIL import Image
+    src = np.asarray(Image.open(os.path.join(SRC16, src_name + ".png")).convert("RGBA"), dtype=np.float64)
+    img = upscale(src, name, "block")
+    pal = ramp(base, 12, 0.75, 0.1, sat=1.1)
+    t = normalize(luma(img[..., :3])) ** 0.6
+    out = rgba(quantize(np.clip(t, 0, 1), pal, 0.0, None))
+    out[..., 3] = img[..., 3]
+    return out
+
+
+REGISTRY.update({
+    "end_crystal": end_crystal,
+    "end_crystal_cage": end_crystal_cage,
+    "beacon": beacon_core,
+    "shimmer_crystal": shimmer_crystal,
+    "dungeon_lantern": lambda: _recolour("lantern", "dungeon_lantern", "#3e5c8c"),
+    "dungeon_lantern_top": lambda: _recolour("lantern_top", "dungeon_lantern_top", "#3e5c8c"),
+})
