@@ -525,7 +525,8 @@ impl Game {
         if reward_ready {
             self.draw_guide_mark(w, h);
         }
-        if self.survival && !self.show_debug && !self.progress.journal {
+        // The goal list stays off while a screen is open, so it never shows through its panels.
+        if self.survival && !self.show_debug && !self.progress.journal && self.screen == crate::Screen::Playing {
             if let Some(c) = current {
                 let ch = &self.progress.chapters()[c];
                 let mut lines: Vec<(String, [u8; 4], Option<bool>)> = vec![(ch.title.clone(), YELLOW, None)];

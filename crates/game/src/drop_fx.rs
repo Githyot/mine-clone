@@ -99,7 +99,8 @@ impl Game {
 
     /// Names over the items lying nearby, and over the one under the crosshair from further.
     pub(crate) fn draw_drop_labels(&mut self, w: f32, h: f32) {
-        if !self.settings.drop_labels || self.surv.drops.is_empty() {
+        // Not through an open screen's panels.
+        if !self.settings.drop_labels || self.surv.drops.is_empty() || self.screen != crate::Screen::Playing {
             return;
         }
         let Some((vp, cam_block)) = self.ui_view_proj else { return };

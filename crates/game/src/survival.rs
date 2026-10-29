@@ -1930,8 +1930,12 @@ impl Game {
         for i in 0..9 {
             slots.push((Slot::Inv(i), x0 + (8 + i * 18) as f32 * s, y0 + (142.0 + extra) * s));
         }
-        self.ui.label(x0 + 8.0 * s, y0 + (73.0 + extra) * s, "Inventário", dark, s);
         let n = self.surv.grid_size();
+        // The player's own screen leaves the title out, as the classic one does: the armour
+        // column runs down to where it would sit.
+        if !(matches!(open, Open::Craft) && n == 2) {
+            self.ui.label(x0 + 8.0 * s, y0 + (73.0 + extra) * s, "Inventário", dark, s);
+        }
         let mut over_shop = false;
         match open {
             Open::Craft | Open::Table => {
@@ -2135,7 +2139,16 @@ impl Game {
         } else {
             "Esq.: pegar  Dir.: metade  Shift: mover  Roda: 1 a 1  R: receita  U: usos"
         };
-        self.ui.text_centered(w / 2.0, y0 + ph + 4.0 * s, hint, WHITE);
+        // Under the panel when it fits, else across the top (it ran over the hearts at 720p),
+        // a size smaller when the line is wider than the screen.
+        let mut ts = s;
+        while ts > 1.0 && self.ui.text_width(hint, ts) > w - 8.0 * s {
+            ts -= 1.0;
+        }
+        let tw = self.ui.text_width(hint, ts);
+        let hud_top = self.ui.height - 46.0 * s;
+        let hy = if y0 + ph + 14.0 * s <= hud_top { y0 + ph + 4.0 * s } else { 2.0 * s };
+        self.ui.text_scaled((w - tw) / 2.0, hy, hint, WHITE, ts);
     }
 
     /// Extra tooltip lines (Durability Tooltip idea): wear left in colour, attack, armour, food.

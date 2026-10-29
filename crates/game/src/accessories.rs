@@ -397,8 +397,8 @@ impl Game {
         if self.t5.rpg.sheet {
             self.draw_stats_sheet(px - 4.0 * s, py - 10.0 * s);
         } else {
-            let tw = self.ui.text_width("C: status", self.ui.scale);
-            self.ui.text(px - 4.0 * s - tw, py + ph - 10.0 * s, "C: status", [230, 230, 230, 255]);
+            // Under the Visual column (beside the accessories it sat under that column's panel).
+            self.ui.text(px - 46.0 * s, py + ph + 4.0 * s, "C: status", [230, 230, 230, 255]);
         }
         let mut slots: Vec<(Slot, f32, f32)> = (0..n).map(|i| (Slot::Acc(i), px + 1.0 * s, py + (12.0 + i as f32 * 18.0) * s)).collect();
         if !self.t5.rpg.sheet {
