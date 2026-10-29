@@ -806,6 +806,19 @@ impl World {
                 self.set_block(other, AIR);
             }
         }
+        // Half of a double chest: the other half is a chest on its own again.
+        let (turn, base) = (self.reg.get(was).turn, self.reg.get(was).base);
+        if turn == voxel::block::Turn::Chest && variant & (voxel::block::CHEST_LEFT | voxel::block::CHEST_RIGHT) != 0 {
+            let l = IVec3::from(voxel::block::chest_left_dir(variant));
+            for other in [p + l, p - l] {
+                let o = self.block_or_air(other);
+                let ob = self.reg.get(o);
+                if ob.base == base && ob.variant == variant ^ (voxel::block::CHEST_LEFT | voxel::block::CHEST_RIGHT) {
+                    let single = self.reg.variant(o, variant & 3);
+                    self.set_block(other, single);
+                }
+            }
+        }
         let mut y = p.y + 1;
         loop {
             let above = IVec3::new(p.x, y, p.z);

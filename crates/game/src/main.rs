@@ -6,6 +6,7 @@
 mod ambient;
 mod ambient_life;
 mod beds;
+mod chests;
 mod material;
 mod companions;
 mod options;
@@ -181,7 +182,7 @@ use renderer::{Camera, Globals, Renderer};
 use settings::{Settings, ShaderQuality};
 use shaderpack::{Builtin, ShaderPack};
 use ui::{FontAtlas, UiBatch, GRAY, WHITE, YELLOW};
-use voxel::block::Shape;
+use voxel::block::{Shape, Turn};
 use voxel::item::ItemRegistry;
 use voxel::recipe::Recipes;
 use voxel::chunk::ChunkPos;
@@ -3499,6 +3500,12 @@ impl Game {
             }
             _ => 0,
         };
+        // Full blocks with a front face the player; logs lie along the face they go on.
+        let v = match b.turn {
+            Turn::Facing | Turn::Chest => facing(f.x, f.z),
+            Turn::Axis => if hit.normal.y != 0 { 0 } else if hit.normal.x != 0 { 1 } else { 2 },
+            Turn::None => v,
+        };
         if matches!(shape, Shape::Lever | Shape::Button) && v & 8 != 0 {
             if !self.reg.get(clicked).solid || !self.reg.is_opaque(clicked) && self.reg.get(clicked).shape != Shape::Cube {
                 return None;
@@ -3543,6 +3550,9 @@ impl Game {
         if self.world.place_block(pos, id_v) {
             if shape == Shape::Rail {
                 self.connect_rail(pos);
+            }
+            if self.reg.get(id).turn == Turn::Chest && self.crouch <= 0.5 {
+                self.pair_chest(pos, hit.block);
             }
             return self.placed(pos, id);
         }
@@ -4914,7 +4924,12 @@ impl Game {
                 exit_after = k >= n;
             } else if (self.loaded_frames > 30 && self.world.pending_jobs() == 0 && self.lod.is_complete() && self.fluids.time >= self.args.wait as f64) || self.loaded_frames > 1500 {
                 static SOCIAL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-                if let Some(scene) = std::env::var("MC_SOCIAL").ok().filter(|_| !SOCIAL.swap(true, std::sync::atomic::Ordering::Relaxed)) {
+                static TURNS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                if let Some(mode) = std::env::var("MC_TURNS").ok().filter(|_| !TURNS.swap(true, std::sync::atomic::Ordering::Relaxed)) {
+                    // Test hook: blocks put down from different sides (chests.rs).
+                    self.turns_test(&mode);
+                    self.loaded_frames = 0;
+                } else if let Some(scene) = std::env::var("MC_SOCIAL").ok().filter(|_| !SOCIAL.swap(true, std::sync::atomic::Ordering::Relaxed)) {
                     // Test hook: mobs getting on with each other (social.rs), set up once the
                     // world around is loaded; then wait for the floor to mesh again.
                     self.test_social(&scene);

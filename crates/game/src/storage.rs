@@ -179,6 +179,44 @@ pub(crate) fn look(store: Store, bl: &Block, o: f32) -> StoreLook {
     look
 }
 
+/// One half of a double chest: no wall on the side that meets the other half, its floor and
+/// walls running right up to it (`left`: the half on the left, seen from the front, -x here).
+fn join_half(look: &mut StoreLook, left: bool) {
+    let (inner, edge): (f32, f32) = if left { (15.0, 16.0) } else { (1.0, 0.0) };
+    look.parts.retain(|p| !(p.b[0] == inner.min(edge) && p.b[3] == inner.max(edge) && p.pitch == 0.0 && p.b[4] - p.b[1] > 1.0));
+    for p in &mut look.parts {
+        if left && p.b[3] == inner {
+            p.b[3] = edge;
+        } else if !left && p.b[0] == inner {
+            p.b[0] = edge;
+        }
+    }
+    if left {
+        look.area[2] = 16.0;
+    } else {
+        look.area[0] = 0.0;
+    }
+}
+
+impl Game {
+    /// The look of storage block `id` `o` of the way open, turned the way it was placed: a
+    /// turned block (chest, safe) shows the pictures of its unturned variant, which the parts
+    /// turn with, and a double chest's half joins up with the other.
+    pub(crate) fn store_look(&self, store: Store, id: voxel::BlockId, o: f32) -> StoreLook {
+        let bl = self.reg.get(id);
+        if bl.turn == voxel::block::Turn::None {
+            return look(store, bl, o);
+        }
+        let half = bl.variant & (voxel::block::CHEST_LEFT | voxel::block::CHEST_RIGHT);
+        let mut l = look(store, self.reg.get(self.reg.variant(id, half)), o);
+        l.facing = bl.variant & 3;
+        if half != 0 {
+            join_half(&mut l, half == voxel::block::CHEST_LEFT);
+        }
+        l
+    }
+}
+
 /// The quarter turns of a frame (as swing.rs turns door boxes) applied to an offset.
 pub(crate) fn turn_vec(v: Vec3, turn: f32) -> Vec3 {
     let (c, s) = (turn.cos(), turn.sin());
