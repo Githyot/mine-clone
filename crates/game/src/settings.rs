@@ -311,7 +311,7 @@ mod tests {
 
 /// Names of the shadow settings, as shown in the menu.
 /// Block depth choices: menu name and how deep the darkest texels sink, in blocks.
-pub const PARALLAX_LEVELS: [(&str, f32); 4] = [("Não", 0.0), ("Rasa", 0.06), ("Média", 0.1), ("Funda", 0.16)];
+pub const PARALLAX_LEVELS: [(&str, f32); 4] = [("Não", 0.0), ("Rasa", 0.08), ("Média", 0.14), ("Funda", 0.22)];
 
 pub const SHADOW_LEVELS: [&str; 3] = ["Desligadas", "Rápidas", "Bonitas"];
 

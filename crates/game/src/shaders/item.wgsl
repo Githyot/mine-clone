@@ -24,6 +24,8 @@ struct Item {
 @group(1) @binding(1) var isamp: sampler;
 // Layers from 2048 on live in a second array (renderer::LAYERS_PER_ARRAY).
 @group(1) @binding(2) var itex2: texture_2d_array<f32>;
+// Block depth: each block texture's height map (heights.rs, as on the terrain).
+@group(1) @binding(3) var ihmap: texture_2d_array<f32>;
 @group(2) @binding(0) var<storage, read> items: array<Item>;
 // The material class of each texture layer (material.rs), for the glints and relief.
 @group(2) @binding(1) var<storage, read> layer_mat: array<u32>;
@@ -38,6 +40,8 @@ struct IOut {
     @location(5) @interpolate(flat) glint: vec4<f32>,
     // Position relative to the camera's block.
     @location(6) rel: vec3<f32>,
+    // 1 on a whole block cube (block depth applies), 0 on sprites and block parts.
+    @location(7) @interpolate(flat) cube: f32,
 };
 
 fn icorner(face: u32, k: u32) -> vec3<f32> {
@@ -155,6 +159,7 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
     o.dist = length(world - g.cam_pos.xyz);
     o.rel = world;
     o.glint = select(it.bmin, vec4<f32>(0.0), part);
+    o.cube = select(1.0, 0.0, flat || part);
     return o;
 }
 
@@ -214,12 +219,105 @@ fn ishade(c: vec4<f32>, fr: MatFrame, in: IOut, wall: bool) -> vec4<f32> {
 
 @fragment
 fn fs_item(in: IOut) -> @location(0) vec4<f32> {
-    let c = isample(in.uv, in.layer);
     let fr = mat_frame(in.rel, in.uv);
+    var j = in;
+    if (in.cube > 0.5 && g.pom.x > 0.0 && in.layer < 2048 && in.dist < g.pom.z) {
+        // A block cube (held in the hand, lying on the ground) has the same depth as the
+        // block placed in the world.
+        let p = item_parallax(in, fr);
+        if (isample(p.xy, in.layer).a >= 0.3) {
+            j.uv = p.xy;
+            j.shade *= p.z;
+        }
+    }
+    let c = isample(j.uv, in.layer);
     if (c.a < 0.3) {
         discard;
     }
-    return ishade(c, fr, in, false);
+    return ishade(c, fr, j, false);
+}
+
+fn ipom_depth(cell: vec2<f32>, size: f32, layer: i32) -> f32 {
+    return 1.0 - textureSampleLevel(ihmap, isamp, (cell + 0.5) / size, layer, 0.0).r;
+}
+
+// Block depth on an item cube: the terrain's walk (terrain.wgsl `parallax()`) without the sun's
+// shadow in the crevices. Returns the shifted uv and the light (deeper and sides darker,
+// shoulders lit from above).
+fn item_parallax(in: IOut, fr: MatFrame) -> vec3<f32> {
+    let det = fr.du1.x * fr.du2.y - fr.du1.y * fr.du2.x;
+    let nraw = cross(fr.dp1, fr.dp2);
+    if (abs(det) < 1e-12 || dot(nraw, nraw) < 1e-16) {
+        return vec3<f32>(in.uv, 1.0);
+    }
+    let t = (fr.dp1 * fr.du2.y - fr.dp2 * fr.du1.y) / det;
+    let b = (fr.dp2 * fr.du1.x - fr.dp1 * fr.du2.x) / det;
+    let e = g.cam_pos.xyz - in.rel;
+    var n = normalize(nraw);
+    n = select(-n, n, dot(n, e) > 0.0);
+    let ez = dot(e, n);
+    if (ez <= 1e-4) {
+        return vec3<f32>(in.uv, 1.0);
+    }
+    let weight = 1.0 - smoothstep(g.pom.z * 0.6, g.pom.z, in.dist);
+    // The depth is a share of the cube's size: a small cube (held, dropped) is as deep for its
+    // size as a placed block.
+    let depth = g.pom.x * weight * sqrt(length(t) * length(b));
+    let tt = t / max(dot(t, t), 1e-8);
+    let bb = b / max(dot(b, b), 1e-8);
+    var ray = vec2<f32>(dot(e, tt), dot(e, bb)) / ez;
+    ray *= min(1.0, 4.0 / max(length(ray), 1e-4));
+    let size = f32(textureDimensions(ihmap).x);
+    let p0 = in.uv * size;
+    let dir = -ray * depth * size;
+    var cell = floor(p0);
+    let stp = sign(dir);
+    let inv = 1.0 / max(abs(dir), vec2<f32>(1e-6));
+    var next = (select(p0 - cell, cell + 1.0 - p0, dir > vec2<f32>(0.0))) * inv;
+    var d_in = 0.0;
+    var side = 0;
+    var hit_d = 1.0;
+    var h = ipom_depth(cell, size, in.layer);
+    let most = i32(g.pom.y);
+    for (var i = 0; i < 64; i = i + 1) {
+        if (h <= d_in) {
+            hit_d = d_in;
+            break;
+        }
+        let d_out = min(min(next.x, next.y), 1.0);
+        if (h <= d_out || i >= most || d_out >= 1.0) {
+            hit_d = min(h, d_out);
+            side = 0;
+            break;
+        }
+        if (next.x < next.y) {
+            cell.x += stp.x;
+            next.x += inv.x;
+            side = 1;
+        } else {
+            cell.y += stp.y;
+            next.y += inv.y;
+            side = 2;
+        }
+        d_in = d_out;
+        h = ipom_depth(cell, size, in.layer);
+    }
+    // A cube's face ends at its edge: the walk never reads across into the opposite side.
+    let p = clamp(p0 + dir * hit_d, max(cell, vec2<f32>(0.0)) + 0.002, min(cell + 1.0, vec2<f32>(size)) - 0.002);
+    var light = 1.0 - hit_d * 0.38 * weight;
+    // Lit from above and a little from the front, like the items' own shading.
+    let l = normalize(vec3<f32>(0.3, 1.0, 0.4));
+    let lt = vec2<f32>(dot(l, normalize(t)), dot(l, normalize(b)));
+    if (side != 0 && hit_d > 0.0) {
+        let sn = select(-stp.y * vec2<f32>(0.0, 1.0), -stp.x * vec2<f32>(1.0, 0.0), side == 1);
+        light *= 0.68 + 0.42 * max(dot(sn, lt), 0.0);
+    } else {
+        let gx = ipom_depth(cell + vec2<f32>(1.0, 0.0), size, in.layer) - ipom_depth(cell - vec2<f32>(1.0, 0.0), size, in.layer);
+        let gy = ipom_depth(cell + vec2<f32>(0.0, 1.0), size, in.layer) - ipom_depth(cell - vec2<f32>(0.0, 1.0), size, in.layer);
+        let slope = vec2<f32>(gx, gy) * depth * size * 0.5;
+        light *= clamp(1.0 + dot(slope, lt) * 0.9, 0.62, 1.3);
+    }
+    return vec3<f32>(p / size, light);
 }
 
 // A flat picture held in a hand, extruded like the classic item models: the picture on its

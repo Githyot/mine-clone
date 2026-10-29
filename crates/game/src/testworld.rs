@@ -204,6 +204,8 @@ impl Game {
             index: Vec::new(),
         };
 
+        // MC_TESTWORLD_LIST=1 logs where each block stands (for screenshots).
+        let list = std::env::var("MC_TESTWORLD_LIST").is_ok();
         // Blocks, by creative tab.
         for tab in [Tab::Building, Tab::Colored, Tab::Natural, Tab::Functional, Tab::Doors] {
             plan.header(tab.title());
@@ -213,6 +215,9 @@ impl Game {
                 let label = it.display_name.clone();
                 let (x, z) = plan.slot(&label);
                 plan.sc.set(x, Y, z, b);
+                if list {
+                    log::info!("test world: {label} at {x},{Y},{z}");
+                }
             }
         }
 
