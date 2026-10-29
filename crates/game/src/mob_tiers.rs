@@ -24,8 +24,11 @@ pub const TTK: [f32; 6] = [2.2, 2.4, 2.6, 2.8, 3.0, 3.2];
 
 /// Blows of a normal monster a player with the stage's best armour can take (a zombie on a
 /// player in lead armour at the start).
-#[cfg(test)]
 pub const HITS: [f32; 6] = [21.0, 14.0, 12.0, 11.0, 10.0, 9.0];
+
+/// Blows of a boss the same player can take: bosses hit often (fans of bolts, charges), and a
+/// boss of the first stage should still scare someone in full armour.
+pub const BOSS_HITS: [f32; 6] = [10.0, 9.0, 8.0, 8.0, 7.0, 7.0];
 
 /// The player's health by each stage: 20 at the start, life crystals up to 40 before the
 /// World Breaker, life fruit up to 50 after the mechanical bosses.
@@ -83,9 +86,7 @@ impl Role {
             Role::Weak => 0.7,
             Role::Strong => 1.3,
             Role::Elite => 1.6,
-            Role::Mini => 2.0,
-            // Bosses hit often (fans of bolts, charges), so each hit is lighter.
-            Role::Boss(_) => 1.5,
+            Role::Mini => 1.6,
             _ => 1.0,
         }
     }
@@ -364,7 +365,7 @@ pub fn staged(def: &MobDef, stage: u8, role: Role, head: Option<(f32, f32)>) -> 
         Boss(secs) => {
             // Bosses get no hardmode health (their hits do get harder, as `ATTACK` counts).
             let hp = DPS[s] * secs;
-            let atk = ATTACK[s] * role.atk();
+            let atk = ATTACK[s] * HITS[s] / BOSS_HITS[s];
             Some((pull(def.health, hp), pull(def.attack, atk)))
         }
         _ => {
@@ -539,7 +540,7 @@ mod tests {
             }
             if d.attack > 0.0 {
                 let h = hits(&items, s, d.attack);
-                let want = HITS[s as usize] / role.atk();
+                let want = if matches!(role, Boss(_)) { BOSS_HITS[s as usize] } else { HITS[s as usize] / role.atk() };
                 if h < want / KEEP.1 * 0.99 || h > want / KEEP.0 * 1.01 {
                     bad.push(format!("{name}: {h:.1} golpes (meta {want:.1})"));
                 }
