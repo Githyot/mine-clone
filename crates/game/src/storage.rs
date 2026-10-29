@@ -190,7 +190,7 @@ fn item_look(g: &Game, st: &voxel::item::ItemStack) -> (bool, [f32; 3], f32) {
     match g.items.get(st.item).look {
         Look::Block(b) => {
             let bl = g.reg.get(b);
-            if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail) {
+            if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail | Shape::TallBanner) {
                 (true, [bl.faces[0] as f32; 3], 0.34)
             } else {
                 (false, [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32], 0.2)

@@ -86,6 +86,11 @@ pub enum Shape {
     Sign,
     /// A banner: a cloth hanging from a bar on a pole (variant facing 0-3) or on a wall (4-7).
     Banner,
+    /// A tall banner, three blocks high: a long cloth on a pole (variant facing 0-3) or hung
+    /// from a wall (4-7), swaying in the wind. Only its foot is in the block; the game draws it
+    /// whole (banners.rs), so the terrain leaves it out. Texture `top` and `bottom` are the
+    /// cloth's upper and lower halves, `all` the inventory picture.
+    TallBanner,
     /// A head or skull: an 8-pixel cube on the floor.
     Skull,
     /// A hollow log (Distant Lands idea): four walls round a hole, standing up (variant 0) or
@@ -137,6 +142,7 @@ impl Shape {
                 | Shape::Shelf
                 | Shape::Sign
                 | Shape::Banner
+                | Shape::TallBanner
                 | Shape::Skull
                 | Shape::Hollow
                 | Shape::FenceGate

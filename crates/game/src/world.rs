@@ -113,7 +113,7 @@ pub struct World {
     /// The sections lit and drawn: a band around the player's height, so a 1024-block world
     /// costs no more light and mesh work than a 256-block one.
     pub band: Band,
-    /// Blocks with a turning model drawn over them (windmill sails), by block id.
+    /// Blocks with a moving model drawn over them (windmill sails, tall banners), by block id.
     spins: Vec<bool>,
     /// Where those blocks are in the loaded chunks, kept up to date as chunks come and go and
     /// blocks change, so drawing them never has to search the world.
@@ -188,7 +188,7 @@ impl World {
         let climb = reg.blocks.iter().map(|b| b.shape == Shape::Ladder || matches!(b.name.as_str(), "vine" | "weeping_vines" | "twisting_vines" | "scaffolding" | "cave_vines")).collect();
         let wet = reg.blocks.iter().map(|b| b.waterlogged).collect();
         let ground = reg.blocks.iter().map(|b| voxel::physics::Ground::of_block(&reg.blocks[b.base as usize].name, b.variant)).collect();
-        let spins = reg.blocks.iter().map(|b| reg.blocks[b.base as usize].name == "windmill_sails").collect();
+        let spins = reg.blocks.iter().map(|b| reg.blocks[b.base as usize].name == "windmill_sails" || b.shape == Shape::TallBanner).collect();
         World {
             tables,
             reg,
