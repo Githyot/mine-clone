@@ -124,9 +124,18 @@ impl Game {
             self.toast(format!("{dn}: ..."), 2.0);
             return true;
         }
-        let Some(&(_, offers, (want, per))) = SETTLERS.iter().find(|s| s.0 == name) else { return false };
+        if !SETTLERS.iter().any(|s| s.0 == name) {
+            return false;
+        }
         let to = self.body.pos - self.mobs.list[i].body.pos;
         self.mobs.list[i].yaw = to.x.atan2(to.z);
+        self.settler_trade(&name, &dn)
+    }
+
+    /// Trade with a settler (in a village, or driving a hay cart): holding what they buy
+    /// sells it, otherwise their stall opens. False if `name` is no settler.
+    pub(crate) fn settler_trade(&mut self, name: &str, dn: &str) -> bool {
+        let Some(&(_, offers, (want, per))) = SETTLERS.iter().find(|s| s.0 == name) else { return false };
         let pay = crate::money::text(PAY);
         // Holding what they buy: paid for every lot of it you carry.
         if self.held_name().as_deref() == Some(want) {
@@ -155,7 +164,7 @@ impl Game {
         }
         self.surv.shop = inv;
         self.surv.shop_prices = prices;
-        self.surv.shop_name = dn.clone();
+        self.surv.shop_name = dn.to_string();
         self.surv.shop_want = self.items.id(want).map(|id| (id, (PAY / per as u64).max(1)));
         self.surv.shop_scroll = 0;
         self.surv.open = Open::Shop;
