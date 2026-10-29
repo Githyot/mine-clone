@@ -121,6 +121,7 @@ mod instruments;
 mod torch;
 mod summons;
 mod fire_fx;
+mod redstone_fx;
 mod item_render;
 mod juice;
 mod menus;
@@ -792,6 +793,8 @@ struct Game {
     /// them for the sparks and smoke in between (torch.rs).
     /// Fire blocks' flames and embers (fire_fx.rs).
     fire_fx: fire_fx::FireFx,
+    /// Red glow and sparks off lit redstone (redstone_fx.rs).
+    redstone_fx: redstone_fx::RedstoneFx,
     torch_fx: f32,
     torch_sparks: u32,
     /// Screenshots: the held torch's fire has been lit up once already.
@@ -1217,6 +1220,7 @@ impl Game {
             melody_cd: 0.0,
             musicians: Default::default(),
             fire_fx: Default::default(),
+            redstone_fx: Default::default(),
             torch_fx: 0.0,
             torch_sparks: 0,
             torch_lit: false,
@@ -1908,6 +1912,7 @@ impl Game {
                 self.update_ambient(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_life(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_fire_fx(dt, self.args.screenshot.is_some());
+                self.update_redstone_fx(dt, self.args.screenshot.is_some());
                 self.update_musicians(dt);
                 self.update_immersion(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
@@ -3559,6 +3564,13 @@ impl Game {
         let Some(hit) = self.target else { return false };
         if self.redstone.interact(&mut self.world, hit.block) {
             self.anim.start_swing();
+            // Repeaters and comparators say what they are set to now.
+            let b = self.reg.get(self.world.block_or_air(hit.block));
+            if let Some(text) = redstone_fx::setting(b.shape, b.variant) {
+                self.toast(text, 1.8);
+            }
+            self.world.mesh_now(hit.block);
+            self.redstone_fx.scan_t = 0.0;
             return true;
         }
         let id = self.world.block_or_air(hit.block);
@@ -4775,6 +4787,7 @@ impl Game {
             // z: 1 Nether, 2 End, -1 Aether, 1.25 Otherside (sky and ambient light in the shaders).
             weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else if end { 2.0 } else { self.mod_dim_uniform() }, self.night_vision()],
             dyn_lights: self.dynamic_lights(eye, block),
+            red_lights: self.red_lights(block),
             extra: [self.settings.layered_clouds as u8 as f32, self.settings.emissive_textures as u8 as f32, 0.0, self.season_uniform()],
             pom: self.parallax_uniform(),
             clouds: [self.cloud_wind[0], self.cloud_wind[1], self.cloud_drift, (self.fx_time % 100_000.0) as f32],

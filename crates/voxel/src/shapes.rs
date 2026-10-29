@@ -275,7 +275,10 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
             }
         }
         Shape::Comparator => {
-            for b in [[0, 0, 0, 16, 2, 16], [7, 2, 2, 9, 6, 4], [4, 2, 11, 6, 7, 13], [10, 2, 11, 12, 7, 13]] {
+            // The front torch stands up (and is lit, see the mesher) in subtract mode and sits
+            // pressed down in compare mode, so the mode shows at a glance.
+            let front = if variant & 4 != 0 { 7 } else { 4 };
+            for b in [[0, 0, 0, 16, 2, 16], [7, 2, 2, 9, front, 4], [4, 2, 11, 6, 7, 13], [10, 2, 11, 12, 7, 13]] {
                 out.push(rotate(b, f));
             }
         }
