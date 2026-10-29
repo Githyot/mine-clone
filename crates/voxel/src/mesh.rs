@@ -218,6 +218,11 @@ pub struct MeshTables {
     connected: Vec<Connect>,
     /// Layer bits added for blocks with glowing pixels (`LAYER_EMISSIVE` or 0).
     emissive: Vec<u32>,
+    /// Fire torches drawn as real torches like the one in hand (`torch_quads`): the texture
+    /// layers of the rag head, straps and charred top, then for each block its flame's layer
+    /// and colour (None: drawn the plain way, like the redstone torch and candles).
+    torch_kit: [u32; 3],
+    torch_flame: Vec<Option<(u32, [u8; 3])>>,
     /// Same id for every level of a liquid (and for every shape variant).
     base: Vec<BlockId>,
     /// Liquid surface height in pixels (source 14, falling 16, lower for each step of flow).
@@ -350,6 +355,8 @@ impl MeshTables {
             variant: vec![],
             connected: vec![],
             emissive: vec![],
+            torch_kit: [0; 3],
+            torch_flame: vec![],
             base: vec![],
             liquid_h: vec![],
             models: Default::default(),
@@ -406,6 +413,19 @@ impl MeshTables {
             });
             t.emissive.push(if is_emissive(&b.name) { LAYER_EMISSIVE } else { 0 });
         }
+        let tex = |n: &str| reg.textures.iter().position(|x| x == n).map(|i| i as u32);
+        t.torch_flame = vec![None; reg.blocks.len()];
+        if let (Some(rag), Some(strap), Some(char), Some(fire)) = (tex("brown_wool"), tex("dark_oak_log"), tex("coal_block"), tex("fire")) {
+            t.torch_kit = [rag, strap, char];
+            let soul = tex("soul_fire").unwrap_or(fire);
+            for (i, b) in reg.blocks.iter().enumerate() {
+                if b.shape == Shape::Torch {
+                    if let Some((blue, tint)) = torch_flame_look(&reg.blocks[b.base as usize].name) {
+                        t.torch_flame[i] = Some((if blue { soul } else { fire }, tint));
+                    }
+                }
+            }
+        }
         if t.biome_tints.is_empty() {
             t.biome_tints.push([200, 200, 200]);
         }
@@ -438,6 +458,87 @@ const FACES: [FaceInfo; 6] = [
     // -Z
     FaceInfo { normal: [0, 0, -1], corners: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]], uv: [[0, 16], [16, 16], [16, 0], [0, 0]] },
 ];
+
+/// A placed fire torch like the one in hand (the game's torch.rs): a thick haft with an iron
+/// collar, a big rag head bound by two straps, a charred top and a flame of crossed quads that
+/// the terrain shader animates like fire. On a wall it leans out from three pixels up, the way
+/// the plain torch did. All in the terrain mesh, so a thousand torches cost nothing per frame.
+fn torch_quads(haft: u32, kit: [u32; 3], (fire, flame_tint): (u32, [u8; 3]), variant: u8, base: [u32; 3], l: u8, out: &mut Vec<Vertex>) {
+    let [rag, strap, char] = kit;
+    let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
+    let white = [200u8, 200, 200];
+    let wall = variant > 0;
+    // Model pixels → block pixels: lifted and leaning out from a wall to the north, then turned.
+    let place = |p: [i32; 3]| -> [u32; 3] {
+        let mut q = p;
+        if wall {
+            q[2] = q[2] - 5 + p[1] * 2 / 5;
+            q[1] += 3;
+            for _ in 0..(variant - 1) & 3 {
+                q = [16 - q[2], q[1], q[0]];
+            }
+        }
+        [base[0] + q[0].max(0) as u32, base[1] + q[1].max(0) as u32, base[2] + q[2].max(0) as u32]
+    };
+    let mut cube = |lo: [i32; 3], hi: [i32; 3], layer: u32, haft_uv: bool| {
+        for (f, fi) in FACES.iter().enumerate() {
+            for (k, c) in fi.corners.iter().enumerate() {
+                let p = [if c[0] == 1 { hi[0] } else { lo[0] }, if c[1] == 1 { hi[1] } else { lo[1] }, if c[2] == 1 { hi[2] } else { lo[2] }];
+                let uv = if haft_uv {
+                    // The stick of the torch picture, stretched along the haft.
+                    let [u, v] = fi.uv[k];
+                    [if u == 0 { 7 } else { 9 }, if f == 2 || f == 3 { if v == 0 { 14 } else { 16 } } else if v == 0 { 6 } else { 16 }]
+                } else {
+                    let (a, b) = match f {
+                        0 | 1 => (p[2], 16 - p[1]),
+                        4 | 5 => (p[0], 16 - p[1]),
+                        _ => (p[0], p[2]),
+                    };
+                    [a.clamp(0, 16) as u32, b.clamp(0, 16) as u32]
+                };
+                out.push(pack(place(p), 3, uv, layer, f as u32, 0, sky, blk, white));
+            }
+        }
+    };
+    cube([7, 0, 7], [9, 10, 9], haft, true);
+    cube([6, 8, 6], [10, 9, 10], strap, false);
+    cube([6, 9, 6], [10, 14, 10], rag, false);
+    cube([5, 10, 5], [11, 11, 11], strap, false);
+    cube([5, 12, 5], [11, 13, 11], strap, false);
+    cube([6, 14, 6], [10, 15, 10], char, false);
+    // The flame: two crossed pictures of fire standing on the head, seen from both sides.
+    let quads: [[[i32; 3]; 4]; 2] = [
+        [[5, 13, 5], [11, 13, 11], [11, 24, 11], [5, 24, 5]],
+        [[11, 13, 5], [5, 13, 11], [5, 24, 11], [11, 24, 5]],
+    ];
+    let uvs = [[0, 16], [16, 16], [16, 0], [0, 0]];
+    for q in quads {
+        for order in [[0usize, 1, 2, 3], [1, 0, 3, 2]] {
+            for &k in &order {
+                out.push(pack(place(q[k]), 3, uvs[k], fire, 2, 0, sky, blk, flame_tint));
+            }
+        }
+    }
+}
+
+/// How a torch's flame looks, by block name: drawn from the soul fire picture (pale blue)
+/// instead of fire, and a colour over it (200 = as painted; red kept even, an odd red marks
+/// foliage for the seasons). None for torches without a flame (redstone, candles).
+pub fn torch_flame_look(name: &str) -> Option<(bool, [u8; 3])> {
+    Some(match name {
+        "torch" => (false, [200, 200, 200]),
+        "desert_torch" => (false, [230, 190, 150]),
+        "jungle_torch" => (false, [120, 250, 70]),
+        "cursed_torch" => (false, [90, 255, 40]),
+        "ichor_torch" => (false, [254, 230, 40]),
+        "demon_torch" => (true, [210, 90, 255]),
+        "hallowed_torch" => (true, [254, 150, 230]),
+        "ice_torch" => (true, [200, 230, 255]),
+        "coral_torch" => (true, [120, 255, 230]),
+        "bone_torch" => (true, [254, 250, 240]),
+        _ => return None,
+    })
+}
 
 /// Liquid height at a top corner: the average of the cells of the same liquid that share it,
 /// full height when any of them has more of it above.
@@ -673,6 +774,10 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     continue;
                 }
 
+                if let Some(flame) = t.torch_flame[idu] {
+                    torch_quads(t.faces[idu][0] as u32, t.torch_kit, flame, t.variant[idu], base, light[i], &mut out.solid);
+                    continue;
+                }
                 if shape == Shape::Torch {
                     let l = light[i];
                     let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
