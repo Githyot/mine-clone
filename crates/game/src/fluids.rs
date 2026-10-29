@@ -46,7 +46,9 @@ impl Fluids {
                 }
             }
         }
-        let replaceable = reg.blocks.iter().map(|b| matches!(b.shape, Shape::Cross | Shape::Torch) || b.name == "air").collect();
+        // Cursed and coral torches burn on under water, like in Terraria.
+        let wet_proof = |b: &voxel::block::Block| matches!(reg.blocks[b.base as usize].name.as_str(), "cursed_torch" | "coral_torch");
+        let replaceable = reg.blocks.iter().map(|b| (matches!(b.shape, Shape::Cross | Shape::Torch) && !wet_proof(b)) || b.name == "air").collect();
         Fluids {
             ids,
             replaceable,
