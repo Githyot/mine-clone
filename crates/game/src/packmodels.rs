@@ -27,6 +27,8 @@ pub(crate) struct PackModels {
     /// come right after the block textures.
     pub textures: Vec<String>,
     pub models: Vec<(BlockId, Vec<ModelQuad>)>,
+    /// Plants with a body (their pictures are at the end of `textures`).
+    pub flora: Vec<(BlockId, Vec<voxel::flora::FloraQuad>, bool)>,
 }
 
 /// Face names in mesh order (+x east, -x west, +y up, -y down, +z south, -z north).
@@ -108,6 +110,14 @@ fn state_model(pack: &mut Pack, mc: &str) -> Option<String> {
 /// Read every enabled pack's models for our blocks. `first_layer` is where the textures only
 /// models use will start.
 pub(crate) fn load(reg: &BlockRegistry, base: &Path, enabled: &[String]) -> PackModels {
+    let mut out = load_packs(reg, base, enabled);
+    let (names, flora) = crate::flora_tex::plan(reg, reg.textures.len() + out.textures.len());
+    out.textures.extend(names);
+    out.flora = flora;
+    out
+}
+
+fn load_packs(reg: &BlockRegistry, base: &Path, enabled: &[String]) -> PackModels {
     let mut out = PackModels::default();
     let mut packs: Vec<Pack> = enabled.iter().filter_map(|n| Pack::open(&base.join("resourcepacks").join(n))).collect();
     if packs.is_empty() {

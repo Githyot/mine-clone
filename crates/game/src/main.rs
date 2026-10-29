@@ -4,6 +4,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod ambient;
+mod flora_tex;
 mod ambient_life;
 mod beds;
 mod material;
@@ -977,6 +978,7 @@ impl Game {
         let tints: Vec<[f32; 3]> = (0..Biome::COUNT).map(|b| Biome::from_u8(b as u8).tint()).collect();
         let tables = Arc::new(MeshTables::new(&reg, tints));
         tables.set_models(pack_models.models);
+        tables.set_flora(pack_models.flora);
         let reg_for_fluids = reg.clone();
         let mut world = World::new(reg.clone(), gen.clone(), save.clone(), tables);
         world.headless = window.is_none();
@@ -1607,6 +1609,7 @@ impl Game {
         let names: Vec<String> =
             self.reg.textures.iter().chain(pack_models.textures.iter()).chain(self.items.textures.iter()).cloned().chain(extra_textures()).collect();
         self.world.tables.set_models(pack_models.models);
+        self.world.tables.set_flora(pack_models.flora);
         self.world.remesh_all();
         let tex = textures::load(&names, &self.base, &self.settings.resource_packs, self.settings.texture_resolution);
         self.textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
@@ -1963,6 +1966,9 @@ impl Game {
                 self.unstick();
                 if self.args.demo {
                     self.build_demo();
+                }
+                if std::env::var("MC_FLORA").is_ok() {
+                    self.build_flora_test();
                 }
                 if std::env::var("MC_SHADOWS").is_ok() {
                     self.build_shadow_test();
@@ -3693,6 +3699,45 @@ impl Game {
         // Look from above.
         self.body.pos.y += 3.5;
         self.body.flying = true;
+    }
+
+    /// Test hook MC_FLORA=1 (or a list of names): a grass bed in front of the player with every
+    /// plant that has a body, in rows two blocks apart, for screenshots.
+    fn build_flora_test(&mut self) {
+        let p = self.body.pos.floor().as_ivec3();
+        let f = self.forward();
+        let dir = if f.x.abs() > f.z.abs() { IVec3::new(f.x.signum() as i32, 0, 0) } else { IVec3::new(0, 0, f.z.signum() as i32) };
+        let side = IVec3::new(-dir.z, 0, dir.x);
+        let only = std::env::var("MC_FLORA").unwrap_or_default();
+        let wanted: Vec<&str> = only.split(',').filter(|n| !n.is_empty() && *n != "1").collect();
+        let plants: Vec<BlockId> = self
+            .reg
+            .blocks
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.shape == voxel::block::Shape::Cross && !b.waterlogged && voxel::flora::kind_of(&b.name).is_some())
+            .filter(|(_, b)| wanted.is_empty() || wanted.contains(&b.name.as_str()))
+            .map(|(i, _)| i as BlockId)
+            .collect();
+        let (grass, dirt) = (self.reg.id_or_air("grass_block"), self.reg.id_or_air("dirt"));
+        let per_row: usize = std::env::var("MC_FLORA_ROW").ok().and_then(|v| v.parse().ok()).unwrap_or(8);
+        let ground = p.y - 1;
+        for a in -10..=10 {
+            for b in -2..=40 {
+                let col = p + side * a + dir * b;
+                for h in -3..6 {
+                    let q = IVec3::new(col.x, ground + h, col.z);
+                    let id = if h < 0 { dirt } else if h == 0 { grass } else { AIR };
+                    self.world.set_block(q, id);
+                }
+            }
+        }
+        for (k, id) in plants.iter().enumerate() {
+            let (row, colm) = ((k / per_row) as i32, (k % per_row) as i32);
+            let start: i32 = std::env::var("MC_FLORA_START").ok().and_then(|v| v.parse().ok()).unwrap_or(3);
+            let q = p + dir * (start + row * 2) + side * (colm * 2 - per_row as i32 + 1);
+            self.world.set_block(IVec3::new(q.x, ground + 1, q.z), *id);
+        }
     }
 
     /// Test hook MC_SHADOWS=1: flat sand around the player, a pool of water in front and a stone
