@@ -259,7 +259,9 @@ mod tests {
         let torch = reg.id("torch").unwrap();
         let (_, quads) = m.models.iter().find(|(id, _)| *id == torch).expect("torch model");
         assert_eq!(quads.len(), 6);
-        assert_eq!(m.textures, vec!["packtex/mypack/block/flame".to_string()]);
+        // The pack's own pictures come first, the painted plant parts after them.
+        assert_eq!(m.textures[0], "packtex/mypack/block/flame");
+        assert!(m.textures[1..].iter().all(|t| t.starts_with("flora/")));
         let planks = reg.textures.iter().position(|t| t == "oak_planks").unwrap() as u16;
         let up = quads.iter().find(|q| q.face == 2).unwrap();
         assert_eq!(up.layer as usize, reg.textures.len());
