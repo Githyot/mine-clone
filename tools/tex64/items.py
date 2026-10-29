@@ -380,3 +380,11 @@ for _m in arms.STYLE:
 
 import beds as _beds  # noqa: E402  (each bed's icon is its 3D model)
 REGISTRY.update(_beds.ITEMS)
+
+# Pickaxes, axes, shovels and hoes too: a design per material (toolart.py, HP 2026-10-29).
+import toolart  # noqa: E402
+
+for _k, _d in toolart.KINDS.items():
+    for _m in _d:
+        REGISTRY[f"{_m}_{_k}"] = lambda m=_m, k=_k: toolart.tool(k, m)
+REGISTRY.update(toolart.EXTRA_ITEMS)

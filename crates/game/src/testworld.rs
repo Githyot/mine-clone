@@ -265,6 +265,10 @@ impl Game {
         for &id in &held {
             let label = self.items.get(id).display_name.clone();
             let (x, z) = plan.slot(&label);
+            if std::env::var("MC_FIND").is_ok_and(|n| n == self.items.get(id).name) {
+                // Test hook: where a held item's stand is, for close-up shots.
+                log::info!("MC_FIND {} on the stand at {x} {Y} {z}", self.items.get(id).name);
+            }
             let mut gear: Gear = Default::default();
             gear[4] = Some(ItemStack::new(id, 1));
             plan.stands.push((Vec3::new(x as f32 + 0.5, Y as f32, z as f32 + 0.5), gear, label));

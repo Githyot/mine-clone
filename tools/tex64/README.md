@@ -29,6 +29,7 @@ After merging branches that both touched textures: take either side's PNGs and r
 | `style.py` | The style guide as code: light, ramps, contrast limits, tileable noise. |
 | `blocks.py` | Hand-made 64x64 blocks (`REGISTRY`). |
 | `items.py` | Hand-made items: tools and weapons for every metal, armour icons, ingots, raw ores, gems. |
+| `toolart.py` | Pickaxes, axes, shovels and hoes with a design per material, Terraria's ores and powered tools (drills, chainsaws, hamaxes). |
 | `woods.py` | Every wood's own grain: board layout, figure, knots/pores/rays, bark, end grain, doors, trapdoors. |
 | `boats.py` | One boat per wood: its skin (the wood's planks) and its model in `mobs.ron`, each with a trait of its own. |
 | `upscale.py` | 16x16 design -> 64x64 (Scale4x, thin outlines, light and grain, soft contrast). |
