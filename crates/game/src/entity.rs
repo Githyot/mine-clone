@@ -931,7 +931,7 @@ fn armor_skin(def: &MobDef, name: &str, color: [u8; 3], scale: u32) -> Skin {
                                 let (tx, ty) = ((x as u32 * sc + si) as i32, (y as u32 * sc + sj) as i32);
                                 let h = (((tx * 73 + ty * 151) ^ (tx * ty * 17)) + (tx * 31 ^ ty * 7)) & 15;
                                 // Soft speckle: the classic flecks, at a third less contrast.
-                                let mut kk = k * (1.0 + (speck[h as usize] - 0.93) * 0.65);
+                                let mut kk = k * (1.0 + (speck[h as usize] - 0.93) * if matte { 0.65 } else { 0.25 });
                                 let mut wh = white;
                                 let mut aa = a;
                                 // A thin dark rim around each plate and a lit bevel just inside it.
