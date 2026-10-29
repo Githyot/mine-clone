@@ -99,6 +99,9 @@ pub enum Shape {
     Cake,
     /// A bed: two blocks long, a head and a foot part (see `bed`).
     Bed,
+    /// A little 3D model made of boxes (statues, trophies, fountains...), from the `models` list
+    /// of a block file; faces one of four ways (variant 0 north, as `shapes::facing_of`).
+    Model,
 }
 
 impl Shape {
@@ -253,7 +256,32 @@ fn one_f() -> f32 {
 
 #[derive(Deserialize)]
 pub struct BlockFile {
+    #[serde(default)]
     pub blocks: Vec<BlockDef>,
+    /// 3D models for blocks named here or in another file: such a block becomes `Shape::Model`.
+    #[serde(default)]
+    pub models: Vec<ModelDef>,
+}
+
+/// A block's model: boxes in pixels (0..16), drawn facing north.
+#[derive(Deserialize, Clone, Debug)]
+pub struct ModelDef {
+    pub block: String,
+    pub boxes: Vec<ModelBoxDef>,
+}
+
+/// One box of a model. Every face shows the part of `tex` the box covers (like a block model
+/// without `uv`), so small boxes keep the texture's pixel size; `top` covers the top and bottom.
+#[derive(Deserialize, Clone, Debug)]
+pub struct ModelBoxDef {
+    pub from: [f32; 3],
+    pub to: [f32; 3],
+    pub tex: String,
+    #[serde(default)]
+    pub top: Option<String>,
+    /// Bright, coloured pixels glow in the dark (as `mesh::LAYER_EMISSIVE`).
+    #[serde(default)]
+    pub glow: bool,
 }
 
 /// A registered block with everything resolved for fast lookups in hot loops.
@@ -284,6 +312,8 @@ pub struct Block {
     pub variant: u8,
     /// The base block of a variant (itself for the base): what it drops and shows as.
     pub base: BlockId,
+    /// The boxes of a `Shape::Model` block, facing north.
+    pub model: Option<std::sync::Arc<[crate::mesh::ModelElement]>>,
 }
 
 pub struct BlockRegistry {
@@ -306,14 +336,20 @@ impl BlockRegistry {
     /// Several block files read as one list, in order (the base game, then mod packs).
     pub fn from_ron_many(texts: &[&str]) -> Result<Self, String> {
         let mut defs = Vec::new();
+        let mut models = Vec::new();
         for text in texts.iter().filter(|t| !t.trim().is_empty()) {
             let file: BlockFile = ron::from_str(text).map_err(|e| format!("blocks.ron: {e}"))?;
             defs.extend(file.blocks);
+            models.extend(file.models);
         }
-        Self::from_defs(defs)
+        Self::from_defs_with_models(defs, models)
     }
 
     pub fn from_defs(defs: Vec<BlockDef>) -> Result<Self, String> {
+        Self::from_defs_with_models(defs, Vec::new())
+    }
+
+    pub fn from_defs_with_models(defs: Vec<BlockDef>, models: Vec<ModelDef>) -> Result<Self, String> {
         let mut reg = BlockRegistry {
             blocks: Vec::new(),
             by_name: HashMap::new(),
@@ -404,7 +440,28 @@ impl BlockRegistry {
                 waterlogged: d.waterlogged,
                 variant: 0,
                 base: id,
+                model: None,
             });
+        }
+        // Models turn their blocks into `Shape::Model` before the orientations are added.
+        for m in models {
+            let Some(&id) = reg.by_name.get(&m.block) else { continue };
+            let mut elements = Vec::with_capacity(m.boxes.len());
+            for b in &m.boxes {
+                let glow = if b.glow { crate::mesh::LAYER_EMISSIVE as u16 } else { 0 };
+                let side = tex(&b.tex, &mut reg.textures) | glow;
+                let top = b.top.as_deref().map(|t| tex(t, &mut reg.textures) | glow).unwrap_or(side);
+                let faces = std::array::from_fn(|f| {
+                    // A face on the block's own side is hidden by a full block there.
+                    let axis = f / 2;
+                    let edge = if f % 2 == 0 { b.from[axis].max(b.to[axis]) >= 16.0 } else { b.from[axis].min(b.to[axis]) <= 0.0 };
+                    Some(crate::mesh::ModelFace { uv: None, layer: if axis == 1 { top } else { side }, cull: edge.then_some(f as u8), tint: false })
+                });
+                elements.push(crate::mesh::ModelElement { from: b.from, to: b.to, faces });
+            }
+            let b = &mut reg.blocks[id as usize];
+            b.shape = Shape::Model;
+            b.model = Some(elements.into());
         }
         // Orientations get hidden ids after every base block, so base ids don't move.
         let bases = reg.blocks.len();

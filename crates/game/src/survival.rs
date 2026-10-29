@@ -1748,7 +1748,7 @@ impl Game {
             let (flat, layers, mut size) = match it.look {
                 Look::Block(b) => {
                     let bl = self.reg.get(b);
-                    if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail) {
+                    if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail | Shape::Model) {
                         (1.0, [bl.faces[0] as f32; 3], 0.4)
                     } else {
                         (0.0, [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32], 0.22)
@@ -2828,7 +2828,7 @@ impl Game {
         Some(match it.look {
             Look::Block(b) => {
                 let bl = self.reg.get(b);
-                if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail) {
+                if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail | Shape::Model) {
                     // Plants and torches are flat item pictures in the hand.
                     HeldLook { kind: HeldKind::Flat, flat: true, layers: [bl.faces[0] as f32; 3] }
                 } else {

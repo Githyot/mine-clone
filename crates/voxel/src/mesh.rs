@@ -234,6 +234,8 @@ pub struct MeshTables {
     /// Shapes from resource packs (JSON block models), drawn instead of the block's own.
     /// Behind a lock so a pack change can swap them while the workers keep their tables.
     models: std::sync::RwLock<ModelSet>,
+    /// Our own block models (`Shape::Model`), turned to each block's facing; packs may replace them.
+    builtin: Vec<(BlockId, std::sync::Arc<[ModelQuad]>)>,
 }
 
 #[derive(Default)]
@@ -353,6 +355,7 @@ impl MeshTables {
             base: vec![],
             liquid_h: vec![],
             models: Default::default(),
+            builtin: Vec::new(),
             biome_tints: biome_tints
                 .iter()
                 // The lowest bit of red marks foliage (odd), so the shader can turn it with the
@@ -405,6 +408,9 @@ impl MeshTables {
                 Connect::None
             });
             t.emissive.push(if is_emissive(&b.name) { LAYER_EMISSIVE } else { 0 });
+            if let Some(q) = crate::props::block_quads(b) {
+                t.builtin.push((i as BlockId, q.into()));
+            }
         }
         if t.biome_tints.is_empty() {
             t.biome_tints.push([200, 200, 200]);
@@ -562,6 +568,12 @@ impl MeshTables {
                 m.open[i] = !full_cube(&quads);
                 m.quads[i] = Some(quads.into());
             }
+        }
+        // Our own 3D models win over a pack's flat ones (rails, ladders); the pack's pictures
+        // still dress them.
+        for (id, quads) in &self.builtin {
+            m.open[*id as usize] = false;
+            m.quads[*id as usize] = Some(quads.clone());
         }
         *self.models.write().unwrap() = m;
     }

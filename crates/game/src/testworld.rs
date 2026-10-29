@@ -213,6 +213,10 @@ impl Game {
                 let label = it.display_name.clone();
                 let (x, z) = plan.slot(&label);
                 plan.sc.set(x, Y, z, b);
+                // MC_TW_LIST=1 prints where each block stands (for screenshots).
+                if std::env::var_os("MC_TW_LIST").is_some() {
+                    eprintln!("tw {} {x} {Y} {z}", self.reg.get(b).name);
+                }
             }
         }
 
@@ -361,6 +365,7 @@ impl Game {
         }
         shelf.close(&mut plan, 4);
         let field_end = plan.z;
+        self.plan_rail_track(&mut plan);
         plan.z = rows_end.max(field_end);
         // The board at the spawn: what this is, and where each section starts (/tp goes there).
         let mut board: Vec<String> = ["Mundo de teste", "Ande para o sul: blocos, itens e mobs", "Refeito ao abrir: o que mudar se perde"].iter().map(|t| sign_text(t)).collect();
@@ -388,6 +393,39 @@ impl Game {
             plan.z
         );
         self.testw = TestWorld { on: true, layout: Some(Arc::new(plan.sc)), stands: plan.stands, mobs: plan.mobs, signs: plan.signs, ground: plan.ground, spawned: false };
+    }
+
+    /// A loop of rails west of the rows, with its four curves, and a ramp up onto a step, so
+    /// curves and slopes can be seen (straight rails stand in the rows).
+    fn plan_rail_track(&self, plan: &mut Plan) {
+        let rail = self.reg.id_or_air("rail");
+        let powered = self.reg.id_or_air("powered_rail");
+        let r = |v: u8| self.reg.variant(rail, v);
+        let (x0, x1, z0, z1) = (X0 - 14, X0 - 6, 4, 12);
+        for x in x0 + 1..x1 {
+            plan.sc.set(x, Y, z0, r(1));
+            plan.sc.set(x, Y, z1, self.reg.variant(powered, if x % 2 == 0 { 11 } else { 1 }));
+        }
+        for z in z0 + 1..z1 {
+            plan.sc.set(x0, Y, z, r(0));
+            plan.sc.set(x1, Y, z, r(0));
+        }
+        // Curves: north-west joins south and east, and so on round the loop.
+        plan.sc.set(x0, Y, z0, r(6));
+        plan.sc.set(x1, Y, z0, r(7));
+        plan.sc.set(x1, Y, z1, r(8));
+        plan.sc.set(x0, Y, z1, r(9));
+        // A ramp climbing north onto a step two blocks long, and down again.
+        let x = x0 + 4;
+        let stone = self.reg.id_or_air("stone");
+        plan.sc.set(x, Y, z0 + 4, r(4));
+        for z in z0 + 2..z0 + 4 {
+            plan.sc.set(x, Y, z, stone);
+        }
+        plan.sc.set(x, Y + 1, z0 + 3, r(0));
+        plan.sc.set(x, Y + 1, z0 + 2, r(0));
+        plan.sc.set(x, Y, z0 + 1, r(5));
+        plan.sign(x0 + 2, Y, z0 - 2, "Trilhos: curvas e rampas");
     }
 
     /// Every frame in a test world: noon, clear sky, no spawning; the things set out once the
