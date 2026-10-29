@@ -386,7 +386,7 @@ impl Net {
 
     fn save_config(&self, base: &std::path::Path) {
         if let Ok(t) = ron::ser::to_string_pretty(&self.cfg, Default::default()) {
-            let _ = std::fs::write(Self::config_path(base), t);
+            let _ = voxel::save::write_atomic(Self::config_path(base), t);
         }
     }
 }
@@ -1192,7 +1192,7 @@ impl Game {
                 }
                 let dir = level_path_hint(&self.base, &self.world_name).join("players");
                 let _ = std::fs::create_dir_all(&dir);
-                if let Err(e) = std::fs::write(dir.join(format!("{name}.ron")), data) {
+                if let Err(e) = voxel::save::write_atomic(dir.join(format!("{name}.ron")), data) {
                     log::error!("could not keep {name}'s things: {e}");
                 }
             }
@@ -2450,13 +2450,13 @@ impl Game {
                 if cmd == "/desbanir" {
                     let low = arg.to_lowercase();
                     self.host().bans.retain(|b| *b != low);
-                    let _ = std::fs::write(&file, self.host_ref().bans.join("\n"));
+                    let _ = voxel::save::write_atomic(&file, self.host_ref().bans.join("\n"));
                     self.net_say(format!("{arg} pode voltar"), YELLOW);
                     return true;
                 }
                 if cmd == "/ban" {
                     self.host().bans.push(arg.to_lowercase());
-                    let _ = std::fs::write(&file, self.host_ref().bans.join("\n"));
+                    let _ = voxel::save::write_atomic(&file, self.host_ref().bans.join("\n"));
                 }
                 match who {
                     Some(id) => {
@@ -2485,7 +2485,7 @@ impl Game {
                     h.host.send(id, &ToGuest::Op(give));
                 }
                 let file = level_path_hint(&self.base, &self.world_name).join("ops.txt");
-                let _ = std::fs::write(&file, self.host_ref().ops.join("\n"));
+                let _ = voxel::save::write_atomic(&file, self.host_ref().ops.join("\n"));
                 self.net_say(format!("{arg} {} usar comandos", if give { "agora pode" } else { "não pode mais" }), YELLOW);
                 true
             }
@@ -2816,7 +2816,7 @@ impl Game {
                 if ban {
                     self.host().bans.push(name.to_lowercase());
                     let file = level_path_hint(&self.base, &self.world_name).join("bans.txt");
-                    let _ = std::fs::write(&file, self.host_ref().bans.join("\n"));
+                    let _ = voxel::save::write_atomic(&file, self.host_ref().bans.join("\n"));
                 }
                 self.host_ref().host.kick(id, if ban { "banido pelo anfitrião" } else { "expulso pelo anfitrião" });
                 self.net_say(format!("{name} saiu ({})", if ban { "banido" } else { "expulso" }), YELLOW);

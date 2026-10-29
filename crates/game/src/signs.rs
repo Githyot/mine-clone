@@ -21,7 +21,7 @@ pub fn load(dir: &Path) -> HashMap<[i32; 3], String> {
 pub fn save(dir: &Path, signs: &HashMap<[i32; 3], String>) {
     let _ = std::fs::create_dir_all(dir);
     if let Ok(t) = ron::ser::to_string_pretty(signs, ron::ser::PrettyConfig::default()) {
-        let _ = std::fs::write(dir.join("signs.ron"), t);
+        let _ = voxel::save::write_atomic(dir.join("signs.ron"), t);
     }
 }
 

@@ -73,7 +73,7 @@ impl Game {
 
     pub(crate) fn save_rules(&self) {
         if let Ok(t) = ron::ser::to_string_pretty(&self.net.rules, Default::default()) {
-            let _ = std::fs::write(self.rules_path(), &t);
+            let _ = voxel::save::write_atomic(self.rules_path(), &t);
             // Guests play by the host's rules (pvp, temperature, thirst...).
             self.net_broadcast(&net::protocol::ToGuest::Rules(t));
         }

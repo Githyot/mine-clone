@@ -234,7 +234,7 @@ impl Prog {
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
-            if let Err(e) = std::fs::write(dir.join("progression.ron"), text) {
+            if let Err(e) = voxel::save::write_atomic(dir.join("progression.ron"), text) {
                 log::error!("could not save progression.ron: {e}");
             }
         }

@@ -247,7 +247,7 @@ impl Game {
             return;
         }
         if let Ok(text) = ron::ser::to_string_pretty(&self.progress.save, ron::ser::PrettyConfig::default()) {
-            if let Err(e) = std::fs::write(self.progress_path(), text) {
+            if let Err(e) = voxel::save::write_atomic(self.progress_path(), text) {
                 log::error!("could not save progress: {e}");
             }
         }

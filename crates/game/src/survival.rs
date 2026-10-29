@@ -366,7 +366,7 @@ impl Survival {
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
-            if let Err(e) = std::fs::write(dir.join("survival.ron"), text) {
+            if let Err(e) = voxel::save::write_atomic(dir.join("survival.ron"), text) {
                 log::error!("could not save survival.ron: {e}");
             }
         }
@@ -1442,7 +1442,11 @@ impl Game {
             self.surv.starve_t += dt;
             if self.surv.starve_t >= 4.0 {
                 self.surv.starve_t = 0.0;
-                if self.health > 1.0 {
+                // As in vanilla: hunger stops at 5 hearts on Easy, half a heart on Normal and
+                // kills on Hard; armour and Protection never soften it.
+                let floor = [f32::MAX, 10.0, 1.0, 0.0][self.settings.difficulty.min(3) as usize];
+                if self.health > floor {
+                    self.prog.next_kind = crate::progression::DamageKind::Starve;
                     self.damage(1.0, None);
                 }
             }

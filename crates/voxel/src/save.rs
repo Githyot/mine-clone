@@ -101,10 +101,19 @@ impl WorldSave {
     }
 }
 
-fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, data)?;
-    fs::rename(tmp, path)
+/// Writes a file so a crash or power cut never leaves it half written: the bytes go to a
+/// sibling `<name>.tmp`, are flushed to disk, and only then replace the old file.
+pub fn write_atomic(path: impl AsRef<Path>, data: impl AsRef<[u8]>) -> io::Result<()> {
+    use std::io::Write;
+    let path = path.as_ref();
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".tmp");
+    let tmp = path.with_file_name(name);
+    let mut f = fs::File::create(&tmp)?;
+    f.write_all(data.as_ref())?;
+    f.sync_all()?;
+    drop(f);
+    fs::rename(&tmp, path)
 }
 
 pub fn encode_chunk(reg: &BlockRegistry, chunk: &Chunk) -> Vec<u8> {
@@ -223,6 +232,22 @@ pub fn decode_chunk(reg: &BlockRegistry, pos: ChunkPos, bytes: &[u8]) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn atomic_write_replaces_and_leaves_no_temp() {
+        let dir = std::env::temp_dir().join(format!("mc-atomic-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("atlas.ron");
+        write_atomic(&f, "one").unwrap();
+        write_atomic(&f, b"two").unwrap();
+        assert_eq!(fs::read_to_string(&f).unwrap(), "two");
+        // A sibling with another extension keeps its own temp name.
+        write_atomic(dir.join("atlas.bin"), [1u8, 2]).unwrap();
+        assert_eq!(fs::read_to_string(&f).unwrap(), "two");
+        let left: Vec<_> = fs::read_dir(&dir).unwrap().flatten().filter(|e| e.path().to_string_lossy().ends_with(".tmp")).collect();
+        assert!(left.is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn chunk_roundtrip_by_name() {

@@ -135,7 +135,7 @@ impl NetherEnd {
         match self.anchor {
             Some((p, c)) => {
                 let _ = std::fs::create_dir_all(nether_dir);
-                let _ = std::fs::write(path, ron::to_string(&(p.x, p.y, p.z, c)).unwrap_or_default());
+                let _ = voxel::save::write_atomic(path, ron::to_string(&(p.x, p.y, p.z, c)).unwrap_or_default());
             }
             None => {
                 let _ = std::fs::remove_file(path);

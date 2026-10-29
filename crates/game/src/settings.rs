@@ -290,7 +290,7 @@ impl Settings {
 
     pub fn save(&self, path: &Path) {
         if let Ok(text) = ron::ser::to_string_pretty(self, ron::ser::PrettyConfig::default()) {
-            let _ = std::fs::write(path, text);
+            let _ = voxel::save::write_atomic(path, text);
         }
     }
 }
