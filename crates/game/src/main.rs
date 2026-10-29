@@ -4211,7 +4211,8 @@ impl Game {
             self.draw_subtitles(w, h);
             self.draw_scoreboard(w, h);
             if let Some(t) = &self.toast {
-                if t.until > self.now {
+                // (Not over the open journal.)
+                if t.until > self.now && !self.progress.journal {
                     let text = t.text.clone();
                     let ty = if self.survival { hy - 34.0 * s } else { hy - 16.0 * s };
                     self.ui.text_centered(w / 2.0, ty, &text, WHITE);
