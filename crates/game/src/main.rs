@@ -3787,15 +3787,18 @@ impl Game {
                 self.world.set_block(q + IVec3::Y * 2, g(ores[(i + 3) as usize]));
             }
         }
-        // MC_MAT=1: a wall of metal and gem blocks and ores in front, for the materials option.
+        // MC_MAT=1: metal and gem blocks on the ground in front, ores in a row behind, for the
+        // materials option (look a little down: --look 0,-25).
         if std::env::var("MC_MAT").is_ok() {
-            let top = ["diamond_block", "gold_block", "iron_block", "emerald_block", "copper_block", "netherite_block", "amethyst_block"];
-            let low = ["diamond_ore", "gold_ore", "iron_ore", "emerald_ore", "lapis_ore", "redstone_ore", "deepslate_diamond_ore"];
-            for i in -3..=3 {
-                let q = p + dir * 3 + side * i;
-                let ground = self.world.surface_y(q.x, q.z).unwrap_or(p.y - 1);
-                self.world.set_block(IVec3::new(q.x, ground + 1, q.z), g(low[(i + 3) as usize]));
-                self.world.set_block(IVec3::new(q.x, ground + 2, q.z), g(top[(i + 3) as usize]));
+            let front = ["gold_block", "iron_block", "diamond_block", "silver_block", "copper_block"];
+            let back = ["diamond_ore", "gold_ore", "copper_ore", "emerald_ore", "lapis_ore", "redstone_ore", "iron_ore"];
+            for (k, (row, list)) in [(3, &front[..]), (6, &back[..])].into_iter().enumerate() {
+                let half = list.len() as i32 / 2;
+                for (i, n) in list.iter().enumerate() {
+                    let q = p + dir * row + side * ((i as i32 - half) * (2 - k as i32));
+                    let ground = self.world.surface_y(q.x, q.z).unwrap_or(p.y - 1);
+                    self.world.set_block(IVec3::new(q.x, ground + 1, q.z), g(n));
+                }
             }
         }
         // MC_POM=1: a wall of rough blocks right in front, for the block depth option.
