@@ -215,6 +215,9 @@ pub struct MeshTables {
     wave: Vec<bool>,
     height: Vec<u32>,
     variant: Vec<u8>,
+    /// Furniture style and its accent texture layer.
+    style: Vec<crate::furniture::Style>,
+    accent: Vec<u16>,
     connected: Vec<Connect>,
     /// Layer bits added for blocks with glowing pixels (`LAYER_EMISSIVE` or 0).
     emissive: Vec<u32>,
@@ -348,6 +351,8 @@ impl MeshTables {
             wave: vec![],
             height: vec![],
             variant: vec![],
+            style: vec![],
+            accent: vec![],
             connected: vec![],
             emissive: vec![],
             base: vec![],
@@ -390,6 +395,8 @@ impl MeshTables {
             t.wave.push(leaves || (b.shape == Shape::Cross && b.light == 0));
             t.height.push(b.height as u32);
             t.variant.push(b.variant);
+            t.style.push(b.style);
+            t.accent.push(b.accent);
             // Glass joins up with its neighbours: no frame lines between panes of a window.
             t.base.push(b.base);
             t.liquid_h.push(if b.shape == Shape::Liquid { crate::shapes::liquid_height(b.variant) } else { 0 });
@@ -782,7 +789,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     let (pane_up, pane_down) = (stacked(up), stacked(-up));
                     let same = |o: isize| blocks[(i as isize + o) as usize] == id;
                     boxes.clear();
-                    crate::shapes::boxes(shape, t.variant[idu], conn, false, &mut boxes);
+                    let accent_from = crate::shapes::boxes_styled(shape, t.style[idu], t.variant[idu], conn, false, &mut boxes);
                     let tint = |f: usize| if t.tint[idu] & (1 << f) != 0 { biome_tint } else { white };
                     let parts = crate::shapes::has_parts(shape);
                     let piston = matches!(shape, Shape::Piston | Shape::PistonHead | Shape::Oriented);
@@ -814,7 +821,9 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                             }
                             let l = if edge { light[ni] } else { light[i] };
                             let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
-                            let layer = if part {
+                            let layer = if bi >= accent_from {
+                                t.accent[idu]
+                            } else if part {
                                 t.faces[idu][4]
                             } else if piston {
                                 // The face it points to shows the piston top, the back its bottom.

@@ -78,6 +78,7 @@ impl Game {
     /// (unloaded, saved as a pet) is just forgotten here.
     pub(crate) fn stands_update(&mut self) {
         self.stand_test_hook();
+        self.build_furniture_test();
         if self.stands.gear.is_empty() {
             return;
         }

@@ -106,6 +106,16 @@ pub const CONN_NX: u8 = 2;
 pub const CONN_PZ: u8 = 4;
 pub const CONN_NZ: u8 = 8;
 
+/// The boxes of a block drawn in its wood's furniture style (see `furniture`): the wood boxes,
+/// then the accent ones from the returned index on. Bodies bump into the plain shapes.
+pub fn boxes_styled(shape: Shape, style: crate::furniture::Style, variant: u8, conn: u8, collision: bool, out: &mut Vec<PBox>) -> usize {
+    if collision || style == crate::furniture::Style::Plain || !crate::furniture::styled(shape) {
+        boxes(shape, variant, conn, collision, out);
+        return out.len();
+    }
+    crate::furniture::boxes(shape, style, variant, conn, out)
+}
+
 /// The boxes of a block. `collision` asks for what bodies bump into (fences are taller and
 /// open doors still block their edge).
 pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec<PBox>) {

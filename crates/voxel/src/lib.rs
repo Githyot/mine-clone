@@ -5,6 +5,7 @@
 pub mod bed;
 pub mod block;
 pub mod chunk;
+pub mod furniture;
 pub mod gems;
 pub mod item;
 pub mod light;

@@ -164,6 +164,9 @@ pub struct TextureSpec {
     pub bottom: Option<String>,
     pub side: Option<String>,
     pub front: Option<String>,
+    /// Cushions, bark or trim on styled furniture (see `furniture`); the side picture if unset.
+    #[serde(default)]
+    pub accent: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -220,6 +223,9 @@ pub struct BlockDef {
     /// Stands in water (kelp): drawn and swum through as water, leaves water when broken.
     #[serde(default)]
     pub waterlogged: bool,
+    /// How its wood builds furniture (chairs, tables, benches, shelves).
+    #[serde(default)]
+    pub style: crate::furniture::Style,
 }
 
 /// Tool families. Blocks name the one that digs them fast; items say which one they are.
@@ -280,6 +286,9 @@ pub struct Block {
     pub drops: Option<Vec<DropDef>>,
     pub xp: (u8, u8),
     pub waterlogged: bool,
+    pub style: crate::furniture::Style,
+    /// Texture layer of the furniture accent boxes.
+    pub accent: u16,
     /// Orientation (stairs, doors...); 0 for the base block.
     pub variant: u8,
     /// The base block of a variant (itself for the base): what it drops and shows as.
@@ -351,6 +360,7 @@ impl BlockRegistry {
             drops: Some(Vec::new()),
             xp: (0, 0),
             waterlogged: false,
+            style: Default::default(),
         }];
         all.extend(defs.into_iter().filter(|d| d.name != "air"));
         for d in all {
@@ -364,6 +374,7 @@ impl BlockRegistry {
             let top = t.top.clone().or_else(|| t.all.clone()).unwrap_or_else(|| side.clone());
             let bottom = t.bottom.clone().or_else(|| t.all.clone()).unwrap_or_else(|| top.clone());
             let front = t.front.clone().unwrap_or_else(|| side.clone());
+            let accent = if d.shape == Shape::Invisible { 0 } else { tex(t.accent.as_deref().unwrap_or(&side), &mut reg.textures) };
             let faces = if d.shape == Shape::Invisible {
                 [0; 6]
             } else {
@@ -402,6 +413,8 @@ impl BlockRegistry {
                 drops: d.drops,
                 xp: d.xp,
                 waterlogged: d.waterlogged,
+                style: d.style,
+                accent,
                 variant: 0,
                 base: id,
             });

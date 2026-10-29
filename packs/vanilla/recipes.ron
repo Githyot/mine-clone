@@ -211,6 +211,18 @@
         (pattern: ["###", "#C#", "###"], key: {'#': "mangrove_planks", 'C': "chest"}, result: "mangrove_drawer", count: 1),
         (pattern: ["###", "| |", "| |"], key: {'#': "cherry_planks", '|': "stick"}, result: "cherry_table", count: 1),
         (pattern: ["###", "| |", "| |"], key: {'#': "mangrove_planks", '|': "stick"}, result: "mangrove_table", count: 1),
+        (pattern: ["|  ", "###", "| |"], key: {'#': "pale_oak_planks", '|': "stick"}, result: "pale_oak_chair", count: 2),
+        (pattern: ["###", "| |", "| |"], key: {'#': "pale_oak_planks", '|': "stick"}, result: "pale_oak_table", count: 1),
+        (pattern: ["###", "| |"], key: {'#': "pale_oak_planks", '|': "stick"}, result: "pale_oak_bench", count: 2),
+        (pattern: ["###", " | "], key: {'#': "pale_oak_slab", '|': "stick"}, result: "pale_oak_shelf", count: 3),
+        (pattern: ["|  ", "###", "| |"], key: {'#': "crimson_planks", '|': "stick"}, result: "crimson_chair", count: 2),
+        (pattern: ["###", "| |", "| |"], key: {'#': "crimson_planks", '|': "stick"}, result: "crimson_table", count: 1),
+        (pattern: ["###", "| |"], key: {'#': "crimson_planks", '|': "stick"}, result: "crimson_bench", count: 2),
+        (pattern: ["###", " | "], key: {'#': "crimson_slab", '|': "stick"}, result: "crimson_shelf", count: 3),
+        (pattern: ["|  ", "###", "| |"], key: {'#': "warped_planks", '|': "stick"}, result: "warped_chair", count: 2),
+        (pattern: ["###", "| |", "| |"], key: {'#': "warped_planks", '|': "stick"}, result: "warped_table", count: 1),
+        (pattern: ["###", "| |"], key: {'#': "warped_planks", '|': "stick"}, result: "warped_bench", count: 2),
+        (pattern: ["###", " | "], key: {'#': "warped_slab", '|': "stick"}, result: "warped_shelf", count: 3),
         // Lights and windows.
         (pattern: ["I", "T", "I"], key: {'I': "iron_ingot", 'T': "torch"}, result: "lantern", count: 2),
         // Windmill sails: cloth on four arms round a log hub.
