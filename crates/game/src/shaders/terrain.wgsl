@@ -137,20 +137,23 @@ fn sun_visibility(in: VOut) -> f32 {
         n = l;
     }
     let ndl = dot(n, l);
-    if (ndl <= 0.0) {
+    // Turning away from the light, a face goes into its own shadow gradually: a hard cut at
+    // exactly side-on flickered on walls with the sun straight overhead (the test world's noon).
+    let facing = smoothstep(0.0, 0.2, ndl);
+    if (facing <= 0.0) {
         return 0.0;
     }
     let d = length(in.rel - g.cam_pos.xyz);
     let far_fade = smoothstep(g.shadow.w * 0.75, g.shadow.w, d);
     if (far_fade >= 1.0) {
-        return 1.0;
+        return facing;
     }
     // Push the lookup off the surface a little (more at grazing light) to avoid acne.
     let p = in.rel + n * (0.03 + 0.06 * (1.0 - ndl)) * (1.0 + d * 0.02);
     let c = g.shadow_mat * vec4<f32>(p, 1.0);
     let uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
     if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || c.z > 1.0) {
-        return 1.0;
+        return facing;
     }
     let z = c.z - 0.0005;
     var v = textureSampleCompareLevel(shadow_map, shadow_cmp, uv, z);
@@ -163,7 +166,7 @@ fn sun_visibility(in: VOut) -> f32 {
         v += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + vec2<f32>(o * 0.4, -o), z);
         v *= 0.2;
     }
-    return mix(v, 1.0, far_fade);
+    return min(facing, mix(v, 1.0, far_fade));
 }
 
 // 1 when nothing solid stands between this point and the light in the player's hand, 0 when a

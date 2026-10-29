@@ -27,6 +27,9 @@ struct Item {
 @group(2) @binding(0) var<storage, read> items: array<Item>;
 // The material class of each texture layer (material.rs), for the glints and relief.
 @group(2) @binding(1) var<storage, read> layer_mat: array<u32>;
+// The sun's shadow map (scenefx), so a swinging door is shaded like the still block it replaces.
+@group(3) @binding(0) var shadow_map: texture_depth_2d;
+@group(3) @binding(1) var shadow_cmp: sampler_comparison;
 
 struct IOut {
     @builtin(position) clip: vec4<f32>,
@@ -38,6 +41,8 @@ struct IOut {
     @location(5) @interpolate(flat) glint: vec4<f32>,
     // Position relative to the camera's block.
     @location(6) rel: vec3<f32>,
+    // A block part's face turned the way it faces now (zero for anything else: no sun shadow).
+    @location(7) @interpolate(flat) n: vec3<f32>,
 };
 
 fn icorner(face: u32, k: u32) -> vec3<f32> {
@@ -129,6 +134,18 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
     }
     var shade = array<f32, 6>(0.6, 0.6, 1.0, 0.5, 0.8, 0.8);
     o.shade = shade[face] + it.layers.w;
+    o.n = vec3<f32>(0.0);
+    if (part) {
+        // The face's direction turned with the part, and the terrain's shade for that
+        // direction, so a door swinging round darkens and brightens like still faces do.
+        var nl = array<vec3<f32>, 6>(vec3(1.0, 0.0, 0.0), vec3(-1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, -1.0, 0.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, -1.0))[face];
+        nl = vec3<f32>(nl.x * cr - nl.y * sr, nl.x * sr + nl.y * cr, nl.z);
+        nl = vec3<f32>(nl.x, nl.y * cp - nl.z * sp, nl.y * sp + nl.z * cp);
+        let n = vec3<f32>(nl.x * cy + nl.z * sy, nl.y, -nl.x * sy + nl.z * cy);
+        o.n = n;
+        let n2 = n * n;
+        o.shade = n2.x * 0.6 + n2.z * 0.8 + n2.y * select(0.5, 1.0, n.y > 0.0) + it.layers.w;
+    }
     if (part && it.rot.w > 0.05) {
         // Inside open storage: faces inside the box (not on its outside or rim) are in
         // shadow, deepest at the floor (bmin.w) and lighter towards the top (rot.w); the
@@ -170,12 +187,38 @@ fn isample(uv: vec2<f32>, layer: i32) -> vec4<f32> {
     return textureSampleLevel(itex2, isamp, uv, layer - 2048, 0.0);
 }
 
+// How much of the sky light reaches a block part's face: the terrain's sun shadows
+// (terrain.wgsl sun_visibility and lit), faces turned away from the sun in their own shadow.
+// 1 for everything that is not a block part.
+fn part_sun(in: IOut) -> f32 {
+    if (g.shadow.x <= 0.0 || in.light.x <= 0.0 || dot(in.n, in.n) < 0.5) {
+        return 1.0;
+    }
+    let s = g.sun_dir.xyz;
+    let l = select(-s, s, s.y > -0.05);
+    let ndl = dot(in.n, l);
+    var v = smoothstep(0.0, 0.2, ndl);
+    let d = length(in.rel - g.cam_pos.xyz);
+    let far_fade = smoothstep(g.shadow.w * 0.75, g.shadow.w, d);
+    if (v > 0.0 && far_fade < 1.0) {
+        let p = in.rel + in.n * (0.03 + 0.06 * (1.0 - ndl)) * (1.0 + d * 0.02);
+        let c = g.shadow_mat * vec4<f32>(p, 1.0);
+        let uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
+        if (all(uv >= vec2<f32>(0.0)) && all(uv <= vec2<f32>(1.0)) && c.z <= 1.0) {
+            let m = textureSampleCompareLevel(shadow_map, shadow_cmp, uv, c.z - 0.0005);
+            v = min(v, mix(m, 1.0, far_fade));
+        }
+    }
+    let strength = g.shadow.x * smoothstep(0.02, 0.2, abs(l.y)) * select(0.25, 0.55, g.sun_dir.y > -0.05);
+    return 1.0 - (1.0 - v) * strength;
+}
+
 // The lit colour of a texel `c` of an item: light, materials (glints and relief) and the
 // enchantment shimmer, then fog. `fr` is taken before any discard (it needs derivatives).
 // `wall`: an extruded item's side wall, whose picture is one pixel stretched (no relief or
 // glints there: they would sparkle).
 fn ishade(c: vec4<f32>, fr: MatFrame, in: IOut, wall: bool) -> vec4<f32> {
-    let sky = ilight(in.light.x) * g.fog_color.w;
+    let sky = ilight(in.light.x) * g.fog_color.w * part_sun(in);
     let blk = ilight(in.light.y);
     let l = max(max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82)), vec3<f32>(0.08 + in.light.z));
     var rgb = c.rgb * in.shade * l;
@@ -313,6 +356,7 @@ fn eshade(c: vec4<f32>, fr: MatFrame, e: EOut, shade: f32) -> vec4<f32> {
     i.dist = e.dist;
     i.glint = e.glint;
     i.rel = e.rel;
+    i.n = vec3<f32>(0.0);
     return ishade(c, fr, i, e.edge.x > 0.5);
 }
 

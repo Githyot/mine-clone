@@ -71,7 +71,7 @@ impl ItemGpu {
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("item"),
-            bind_group_layouts: &[&r.globals_layout, &r.tex_layout, &layout],
+            bind_group_layouts: &[&r.globals_layout, &r.tex_layout, &layout, &r.fx.layout],
             push_constant_ranges: &[],
         });
         // Glows add light on top: colour times alpha, the alpha channel left alone.
@@ -176,24 +176,27 @@ impl ItemGpu {
     }
 
     /// The glows, after everything solid (they don't write depth).
-    pub fn draw_halos<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, hdr: bool, block_tex: &'a wgpu::BindGroup) {
+    pub fn draw_halos<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, hdr: bool, block_tex: &'a wgpu::BindGroup, fx: &'a wgpu::BindGroup) {
         if self.halos == 0 {
             return;
         }
         pass.set_pipeline(&self.halo_pipelines[hdr as usize]);
         pass.set_bind_group(1, block_tex, &[]);
         pass.set_bind_group(2, &self.bg, &[]);
+        pass.set_bind_group(3, fx, &[]);
         pass.draw(0..6, self.count..self.count + self.halos);
     }
 
-    /// Needs the block texture bind group in slot 1.
-    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, hdr: bool, block_tex: &'a wgpu::BindGroup) {
+    /// Needs the block texture bind group in slot 1. `fx`: the shadow map bind group, for
+    /// swinging block parts.
+    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, hdr: bool, block_tex: &'a wgpu::BindGroup, fx: &'a wgpu::BindGroup) {
         if self.count == 0 {
             return;
         }
         pass.set_pipeline(&self.pipelines[hdr as usize]);
         pass.set_bind_group(1, block_tex, &[]);
         pass.set_bind_group(2, &self.bg, &[]);
+        pass.set_bind_group(3, fx, &[]);
         if self.split > 0 {
             pass.draw(0..36, 0..self.split);
         }
