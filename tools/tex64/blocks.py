@@ -1138,6 +1138,62 @@ def short_grass(name="short_grass", base="#6aa048", count=17, tall=(26, 58)):
     return img
 
 
+def cobweb(name="cobweb"):
+    """An orb web: silk spokes from a hub out to the edges and corners, a sagging spiral of
+    catch thread between them with a few torn gaps, and dew beads. Threads are one or two
+    pixels wide and hard-edged; the rest is see-through."""
+    rng = rng_for(name)
+    n = N
+    silk = np.zeros((n, n))
+    hx_, hy = 30.5 + rng.uniform(-2, 2), 27.5 + rng.uniform(-2, 2)
+    # Spokes: the four corners (the threads that hold the web up) plus edge anchors.
+    angs = [np.arctan2(c[1] - hy, c[0] - hx_) for c in ((0.3, 0.3), (n - 0.3, 0.3), (0.3, n - 0.3), (n - 0.3, n - 0.3))]
+    angs += [a + rng.uniform(-0.18, 0.18) for a in np.linspace(0, 2 * np.pi, 6, endpoint=False) + 0.52]
+    angs = sorted(a % (2 * np.pi) for a in angs)
+
+    def edge(a):
+        dx, dy = np.cos(a), np.sin(a)
+        t = min(((n - hx_) / dx if dx > 0 else -hx_ / dx) if abs(dx) > 1e-6 else 1e9,
+                ((n - hy) / dy if dy > 0 else -hy / dy) if abs(dy) > 1e-6 else 1e9)
+        return t
+
+    reach = [edge(a) for a in angs]
+    for a, r in zip(angs, reach):
+        d = segment_dist(hx_, hy, hx_ + np.cos(a) * r, hy + np.sin(a) * r, n)
+        silk = np.maximum(silk, (d < 0.8) * 1.0)
+    # Catch spiral: rings between neighbouring spokes, sagging a little under their weight.
+    r = 6.5
+    while r < 34:
+        for k in range(len(angs)):
+            a0, a1 = angs[k], angs[(k + 1) % len(angs)]
+            if a1 < a0:
+                a1 += 2 * np.pi
+            if rng.random() < 0.12 or r > min(reach[k], reach[(k + 1) % len(angs)]) - 1.5:
+                continue  # torn, or past the edge
+            rr0, rr1 = r + (a0 / (2 * np.pi)) * 3.0, r + (a1 / (2 * np.pi)) * 3.0
+            x0, y0 = hx_ + np.cos(a0) * rr0, hy + np.sin(a0) * rr0
+            x1, y1 = hx_ + np.cos(a1) * rr1, hy + np.sin(a1) * rr1
+            mx, my = (x0 + x1) / 2, (y0 + y1) / 2 + 0.6 + r * 0.04
+            for (ax, ay, bx, by) in ((x0, y0, mx, my), (mx, my, x1, y1)):
+                d = segment_dist(ax, ay, bx, by, n)
+                silk = np.maximum(silk, (d < 0.55) * 0.8)
+        r *= 1.33
+    # Hub: a small dense knot.
+    silk = np.maximum(silk, (np.hypot(XX[:n, :n] + 0.5 - hx_, YY[:n, :n] + 0.5 - hy) < 2.2) * 1.0)
+    img = np.zeros((n, n, 4))
+    pal = ramp("#c9ced6", 8, 0.3, 0.05)
+    # Spokes catch the light (brighter), the spiral is a touch duller; light from top-left.
+    t = 0.45 + silk * 0.25 - (XX[:n, :n] + YY[:n, :n]) / (2 * n) * 0.15 + rng.uniform(-0.04, 0.04, (n, n))
+    m = silk > 0
+    img[m, :3] = quantize(np.clip(t, 0, 1), pal, 0.0, rng)[m]
+    img[m, 3] = 255
+    # Dew: a few beads on the threads, the brightest pixels.
+    ys, xs = np.nonzero(m)
+    for i in rng.choice(len(xs), size=9, replace=False):
+        img[ys[i], xs[i], :3] = hexrgb("#f4f8ff")
+    return img
+
+
 def metal(name, gem=False):
     return lambda: metal_block(name, src_mean(name, "#c0c0c0"), gem)
 
@@ -1170,6 +1226,7 @@ REGISTRY.update({
     "crimson_planks": lambda: planks("oak", "crimson_planks", src_mean("crimson_planks", "#6a3048")),
     "warped_planks": lambda: planks("oak", "warped_planks", src_mean("warped_planks", "#2b6b62")),
     "short_grass": short_grass,
+    "cobweb": cobweb,
     "cobblestone_bricks": lambda: stone_bricks("cobblestone_bricks", "#7a7a7a"),
 })
 for _n in ("iron_block", "gold_block", "copper_block", "tin_block", "silver_block", "bronze_block", "lead_block",

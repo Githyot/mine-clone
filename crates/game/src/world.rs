@@ -90,6 +90,8 @@ pub struct World {
     top: Vec<f32>,
     /// Ladders and vines.
     climb: Vec<bool>,
+    /// Cobwebs: bodies inside crawl through (see `Terrain::sticky`).
+    sticky: Vec<bool>,
     /// How each block feels underfoot (ice slides, sand and snow drag).
     ground: Vec<voxel::physics::Ground>,
     /// Blocks that stand in water (kelp): bodies swim through them.
@@ -186,6 +188,7 @@ impl World {
         let solid = reg.blocks.iter().map(|b| b.solid && b.shape != Shape::Liquid && b.shape != Shape::Invisible).collect();
         let top = reg.blocks.iter().map(|b| b.height as f32 / 16.0).collect();
         let climb = reg.blocks.iter().map(|b| b.shape == Shape::Ladder || matches!(b.name.as_str(), "vine" | "weeping_vines" | "twisting_vines" | "scaffolding" | "cave_vines")).collect();
+        let sticky = reg.blocks.iter().map(|b| b.name == "cobweb").collect();
         let wet = reg.blocks.iter().map(|b| b.waterlogged).collect();
         let ground = reg.blocks.iter().map(|b| voxel::physics::Ground::of_block(&reg.blocks[b.base as usize].name, b.variant)).collect();
         let spins = reg.blocks.iter().map(|b| reg.blocks[b.base as usize].name == "windmill_sails").collect();
@@ -210,6 +213,7 @@ impl World {
             solid,
             top,
             climb,
+            sticky,
             ground,
             wet,
             meshed_count: 0,
@@ -931,6 +935,9 @@ impl Terrain for World {
     }
     fn climbable(&self, p: IVec3) -> bool {
         self.block(p).is_some_and(|id| self.climb[id as usize])
+    }
+    fn sticky(&self, p: IVec3) -> bool {
+        self.block(p).is_some_and(|id| self.sticky[id as usize])
     }
     fn top(&self, p: IVec3) -> f32 {
         self.block(p).map(|id| self.top[id as usize]).unwrap_or(1.0)
