@@ -990,6 +990,10 @@ impl Game {
         let mut renderer = window.clone().map(|w| pollster::block_on(Renderer::new(w, settings.vsync, &tex, &font)));
         if let Some(r) = renderer.as_mut() {
             r.cave_cull = !args.no_cave_cull;
+            // Test hook: how near plants keep their full body (the far LOD shows past it).
+            if let Some(d) = std::env::var("MC_FLORA_NEAR").ok().and_then(|v| v.parse().ok()) {
+                r.flora_near = d;
+            }
         }
         let mut ui = UiBatch::new(&font);
         ui.gui = tex.gui.sprites.clone();
@@ -3715,7 +3719,7 @@ impl Game {
             .blocks
             .iter()
             .enumerate()
-            .filter(|(_, b)| b.shape == voxel::block::Shape::Cross && !b.waterlogged && voxel::flora::kind_of(&b.name).is_some())
+            .filter(|(_, b)| b.shape == voxel::block::Shape::Cross && voxel::flora::kind_of(&b.name).is_some())
             .filter(|(_, b)| wanted.is_empty() || wanted.contains(&b.name.as_str()))
             .map(|(i, _)| i as BlockId)
             .collect();
@@ -3736,7 +3740,12 @@ impl Game {
             let (row, colm) = ((k / per_row) as i32, (k % per_row) as i32);
             let start: i32 = std::env::var("MC_FLORA_START").ok().and_then(|v| v.parse().ok()).unwrap_or(3);
             let q = p + dir * (start + row * 2) + side * (colm * 2 - per_row as i32 + 1);
-            self.world.set_block(IVec3::new(q.x, ground + 1, q.z), *id);
+            // Stacked plants (cane, kelp, vines) three high, so they show how they join.
+            let name = &self.reg.blocks[*id as usize].name;
+            let high = if voxel::flora::kind_of(name).is_some_and(|k| k.stacked()) { 3 } else { 1 };
+            for h in 1..=high {
+                self.world.set_block(IVec3::new(q.x, ground + h, q.z), *id);
+            }
         }
     }
 

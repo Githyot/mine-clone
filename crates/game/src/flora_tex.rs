@@ -8,22 +8,23 @@
 
 use image::{Rgba, RgbaImage};
 use voxel::block::{BlockId, BlockRegistry, Shape};
-use voxel::flora::{self, FloraQuad, Part};
+use voxel::flora::{self, FloraModel, Part};
 
 /// The flora layer names (to append to the texture list from `first_layer` on) and every plant
-/// with a body: (block, quads, keeps its facing).
-pub fn plan(reg: &BlockRegistry, first_layer: usize) -> (Vec<String>, Vec<(BlockId, Vec<FloraQuad>, bool)>) {
+/// with a body.
+pub fn plan(reg: &BlockRegistry, first_layer: usize) -> (Vec<String>, Vec<FloraModel>) {
     let mut names: Vec<String> = Vec::new();
     let mut plants = Vec::new();
     for (id, b) in reg.blocks.iter().enumerate() {
-        if b.shape != Shape::Cross || b.waterlogged {
+        if b.shape != Shape::Cross {
             continue;
         }
         let Some(kind) = flora::kind_of(&b.name) else { continue };
         let sprite = b.faces[0];
         let Some(tex) = reg.textures.get(sprite as usize) else { continue };
-        let raw = flora::build(kind, b.light > 0);
-        for p in flora::parts(&raw) {
+        let near = flora::build(kind, b.light > 0);
+        let far = flora::build_far(kind, b.light > 0);
+        for p in flora::parts(&near).into_iter().chain(far.iter().flat_map(|f| flora::parts(f))) {
             let n = format!("flora/{tex}/{}", p.key());
             if p != Part::Sprite && !names.contains(&n) {
                 names.push(n);
@@ -37,8 +38,13 @@ pub fn plan(reg: &BlockRegistry, first_layer: usize) -> (Vec<String>, Vec<(Block
             let i = names.iter().position(|x| *x == n)?;
             Some((first_layer + i) as u16)
         };
-        let quads = flora::finish(&raw, b.tint, &layer);
-        plants.push((id as BlockId, quads, kind.fixed()));
+        plants.push(FloraModel {
+            id: id as BlockId,
+            near: flora::finish(&near, b.tint, &layer),
+            far: far.map(|f| flora::finish(&f, b.tint, &layer)),
+            fixed: kind.fixed(),
+            stacked: kind.stacked(),
+        });
     }
     (names, plants)
 }
@@ -252,6 +258,12 @@ fn paint(part: Part, pal: &Palette, salt: u32) -> RgbaImage {
                     let base = if r > 6.0 { main.dark } else { main.mid };
                     mix(base, main.light, ring * 0.8)
                 }
+                Part::Bloom => {
+                    // Mottled in blocks of two pixels, lighter toward the top.
+                    let k = noise((x / 2) as u32, (y / 2) as u32, salt);
+                    let base = if k < 0.25 { main.dark } else if k > 0.8 { main.light } else { main.mid };
+                    if y < 3 { mix(base, main.light, 0.35) } else { base }
+                }
                 Part::Floret => {
                     // Tiny star flowers packed into a ball.
                     let star = (x % 4 == 1 && y % 4 == 1) || (x % 4 == 3 && y % 4 == 3);
@@ -309,7 +321,7 @@ fn paint(part: Part, pal: &Palette, salt: u32) -> RgbaImage {
                     c
                 }
             };
-            if rim && !matches!(part, Part::Blade | Part::Frond | Part::Stem | Part::Wood | Part::MushStem | Part::Cap | Part::CapUnder | Part::Foliage | Part::Needles | Part::HeadBack | Part::Floret | Part::Seeds) {
+            if rim && !matches!(part, Part::Blade | Part::Frond | Part::Stem | Part::Wood | Part::MushStem | Part::Cap | Part::CapUnder | Part::Foliage | Part::Needles | Part::HeadBack | Part::Floret | Part::Bloom | Part::Seeds) {
                 c = mix(c, main.dark, 0.7);
             }
             let jitter = 0.97 + n * 0.05;

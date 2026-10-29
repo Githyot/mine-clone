@@ -22,7 +22,8 @@ pub const FLAG_TILE: u32 = 4;
 /// Wave, liquid and tile together (a combination no other quad has): a plant with a body
 /// (flora.rs). x and z are in 1/32 block; y holds the block in its top four bits and the height
 /// in it (1/32 block, up to almost two blocks) in the low six, so the shader bends each corner by
-/// its height. The ao bits say how stiff it is.
+/// its height. The ao bits say how stiff it is, or, with bit 9 of x set (x itself never
+/// reaches 512), that it is stacked and they hold the stack bits like `FLAG_PLANT`.
 pub const FLAG_FLORA: u32 = FLAG_PLANT | FLAG_TILE;
 /// Connected-texture edges (see `connected_edges`).
 pub const FLAG_CTM_U0: u32 = 8;
@@ -243,8 +244,15 @@ pub struct MeshTables {
     /// Shapes from resource packs (JSON block models), drawn instead of the block's own.
     /// Behind a lock so a pack change can swap them while the workers keep their tables.
     models: std::sync::RwLock<ModelSet>,
-    /// Plants with a body (flora.rs) and whether each keeps its facing.
-    flora: std::sync::RwLock<Vec<Option<(std::sync::Arc<[crate::flora::FloraQuad]>, bool)>>>,
+    /// Plants with a body (flora.rs).
+    flora: std::sync::RwLock<Vec<Option<std::sync::Arc<FloraSet>>>>,
+}
+
+struct FloraSet {
+    near: Vec<crate::flora::FloraQuad>,
+    far: Option<Vec<crate::flora::FloraQuad>>,
+    fixed: bool,
+    stacked: bool,
 }
 
 #[derive(Default)]
@@ -578,17 +586,64 @@ impl MeshTables {
         *self.models.write().unwrap() = m;
     }
 
-    /// The bodies of plants near the camera: (block, quads, keeps its facing).
-    pub fn set_flora(&self, list: Vec<(BlockId, Vec<crate::flora::FloraQuad>, bool)>) {
+    /// The bodies of plants (crossed-picture blocks drawn with a shape of their own).
+    pub fn set_flora(&self, list: Vec<crate::flora::FloraModel>) {
         let mut v = vec![None; self.shape.len()];
-        for (id, quads, fixed) in list {
-            if let Some(slot) = v.get_mut(id as usize) {
-                if self.shape[id as usize] == Shape::Cross && !quads.is_empty() {
-                    *slot = Some((quads.into(), fixed));
+        for m in list {
+            if let Some(slot) = v.get_mut(m.id as usize) {
+                if self.shape[m.id as usize] == Shape::Cross && !m.near.is_empty() {
+                    *slot = Some(std::sync::Arc::new(FloraSet { near: m.near, far: m.far, fixed: m.fixed, stacked: m.stacked }));
                 }
             }
         }
         *self.flora.write().unwrap() = v;
+    }
+}
+
+/// Where a plant with a body stands, and how it is turned and lit.
+struct FloraAt {
+    cell: [u32; 3],
+    turn: u32,
+    /// Stack bits for a stacked plant.
+    stack: Option<u32>,
+    light: u8,
+    tint: [u8; 3],
+}
+
+fn flora_quads(quads: &[crate::flora::FloraQuad], at: &FloraAt, out: &mut Vec<Vertex>) {
+    let (sky, blk) = ((at.light >> 4) as u32, (at.light & 15) as u32);
+    let [lx, ly, lz] = at.cell;
+    let white = [200u8, 200, 200];
+    for q in quads {
+        let corner = |k: usize| {
+            let [mut x, y, mut z] = q.pos[k].map(|c| c as u32);
+            for _ in 0..at.turn {
+                (x, z) = (32 - z, x);
+            }
+            let mark = if at.stack.is_some() { 512 } else { 0 };
+            [(lx * 32 + x) | mark, ly << 6 | y, lz * 32 + z]
+        };
+        let ao = at.stack.unwrap_or(q.stiff as u32);
+        let layer = q.layer as u32 | if q.glow { LAYER_EMISSIVE } else { 0 };
+        let tint = if q.tint { at.tint } else { white };
+        let face = |f: u8| {
+            let mut f = f as u32;
+            for _ in 0..at.turn {
+                // +x -> +z -> -x -> -z, as the corners turn.
+                f = match f { 0 => 4, 4 => 1, 1 => 5, 5 => 0, o => o };
+            }
+            f
+        };
+        for k in 0..4 {
+            let uv = q.uv[k];
+            out.push(pack(corner(k), ao, [uv[0] as u32, uv[1] as u32], layer, face(q.face[0]), FLAG_FLORA, sky, blk, tint));
+        }
+        if q.two {
+            for k in [1usize, 0, 3, 2] {
+                let uv = q.uv[k];
+                out.push(pack(corner(k), ao, [uv[0] as u32, uv[1] as u32], layer, face(q.face[1]), FLAG_FLORA, sky, blk, tint));
+            }
+        }
     }
 }
 
@@ -664,41 +719,24 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     continue;
                 }
 
-                if let Some((quads, fixed)) = flora_here {
+                if let Some(m) = flora_here {
                     let l = light[i];
-                    let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
-                    let tint = biome_tint;
-                    // A quarter turn picked by the place, so a meadow is not all alike.
-                    let turn = if *fixed { 0 } else { ((lx * 7 + lz * 13 + ly * 5 + (lx ^ lz) * 3) & 3) as u32 };
-                    for q in quads.iter() {
-                        let corner = |k: usize| {
-                            let [mut x, y, mut z] = q.pos[k].map(|c| c as u32);
-                            for _ in 0..turn {
-                                (x, z) = (32 - z, x);
-                            }
-                            [lx as u32 * 32 + x, (ly as u32) << 6 | y, lz as u32 * 32 + z]
-                        };
-                        let layer = q.layer as u32 | if q.glow { LAYER_EMISSIVE } else { 0 };
-                        let tint = if q.tint { tint } else { white };
-                        let face = |f: u8| {
-                            let mut f = f as u32;
-                            for _ in 0..turn {
-                                // +x -> +z -> -x -> -z, as the corners turn.
-                                f = match f { 0 => 4, 4 => 1, 1 => 5, 5 => 0, o => o };
-                            }
-                            f
-                        };
-                        for k in 0..4 {
-                            let uv = q.uv[k];
-                            near.push(pack(corner(k), q.stiff as u32, [uv[0] as u32, uv[1] as u32], layer, face(q.face[0]), FLAG_FLORA, sky, blk, tint));
+                    // A quarter turn picked by the place, so a meadow is not all alike (the same
+                    // all the way up a stack, so cane stalks line up).
+                    let turn = if m.fixed { 0 } else { ((lx * 7 + lz * 13 + (lx ^ lz) * 3 + if m.stacked { 0 } else { ly * 5 }) & 3) as u32 };
+                    let stack = m.stacked.then(|| {
+                        let stem = |j: usize| flora.get(blocks[j] as usize).and_then(|f| f.as_ref()).is_some_and(|f| f.stacked);
+                        stem(i - P * P) as u32 | (stem(i + P * P) as u32) << 1
+                    });
+                    let at = FloraAt { cell: [lx as u32, ly as u32, lz as u32], turn, stack, light: l, tint: biome_tint };
+                    match &m.far {
+                        Some(f) => {
+                            flora_quads(&m.near, &at, &mut near);
+                            flora_quads(f, &at, &mut far);
                         }
-                        if q.two {
-                            for k in [1usize, 0, 3, 2] {
-                                let uv = q.uv[k];
-                                near.push(pack(corner(k), q.stiff as u32, [uv[0] as u32, uv[1] as u32], layer, face(q.face[1]), FLAG_FLORA, sky, blk, tint));
-                            }
-                        }
+                        None => flora_quads(&m.near, &at, &mut out.solid),
                     }
+                    continue;
                 }
 
                 if shape == Shape::Cross {
@@ -717,8 +755,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     } else {
                         (0, 3)
                     };
-                    // A plant with a body shows these crossed pictures only from afar.
-                    let target = if flora_here.is_some() { &mut far } else { &mut out.solid };
+                    let target = &mut out.solid;
                     for q in quads {
                         // Front and back so the plant is visible from both sides.
                         for order in [[0usize, 1, 2, 3], [1, 0, 3, 2]] {

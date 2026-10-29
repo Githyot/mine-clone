@@ -61,19 +61,24 @@ fn wind_offset(wp: vec3<f32>, flags: u32, stack: u32, h: f32) -> vec3<f32> {
     return vec3<f32>(d.x, -dot(d, d) * 0.6, d.y);
 }
 
-// A plant with a body (voxel/src/flora.rs): x and z in 1/32 block, y as the block (top four
-// bits) and the height in it (low six bits, 1/32 block).
+// A plant with a body (voxel/src/flora.rs): x and z in 1/32 block (bit 9 of x marks a stacked
+// plant), y as the block (top four bits) and the height in it (low six bits, 1/32 block).
 fn flora_pos(x: u32) -> vec3<f32> {
     let y = (x >> 10u) & 1023u;
-    return vec3<f32>(f32(x & 1023u) / 32.0, f32(y >> 6u) + f32(y & 63u) / 32.0, f32((x >> 20u) & 1023u) / 32.0);
+    return vec3<f32>(f32(x & 511u) / 32.0, f32(y >> 6u) + f32(y & 63u) / 32.0, f32((x >> 20u) & 511u) / 32.0);
 }
 
 // Its base stays put and each corner leans by its height in the plant; stiff plants (ao bits:
-// 1 sunflower, saplings; 2 mushrooms) lean less.
+// 1 sunflower, saplings; 2 mushrooms) lean less. Stacked plants (cane, kelp, vines) carry the
+// stack bits instead and bend as one stem, like the crossed plants.
 fn flora_wind(wp: vec3<f32>, x: u32) -> vec3<f32> {
     var stiff = array<f32, 4>(1.0, 0.55, 0.2, 0.0);
-    let h = f32((x >> 10u) & 63u) / 32.0 * stiff[(x >> 30u) & 3u];
-    return wind_offset(wp, 3u, 0u, h);
+    let ao = (x >> 30u) & 3u;
+    let h = f32((x >> 10u) & 63u) / 32.0;
+    if (((x >> 9u) & 1u) != 0u) {
+        return wind_offset(wp, 3u, ao, h);
+    }
+    return wind_offset(wp, 3u, 0u, h * stiff[ao]);
 }
 
 @vertex

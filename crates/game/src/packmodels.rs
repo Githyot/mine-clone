@@ -28,7 +28,7 @@ pub(crate) struct PackModels {
     pub textures: Vec<String>,
     pub models: Vec<(BlockId, Vec<ModelQuad>)>,
     /// Plants with a body (their pictures are at the end of `textures`).
-    pub flora: Vec<(BlockId, Vec<voxel::flora::FloraQuad>, bool)>,
+    pub flora: Vec<voxel::flora::FloraModel>,
 }
 
 /// Face names in mesh order (+x east, -x west, +y up, -y down, +z south, -z north).
