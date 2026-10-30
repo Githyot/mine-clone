@@ -13,10 +13,38 @@ const SCAN_EVERY: f32 = 0.5;
 /// Most fires that throw particles at once (the nearest).
 const MOST: usize = 40;
 
+#[derive(Clone, Copy)]
+enum Flame {
+    Fire,
+    Soul,
+    /// A placed torch: where its flame stands (world), and its colour (None: plain fire).
+    Torch(Vec3, Option<[f32; 3]>),
+}
+
+#[derive(Clone, Copy)]
+struct Spot {
+    block: IVec3,
+    flame: Flame,
+}
+
+/// Where a placed torch's flame stands in its block (torch_quads in the voxel mesher): over the
+/// head, or leaning out from a wall for variants 1..4.
+fn torch_flame_at(p: IVec3, variant: u8) -> Vec3 {
+    let mut q = Vec3::new(8.0, 17.0, 8.0);
+    if variant > 0 {
+        q.z = q.z - 5.0 + 17.0 * 0.4;
+        q.y += 3.0;
+        for _ in 0..(variant - 1) & 3 {
+            q = Vec3::new(16.0 - q.z, q.y, q.x);
+        }
+    }
+    p.as_vec3() + q / 16.0
+}
+
 #[derive(Default)]
 pub struct FireFx {
-    /// Fire blocks near the player: (block, soul fire).
-    spots: Vec<(IVec3, bool)>,
+    /// Fires and burning torches near the player.
+    spots: Vec<Spot>,
     scan_t: f32,
     owed: f32,
     count: u32,
@@ -63,13 +91,27 @@ impl Game {
                 for x in -RANGE..=RANGE {
                     let p = me + IVec3::new(x, y, z);
                     let id = self.world.block_or_air(p);
-                    if id != voxel::block::AIR && (id == fire || id == soul) {
-                        found.push((p, id == soul));
+                    if id == voxel::block::AIR {
+                        continue;
                     }
+                    let flame = if id == fire {
+                        Flame::Fire
+                    } else if id == soul {
+                        Flame::Soul
+                    } else {
+                        let b = self.reg.get(id);
+                        if b.shape != voxel::block::Shape::Torch {
+                            continue;
+                        }
+                        let Some((_, tint)) = voxel::mesh::torch_flame_look(&self.reg.get(b.base).name) else { continue };
+                        let plain = tint == [200, 200, 200];
+                        Flame::Torch(torch_flame_at(p, b.variant), (!plain).then(|| tint.map(|c| c as f32 / 200.0 * 1.3)))
+                    };
+                    found.push(Spot { block: p, flame });
                 }
             }
         }
-        found.sort_by_key(|(p, _)| (*p - me).length_squared());
+        found.sort_by_key(|s| (s.block - me).length_squared());
         found.truncate(MOST);
         self.fire_fx.spots = found;
     }
@@ -86,8 +128,25 @@ impl Game {
             self.fire_fx.owed -= 1.0;
             self.fire_fx.count = self.fire_fx.count.wrapping_add(1);
             let k = self.fire_fx.count as usize;
-            let (p, soul) = self.fire_fx.spots[k % self.fire_fx.spots.len()];
+            let Spot { block: p, flame } = self.fire_fx.spots[k % self.fire_fx.spots.len()];
             let r = &mut self.surv.rng;
+            if let Flame::Torch(top, tint) = flame {
+                // Torches burn smaller: every other turn, a little flame off the top.
+                if (k / self.fire_fx.spots.len()) % 2 == 1 {
+                    continue;
+                }
+                let at = top + Vec3::new(r.f32() - 0.5, r.f32() * 0.5, r.f32() - 0.5) * 0.12;
+                let ember = k % 9 == 0;
+                match tint {
+                    None => self.particles.flame(at, Vec3::ZERO, glow, 0.045, 0.4, false),
+                    Some(c) => self.particles.glow(at, Vec3::new(0.0, 0.9, 0.0), glow, c, 0.04, 0.5),
+                }
+                if ember {
+                    self.particles.spark(at, Vec3::ZERO, glow);
+                }
+                continue;
+            }
+            let soul = matches!(flame, Flame::Soul);
             let at = p.as_vec3() + Vec3::new(0.2 + r.f32() * 0.6, 0.15 + r.f32() * 0.45, 0.2 + r.f32() * 0.6);
             if soul {
                 self.particles.soul_flame(at, glow, 0.07, 0.5);

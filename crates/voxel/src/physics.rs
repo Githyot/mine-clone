@@ -13,6 +13,10 @@ pub const SNEAK_SPEED: f32 = 1.31;
 pub const FLY_SPEED: f32 = 10.9;
 pub const SWIM_SPEED: f32 = 2.2;
 pub const TERMINAL_VELOCITY: f32 = 78.4;
+/// In a cobweb the move is cut to this share of the speed across and up/down, like the
+/// classic game (0.25, 0.05); a fall in one is no faster than a body drops in a moment.
+pub const WEB_SLOW: Vec3 = Vec3::new(0.25, 0.05, 0.25);
+const WEB_FALL: f32 = GRAVITY * 0.05;
 
 /// What the physics needs to know about the world.
 pub trait Terrain {
@@ -33,6 +37,11 @@ pub trait Terrain {
     }
     /// Ladders and vines: a body inside climbs instead of falling.
     fn climbable(&self, _p: IVec3) -> bool {
+        false
+    }
+    /// Cobwebs: a body touching one is held fast, crawling through at a quarter of its speed
+    /// and barely sinking, and it lands soft.
+    fn sticky(&self, _p: IVec3) -> bool {
         false
     }
     /// How the block feels underfoot (ice slides, sand and snow drag).
@@ -169,6 +178,8 @@ pub struct Body {
     /// How fast the feet are sliding against where the body wants to go (blocks per second;
     /// 0 when they hold), for slide sounds and ice shavings.
     pub slide: f32,
+    /// Walks through cobwebs as if they weren't there (spiders).
+    pub web_proof: bool,
 }
 
 /// Grabbing a ledge up to two blocks high and pulling up onto it, Terraria style: the hands
@@ -244,6 +255,7 @@ impl Body {
             mantle_buffer: 0.0,
             ground: Ground::FIRM,
             slide: 0.0,
+            web_proof: false,
         }
     }
 
@@ -288,7 +300,7 @@ impl Body {
             return false;
         }
         let feet = self.pos.floor().as_ivec3();
-        if world.climbable(feet) || world.climbable(feet + IVec3::Y) {
+        if world.climbable(feet) || world.climbable(feet + IVec3::Y) || (!self.web_proof && self.in_web(world)) {
             return false;
         }
         let wish = Vec3::new(input.wish.x, 0.0, input.wish.z);
@@ -403,6 +415,22 @@ impl Body {
         world.ground((self.pos - Vec3::Y * 0.05).floor().as_ivec3())
     }
 
+    /// The body's box touches a cobweb.
+    pub fn in_web(&self, world: &impl Terrain) -> bool {
+        let (lo, hi) = self.aabb();
+        let (a, b) = (lo.floor().as_ivec3(), (hi - Vec3::splat(1e-4)).floor().as_ivec3());
+        for x in a.x..=b.x {
+            for y in a.y..=b.y {
+                for z in a.z..=b.z {
+                    if world.sticky(IVec3::new(x, y, z)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// True if the player's box overlaps the given block cell.
     pub fn intersects_block(&self, b: IVec3) -> bool {
         let (lo, hi) = self.aabb();
@@ -481,7 +509,12 @@ impl Body {
             }
         }
 
-        let delta = self.vel * dt;
+        let webbed = !self.flying && !self.web_proof && self.in_web(world);
+        if webbed {
+            // Stuck: no run-up carries through, a jump hardly lifts and a fall stops dead.
+            self.vel.y = self.vel.y.clamp(-WEB_FALL, JUMP_SPEED);
+        }
+        let delta = if webbed { self.vel * WEB_SLOW * dt } else { self.vel * dt };
         let was_on_ground = self.on_ground;
         self.on_ground = false;
         // Sneaking keeps you from walking off edges.
@@ -519,7 +552,7 @@ impl Body {
                 self.vel[axis] = 0.0;
             }
         }
-        if self.on_ground || self.in_water || climbing {
+        if self.on_ground || self.in_water || climbing || webbed {
             self.fall_distance = 0.0;
         } else if delta.y < 0.0 {
             self.fall_distance -= delta.y;
@@ -971,5 +1004,53 @@ mod tests {
             b.step(&w, &Input::default(), DT);
         }
         assert!(b.vel.x > 1.0, "landed still sliding ({})", b.vel.x);
+    }
+
+    /// Floor at y = 10, a band of cobwebs over x 3..6 from the floor up to y 40.
+    struct Webs;
+    impl Terrain for Webs {
+        fn solid(&self, p: IVec3) -> bool {
+            p.y < 10
+        }
+        fn liquid(&self, _: IVec3) -> bool {
+            false
+        }
+        fn sticky(&self, p: IVec3) -> bool {
+            (3..6).contains(&p.x) && p.y >= 10 && p.y < 40
+        }
+    }
+
+    #[test]
+    fn cobwebs_hold_a_body_back() {
+        let go = Input { wish: Vec3::X, ..Default::default() };
+        // Two seconds of walking: about 8.6 blocks outside, a quarter of that inside.
+        let mut free = Body::new(Vec3::new(10.5, 10.0, 0.5));
+        let mut held = Body::new(Vec3::new(3.5, 10.0, 0.5));
+        let w = Webs;
+        for _ in 0..60 {
+            free.step(&Floor(Ground::FIRM), &go, DT);
+            held.step(&w, &go, DT);
+        }
+        let (f, h) = (free.pos.x - 10.5, held.pos.x - 3.5);
+        assert!((h / f - 0.25).abs() < 0.05, "free {f} held {h}");
+        // A fall into a web stops dead, sinks slowly and hurts nothing.
+        let mut b = Body::new(Vec3::new(4.5, 60.0, 0.5));
+        for _ in 0..90 {
+            b.step(&w, &Input::default(), DT);
+        }
+        assert!(b.pos.y < 40.0 && b.vel.y >= -WEB_FALL - 1e-3, "{:?} {:?}", b.pos, b.vel);
+        let y = b.pos.y;
+        for _ in 0..60 {
+            b.step(&w, &Input::default(), DT);
+        }
+        assert!(y - b.pos.y < 0.2, "sank {}", y - b.pos.y);
+        assert_eq!(b.fall_distance, 0.0);
+        // Spiders walk through.
+        let mut s = Body::new(Vec3::new(3.5, 10.0, 0.5));
+        s.web_proof = true;
+        for _ in 0..60 {
+            s.step(&w, &go, DT);
+        }
+        assert!(s.pos.x - 3.5 > f * 0.9);
     }
 }

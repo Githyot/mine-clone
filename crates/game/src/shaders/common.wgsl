@@ -46,6 +46,8 @@ struct Globals {
     mat: vec4<f32>,
     // Animated textures: layer + 1 of x fire, y soul fire, z lava (0 = none).
     anim: vec4<f32>,
+    // Red glow of lit redstone: xyz like hand_light, w: glow 0..1 (0 = unused).
+    red_lights: array<vec4<f32>, 8>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;

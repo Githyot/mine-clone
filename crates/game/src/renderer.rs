@@ -67,6 +67,9 @@ pub struct Globals {
     /// Animated block textures (fire_fx.rs): texture layer + 1 of x fire, y soul fire, z lava
     /// (0 = none, so the default animates nothing).
     pub anim: [f32; 4],
+    /// Red glow of lit redstone (redstone_fx.rs): xyz relative to the camera's block, w: glow
+    /// 0..1 (0 = unused).
+    pub red_lights: [[f32; 4]; 8],
 }
 
 #[repr(C)]
@@ -156,12 +159,16 @@ pub struct Renderer {
     ui_cap: usize,
     chunks: HashMap<ChunkPos, Vec<GpuSection>>,
     pub texture_size: u32,
+    /// How thick every texture layer is when held as a 3D item (item_render::volumes).
+    pub item_volumes: std::sync::Arc<Vec<u32>>,
     pub vram_bytes: u64,
     copy_src_ok: bool,
     /// Skip sections the camera can't see through caves and solid rock.
     pub cave_cull: bool,
     /// Shadows, water reflections, TAA jitter.
     pub fx: SceneFx,
+    /// Raindrops on the screen (screen_drops.rs).
+    pub drops: crate::screen_drops::DropFx,
     shadow_pipe: wgpu::RenderPipeline,
     /// The depth texture was recreated since the effects last bound it.
     depth_changed: bool,
@@ -561,6 +568,7 @@ impl Renderer {
             mapped_at_creation: false,
         });
         let ui_cap = 1 << 14;
+        let drops = crate::screen_drops::DropFx::new(&device, format, copy_src_ok);
         let ui_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("ui"),
             size: (ui_cap * std::mem::size_of::<UiVertex>()) as u64,
@@ -604,8 +612,10 @@ impl Renderer {
             ui_cap,
             chunks: HashMap::new(),
             texture_size,
+            item_volumes: std::sync::Arc::new(crate::item_render::volumes(textures)),
             vram_bytes: 0,
             copy_src_ok,
+            drops,
             cave_cull: true,
             fx,
             shadow_pipe,
@@ -769,6 +779,7 @@ impl Renderer {
         self.block_view = view;
         self.block_view2 = view2;
         self.texture_size = size;
+        self.item_volumes = std::sync::Arc::new(crate::item_render::volumes(t));
     }
 
     pub fn resize(&mut self, w: u32, h: u32) {
@@ -1252,6 +1263,8 @@ impl Renderer {
             }
             self.post.run(&self.queue, &mut enc, &view, u);
         }
+        // Raindrops sit on the finished picture, under the HUD.
+        self.drops.draw(&self.device, &self.queue, &mut enc, &frame.texture, &view);
         if !ui.verts.is_empty() {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("hud"),

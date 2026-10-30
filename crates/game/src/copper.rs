@@ -173,7 +173,7 @@ impl Game {
                                 self.cane_tick(p, (r >> 24) as u32);
                             } else if self.pots.is_planted(id) {
                                 self.pot_tick(p, id, (r >> 24) as u32);
-                            } else if id != AIR && self.farm.hives.contains(&id) {
+                            } else if id != AIR && self.farm.hives.contains(&self.reg.get(id).base) {
                                 self.hive_tick(p, id, (r >> 24) as u32);
                             } else if self.extras.ticks(id) {
                                 self.extras_tick(p, id, (r >> 24) as u32);
