@@ -145,6 +145,8 @@ pub struct Settings {
     /// Life in the air (ambient_life.rs): falling leaves, insects, birds, fish, dust. 0 off,
     /// 1 a little, 2 normal, 3 a lot.
     pub ambient_life: u8,
+    /// Raindrops on the screen out in the rain (screen_drops.rs): 0 off, 1 subtle, 2 more.
+    pub rain_drops: u8,
     /// Calm camera and interface: no view bobbing, shaking, sprint zoom or bouncing icons.
     pub reduce_motion: bool,
     /// Keyboard keys moved from their defaults: action → key (`keybinds.rs`).
@@ -202,6 +204,7 @@ impl Default for Settings {
             language: "pt".into(),
             subtitles: false,
             ambient_life: 2,
+            rain_drops: 1,
             reduce_motion: false,
             key_binds: BTreeMap::new(),
             voice: Default::default(),

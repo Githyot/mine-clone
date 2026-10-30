@@ -145,6 +145,7 @@ mod headless;
 mod packmodels;
 mod renderer;
 mod scenefx;
+mod screen_drops;
 mod settings;
 mod sfx;
 mod mob_sounds;
@@ -809,6 +810,8 @@ struct Game {
     pots: pots::Pots,
     bobber: Option<fishing::Bobber>,
     weather: weather::Weather,
+    /// Raindrops on the screen.
+    wet: screen_drops::Wet,
     anim: player_model::Animator,
     /// 0 = first person, 1 = behind, 2 = in front (F5).
     camera_mode: u8,
@@ -1230,6 +1233,7 @@ impl Game {
             farm: farm::Farm::new(&reg_for_fluids),
             pots: pots::Pots::new(&reg_for_fluids),
             weather: weather::Weather::new(weather_save, seed),
+            wet: screen_drops::Wet::new(seed),
             anim: player_model::Animator::default(),
             camera_mode,
             world_open: !title_mode,
@@ -1493,6 +1497,38 @@ impl Game {
         let n = self.shader_packs.iter().filter(|p| matches!(p.source, shaderpack::PackSource::User(_))).count();
         if self.shader_error.is_none() {
             self.toast(format!("Pacotes de shader recarregados ({n} seus)"), 3.0);
+        }
+    }
+
+    /// Raindrops landing on the screen out in the rain (screen_drops.rs).
+    fn update_wet_screen(&mut self, eye: Vec3, dt: f32) {
+        let (x, z) = (eye.x.floor() as i32, eye.z.floor() as i32);
+        let playing = self.world_open && matches!(self.screen, Screen::Playing | Screen::Inventory);
+        let here = self.world.gen.base_biome_at(x, z);
+        let dry = self.weather.snowing_here || matches!(here, voxel::worldgen::Biome::Desert | voxel::worldgen::Biome::Badlands);
+        let e = screen_drops::Exposure {
+            rain: if playing && !dry && self.dim == voxel::worldgen::Dim::Overworld { self.weather.rain } else { 0.0 },
+            look_y: self.forward().y,
+            roofed: self.world.surface_y(x, z).is_some_and(|y| y as f32 + 1.0 > eye.y),
+            submerged: self.body.head_in_water,
+            level: self.settings.rain_drops,
+        };
+        // The pause menu stops them too; a screenshot gets them settled first.
+        let wdt = if self.world_paused() { 0.0 } else { dt };
+        if let Some(secs) = self.args.screenshot.as_ref().and(std::env::var("MC_DROPS").ok()).and_then(|v| v.parse::<f32>().ok()) {
+            if self.wet.drops.is_empty() && e.rain > 0.0 {
+                for _ in 0..(secs * 30.0) as usize {
+                    self.wet.update(&e, 1.0 / 30.0);
+                }
+            }
+        } else {
+            self.wet.update(&e, wdt);
+        }
+        if let Some(r) = self.renderer.get_mut() {
+            self.wet.aspect = r.config.width as f32 / r.config.height.max(1) as f32;
+            let d = self.wet.instances(r.config.height as f32);
+            let q = &r.queue;
+            r.drops.set(q, &d);
         }
     }
 
@@ -1935,6 +1971,7 @@ impl Game {
             self.world.changed.clear();
             self.weather.columns.clear();
         }
+        self.update_wet_screen(eye, dt);
         if let Some(r) = self.renderer.get_mut() {
             r.set_rain(&self.weather.columns);
         }

@@ -162,6 +162,8 @@ pub struct Renderer {
     pub cave_cull: bool,
     /// Shadows, water reflections, TAA jitter.
     pub fx: SceneFx,
+    /// Raindrops on the screen (screen_drops.rs).
+    pub drops: crate::screen_drops::DropFx,
     shadow_pipe: wgpu::RenderPipeline,
     /// The depth texture was recreated since the effects last bound it.
     depth_changed: bool,
@@ -561,6 +563,7 @@ impl Renderer {
             mapped_at_creation: false,
         });
         let ui_cap = 1 << 14;
+        let drops = crate::screen_drops::DropFx::new(&device, format, copy_src_ok);
         let ui_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("ui"),
             size: (ui_cap * std::mem::size_of::<UiVertex>()) as u64,
@@ -606,6 +609,7 @@ impl Renderer {
             texture_size,
             vram_bytes: 0,
             copy_src_ok,
+            drops,
             cave_cull: true,
             fx,
             shadow_pipe,
@@ -1252,6 +1256,8 @@ impl Renderer {
             }
             self.post.run(&self.queue, &mut enc, &view, u);
         }
+        // Raindrops sit on the finished picture, under the HUD.
+        self.drops.draw(&self.device, &self.queue, &mut enc, &frame.texture, &view);
         if !ui.verts.is_empty() {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("hud"),
