@@ -4176,7 +4176,6 @@ impl Game {
             self.draw_mob_health_bars(w, h);
             self.draw_drop_labels(w, h);
             self.draw_hunter_marks(w, h);
-            self.draw_sign_texts(w, h);
             self.draw_mob_names(w, h);
             self.draw_tr3_hud(w, h);
             if self.screen == Screen::Playing {
@@ -5193,7 +5192,8 @@ impl Game {
             items.push((self.entities.painting_mesh(d), p.bones(block, &self.world)));
         }
         self.entities.prepare_split(&self.renderer, items, overlay, shadow_only);
-        self.entities.particles.prepare(&self.renderer, &self.particles, &self.world, block);
+        let letters = self.sign_letters(block);
+        self.entities.particles.prepare(&self.renderer, &self.particles, &self.world, block, letters);
         let mut drops = self.drop_instances(block);
         drops.extend(figure_backdrop);
         drops.extend(self.tnt_instances(block));
