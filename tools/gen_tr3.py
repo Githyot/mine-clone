@@ -1341,6 +1341,9 @@ def keg_side(a):
 
 
 def keg_top(a):
+    # The whole face is filled (it is a full block): stave ends and a steel hoop round the lid.
+    a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(WOOD, lambda xs, ys: 0.3 + 0.15 * np.sin(xs * 0.4)), "#140c06")
+    a.poly([(1, 1), (31, 1), (31, 31), (1, 31)], shade_fill(STEEL, lambda xs, ys: 0.5), "#16181c")
     a.disc(16, 16, 15.5, shade_fill(WOOD, lambda xs, ys: 0.55 + 0.2 * np.sin(np.hypot(xs - 16, ys - 16) * 1.2)), "#140c06")
 
 
@@ -1592,6 +1595,8 @@ def gem_log(a):
 
 
 def gem_log_top(a):
+    # Bark round the rings, so the corners of the full block aren't see-through.
+    a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(TRAP_STONE, lambda xs, ys: 0.2 + 0.15 * np.sin(xs * 1.4)), "#141418")
     a.disc(16, 16, 15.5, shade_fill(TRAP_STONE, lambda xs, ys: 0.5 + 0.25 * np.sin(np.hypot(xs - 16, ys - 16) * 1.4)), "#141418")
 
 
@@ -1625,6 +1630,7 @@ def living_side(a):
 
 
 def living_top(a):
+    a.poly([(0, 0), (32, 0), (32, 32), (0, 32)], shade_fill(LIVING, lambda xs, ys: 0.2 + 0.15 * np.sin(xs * 0.9)), LIVING[0])
     a.disc(16, 16, 15.5, shade_fill(LIVING, lambda xs, ys: 0.5 + 0.3 * np.sin(np.hypot(xs - 16, ys - 16) * 1.1)), LIVING[0])
 
 

@@ -1011,7 +1011,9 @@ impl Game {
             let id = self.world.block_or_air(hit.block);
             let name = self.reg.get(id).name.clone();
             let sneaking = self.crouch > 0.5;
-            if (!sneaking || self.held_stack().is_none()) && self.fase6_block_use(&name, hit.block) {
+            // Work blocks that turn (the anvil) answer to their base name in any facing.
+            let base = self.reg.get(self.reg.get(id).base).name.clone();
+            if (!sneaking || self.held_stack().is_none()) && self.fase6_block_use(&base, hit.block) {
                 return true;
             }
             if !sneaking || self.held_stack().is_none() {

@@ -2,13 +2,13 @@
 (blocks: [
     // Work blocks
     (name: "enchanting_table", display_name: Some("Mesa de Encantamento"), hardness: 5.0, tool: Some(Pickaxe), tier: 1, light: 7, textures: (top: Some("enchanting_table_top"), side: Some("enchanting_table_side"), bottom: Some("enchanting_table_bottom"))),
-    (name: "anvil", display_name: Some("Bigorna"), hardness: 5.0, tool: Some(Pickaxe), tier: 1, gravity: true, textures: (top: Some("anvil_top"), side: Some("anvil_side"), bottom: Some("anvil_side"))),
-    (name: "chipped_anvil", display_name: Some("Bigorna Lascada"), hardness: 5.0, tool: Some(Pickaxe), tier: 1, gravity: true, textures: (top: Some("chipped_anvil_top"), side: Some("anvil_side"), bottom: Some("anvil_side"))),
-    (name: "damaged_anvil", display_name: Some("Bigorna Danificada"), hardness: 5.0, tool: Some(Pickaxe), tier: 1, gravity: true, textures: (top: Some("damaged_anvil_top"), side: Some("anvil_side"), bottom: Some("anvil_side"))),
+    (name: "anvil", display_name: Some("Bigorna"), shape: Anvil, hardness: 5.0, tool: Some(Pickaxe), tier: 1, gravity: true, textures: (top: Some("anvil_top"), side: Some("anvil_side"), bottom: Some("anvil_side"))),
+    (name: "chipped_anvil", display_name: Some("Bigorna Lascada"), shape: Anvil, hardness: 5.0, tool: Some(Pickaxe), tier: 1, gravity: true, textures: (top: Some("chipped_anvil_top"), side: Some("anvil_side"), bottom: Some("anvil_side"))),
+    (name: "damaged_anvil", display_name: Some("Bigorna Danificada"), shape: Anvil, hardness: 5.0, tool: Some(Pickaxe), tier: 1, gravity: true, textures: (top: Some("damaged_anvil_top"), side: Some("anvil_side"), bottom: Some("anvil_side"))),
     (name: "grindstone", display_name: Some("Rebolo"), hardness: 2.0, tool: Some(Pickaxe), tier: 1, textures: (top: Some("grindstone_top"), side: Some("grindstone_side"), bottom: Some("grindstone_bottom"))),
     (name: "smithing_table", display_name: Some("Bancada de Ferraria"), hardness: 2.5, tool: Some(Axe), textures: (top: Some("smithing_table_top"), side: Some("smithing_table_side"), front: Some("smithing_table_front"), bottom: Some("smithing_table_bottom"))),
     (name: "brewing_stand", display_name: Some("Suporte de Poções"), hardness: 0.5, tool: Some(Pickaxe), tier: 1, shape: Cross, transparency: Cutout, solid: false, light: 1, textures: (all: Some("brewing_stand"))),
-    (name: "beacon", display_name: Some("Sinalizador"), hardness: 3.0, light: 15, transparency: Cutout, textures: (all: Some("beacon"))),
+    (name: "beacon", display_name: Some("Sinalizador"), shape: Beacon, hardness: 3.0, light: 15, transparency: Cutout, textures: (side: Some("glass"), top: Some("glass"), bottom: Some("obsidian"), front: Some("beacon"))),
     (name: "conduit", display_name: Some("Conduíte"), hardness: 3.0, tool: Some(Pickaxe), light: 15, shape: Lantern, transparency: Cutout, textures: (side: Some("conduit"), top: Some("conduit_top"), bottom: Some("conduit_top"))),
     // Ocean stone
     (name: "prismarine", display_name: Some("Prismarinho"), hardness: 1.5, tool: Some(Pickaxe), tier: 1, textures: (all: Some("prismarine"))),

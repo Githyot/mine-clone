@@ -516,7 +516,9 @@ impl Game {
                 self.prog.event(crate::progression::Event::Repaired);
                 // The anvil wears: chipped, then damaged, then it breaks.
                 if self.survival && self.prog.rng.f32() < 0.12 {
-                    let now = self.reg.get(self.world.block_or_air(p)).name.clone();
+                    let cur = self.world.block_or_air(p);
+                    let facing = self.reg.get(cur).variant;
+                    let now = self.reg.get(self.reg.get(cur).base).name.clone();
                     let next = match now.as_str() {
                         "anvil" => "chipped_anvil",
                         "chipped_anvil" => "damaged_anvil",
@@ -527,7 +529,8 @@ impl Game {
                         self.sfx(Sfx::Break(Material::Metal));
                         self.close_survival_screen();
                     } else {
-                        let id = self.reg.id_or_air(next);
+                        // Worn, it keeps the way it faced.
+                        let id = self.reg.variant(self.reg.id_or_air(next), facing);
                         self.world.set_block(p, id);
                     }
                 }

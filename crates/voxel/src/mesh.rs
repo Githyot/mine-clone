@@ -943,6 +943,9 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                                 // The face it points to shows the piston top, the back its bottom.
                                 let df = DIR6_FACE[pdir];
                                 t.faces[idu][if f == df { 2 } else if f == df ^ 1 { 3 } else { 0 }]
+                            } else if let Some(slot) = crate::shapes::box_face(shape, bi, f) {
+                                // Parts of different stuff: an anvil's rough steps, a ball's stand.
+                                t.faces[idu][slot]
                             } else if shape == Shape::Pot && f == 3 {
                                 t.faces[idu][0]
                             } else {
@@ -1336,6 +1339,18 @@ pub fn quad_indices(quads: usize) -> Vec<u32> {
 mod tests {
     use super::*;
     use crate::chunk::ChunkPos;
+
+    #[test]
+    fn hopper_draws_its_bowl_and_funnel() {
+        let reg = BlockRegistry::from_ron(r#"(blocks: [(name: "hopper", shape: Hopper, transparency: Cutout)])"#).unwrap();
+        let t = MeshTables::new(&reg, vec![]);
+        const B: usize = crate::chunk::BASE_SECTION;
+        let mut c = Chunk::new(ChunkPos::new(0, 0));
+        c.set(5, 5, 5, 1);
+        let input = MeshInput::new([None, None, None, None, Some(&c), None, None, None, None]);
+        // Floor, four walls and three steps of funnel, every face showing.
+        assert_eq!(mesh_section(&t, &input, B).solid.len(), 8 * 6 * 4);
+    }
 
     #[test]
     fn single_block_has_six_faces() {
