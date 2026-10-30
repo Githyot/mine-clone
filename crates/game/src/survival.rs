@@ -1726,6 +1726,7 @@ impl Game {
         let c = cam_block.as_vec3();
         let mut out = Vec::with_capacity(self.surv.drops.len() + self.surv.orbs.len());
         out.extend(self.swing_instances(cam_block));
+        self.banner_instances(cam_block, &mut out);
         // The orb sprite is loaded right after the item sprites.
         let orb_layer = (self.item_base as usize + self.items.textures.len()) as f32;
         let hand = self.hand_light_level();
@@ -1748,7 +1749,7 @@ impl Game {
             let (flat, layers, mut size) = match it.look {
                 Look::Block(b) => {
                     let bl = self.reg.get(b);
-                    if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail) {
+                    if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail | Shape::TallBanner) {
                         (1.0, [bl.faces[0] as f32; 3], 0.4)
                     } else {
                         (0.0, [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32], 0.22)
@@ -2828,7 +2829,7 @@ impl Game {
         Some(match it.look {
             Look::Block(b) => {
                 let bl = self.reg.get(b);
-                if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail) {
+                if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail | Shape::TallBanner) {
                     // Plants and torches are flat item pictures in the hand.
                     HeldLook { kind: HeldKind::Flat, flat: true, layers: [bl.faces[0] as f32; 3] }
                 } else {

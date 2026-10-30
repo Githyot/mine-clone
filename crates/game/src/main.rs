@@ -116,6 +116,7 @@ mod furniture;
 mod gear;
 mod weather;
 mod windmill;
+mod banners;
 mod wind;
 mod entity;
 mod instruments;
@@ -2009,6 +2010,9 @@ impl Game {
                 if std::env::var("MC_DOORS").is_ok() {
                     self.build_door_test();
                 }
+                if std::env::var("MC_BANNERS").is_ok() {
+                    self.build_banner_test();
+                }
                 if self.args.shapes {
                     self.build_shapes();
                 }
@@ -3463,7 +3467,7 @@ impl Game {
             // A bench runs across your view.
             Shape::Bench => facing(f.x, f.z) ^ 1,
             // A sign hangs on the wall clicked, or stands facing you.
-            Shape::Sign | Shape::Banner => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) | 4 } else if hit.normal.y > 0 { facing(f.x, f.z) } else { return None },
+            Shape::Sign | Shape::Banner | Shape::TallBanner => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) | 4 } else if hit.normal.y > 0 { facing(f.x, f.z) } else { return None },
             // A shelf goes on the wall you clicked.
             Shape::Shelf => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) } else { facing(f.x, f.z) },
             // A ladder goes flat on the wall clicked.

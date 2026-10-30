@@ -706,7 +706,8 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                 }
                 let idu = id as usize;
                 let shape = t.shape[idu];
-                if shape == Shape::Invisible {
+                // Tall banners are drawn whole by the game, swaying.
+                if shape == Shape::Invisible || shape == Shape::TallBanner {
                     continue;
                 }
                 let biome = input.biomes[lx + lz * 16] as usize;
