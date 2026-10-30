@@ -118,8 +118,14 @@ fn fs_entity(in: EOut) -> @location(0) vec4<f32> {
     if (mode > 1.5) {
         l = max(l, vec3<f32>(0.85));
     }
+    // Armour (bit 16): the bottom row of its swatches is light itself (armor_design.rs).
+    let lm = layer_mat[in.layer];
+    let glow = (lm & 0x10000u) != 0u && in.uv.y >= 0.875 && in.uv.x < 0.75;
+    if (glow) {
+        l = max(l, vec3<f32>(1.05));
+    }
     var rgb = base * in.shade * l;
-    let mat = select(0u, layer_mat[in.layer], g.mat.x > 0.5 && mode < 1.5);
+    let mat = select(0u, lm & 0xffffu, g.mat.x > 0.5 && mode < 1.5 && !glow);
     if (mat != 0u) {
         // Relief from the skin's own light and dark texels, fading out past a dozen blocks.
         var k = 0.0;

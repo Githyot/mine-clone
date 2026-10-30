@@ -17,7 +17,8 @@ use voxel::physics::Terrain;
 use voxel::worldgen::{Biome, Dim};
 
 use crate::audio::Sfx;
-use crate::entity::Bones;
+use crate::entity::{Bones, MOUTH_PART};
+use crate::money::s;
 use crate::sfx_extra::Call;
 use crate::Game;
 
@@ -171,6 +172,12 @@ pub struct Wagon {
     age: f32,
     /// Test scenes: walks and rolls on the spot, so a screenshot catches it in motion.
     treadmill: bool,
+    /// Pulled up to trade with the player (seconds left), and the driver's words (seconds
+    /// left of the mouth moving).
+    halt_t: f32,
+    talk_t: f32,
+    /// Picks the travelling merchant's goods from the road.
+    seed: u32,
 }
 
 #[derive(Default)]
@@ -186,6 +193,8 @@ pub struct Wagons {
     leaves: HashSet<BlockId>,
     rough: HashSet<BlockId>,
     test_done: bool,
+    /// Test hook MC_WAGON_TALK: click the first driver once the scene is up.
+    talk_test: bool,
 }
 
 /// Models the wagons are drawn with, looked up once.
@@ -384,6 +393,9 @@ impl Game {
             call_t: 8.0 + r * 20.0,
             age: 0.0,
             treadmill: false,
+            halt_t: 0.0,
+            talk_t: 0.0,
+            seed: r.to_bits(),
         }
     }
 
@@ -424,6 +436,7 @@ impl Game {
             }
         }
         self.wagon_test_scene();
+        self.wagon_talk_test();
         if dt <= 0.0 {
             return;
         }
@@ -598,6 +611,13 @@ impl Game {
         for m in w.animals.iter_mut().chain(w.driver.iter_mut()) {
             m.age += dt;
         }
+        // Still in the driver's shop: stay pulled up.
+        let shopping = self.surv.open == crate::survival::Open::Shop && w.driver.as_ref().is_some_and(|d| self.mobs.reg.defs[d.def].display_name == self.surv.shop_name);
+        if shopping && (w.pos - self.body.pos).length() < 10.0 {
+            w.halt_t = w.halt_t.max(2.0);
+        }
+        w.halt_t = (w.halt_t - dt).max(0.0);
+        w.talk_t = (w.talk_t - dt).max(0.0);
         if w.parked {
             // Hitched and waiting: the animals shift and look about now and then.
             for m in w.animals.iter_mut() {
@@ -647,7 +667,7 @@ impl Game {
             go = w.stuck > 2.0;
         }
         // Stuck: creep round in a slow turn until a way opens.
-        let target = if !go { 0.0 } else if w.stuck > 0.0 { cruise * 0.4 } else { cruise };
+        let target = if !go || w.halt_t > 0.0 { 0.0 } else if w.stuck > 0.0 { cruise * 0.4 } else { cruise };
         // Heavy going in sand and snow; on ice the wheels slip, slow to start and to stop.
         let g = voxel::physics::Terrain::ground(&self.world, (w.pos - Vec3::Y * 0.05).floor().as_ivec3());
         let hold = (g.grip / 8.0).min(1.0);
@@ -706,8 +726,17 @@ impl Game {
             m.head_pitch = if w.team == Team::Oxen { -0.18 } else { -0.05 };
             m.head_yaw = 0.0;
         }
+        let seat = driver_seat(w);
         if let Some(d) = w.driver.as_mut() {
-            d.head_yaw = ((d.age * 0.17 + d.phase * 9.0).sin() * 0.9).clamp(-0.6, 0.6) * ((d.age * 0.05).sin().abs());
+            let idle = ((d.age * 0.17 + d.phase * 9.0).sin() * 0.9).clamp(-0.6, 0.6) * ((d.age * 0.05).sin().abs());
+            // Pulled up to trade: they turn to look at you.
+            let want = if w.halt_t > 0.0 {
+                let to = self.body.pos - seat;
+                wrap(to.x.atan2(to.z) - w.yaw).clamp(-1.1, 1.1)
+            } else {
+                idle
+            };
+            d.head_yaw += (want - d.head_yaw) * (dt * if w.halt_t > 0.0 { 6.0 } else { 2.0 }).min(1.0);
         }
         self.place_team(w, (dt * 7.0).min(1.0));
         // Hooves: one clop as each foot comes down (four a stride), softer on soft ground.
@@ -761,6 +790,108 @@ impl Game {
         let (r1, r2) = (self.surv.rng.f32(), self.surv.rng.f32());
         if let Some(fx) = crate::mob_sounds::pick(&def.name, Call::Idle, def.scale, r1, r2) {
             self.sfx_at(Sfx::Fx(fx), m.body.pos + Vec3::Y * 1.2, 0.45, 24.0);
+        }
+    }
+
+    /// Right click on a wagon's driver: they pull up, turn to you, say a word and open their
+    /// stall (the merchant on a covered wagon, the farmer on a hay cart).
+    pub(crate) fn wagon_driver_use(&mut self) -> bool {
+        if self.wagons.list.is_empty() {
+            return false;
+        }
+        let (eye, dir) = (self.body.eye(), self.forward());
+        let mut best: Option<(usize, f32)> = None;
+        for (k, w) in self.wagons.list.iter().enumerate() {
+            if w.driver.is_none() || (w.pos - eye).length() > 12.0 {
+                continue;
+            }
+            let (lo, hi) = driver_box(w);
+            if let Some(t) = crate::mobs::ray_box(eye, dir, lo, hi) {
+                if t <= 4.5 && best.is_none_or(|b| t < b.1) {
+                    best = Some((k, t));
+                }
+            }
+        }
+        let Some((k, t)) = best else { return false };
+        // A mob or a solid block in front of the driver takes the click instead.
+        if self.mobs.pick(eye, dir, 4.5).is_some_and(|(_, mt)| mt < t) {
+            return false;
+        }
+        let block_dist = self.target.filter(|h| self.reg.get(self.world.block_or_air(h.block)).shape != voxel::block::Shape::Cross).map(|h| h.distance).unwrap_or(f32::MAX);
+        if t > block_dist {
+            return false;
+        }
+        let w = &mut self.wagons.list[k];
+        w.halt_t = 30.0;
+        w.talk_t = 3.0;
+        let seed = w.seed;
+        let Some(dr) = w.driver.as_ref() else { return false };
+        let def = &self.mobs.reg.defs[dr.def];
+        let (name, dn) = (def.name.clone(), def.display_name.clone());
+        let mut pick = |n: usize| (self.surv.rng.f32() * n as f32) as usize % n;
+        if name.starts_with("settler_") {
+            let line = FARMER_LINES[pick(FARMER_LINES.len())];
+            if self.settler_trade(&name, &dn) && self.surv.open == crate::survival::Open::Shop {
+                self.toast(format!("{dn}: {line}"), 5.0);
+            }
+            return true;
+        }
+        // The merchant: their own goods, and three things from the road.
+        let line = MERCHANT_LINES[pick(MERCHANT_LINES.len())];
+        let mut offers: Vec<(&'static str, u8, u32)> = crate::npcs::SHOPS.iter().find(|s| s.0 == "npc_merchant").map(|s| s.1.to_vec()).unwrap_or_default();
+        let mut idx: Vec<usize> = (0..ROAD_GOODS.len()).collect();
+        let mut r = seed | 1;
+        for i in (1..idx.len()).rev() {
+            r ^= r << 13;
+            r ^= r >> 17;
+            r ^= r << 5;
+            idx.swap(i, r as usize % (i + 1));
+        }
+        offers.extend(idx.iter().map(|&i| ROAD_GOODS[i]).filter(|g| self.items.id(g.0).is_some()).take(3));
+        let mut inv = voxel::item::Inventory::new(offers.len());
+        let mut prices = Vec::new();
+        for &(item, count, price) in &offers {
+            if let Some(id) = self.items.id(item) {
+                inv.slots[prices.len()] = Some(voxel::item::ItemStack::new(id, count));
+                prices.push(price);
+            }
+        }
+        self.surv.shop = inv;
+        self.surv.shop_prices = prices;
+        self.surv.shop_name = dn.clone();
+        self.surv.shop_want = None;
+        self.surv.shop_scroll = 0;
+        self.surv.open = crate::survival::Open::Shop;
+        self.set_screen(crate::Screen::Inventory);
+        self.toast(format!("{dn}: {line}"), 5.0);
+        true
+    }
+
+    /// Test hook MC_WAGON_TALK=1 (shop open) or =look (just the chat): stand by the first
+    /// driver and click them.
+    fn wagon_talk_test(&mut self) {
+        if !self.wagons.talk_test || self.wagons.list.is_empty() {
+            return;
+        }
+        let Some(w) = self.wagons.list.iter().find(|w| w.driver.is_some()) else { return };
+        let (lo, hi) = driver_box(w);
+        let aim = (lo + hi) * 0.5 + Vec3::Y * 0.3;
+        // Beside the seat, at arm's length.
+        let side = Quat::from_rotation_y(w.yaw) * Vec3::X;
+        let stand = Vec3::new(aim.x, w.pos.y, aim.z) + side * 2.6;
+        let Some((y, _, _)) = self.wagon_ground(stand.x, stand.z, w.pos.y + 2.0) else { return };
+        self.body.pos = Vec3::new(stand.x, y, stand.z);
+        let to = aim - self.body.eye();
+        self.yaw = (-to.x).atan2(-to.z);
+        self.pitch = (to.y / to.length()).asin();
+        self.target = None;
+        if self.wagon_driver_use() {
+            log::info!("wagon talk test: shop open with {} goods", self.surv.shop_prices.len());
+            self.wagons.talk_test = false;
+            if std::env::var("MC_WAGON_TALK").as_deref() == Ok("look") {
+                self.surv.open = crate::survival::Open::Craft;
+                self.set_screen(crate::Screen::Playing);
+            }
         }
     }
 
@@ -855,6 +986,7 @@ impl Game {
             placed.push(w);
         }
         log::info!("wagon test scene: {} wagons in front of the player", placed.len());
+        self.wagons.talk_test = std::env::var("MC_WAGON_TALK").is_ok();
         self.wagons.list.extend(placed);
         self.wagons.test_done = true;
     }
@@ -951,7 +1083,7 @@ impl Game {
                 out.push((m.def, bones));
             }
             if let Some(dr) = &w.driver {
-                out.push((dr.def, driver_bones(dr, &reg.defs[dr.def], body, w.speed, light)));
+                out.push((dr.def, driver_bones(dr, &reg.defs[dr.def], body, w.speed, w.talk_t, light)));
             }
         }
         out
@@ -959,7 +1091,7 @@ impl Game {
 }
 
 /// The driver sits on the seat, legs out in front, holding the reins.
-fn driver_bones(m: &Mob, def: &voxel::mob::MobDef, body: Mat4, speed: f32, light: [f32; 4]) -> Bones {
+fn driver_bones(m: &Mob, def: &voxel::mob::MobDef, body: Mat4, speed: f32, talk: f32, light: [f32; 4]) -> Bones {
     let mut b = Bones { light, ..Default::default() };
     let leg = def.parts.iter().filter(|p| matches!(p.anim, Anim::Leg(_))).map(|p| p.size.1 as f32).fold(0.0, f32::max);
     let k = def.scale / 16.0;
@@ -977,9 +1109,64 @@ fn driver_bones(m: &Mob, def: &voxel::mob::MobDef, body: Mat4, speed: f32, light
         };
         let part = Mat4::from_translation(pivot) * Mat4::from_quat(rot) * Mat4::from_translation(-pivot);
         b.m[i] = (model * part).to_cols_array_2d();
+        // Speaking: the mouth opens and shuts with the syllables, as in anim.rs.
+        if i == 0 && talk > 0.0 && crate::entity::has_mouth(def) {
+            let syl = ((m.age * 9.0).sin() * 0.5 + 0.5) * (0.6 + 0.4 * (m.age * 3.3).sin().abs());
+            let top = p.origin.1 as f32 + 2.0;
+            let open = Mat4::from_translation(Vec3::Y * top) * Mat4::from_scale(Vec3::new(1.0, 0.2 + talk.min(1.0) * syl * 1.1, 1.0)) * Mat4::from_translation(-Vec3::Y * top);
+            b.m[MOUTH_PART] = (model * part * open).to_cols_array_2d();
+        }
     }
     b
 }
+
+/// Where the driver sits: the middle of the seat, at the hips.
+fn driver_seat(w: &Wagon) -> Vec3 {
+    w.pos + Quat::from_rotation_y(w.yaw) * Vec3::new(0.0, 1.125 * SIZE, 0.86 * SIZE)
+}
+
+/// The driver's hit box, for a click: hips to the top of the head, a little generous.
+fn driver_box(w: &Wagon) -> (Vec3, Vec3) {
+    let seat = driver_seat(w);
+    (seat - Vec3::new(0.45, 0.25, 0.45), seat + Vec3::new(0.45, 1.4, 0.45))
+}
+
+/// What a travelling merchant has brought from far off, on top of the merchant's own goods:
+/// three of these, different for every wagon.
+const ROAD_GOODS: [(&str, u8, u32); 12] = [
+    ("compass", 1, s(25)),
+    ("map", 1, s(18)),
+    ("name_tag", 1, s(30)),
+    ("lead", 2, s(10)),
+    ("saddle", 1, s(45)),
+    ("spyglass", 1, s(35)),
+    ("cocoa_beans", 6, s(6)),
+    ("sweet_berries", 8, s(4)),
+    ("honey_bottle", 2, s(8)),
+    ("cactus", 4, s(4)),
+    ("bamboo", 8, s(4)),
+    ("sugar_cane", 8, s(4)),
+];
+
+/// The merchant on the road.
+const MERCHANT_LINES: [&str; 7] = [
+    "Opa! Veja o que eu trouxe.",
+    "Estrada longa... Vai querer algo?",
+    "Os bois descansam, a gente negocia!",
+    "Trouxe coisas de além da serra.",
+    "À noite, leve uma tocha a mais!",
+    "De vila em vila, sempre com novidade.",
+    "Bom dia, viajante! Aceito moedas.",
+];
+
+/// The farmer taking hay to market.
+const FARMER_LINES: [&str; 5] = [
+    "Levando feno pra vila. Quer algo?",
+    "Colheita boa! Compro seu trigo.",
+    "Ô, calma, cavalo! O que vai ser?",
+    "Pão fresco e maçã do pé!",
+    "Dia bonito pra estrada, né?",
+];
 
 #[cfg(test)]
 mod tests {

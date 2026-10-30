@@ -15,6 +15,8 @@ struct Item {
     // pictures mirrored, a left-hinged door; 3: a box inside a box, a drawer): corners in the
     // block's 0..1 frame, and the pivot inside the block that pos stands for. On a whole item,
     // bmin is the enchantment shimmer instead: rgb its colour, w its strength (0 = none).
+    // piv.w 4: a strip of cloth (a banner): the picture spans the box's width, and from
+    // bmin.w to bmax.w of its height (a strip of a taller picture), on every face of layers.x.
     bmin: vec4<f32>,
     bmax: vec4<f32>,
     piv: vec4<f32>,
@@ -82,7 +84,14 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
     let world = it.pos.xyz + rotated;
     var o: IOut;
     o.clip = g.view_proj * vec4<f32>(world, 1.0);
-    if (flat) {
+    let cloth = it.piv.w > 3.5;
+    if (cloth) {
+        // Front (+z) as drawn, the back mirrored like the other side of a cloth; the thin edges
+        // take the picture's edge pixels.
+        let u = clamp(select(c.x, 1.0 - c.x, face == 5u), 0.002, 0.998);
+        o.uv = vec2<f32>(u, mix(it.bmin.w, it.bmax.w, clamp(1.0 - c.y, 0.002, 0.998)));
+        o.layer = i32(it.layers.x);
+    } else if (flat) {
         // Every face samples the sprite at its own position: front and back show the picture,
         // the edges show its outline pixels, like an extruded item.
         o.uv = vec2<f32>(c.x, 1.0 - c.y);
@@ -129,7 +138,7 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
     }
     var shade = array<f32, 6>(0.6, 0.6, 1.0, 0.5, 0.8, 0.8);
     o.shade = shade[face] + it.layers.w;
-    if (part && it.rot.w > 0.05) {
+    if (part && !cloth && it.rot.w > 0.05) {
         // Inside open storage: faces inside the box (not on its outside or rim) are in
         // shadow, deepest at the floor (bmin.w) and lighter towards the top (rot.w); the
         // underside of a lid is dim. A box inside a box (piv.w 3, a drawer) keeps its own

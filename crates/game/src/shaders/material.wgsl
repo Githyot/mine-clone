@@ -6,10 +6,10 @@
 fn mat_look(id: u32) -> vec4<f32> {
     var t = array<vec4<f32>, 16>(
         vec4<f32>(0.0, 1.0, 0.0, 0.0),    // none
-        vec4<f32>(0.9, 96.0, 0.15, 1.0),  // diamond
-        vec4<f32>(0.7, 72.0, 0.1, 0.55),  // gem
-        vec4<f32>(0.85, 44.0, 1.0, 0.12), // gold
-        vec4<f32>(0.7, 32.0, 1.0, 0.0),   // iron
+        vec4<f32>(0.9, 80.0, 0.15, 0.0),  // diamond (its fire is below, no glitter)
+        vec4<f32>(0.7, 72.0, 0.1, 0.3),   // gem
+        vec4<f32>(1.0, 30.0, 1.0, 0.12),  // gold
+        vec4<f32>(0.95, 36.0, 1.0, 0.0),  // iron, silver
         vec4<f32>(0.6, 24.0, 1.0, 0.0),   // copper
         vec4<f32>(0.45, 20.0, 1.0, 0.0),  // netherite
         vec4<f32>(0.55, 22.0, 1.0, 0.0),  // chainmail
@@ -27,7 +27,7 @@ fn mat_look(id: u32) -> vec4<f32> {
 
 // How strongly the texture's light and dark parts stand out as relief, per class.
 fn mat_relief(id: u32) -> f32 {
-    var r = array<f32, 16>(0.0, 0.9, 0.8, 0.9, 0.9, 0.9, 1.3, 1.4, 1.4, 1.2, 0.7, 1.4, 1.5, 1.0, 0.9, 0.8);
+    var r = array<f32, 16>(0.0, 0.9, 0.8, 1.4, 1.4, 1.2, 1.3, 1.4, 1.4, 1.2, 0.7, 1.4, 1.5, 1.0, 0.9, 0.8);
     return r[min(id, 15u)];
 }
 
@@ -107,26 +107,77 @@ fn mat_shade(id: u32, base: vec3<f32>, lit: vec3<f32>, rel: vec3<f32>, n: vec3<f
     var light = vec3<f32>(0.0);
     let h_sun = normalize(ld + v);
     light += sun_col * sky_i * pow(max(dot(n, h_sun), 0.0), look.y) * max(dot(n, ld), 0.0);
-    // Torch light: from the torch in the hand, else from above the eye, so a lit item still
-    // catches a glint in a cave or at night.
+    // Torch light: from the torch in the hand and from moving lights (dropped torches, burning
+    // mobs) at their places, and from above the eye for placed torches, lanterns, lava and fire
+    // (block light has no direction), so metal and ore catch a glint from any light. A flame is
+    // a broad light: its glint is wider than the sun's.
     let warm = vec3<f32>(1.0, 0.82, 0.56);
+    let wide = max(look.y * 0.7, 6.0);
     if (hand > 0.0) {
         let lh = normalize(g.hand_light.xyz - rel);
         let hh = normalize(lh + v);
-        light += warm * mat_curve(hand) * pow(max(dot(n, hh), 0.0), look.y) * max(dot(n, lh), 0.0);
+        light += warm * mat_curve(hand) * 1.3 * pow(max(dot(n, hh), 0.0), wide) * max(dot(n, lh), 0.0);
     }
-    let lb = normalize(v + vec3<f32>(0.0, 0.9, 0.0));
-    let hb = normalize(lb + v);
-    light += warm * mat_curve(blk) * 0.7 * pow(max(dot(n, hb), 0.0), look.y) * max(dot(n, lb), 0.0);
+    for (var i = 0; i < 8; i++) {
+        let d = g.dyn_lights[i];
+        let lv = d.w - length(rel - d.xyz) / 15.0;
+        if (lv > 0.0) {
+            let ld2 = normalize(d.xyz - rel);
+            let hd = normalize(ld2 + v);
+            light += warm * mat_curve(lv) * pow(max(dot(n, hd), 0.0), wide) * max(dot(n, ld2), 0.0);
+        }
+    }
+    // Studio lights for polished surfaces, placed around the camera rather than in the world
+    // (like a matcap): one up and to the left facing the eye, one up and beyond. They stand for
+    // the open sky by day and for placed torches, lanterns, lava and fire at night (block light
+    // has no direction). The mirrored ray changes across a face, so the highlight slides as you
+    // move: that is what makes gold and silver read as shiny from any side.
+    let f4 = g.inv_view_rot * vec4<f32>(0.0, 0.0, 1.0, 1.0);
+    let fwd = normalize(f4.xyz / f4.w);
+    let side = normalize(cross(fwd, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(1e-4, 0.0, 0.0));
+    let upv = cross(side, fwd);
+    let rr = reflect(-v, n);
+    let rv = vec3<f32>(dot(rr, side), dot(rr, upv), -dot(rr, fwd));
+    let k1 = pow(max(dot(rv, normalize(vec3<f32>(-0.35, 0.8, 0.5))), 0.0), look.y * 0.9) * 1.4;
+    let k2 = pow(max(dot(rv, normalize(vec3<f32>(0.3, 0.7, -0.65))), 0.0), look.y * 0.9) * 0.8;
+    let key_col = vec3<f32>(1.0, 0.98, 0.94) * mat_curve(sky) * daylight * 0.7 + warm * mat_curve(blk) * 0.9;
+    light += key_col * (k1 + k2) * max(look.z, min(look.x, 0.9));
     var add = spec_col * light * look.x * fres * 1.6;
 
     // Metals and gems mirror the sky above them (or the dark ground below), and warm torch
-    // light underground.
+    // light underground. A polished metal shows a bright band where the horizon is mirrored
+    // and darker ground under it: that contrast across a face is what reads as shiny.
     let r = reflect(-v, n);
-    let sky_mirror = select(g.sky_horizon.rgb * 0.25, mix(g.sky_horizon.rgb, g.sky_top.rgb, clamp(r.y, 0.0, 1.0)), r.y > 0.0);
-    let env = sky_mirror * mat_curve(sky) * daylight + warm * mat_curve(max(blk, hand)) * 0.35;
+    let horizon_band = exp(-abs(r.y - 0.04) * 9.0);
+    let sky_mirror = mix(g.sky_horizon.rgb * 0.16, mix(g.sky_horizon.rgb, g.sky_top.rgb, sqrt(clamp(r.y, 0.0, 1.0))), smoothstep(-0.12, 0.06, r.y))
+        + g.sky_horizon.rgb * horizon_band * 0.55 * look.z;
+    let env = sky_mirror * mat_curve(sky) * daylight + warm * mat_curve(max(blk, hand)) * (0.35 - 0.15 * look.z);
     let mirror = max(look.z, look.w * 0.6) * look.x;
-    var rgb = lit * (1.0 - 0.35 * look.z) + spec_col * env * mirror * 0.45 * fres;
+    // Metal hardly scatters light: its colour comes from what it mirrors.
+    let diffuse = lit * (1.0 - 0.6 * look.z);
+    var shine = spec_col * env * mirror * mix(0.45, 0.95, look.z) * fres;
+    // Keep the mirrored sky under the bloom threshold, so a whole face never glows.
+    let env_lim = mix(0.5, 0.9, daylight);
+    let dm = max(diffuse.r, max(diffuse.g, diffuse.b));
+    let sm = max(shine.r, max(shine.g, shine.b));
+    if (dm + sm > env_lim && sm > 0.0) {
+        shine *= clamp((max(env_lim, dm) - dm) / sm, 0.0, 1.0);
+    }
+    var rgb = diffuse + shine;
+
+    // Diamond fire: light split into rainbow bands across the facets (the texture's light and
+    // dark areas), sliding through the colours as the view turns. A few broad bands, not dots.
+    if (id == 1u && g.mat.x > 1.5) {
+        let lum = dot(base, vec3<f32>(0.3, 0.55, 0.15));
+        let facet = floor(lum * 3.0);
+        let fd = normalize(vec3<f32>(mat_hash(vec2<f32>(facet, 1.3)) - 0.5, mat_hash(vec2<f32>(facet, 4.7)) - 0.5, mat_hash(vec2<f32>(facet, 8.9)) - 0.5));
+        let phase = dot(r, fd) * 2.4 + facet * 0.21 + dot(rel, vec3<f32>(0.37, 0.29, 0.41));
+        let hue = fract(phase);
+        let spectrum = clamp(abs(fract(hue + vec3<f32>(0.0, 0.667, 0.333)) * 6.0 - 3.0) - 1.0, vec3<f32>(0.0), vec3<f32>(1.0));
+        let band = pow(max(sin(phase * 6.2832), 0.0), 16.0);
+        let around = max(max(sky_i * mix(0.3, 1.0, daylight), mat_curve(max(blk, hand)) * 0.9), 0.1);
+        add += spectrum * band * around * 0.5;
+    }
 
     // Sparkles: a few bright texels each light up as the view passes their angle.
     if (g.mat.x > 1.5 && look.w > 0.0) {

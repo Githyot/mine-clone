@@ -719,6 +719,46 @@ pub enum ArmorStyle {
     Samurai,
     /// Black volcanic rock split by glowing cracks, jagged spikes on the helm.
     Volcanic,
+    /// Engraved waves (the tide knight).
+    Wave,
+    /// Engraved sun rays and a mane pattern (the lion).
+    Mane,
+    /// Leaf-shaped plates with veins and a vine along the rims (the elf).
+    Elven,
+    /// Overlapping petals.
+    Petal,
+    /// Hexagonal plates with fine seams.
+    Hex,
+    /// Bark grain with moss.
+    Bark,
+    /// A dark field of stars and nebula clouds.
+    Cosmic,
+    /// Pitted space rock.
+    Rock,
+    /// Organic veins pulsing under the surface.
+    Veins,
+    /// Bold horizontal bands (the bee).
+    Stripes,
+    /// Bone: ribs on the chest, cracks and knuckles.
+    Bone,
+    /// Diagonal cloth wraps.
+    Wrap,
+    /// Glossy cap with round spots.
+    Spots,
+    /// Glossy chitin with a seam down the middle.
+    Shell,
+    /// Sun flares: rays radiating from the chest.
+    Flare,
+    /// Swirls.
+    Swirl,
+    /// Stars and constellation lines.
+    Stars,
+    /// Rows of overlapping feathers.
+    Feather,
+    /// Concentric rings.
+    Rings,
+    /// Woven cloth with an embroidered hem.
+    Robe,
 }
 
 pub fn armor_style(material: &str) -> ArmorStyle {
@@ -739,151 +779,6 @@ pub fn armor_style(material: &str) -> ArmorStyle {
         "magmarite" => Volcanic,
         _ => Plain,
     }
-}
-
-/// What colour an extra armour piece takes.
-#[derive(Clone, Copy, PartialEq)]
-enum ExtraTint {
-    /// The armour's own metal.
-    Metal,
-    /// Horsehair (crests, plumes): streaky, in this colour.
-    Hair([u8; 3]),
-    /// Leather straps hanging side by side (Roman and Greek skirts).
-    Straps,
-    /// A darker horn or spike.
-    Horn,
-    /// Gold fittings.
-    Gold,
-}
-
-/// Extra boxes a style adds over the plain armour of one piece: (part, origin, size, texture-net
-/// origin, inflate, tint). Their nets sit in the lower half of the 64x128 armour texture, which
-/// armour doesn't otherwise use.
-fn armor_extras(def: &MobDef, piece: usize, style: ArmorStyle) -> Vec<(usize, Vec3, Vec3, (u16, u16), f32, ExtraTint)> {
-    use ArmorStyle::*;
-    use ExtraTint::*;
-    if def.parts.len() < 6 {
-        return Vec::new();
-    }
-    let part = |i: usize| {
-        let p = &def.parts[i];
-        (Vec3::new(p.origin.0 as f32, p.origin.1 as f32, p.origin.2 as f32), Vec3::new(p.size.0 as f32, p.size.1 as f32, p.size.2 as f32))
-    };
-    let mut v: Vec<(usize, Vec3, Vec3, f32, ExtraTint)> = Vec::new();
-    let (ho, hs) = part(0);
-    let (bo, bs) = part(1);
-    match piece {
-        0 => match style {
-            Roman => v.push((0, ho + Vec3::new(0.0, hs.y + 0.6, hs.z / 2.0 - 0.5), Vec3::new(hs.x, 3.0, 1.0), 0.0, Hair([168, 44, 36]))),
-            Greek => {
-                v.push((0, ho + Vec3::new(hs.x / 2.0 - 0.5, hs.y + 0.6, -1.0), Vec3::new(1.0, 3.0, hs.z + 2.0), 0.0, Hair([40, 34, 30])));
-            }
-            Spiked => {
-                for (x0, x1) in [(-3.0, -4.0), (hs.x + 1.0, hs.x + 3.0)] {
-                    v.push((0, ho + Vec3::new(x0, 5.0, 3.0), Vec3::new(2.0, 2.0, 2.0), 0.0, Horn));
-                    v.push((0, ho + Vec3::new(x1, 6.5, 3.5), Vec3::new(1.0, 4.0, 1.0), 0.0, Horn));
-                }
-            }
-            Ornate => {
-                for x in [0.0, hs.x / 2.0 - 0.5, hs.x - 1.0] {
-                    v.push((0, ho + Vec3::new(x, hs.y + 1.0, hs.z + 0.0), Vec3::new(1.0, 2.0, 1.0), 0.0, Metal));
-                }
-            }
-            Facet => v.push((0, ho + Vec3::new(hs.x / 2.0 - 0.5, hs.y + 0.6, 0.0), Vec3::new(1.0, 2.0, hs.z), 0.0, Metal)),
-            Samurai => {
-                // Flared neck guard (back and sides), and the two gold horns over the brow.
-                v.push((0, ho + Vec3::new(-1.0, -0.5, -2.2), Vec3::new(hs.x + 2.0, 3.0, 1.0), 0.0, Metal));
-                v.push((0, ho + Vec3::new(-2.2, -0.5, -1.0), Vec3::new(1.0, 3.0, hs.z), 0.0, Metal));
-                v.push((0, ho + Vec3::new(hs.x + 1.2, -0.5, -1.0), Vec3::new(1.0, 3.0, hs.z), 0.0, Metal));
-                v.push((0, ho + Vec3::new(1.0, hs.y - 1.0, hs.z + 1.2), Vec3::new(1.0, 4.0, 1.0), 0.0, Gold));
-                v.push((0, ho + Vec3::new(hs.x - 2.0, hs.y - 1.0, hs.z + 1.2), Vec3::new(1.0, 4.0, 1.0), 0.0, Gold));
-            }
-            Gothic => v.push((0, ho + Vec3::new(0.0, 0.0, -2.4), Vec3::new(hs.x, 2.0, 2.0), 0.0, Metal)),
-            Volcanic => {
-                for (x, z, h) in [(1.0, 2.0, 2.0), (4.0, 4.0, 3.0), (6.0, 1.0, 2.0)] {
-                    v.push((0, ho + Vec3::new(x, hs.y + 1.0, z), Vec3::new(1.0, h, 1.0), 0.0, Horn));
-                }
-            }
-            _ => {}
-        },
-        1 => {
-            // Pauldrons: a thicker plate over the top of each arm.
-            let paul = match style {
-                Plate | Ornate | Gothic | Facet => Some((4.0, 1.7)),
-                Spiked | Banded | Volcanic => Some((5.0, 2.1)),
-                Roman | Greek => Some((3.0, 1.5)),
-                _ => None,
-            };
-            for k in [2, 3] {
-                let (o, sz) = part(k);
-                if let Some((h, inflate)) = paul {
-                    v.push((k, o + Vec3::Y * (sz.y - h), Vec3::new(sz.x, h, sz.z), inflate, Metal));
-                }
-                let outer = if k == 2 { -1.0 } else { 1.0 };
-                match style {
-                    Spiked => v.push((k, o + Vec3::new(sz.x / 2.0 - 0.5 + outer * 1.0, sz.y + 2.1, sz.z / 2.0 - 0.5), Vec3::new(1.0, 2.0, 1.0), 0.0, Horn)),
-                    Facet => v.push((k, o + Vec3::new(sz.x / 2.0 - 0.5, sz.y + 1.7, sz.z / 2.0 - 0.5), Vec3::new(1.0, 3.0, 1.0), 0.0, Metal)),
-                    Samurai => {
-                        let x = if k == 2 { -2.4 } else { sz.x + 1.4 };
-                        v.push((k, o + Vec3::new(x, sz.y - 7.0, -1.0), Vec3::new(1.0, 7.0, sz.z + 2.0), 0.0, Metal));
-                    }
-                    _ => {}
-                }
-            }
-        }
-        2 => {
-            // Skirts hang from the waist (on the body, so they don't swing with the legs).
-            let skirt = match style {
-                Roman | Greek => Some(Straps),
-                Plate | Spiked | Samurai | Ornate => Some(Metal),
-                _ => None,
-            };
-            if let Some(t) = skirt {
-                v.push((1, bo + Vec3::new(0.0, -4.0, 0.0), Vec3::new(bs.x, 5.0, bs.z), 1.1, t));
-            }
-            if matches!(style, Plate | Spiked | Ornate | Facet | Gothic | Banded) {
-                for k in [4, 5] {
-                    let (o, _) = part(k);
-                    v.push((k, o + Vec3::Y * 4.0, Vec3::new(4.0, 3.0, 4.0), 1.0, Metal));
-                }
-            }
-            if style == Spiked {
-                for k in [4, 5] {
-                    let (o, sz) = part(k);
-                    v.push((k, o + Vec3::new(sz.x / 2.0 - 0.5, 5.0, sz.z + 1.0), Vec3::new(1.0, 1.0, 2.0), 0.0, Horn));
-                }
-            }
-        }
-        _ => {
-            for k in [4, 5] {
-                let (o, sz) = part(k);
-                match style {
-                    Plate | Ornate | Spiked | Facet | Banded | Volcanic => v.push((k, o + Vec3::new(0.0, -1.0, sz.z + 1.0), Vec3::new(sz.x, 2.0, 1.0), 0.0, Metal)),
-                    Gothic => v.push((k, o + Vec3::new(1.0, -1.0, sz.z + 1.0), Vec3::new(2.0, 1.0, 3.0), 0.0, Metal)),
-                    _ => {}
-                }
-                if style == Ornate {
-                    v.push((k, o + Vec3::Y * 3.0, Vec3::new(sz.x, 1.0, sz.z), 1.4, Gold));
-                }
-            }
-        }
-    }
-    // Pack the nets left to right in rows, from y = 64.
-    let (mut x, mut y, mut row) = (0u16, 64u16, 0u16);
-    v.into_iter()
-        .map(|(k, o, sz, inflate, t)| {
-            let (w, h) = ((2.0 * (sz.x + sz.z)) as u16, (sz.y + sz.z) as u16);
-            if x + w > 64 {
-                x = 0;
-                y += row;
-                row = 0;
-            }
-            let uv = (x, y);
-            x += w;
-            row = row.max(h);
-            (k, o, sz, uv, inflate, t)
-        })
-        .collect()
 }
 
 /// A little value noise for armour patterns (patina, cracks): 0..1, smooth over model pixels.
@@ -907,17 +802,20 @@ fn armor_noise(x: f32, y: f32, seed: i32) -> f32 {
 /// caps on the leggings, soles and cuffs on the boots and a crest on the helmet. On top of that
 /// each material's style (`armor_style`) paints its own pattern and its extra pieces.
 fn armor_skin(def: &MobDef, name: &str, color: [u8; 3], scale: u32) -> Skin {
+    use crate::armor_design::Visor;
     use ArmorStyle::*;
-    let style = armor_style(name);
+    let design = crate::armor_design::design(name, color);
+    let (style, pal) = (design.style, design.pal);
+    let fc = |c: [u8; 3]| [c[0] as f32, c[1] as f32, c[2] as f32];
     let chain = style == Mail;
-    let matte = style == Leather || crate::vanity::OUTFITS.contains(&name);
+    let matte = matches!(style, Leather | Robe | Wrap | Bark) || crate::vanity::OUTFITS.contains(&name);
     let sc = scale.max(1);
     let w = SKIN_W * sc;
     let mut pixels = vec![0u8; (w * SKIN_H * sc * 4) as usize];
     let glint = match style {
         _ if matte => 0.18,
-        Gothic | Facet | Samurai => 0.62,
-        Volcanic | Spiked | Banded => 0.28,
+        Gothic | Facet | Samurai | Shell | Spots => 0.62,
+        Volcanic | Spiked | Banded | Rock | Bone | Veins => 0.28,
         _ => 0.5,
     };
     let speck = [0.74, 0.84, 0.84, 0.9, 0.9, 0.9, 0.96, 0.96, 0.96, 0.96, 1.0, 1.0, 1.0, 1.04, 1.08, 0.8];
@@ -949,17 +847,19 @@ fn armor_skin(def: &MobDef, name: &str, color: [u8; 3], scale: u32) -> Skin {
                                 // raised crest along the top.
                                 let inside = i >= 1 && i < rw - 1;
                                 let nose = i == mid || i == mid - 1;
-                                let open = match style {
+                                let open = match design.visor {
                                     // Corinthian: a T opening between the cheek plates.
-                                    Greek => (j == 3 || j == 4) && inside && !nose || j >= 5 && nose,
+                                    Visor::TSlot => (j == 3 || j == 4) && inside && !nose || j >= 5 && nose,
                                     // Cheek guards down both sides.
-                                    Roman => j >= 3 && i >= 2 && i < rw - 2,
-                                    // Closed helms with an eye slit (and a breathing slot for netherite).
-                                    Plate | Banded | Gothic | Volcanic => j == 3 && inside,
-                                    Spiked => j == 3 && inside || j >= 4 && j <= 5 && nose,
+                                    Visor::Cheeks => j >= 3 && i >= 2 && i < rw - 2,
+                                    // Closed helms with an eye slit at the eyes (and breathing slots).
+                                    Visor::Slit | Visor::Band => j == 4 && inside,
+                                    Visor::Breaths => j == 4 && inside || j >= 5 && j <= 6 && nose,
                                     // A nasal bar down the open face.
-                                    Scale => j >= 3 && inside && !nose,
-                                    _ => j >= 3 && inside,
+                                    Visor::Nasal => j >= 3 && inside && !nose,
+                                    Visor::Eyes => j == 4 && (i == 1 || i == 2 || i == rw - 3 || i == rw - 2),
+                                    Visor::Closed => false,
+                                    Visor::Open => j >= 3 && inside,
                                 };
                                 if front && open {
                                     a = 0;
@@ -1031,7 +931,7 @@ fn armor_skin(def: &MobDef, name: &str, color: [u8; 3], scale: u32) -> Skin {
                                 let (tx, ty) = ((x as u32 * sc + si) as i32, (y as u32 * sc + sj) as i32);
                                 let h = (((tx * 73 + ty * 151) ^ (tx * ty * 17)) + (tx * 31 ^ ty * 7)) & 15;
                                 // Soft speckle: the classic flecks, at a third less contrast.
-                                let mut kk = k * (1.0 + (speck[h as usize] - 0.93) * 0.65);
+                                let mut kk = k * (1.0 + (speck[h as usize] - 0.93) * if matte { 0.65 } else { 0.25 });
                                 let mut wh = white;
                                 let mut aa = a;
                                 // A thin dark rim around each plate and a lit bevel just inside it.
@@ -1199,7 +1099,182 @@ fn armor_skin(def: &MobDef, name: &str, color: [u8; 3], scale: u32) -> Skin {
                                             wh = wh.max(0.15);
                                         }
                                     }
+                                    Wave => {
+                                        let t = (fy + (fx * 0.9 + seed as f32).sin() * 0.8).rem_euclid(2.4);
+                                        if side {
+                                            kk *= if t < 0.25 { 0.7 } else if t < 0.55 { 1.12 } else { 1.0 };
+                                        }
+                                    }
+                                    Mane => {
+                                        if piece == 1 && b == 0 && front {
+                                            let (dx, dy) = (fx - midf, fy - 5.0);
+                                            let r = (dx * dx + dy * dy).sqrt();
+                                            if r > 1.2 && ((dy.atan2(dx)) * 8.0).cos() > 0.55 {
+                                                kk *= 0.8;
+                                            }
+                                            if r < 1.2 {
+                                                col = fc(pal.trim);
+                                            }
+                                        } else if side && (inner - 0.9).abs() < 0.14 {
+                                            kk *= 0.74;
+                                        }
+                                    }
+                                    Elven => {
+                                        let t = (fy - (fx - midf).abs() * 0.6).rem_euclid(2.2);
+                                        if side && t < 0.22 {
+                                            kk *= 0.76;
+                                        }
+                                        if side && (inner - 0.75).abs() < 0.14 {
+                                            col = fc(pal.leaf);
+                                            kk = 1.0;
+                                        }
+                                    }
+                                    Petal => {
+                                        let row = (fy / 2.0).floor();
+                                        let lx = (fx / 2.0 + row * 0.5).fract() - 0.5;
+                                        let ly = (fy / 2.0).fract();
+                                        let d = (lx * lx * 2.0 + (ly - 0.1).powi(2)).sqrt();
+                                        if side {
+                                            kk *= 1.1 - ly * 0.25;
+                                            if d > 0.75 && ly > 0.5 {
+                                                kk *= 0.7;
+                                            }
+                                            if ly < 0.25 && lx.abs() < 0.2 {
+                                                col = fc(pal.accent);
+                                            }
+                                        }
+                                    }
+                                    Hex => {
+                                        // Nearest centre of two offset lattices, then the hexagon's distance.
+                                        let (px, py) = (fx / 1.6, fy / 1.6);
+                                        let (rx, ry) = (1.0f32, 1.732f32);
+                                        let ax = px.rem_euclid(rx) - rx * 0.5;
+                                        let ay = py.rem_euclid(ry) - ry * 0.5;
+                                        let bx = (px - rx * 0.5).rem_euclid(rx) - rx * 0.5;
+                                        let by = (py - ry * 0.5).rem_euclid(ry) - ry * 0.5;
+                                        let (gx, gy) = if ax * ax + ay * ay < bx * bx + by * by { (ax, ay) } else { (bx, by) };
+                                        let d = gx.abs().max(gx.abs() * 0.5 + gy.abs() * 0.866);
+                                        if side && d > 0.45 {
+                                            kk *= 0.66;
+                                        } else if side && d > 0.38 && gy < 0.0 {
+                                            kk *= 1.12;
+                                        }
+                                    }
+                                    Bark => {
+                                        kk *= 0.82 + 0.32 * armor_noise(fx * 2.5, fy * 0.3, seed);
+                                        if armor_noise(fx * 0.5, fy * 0.5, seed + 9) > 0.68 {
+                                            col = fc(pal.leaf).map(|c| c * 0.8);
+                                        }
+                                    }
+                                    Cosmic => {
+                                        let n = armor_noise(fx * 0.4, fy * 0.4, seed);
+                                        let g = fc(pal.glow);
+                                        let t = ((n - 0.55).max(0.0) * 1.4).min(0.6);
+                                        col = [0, 1, 2].map(|c| col[c] * (0.7 - t) + g[c] * t);
+                                        if h == 15 && (tx + ty) % 5 == 0 {
+                                            wh = wh.max(0.8);
+                                        }
+                                    }
+                                    Rock => {
+                                        let n = armor_noise(fx * 1.2, fy * 1.2, seed);
+                                        kk *= 0.85 + n * 0.3;
+                                        if n < 0.22 {
+                                            kk *= 0.66;
+                                        }
+                                    }
+                                    Veins => {
+                                        let n = armor_noise(fx * 0.7, fy * 0.7, seed);
+                                        if side && ((fx * 0.8 + n * 4.0).sin()).abs() < 0.1 {
+                                            col = fc(pal.accent).map(|c| (c * 1.5).min(255.0));
+                                            kk = 1.1;
+                                        }
+                                        kk *= 0.92 + n * 0.16;
+                                    }
+                                    Stripes => {
+                                        if (piece == 1 || piece == 2) && ((fy / 2.5).floor() as i32) % 2 == 1 {
+                                            col = fc(pal.accent);
+                                        }
+                                    }
+                                    Bone => {
+                                        if piece == 1 && b == 0 && (front || fi == 1) {
+                                            let t = (fy - (fx - midf).abs() * 0.35).rem_euclid(2.2);
+                                            kk *= if t < 0.8 { 1.12 } else { 0.8 };
+                                            if (fx - midf).abs() < 0.6 {
+                                                kk = 1.15;
+                                            }
+                                        } else if ((fx * 0.6 + armor_noise(fx, fy, seed) * 3.0).sin()).abs() < 0.05 {
+                                            kk *= 0.7;
+                                        }
+                                    }
+                                    Wrap => {
+                                        if side && (fx + fy).rem_euclid(2.0) < 0.25 {
+                                            kk *= 0.72;
+                                        }
+                                    }
+                                    Spots => {
+                                        let (cx, cy) = ((fx / 3.0).fract() - 0.5, (fy / 3.0 + (fx / 3.0).floor() * 0.5).fract() - 0.5);
+                                        if side && (cx * cx + cy * cy).sqrt() < 0.22 {
+                                            col = fc(pal.glow);
+                                            kk = 1.0;
+                                        }
+                                    }
+                                    Shell => {
+                                        kk *= 1.0 + (1.0 - fy / rhf) * 0.15;
+                                        if side && (front || fi == 1) && (fx - midf).abs() < 0.18 {
+                                            kk *= 0.6;
+                                        }
+                                    }
+                                    Flare => {
+                                        let (dx, dy) = (fx - midf, fy - rhf * 0.4);
+                                        let a = dy.atan2(dx);
+                                        if piece == 1 && b == 0 && front && (a * 6.0).cos() > 0.7 {
+                                            col = fc(pal.glow);
+                                            kk = 1.0;
+                                        }
+                                    }
+                                    Swirl => {
+                                        let (dx, dy) = (fx - midf, fy - rhf * 0.5);
+                                        let r = (dx * dx + dy * dy).sqrt();
+                                        if side && (r * 1.6 - dy.atan2(dx) * 2.0).sin() > 0.88 {
+                                            col = fc(pal.glow).map(|c| c * 0.8);
+                                            kk = 1.0;
+                                        }
+                                    }
+                                    Stars => {
+                                        if h == 15 && (tx * 3 + ty) % 4 == 0 {
+                                            wh = wh.max(0.85);
+                                        }
+                                        if side && (fx * 0.7 - fy * 0.4 + seed as f32).rem_euclid(5.0) < 0.12 {
+                                            col = fc(pal.glow);
+                                            kk = 0.9;
+                                        }
+                                    }
+                                    Feather => {
+                                        let row = (fy / 1.8).floor();
+                                        let lx = (fx / 1.4 + row * 0.5).fract();
+                                        let ly = (fy / 1.8).fract();
+                                        if side {
+                                            kk *= if ly > 0.85 { 0.7 } else if (lx - 0.5).abs() < 0.08 { 1.15 } else { 1.0 - ly * 0.12 };
+                                        }
+                                    }
+                                    Rings => {
+                                        let r = ((fx - midf).powi(2) + (fy - rhf * 0.5).powi(2)).sqrt();
+                                        if side && r.rem_euclid(1.6) < 0.25 {
+                                            kk *= 0.72;
+                                        }
+                                    }
+                                    Robe => {
+                                        kk *= if (tx + ty) % 2 == 0 { 1.03 } else { 0.97 };
+                                        // Embroidery along the hems and down the front opening only.
+                                        let hem = fy > rhf - 0.7 && fy < rhf - 0.2;
+                                        let opening = piece == 1 && b == 0 && front && (fx - midf).abs() < 0.35;
+                                        if side && (hem || opening) {
+                                            col = fc(pal.trim);
+                                            kk = if (fx + fy).rem_euclid(1.0) < 0.5 { 1.05 } else { 0.9 };
+                                        }
+                                    }
                                     Mail | Plain => {}
+
                                 }
                                 let o = ((ty as u32 * w + tx as u32) * 4) as usize;
                                 for c in 0..3 {
@@ -1214,79 +1289,8 @@ fn armor_skin(def: &MobDef, name: &str, color: [u8; 3], scale: u32) -> Skin {
             }
         }
     }
-    // The style's extra pieces (crests, horns, pauldrons, skirts, toes), in the lower half.
-    for piece in 0..4 {
-        for (_, _, size, uv, _, tint) in armor_extras(def, piece, style) {
-            let tex = (size.x as i32, size.y as i32, size.z as i32);
-            for (fi, f) in faces(Vec3::ZERO, size, uv, tex).iter().enumerate() {
-                let (rx, ry, rw, rh) = f.rect;
-                let lit = match fi {
-                    4 => 1.12,
-                    5 => 0.7,
-                    0 | 2 => 1.0,
-                    _ => 0.9,
-                };
-                for ty in ry * sc as i32..(ry + rh) * sc as i32 {
-                    for tx in rx * sc as i32..(rx + rw) * sc as i32 {
-                        if tx < 0 || ty < 0 || tx >= w as i32 || ty >= (SKIN_H * sc) as i32 {
-                            continue;
-                        }
-                        let fx = (tx - rx * sc as i32) as f32 / sc as f32 + 0.5 / sc as f32;
-                        let fy = (ty - ry * sc as i32) as f32 / sc as f32 + 0.5 / sc as f32;
-                        let rim = fx.min(fy).min(rw as f32 - fx).min(rh as f32 - fy) * sc as f32;
-                        let hsh = (((tx * 73 + ty * 151) ^ (tx * ty * 17)) + (tx * 31 ^ ty * 7)) & 15;
-                        let mut k = lit * (1.0 + (speck[hsh as usize] - 0.93) * 0.65);
-                        let mut wh = 0.0f32;
-                        let mut a = 255u8;
-                        let mut col = [color[0] as f32, color[1] as f32, color[2] as f32];
-                        match tint {
-                            ExtraTint::Metal => {
-                                if rim < 1.0 && fi < 4 {
-                                    k *= 0.66;
-                                } else if fy < 1.0 && fi < 4 {
-                                    wh = glint * 0.5;
-                                }
-                            }
-                            ExtraTint::Gold => {
-                                col = [236.0, 190.0, 60.0];
-                                if fy < 1.0 {
-                                    wh = 0.35;
-                                }
-                            }
-                            ExtraTint::Horn => {
-                                col = [col[0] * 0.55 + 20.0, col[1] * 0.5 + 12.0, col[2] * 0.5 + 12.0];
-                                k *= 1.1 - fy / rh.max(1) as f32 * 0.3;
-                            }
-                            ExtraTint::Hair(c) => {
-                                col = [c[0] as f32, c[1] as f32, c[2] as f32];
-                                k *= 0.85 + 0.3 * ((fx * 5.3).sin() * 0.5 + 0.5);
-                            }
-                            ExtraTint::Straps => {
-                                col = [112.0, 78.0, 46.0];
-                                // Straps with gaps between them, a metal stud at each top.
-                                if fi < 4 && fy > 1.0 && (fx % 1.5) > 1.05 {
-                                    a = 0;
-                                }
-                                if fi < 4 && fy < 1.0 {
-                                    col = [color[0] as f32, color[1] as f32, color[2] as f32];
-                                    wh = glint * 0.3;
-                                }
-                                if fi < 4 && rim < 1.0 && fy > 1.0 {
-                                    k *= 0.8;
-                                }
-                            }
-                        }
-                        let o = ((ty as u32 * w + tx as u32) * 4) as usize;
-                        for c in 0..3 {
-                            let v = (col[c] * k).min(255.0);
-                            pixels[o + c] = (v + (255.0 - v) * wh) as u8;
-                        }
-                        pixels[o + 3] = a;
-                    }
-                }
-            }
-        }
-    }
+    // The swatches the set's own pieces take, in the lower half.
+    crate::armor_design::paint_tiles(&pal, glint, &mut pixels, w, sc);
     Skin { pixels, scale: sc }
 }
 
@@ -1328,13 +1332,48 @@ fn trim_skin(def: &MobDef, color: [u8; 3]) -> Skin {
     Skin { pixels, scale: 1 }
 }
 
-fn armor_mesh(def: &MobDef, piece: usize, layer: u32, style: ArmorStyle) -> (Vec<EntityVertex>, Vec<u32>) {
+fn armor_mesh(def: &MobDef, piece: usize, layer: u32, name: &str, color: [u8; 3]) -> (Vec<EntityVertex>, Vec<u32>) {
     let (mut verts, mut indices) = armor_mesh_over(def, piece, layer, 0.0);
-    let mut mb = MeshBuilder::new(layer, Some(def));
-    for (part, origin, size, uv, inflate, _) in armor_extras(def, piece, style) {
-        let tex = (size.x as i32, size.y as i32, size.z as i32);
-        for f in faces(origin - Vec3::splat(inflate), size + Vec3::splat(2.0 * inflate), uv, tex).iter() {
-            mb.face(f, part as u32);
+    if def.parts.len() < 6 {
+        return (verts, indices);
+    }
+    // The set's own pieces (armor_design.rs): boxes placed freely, their faces cut from swatches.
+    let mut mb = MeshBuilder::new(layer, None);
+    for (k, p) in crate::armor_design::design(name, color).pieces.iter().enumerate().filter(|(_, p)| p.slot == piece) {
+        let (tx, ty) = p.tile.origin();
+        let h = p.half;
+        for axis in 0..3 {
+            for s in [-1.0f32, 1.0] {
+                // u runs across the face, v down it (along -Y on the sides).
+                let (ua, va) = match axis {
+                    0 => (2, 1),
+                    1 => (0, 2),
+                    _ => (0, 1),
+                };
+                let corner = |a: f32, c: f32| {
+                    let mut v = Vec3::ZERO;
+                    v[axis] = s * h[axis];
+                    v[ua] = a * h[ua];
+                    v[va] = c * h[va];
+                    p.place.transform_point3(v)
+                };
+                let down = if va == 1 { -1.0 } else { 1.0 };
+                let pts = [corner(-1.0, -down), corner(1.0, -down), corner(1.0, down), corner(-1.0, down)];
+                let (lu, lv) = (h[ua] * 2.0, h[va] * 2.0);
+                // Kept a pixel inside the swatch, so distant (mipmapped) faces don't take the
+                // colour of the swatch next door.
+                let (w, hh) = if p.tile.stretch() { (14.0, 14.0) } else { (lu.clamp(0.5, 14.0), lv.clamp(0.5, 14.0)) };
+                let seed = (k * 7 + axis * 3 + (s > 0.0) as usize) as f32;
+                let (ox, oy) = (tx + 1.0 + ((seed * 5.3) % (14.0 - w + 0.01)).max(0.0), ty + 1.0 + ((seed * 3.7) % (14.0 - hh + 0.01)).max(0.0));
+                let uv = |x: f32, y: f32| [x / SKIN_W as f32, y / SKIN_H as f32];
+                let uvs = [uv(ox, oy), uv(ox + w, oy), uv(ox + w, oy + hh), uv(ox, oy + hh)];
+                let mut n = Vec3::ZERO;
+                n[axis] = s;
+                let n = p.place.transform_vector3(n).normalize_or_zero();
+                let a = n.abs();
+                let shade = (a.x * 0.6 + a.z * 0.8 + a.y * if n.y > 0.0 { 1.0 } else { 0.5 }) / (a.x + a.y + a.z).max(1e-4);
+                mb.quad(pts, uvs, n, shade, p.part as u32);
+            }
         }
     }
     let base = verts.len() as u32;
@@ -1484,7 +1523,8 @@ impl EntityRenderer {
         let mut classes = vec![crate::material::NONE; layers as usize];
         if player.is_some() {
             for (i, (n, _)) in ARMOR_MATERIALS.iter().enumerate() {
-                classes[armor_layer0 + i] = crate::material::armor_class(n);
+                // Bit 16: the bottom row of the armour's swatches glows (armor_design.rs).
+                classes[armor_layer0 + i] = crate::material::armor_class(n) | 0x10000;
             }
             for (i, m) in crate::smithing::MATERIALS.iter().enumerate() {
                 classes[trim_layer0 + i] = crate::material::trim_class(m.0);
@@ -1587,7 +1627,7 @@ impl EntityRenderer {
             let first = meshes.len();
             for m in 0..ARMOR_MATERIALS.len() {
                 for piece in 0..4 {
-                    let (v, idx) = armor_mesh(pd, piece, (armor_layer0 + m) as u32, armor_style(ARMOR_MATERIALS[m].0));
+                    let (v, idx) = armor_mesh(pd, piece, (armor_layer0 + m) as u32, ARMOR_MATERIALS[m].0, ARMOR_MATERIALS[m].1);
                     meshes.push(MobMesh {
                         vbuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("armor verts"), contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX }),
                         ibuf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("armor idx"), contents: bytemuck::cast_slice(&idx), usage: wgpu::BufferUsages::INDEX }),
