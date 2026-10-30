@@ -159,6 +159,8 @@ pub struct Renderer {
     ui_cap: usize,
     chunks: HashMap<ChunkPos, Vec<GpuSection>>,
     pub texture_size: u32,
+    /// How thick every texture layer is when held as a 3D item (item_render::volumes).
+    pub item_volumes: std::sync::Arc<Vec<u32>>,
     pub vram_bytes: u64,
     copy_src_ok: bool,
     /// Skip sections the camera can't see through caves and solid rock.
@@ -610,6 +612,7 @@ impl Renderer {
             ui_cap,
             chunks: HashMap::new(),
             texture_size,
+            item_volumes: std::sync::Arc::new(crate::item_render::volumes(textures)),
             vram_bytes: 0,
             copy_src_ok,
             drops,
@@ -776,6 +779,7 @@ impl Renderer {
         self.block_view = view;
         self.block_view2 = view2;
         self.texture_size = size;
+        self.item_volumes = std::sync::Arc::new(crate::item_render::volumes(t));
     }
 
     pub fn resize(&mut self, w: u32, h: u32) {
