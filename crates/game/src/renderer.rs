@@ -67,6 +67,9 @@ pub struct Globals {
     /// Animated block textures (fire_fx.rs): texture layer + 1 of x fire, y soul fire, z lava
     /// (0 = none, so the default animates nothing).
     pub anim: [f32; 4],
+    /// Red glow of lit redstone (redstone_fx.rs): xyz relative to the camera's block, w: glow
+    /// 0..1 (0 = unused).
+    pub red_lights: [[f32; 4]; 8],
 }
 
 #[repr(C)]

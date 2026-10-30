@@ -229,6 +229,20 @@ fn lit(c: vec3<f32>, in: VOut) -> vec3<f32> {
     let blk = light_curve(max(in.light.y, hand));
     // Torches are a little warm, sky light is neutral.
     var l = max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82));
+    // Lit redstone tints the light around it red; walls stop it where the block light does.
+    var red = 0.0;
+    for (var i = 0; i < 8; i++) {
+        let d = g.red_lights[i];
+        red = max(red, d.w - length(in.rel - d.xyz) / 9.0);
+    }
+    if (red > 0.0) {
+        let r = clamp(min(red, in.light.y + 0.08) * 1.8, 0.0, 1.0);
+        // The block light turns red (the green and blue of it fade), and a red wash shows
+        // on the ground around it, softer in daylight.
+        let tinted = vec3<f32>(blk, blk * 0.3, blk * 0.22);
+        l = max(vec3<f32>(sky), mix(vec3<f32>(blk, blk * 0.93, blk * 0.82), tinted, r));
+        l += vec3<f32>(0.42, 0.035, 0.025) * r * (1.0 - 0.5 * sky);
+    }
     let b = g.fog.w;
     l = mix(l, sqrt(l), b * 0.5);
     l = max(l, vec3<f32>(0.03 + b * 0.04));
