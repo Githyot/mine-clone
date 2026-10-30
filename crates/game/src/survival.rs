@@ -387,8 +387,9 @@ impl Survival {
             let cont = if c.furnace {
                 Container::Furnace(Furnace { inv: load_stacks(items, &c.slots, 3), burn: c.burn, burn_max: c.burn_max, cook: c.cook, xp: 0.0 })
             } else {
-                // Chests hold 27, hoppers 5, droppers and dispensers 9.
-                Container::Chest(load_stacks(items, &c.slots, c.slots.len().clamp(1, CHEST_SIZE)))
+                // Chests hold 27 (54 when a double chest was saved open), hoppers 5, droppers
+                // and dispensers 9.
+                Container::Chest(load_stacks(items, &c.slots, c.slots.len().clamp(1, 2 * CHEST_SIZE)))
             };
             sv.containers.insert(pos, cont);
         }
@@ -690,6 +691,7 @@ impl Game {
             }
         }
         self.surv.saplings.retain(|(p, _)| *p != pos);
+        self.chest_neighbours_split(pos);
     }
 
     pub(crate) fn surv_block_broken(&mut self, pos: IVec3, id: BlockId) {
@@ -726,6 +728,7 @@ impl Game {
             }
         }
         self.surv.saplings.retain(|(p, _)| *p != pos);
+        self.chest_neighbours_split(pos);
         // The other half went with it (World::break_block); the spawn point is over the head.
         let b = self.reg.get(id);
         let head = if voxel::bed::is_head(b.variant) { pos } else { pos + IVec3::new(voxel::bed::dir(b.variant)[0], 0, voxel::bed::dir(b.variant)[1]) };
@@ -736,7 +739,7 @@ impl Game {
     }
 
     /// A chest the world generator placed comes filled from its building's loot list.
-    fn structure_loot(&mut self, p: IVec3) -> Inventory {
+    pub(crate) fn structure_loot(&mut self, p: IVec3) -> Inventory {
         let mut inv = Inventory::new(CHEST_SIZE);
         let Some(loot) = self.world.gen.structure_chest(p).map(|l| l.to_vec()) else { return inv };
         for l in loot {
@@ -986,7 +989,7 @@ impl Game {
         if self.extras_mob_use() {
             return true;
         }
-        if self.lead_use() || self.stand_use() || self.animal_use() || self.pet_use() || self.village_use() || self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
+        if self.lead_use() || self.stand_use() || self.wagon_driver_use() || self.animal_use() || self.pet_use() || self.village_use() || self.talk_to_npc() || self.barter_with_piglin() || self.mount_strider() {
             return true;
         }
         if self.plugins_use_item() {
@@ -1048,11 +1051,8 @@ impl Game {
                         return true;
                     }
                     "chest" => {
-                        if !self.surv.containers.contains_key(&hit.block) {
-                            let inv = self.structure_loot(hit.block);
-                            self.surv.containers.insert(hit.block, Container::Chest(inv));
-                        }
-                        self.open_container(Open::Chest(hit.block));
+                        let at = self.chest_open_at(hit.block);
+                        self.open_container(Open::Chest(at));
                         self.sfx(Sfx::Place(Material::Wood));
                         return true;
                     }
@@ -1253,6 +1253,7 @@ impl Game {
 
     /// Closing a screen gives back what was left on the crafting grid and the cursor.
     pub(crate) fn surv_close(&mut self) {
+        self.chest_closed();
         if let Open::Chest(p) = self.surv.open {
             if crate::backpacks::is_backpack(p) {
                 self.backpack_closed(p);
@@ -1728,6 +1729,7 @@ impl Game {
         let c = cam_block.as_vec3();
         let mut out = Vec::with_capacity(self.surv.drops.len() + self.surv.orbs.len());
         out.extend(self.swing_instances(cam_block));
+        self.banner_instances(cam_block, &mut out);
         // The orb sprite is loaded right after the item sprites.
         let orb_layer = (self.item_base as usize + self.items.textures.len()) as f32;
         let hand = self.hand_light_level();
@@ -1750,7 +1752,7 @@ impl Game {
             let (flat, layers, mut size) = match it.look {
                 Look::Block(b) => {
                     let bl = self.reg.get(b);
-                    if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail) {
+                    if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail | Shape::TallBanner) {
                         (1.0, [bl.faces[0] as f32; 3], 0.4)
                     } else {
                         (0.0, [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32], 0.22)
@@ -2830,7 +2832,7 @@ impl Game {
         Some(match it.look {
             Look::Block(b) => {
                 let bl = self.reg.get(b);
-                if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail) {
+                if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail | Shape::TallBanner) {
                     // Plants and torches are flat item pictures in the hand.
                     HeldLook { kind: HeldKind::Flat, flat: true, layers: [bl.faces[0] as f32; 3] }
                 } else {
@@ -3195,7 +3197,7 @@ impl Game {
         for dy in -2..=3 {
             for dz in -4..=4 {
                 for dx in -4..=4 {
-                    if self.world.block_or_air(c + IVec3::new(dx, dy, dz)) == id {
+                    if self.reg.get(self.world.block_or_air(c + IVec3::new(dx, dy, dz))).base == id {
                         return true;
                     }
                 }

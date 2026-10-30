@@ -95,6 +95,9 @@ impl Game {
                     }
                 }
             }
+            // Both lids of a double chest lift together.
+            let others: Vec<IVec3> = chests.iter().filter_map(|p| self.chest_other(*p)).collect();
+            chests.extend(others);
             chests.retain(|p| store_of(&self.reg.get(self.world.block_or_air(*p)).name).is_some());
             chests.sort_by_key(|p| p.to_array());
             chests.dedup();
@@ -158,7 +161,7 @@ impl Game {
             let centre = s.pos.as_vec3() + Vec3::splat(0.5) - cam_block.as_vec3();
             if let Some(up) = s.lid {
                 let k = smooth(t / LID_MOVE);
-                let look = crate::storage::look(s.store, bl, if up { k } else { 1.0 - k });
+                let look = self.store_look(s.store, s.id, if up { k } else { 1.0 - k });
                 let light = self.store_light(s.pos, bl, look.facing);
                 push_parts(&mut out, &look.parts, centre, look.facing, light, look.layers, look.cavity, false, false);
                 self.store_contents(s.store, s.pos, &look, centre, light, &mut out);
@@ -267,6 +270,15 @@ impl Game {
 }
 
 impl Game {
+    /// Test scenes: storage at `p` held `k` of the way open.
+    pub(crate) fn hold_store_open(&mut self, p: IVec3, k: f32) {
+        let id = self.world.block_or_air(p);
+        let store = store_of(&self.reg.get(id).name).unwrap_or_default();
+        self.world.set_hidden(p, true);
+        self.swings.list.push(Swing { pos: p, id, start: self.now, lid: Some(true), store, shown: false });
+        self.swings.freeze = Some(k);
+    }
+
     /// Test hook MC_CHEST=items: a chest on the ground a little ahead holding those items
     /// (comma-separated names, "name*count" for a stack), its lid held open. MC_STORE=block
     /// puts other storage there instead (oak_drawer, shulker_box, barrel, decorated_pot...),

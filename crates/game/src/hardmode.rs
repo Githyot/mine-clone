@@ -104,12 +104,15 @@ impl Game {
             self.update_invasion(dt);
         }
         // Monsters of the World Breaker age are tougher.
+        // (mob_tiers.rs counts on this: its hardmode monsters store the health before it.)
         if self.t5.hard.on {
+            let born = self.mobs.hp_scale;
             for m in self.mobs.list.iter_mut() {
                 let d = &self.mobs.reg.defs[m.def];
-                if d.kind == Kind::Hostile && !d.boss && m.max_health == d.health {
-                    m.max_health = d.health * 1.6;
-                    m.health *= 1.6;
+                // Only once, as it comes out: the difficulty's extra health is already in it.
+                if d.kind == Kind::Hostile && !d.boss && m.max_health == d.health * born {
+                    m.max_health = d.health * born * crate::mob_tiers::HARD_HP;
+                    m.health *= crate::mob_tiers::HARD_HP;
                 }
             }
         }

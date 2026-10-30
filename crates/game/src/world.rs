@@ -113,7 +113,7 @@ pub struct World {
     /// The sections lit and drawn: a band around the player's height, so a 1024-block world
     /// costs no more light and mesh work than a 256-block one.
     pub band: Band,
-    /// Blocks with a turning model drawn over them (windmill sails), by block id.
+    /// Blocks with a moving model drawn over them (windmill sails, tall banners), by block id.
     spins: Vec<bool>,
     /// Where those blocks are in the loaded chunks, kept up to date as chunks come and go and
     /// blocks change, so drawing them never has to search the world.
@@ -188,7 +188,7 @@ impl World {
         let climb = reg.blocks.iter().map(|b| b.shape == Shape::Ladder || matches!(b.name.as_str(), "vine" | "weeping_vines" | "twisting_vines" | "scaffolding" | "cave_vines")).collect();
         let wet = reg.blocks.iter().map(|b| b.waterlogged).collect();
         let ground = reg.blocks.iter().map(|b| voxel::physics::Ground::of_block(&reg.blocks[b.base as usize].name, b.variant)).collect();
-        let spins = reg.blocks.iter().map(|b| reg.blocks[b.base as usize].name == "windmill_sails").collect();
+        let spins = reg.blocks.iter().map(|b| reg.blocks[b.base as usize].name == "windmill_sails" || b.shape == Shape::TallBanner).collect();
         World {
             tables,
             reg,
@@ -804,6 +804,19 @@ impl World {
             let pair = self.reg.get(o).shape == Shape::Bed && self.reg.get(o).variant == variant ^ voxel::bed::HEAD;
             if pair {
                 self.set_block(other, AIR);
+            }
+        }
+        // Half of a double chest: the other half is a chest on its own again.
+        let (turn, base) = (self.reg.get(was).turn, self.reg.get(was).base);
+        if turn == voxel::block::Turn::Chest && variant & (voxel::block::CHEST_LEFT | voxel::block::CHEST_RIGHT) != 0 {
+            let l = IVec3::from(voxel::block::chest_left_dir(variant));
+            for other in [p + l, p - l] {
+                let o = self.block_or_air(other);
+                let ob = self.reg.get(o);
+                if ob.base == base && ob.variant == variant ^ (voxel::block::CHEST_LEFT | voxel::block::CHEST_RIGHT) {
+                    let single = self.reg.variant(o, variant & 3);
+                    self.set_block(other, single);
+                }
             }
         }
         let mut y = p.y + 1;

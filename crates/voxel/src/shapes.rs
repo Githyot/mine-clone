@@ -34,7 +34,7 @@ pub fn variant_count(shape: Shape) -> u8 {
         // Chairs: the way you look when sitting.
         Shape::Chair | Shape::Bench | Shape::Shelf | Shape::Ladder | Shape::Anvil => 4,
         Shape::Cake => 7,
-        Shape::Sign | Shape::Banner => 8,
+        Shape::Sign | Shape::Banner | Shape::TallBanner => 8,
         // Beds: the way the head points | head part 4.
         Shape::Bed => 8,
         Shape::Lantern | Shape::Bridge => 2,
@@ -394,6 +394,14 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
         Shape::Banner => {
             // The cloth faces south; a bar across the top, on a pole or against a wall to the north.
             let boxes: &[PBox] = if variant & 4 != 0 { &[[1, 2, 0, 15, 15, 1], [0, 15, 0, 16, 16, 2]] } else { &[[1, 3, 8, 15, 15, 9], [0, 15, 6, 16, 16, 9], [7, 0, 6, 9, 15, 8]] };
+            for &b in boxes {
+                out.push(rotate(b, f));
+            }
+        }
+        Shape::TallBanner => {
+            // What can be clicked inside the block (the game draws the rest above or below):
+            // the pole and the cloth's foot, or the bar and cloth against a wall to the north.
+            let boxes: &[PBox] = if variant & 4 != 0 { &[[0, 0, 0, 16, 16, 2]] } else { &[[7, 0, 6, 9, 16, 8], [0, 4, 8, 16, 16, 9]] };
             for &b in boxes {
                 out.push(rotate(b, f));
             }
