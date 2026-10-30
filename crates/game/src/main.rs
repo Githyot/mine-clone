@@ -4,6 +4,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod ambient;
+mod armor_design;
 mod ambient_life;
 mod beds;
 mod chests;
