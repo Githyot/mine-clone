@@ -210,6 +210,8 @@ pub struct MeshTables {
     shape: Vec<Shape>,
     transp: Vec<Transparency>,
     faces: Vec<[u16; 6]>,
+    /// Bit per face: its picture lies a quarter turn round (a log on its side).
+    uv_turn: Vec<u8>,
     tint: Vec<u8>, // bit per face: tinted
     cull_same: Vec<bool>,
     wave: Vec<bool>,
@@ -348,6 +350,7 @@ impl MeshTables {
             shape: vec![],
             transp: vec![],
             faces: vec![],
+            uv_turn: vec![],
             tint: vec![],
             cull_same: vec![],
             wave: vec![],
@@ -381,6 +384,7 @@ impl MeshTables {
             t.shape.push(b.shape);
             t.transp.push(b.transparency);
             t.faces.push(b.faces);
+            t.uv_turn.push(b.uv_turn);
             let leaves = b.name.ends_with("_leaves");
             let mut tint = 0u8;
             if b.tint {
@@ -1072,6 +1076,9 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                             pos[1] = base[1] + lh[(c[0] + c[2] * 2) as usize];
                         }
                         let mut uv = fi.uv[k];
+                        if t.uv_turn[idu] & (1 << f) != 0 {
+                            uv = turn_uv(uv, 1);
+                        }
                         if liquid && c[1] == 1 && f != 2 && f != 3 {
                             uv[1] = 16 - lh[(c[0] + c[2] * 2) as usize];
                         }
@@ -1089,7 +1096,8 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     // Plain full faces with even light go to the merge masks instead.
                     let uniform = aos.iter().all(|&a| a == 3) && lights.iter().all(|&l| l == lights[0]);
                     let flat = !liquid || (f == 2 && (lh == [14; 4] || lh == [16; 4]));
-                    if uniform && hgt == 16 && flat && t.connected[idu] == Connect::None {
+                    // Merged faces take their picture from the map, so a turned one stays alone.
+                    if uniform && hgt == 16 && flat && t.connected[idu] == Connect::None && t.uv_turn[idu] & (1 << f) == 0 {
                         let (na, aa, ba) = face_axes(f);
                         let lp = [lx, ly, lz];
                         masks[f * 16 + lp[na]][lp[aa] + lp[ba] * 16] = Some(FaceKey {
