@@ -18,7 +18,7 @@ const SOUL: [f32; 3] = [0.0, 0.0, 1.0];
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct GpuParticle {
+pub(crate) struct GpuParticle {
     pos: [f32; 4],
     uv: [f32; 4],
     tint: [f32; 4],
@@ -716,6 +716,21 @@ fn wrap(a: f32) -> f32 {
     (a + PI).rem_euclid(TAU) - PI
 }
 
+impl GpuParticle {
+    /// A plain coloured box fixed in the world (sign letters use these): centre relative to
+    /// the camera's block, turned by `rot`, `size` along its own axes, lit by (sky, block) 0..1.
+    pub(crate) fn plain(at: Vec3, rot: Quat, size: Vec3, tint: [f32; 3], light: (f32, f32)) -> GpuParticle {
+        GpuParticle {
+            pos: [at.x, at.y, at.z, 1.0],
+            uv: [0.0, 0.0, 0.0, light.0],
+            tint: [tint[0], tint[1], tint[2], light.1],
+            rot: rot.to_array(),
+            shape: [size.x, size.y, size.z, 1.0],
+            extra: [1.0, 0.25, 0.0, 0.0],
+        }
+    }
+}
+
 pub struct ParticleGpu {
     pipelines: [wgpu::RenderPipeline; 2],
     layout: wgpu::BindGroupLayout,
@@ -789,8 +804,10 @@ impl ParticleGpu {
         device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("particles"), layout, entries: &[wgpu::BindGroupEntry { binding: 0, resource: buf.as_entire_binding() }] })
     }
 
-    pub fn prepare(&mut self, r: &Renderer, particles: &Particles, world: &World, cam_block: IVec3) {
-        let data = particles.gpu_data(world, cam_block);
+    /// `extra`: more boxes drawn the same way (the letters on signs).
+    pub fn prepare(&mut self, r: &Renderer, particles: &Particles, world: &World, cam_block: IVec3, extra: Vec<GpuParticle>) {
+        let mut data = particles.gpu_data(world, cam_block);
+        data.extend(extra);
         self.count = data.len() as u32;
         if data.is_empty() {
             return;

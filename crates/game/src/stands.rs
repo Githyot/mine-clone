@@ -126,8 +126,12 @@ impl Game {
             sets = list.split(',').map(|m| ["helmet", "chestplate", "leggings", "boots", "sword"].map(|p| format!("{m}_{p}"))).collect();
         }
         let (n, gap) = (sets.len() as f32, if sets.len() > 2 { 1.35 } else { 1.6 });
+        // MC_STAND_DIST: how far ahead the row stands; MC_STAND_TURN: degrees each stand is turned
+        // from facing the player (for three-quarter and side views in screenshots).
+        let dist = std::env::var("MC_STAND_DIST").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(2.6 + n * 0.55);
+        let turn = std::env::var("MC_STAND_TURN").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0).to_radians();
         for (k, set) in sets.iter().enumerate() {
-            let mut at = self.body.pos + f * (2.6 + n * 0.55) + side * ((k as f32 - (n - 1.0) / 2.0) * gap);
+            let mut at = self.body.pos + f * dist + side * ((k as f32 - (n - 1.0) / 2.0) * gap);
             at.y = at.y.floor();
             while at.y > 1.0 && !self.reg.get(self.world.block_or_air((at - Vec3::Y * 0.5).floor().as_ivec3())).solid {
                 at.y -= 1.0;
@@ -136,9 +140,11 @@ impl Game {
                 continue;
             }
             let m = self.mobs.list.last_mut().unwrap();
-            m.yaw = (-f.x).atan2(-f.z);
+            m.yaw = (-f.x).atan2(-f.z) + turn;
             let mut gear: Gear = Default::default();
-            for (i, n) in set.iter().enumerate() {
+            // MC_STAND_EMPTY=1: nothing in the hand, so the armour shows whole.
+            let hands = std::env::var("MC_STAND_EMPTY").is_err();
+            for (i, n) in set.iter().enumerate().filter(|(i, _)| *i < 4 || hands) {
                 gear[i] = self.items.id(n).map(|id| ItemStack::new(id, 1));
             }
             let (id, pos) = (m.net_id, m.body.pos);

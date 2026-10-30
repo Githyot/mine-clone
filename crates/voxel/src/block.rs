@@ -86,6 +86,11 @@ pub enum Shape {
     Sign,
     /// A banner: a cloth hanging from a bar on a pole (variant facing 0-3) or on a wall (4-7).
     Banner,
+    /// A tall banner, three blocks high: a long cloth on a pole (variant facing 0-3) or hung
+    /// from a wall (4-7), swaying in the wind. Only its foot is in the block; the game draws it
+    /// whole (banners.rs), so the terrain leaves it out. Texture `top` and `bottom` are the
+    /// cloth's upper and lower halves, `all` the inventory picture.
+    TallBanner,
     /// A head or skull: an 8-pixel cube on the floor.
     Skull,
     /// A hollow log (Distant Lands idea): four walls round a hole, standing up (variant 0) or
@@ -137,6 +142,7 @@ impl Shape {
                 | Shape::Shelf
                 | Shape::Sign
                 | Shape::Banner
+                | Shape::TallBanner
                 | Shape::Skull
                 | Shape::Hollow
                 | Shape::FenceGate
@@ -145,6 +151,41 @@ impl Shape {
                 | Shape::Bed
         )
     }
+}
+
+/// How a full cube turns when it is placed. Its turns are hidden variants like a stair's, with
+/// the face pictures moved round in the registry, so the mesher draws them as plain cubes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Turn {
+    #[default]
+    None,
+    /// A front picture faces the player who placed it (furnace, crafting table): variant 0..3
+    /// is the way the player looked (0 north .. 3 west), so the front points back the other way.
+    Facing,
+    /// Like `Facing`, and two side by side make one double chest: | 4 the left half, | 8 the
+    /// right half (as seen from the front).
+    Chest,
+    /// A log: lies along the axis of the face it was placed on, 0 up, 1 x, 2 z.
+    Axis,
+}
+
+/// Double chest halves (`Turn::Chest` variant bits).
+pub const CHEST_LEFT: u8 = 4;
+pub const CHEST_RIGHT: u8 = 8;
+
+/// Face (FACE_DIRS order) the front of a `Facing` block shows on, per variant: the player
+/// looked north, so the front faces south (+z), and so on.
+pub const FRONT_FACE: [usize; 4] = [4, 1, 5, 0];
+
+/// Way to the left half of a double chest from its right half, per facing: the player who
+/// looks at the front has it on the left.
+pub fn chest_left_dir(variant: u8) -> [i32; 3] {
+    [[-1, 0, 0], [0, 0, -1], [1, 0, 0], [0, 0, 1]][(variant & 3) as usize]
+}
+
+/// Pillar blocks besides logs and stems that lie along an axis.
+fn is_pillar(name: &str) -> bool {
+    name.ends_with("_log") || name.ends_with("_stem") || name.ends_with("_pillar") || matches!(name, "hay_block" | "bone_block" | "basalt" | "polished_basalt")
 }
 
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -293,6 +334,13 @@ pub struct Block {
     pub variant: u8,
     /// The base block of a variant (itself for the base): what it drops and shows as.
     pub base: BlockId,
+    /// How a full cube turns when placed; its turned variants keep the base's `name`.
+    pub turn: Turn,
+    /// Faces (bits in FACE_DIRS order) whose picture lies a quarter turn round (a log on its side).
+    pub uv_turn: u8,
+    /// The name in the registry and in saved worlds: `name`, or "chest:5" for a turned block
+    /// whose `name` stays "chest" so everything that asks for a chest still finds it.
+    pub key: String,
 }
 
 pub struct BlockRegistry {
@@ -389,13 +437,28 @@ impl BlockRegistry {
             };
             let height = d.height.unwrap_or(16).clamp(1, 16);
             let opaque = d.shape == Shape::Cube && d.transparency == Transparency::Opaque && height == 16;
+            let turn = if d.shape != Shape::Cube || height != 16 {
+                Turn::None
+            } else if front != side {
+                if d.name == "chest" { Turn::Chest } else { Turn::Facing }
+            } else if top != side && is_pillar(&d.name) {
+                Turn::Axis
+            } else {
+                Turn::None
+            };
+            if turn == Turn::Chest {
+                // The pictures of a double chest's halves (see tools/gen_double_chest.py).
+                for t in ["front_left", "front_right", "side_left", "side_right", "top_w", "top_e", "top_n", "top_s"] {
+                    tex(&format!("{}_{t}", d.name), &mut reg.textures);
+                }
+            }
             let id = reg.blocks.len() as BlockId;
             let display = d.display_name.clone().unwrap_or_else(|| title_case(&d.name));
             reg.by_name.insert(d.name.clone(), id);
             reg.opaque.push(opaque);
             reg.light.push(d.light.min(15));
             reg.blocks.push(Block {
-                name: d.name,
+                name: d.name.clone(),
                 display_name: display,
                 shape: d.shape,
                 transparency: d.transparency,
@@ -417,6 +480,9 @@ impl BlockRegistry {
                 accent,
                 variant: 0,
                 base: id,
+                turn,
+                uv_turn: 0,
+                key: d.name,
             });
         }
         // Orientations get hidden ids after every base block, so base ids don't move.
@@ -424,7 +490,7 @@ impl BlockRegistry {
         reg.first_variant = vec![AIR; bases];
         for base in 0..bases {
             let b = reg.blocks[base].clone();
-            let n = crate::shapes::variant_count(b.shape);
+            let n = variant_count(&b);
             if n > 1 {
                 reg.first_variant[base] = reg.blocks.len() as BlockId;
             }
@@ -432,13 +498,21 @@ impl BlockRegistry {
                 let id = reg.blocks.len() as BlockId;
                 let name = format!("{}:{}", b.name, v);
                 let mut vb = b.clone();
-                vb.name = name.clone();
+                vb.key = name.clone();
+                if b.turn == Turn::None {
+                    vb.name = name.clone();
+                }
                 vb.variant = v;
                 vb.in_inventory = false;
                 // A double slab is a full cube; the upper half of a door uses the top texture.
                 vb.opaque = (b.shape == Shape::Slab && v == 2 || b.shape == Shape::Layer && v == 7) && b.transparency == Transparency::Opaque;
                 if b.shape == Shape::Door {
                     vb.faces = [if v & 8 != 0 { b.faces[2] } else { b.faces[0] }; 6];
+                }
+                if b.turn != Turn::None {
+                    vb.opaque = b.opaque;
+                    let named = |t: &str, reg: &BlockRegistry| reg.textures.iter().position(|n| *n == format!("{}_{t}", b.name)).unwrap_or(0) as u16;
+                    (vb.faces, vb.uv_turn) = turned_faces(&b, v, |t| named(t, &reg));
                 }
                 reg.by_name.insert(name, id);
                 reg.opaque.push(vb.opaque);
@@ -474,7 +548,7 @@ impl BlockRegistry {
     /// the shape has no such variant.
     pub fn variant(&self, id: BlockId, v: u8) -> BlockId {
         let base = self.blocks[id as usize].base;
-        if v == 0 || v >= crate::shapes::variant_count(self.blocks[base as usize].shape) {
+        if v == 0 || v >= variant_count(&self.blocks[base as usize]) {
             return base;
         }
         self.first_variant[base as usize] + v as BlockId - 1
@@ -495,6 +569,53 @@ impl BlockRegistry {
 
     pub fn is_empty(&self) -> bool {
         self.blocks.is_empty()
+    }
+}
+
+/// How many ids a block needs for its orientations.
+pub fn variant_count(b: &Block) -> u8 {
+    match b.turn {
+        Turn::Facing => 4,
+        Turn::Chest => 12,
+        Turn::Axis => 3,
+        Turn::None => crate::shapes::variant_count(b.shape),
+    }
+}
+
+/// The face pictures of variant `v` of a turning cube `b`, and which of them lie a quarter
+/// turn round. `named` finds the pictures of a double chest's halves.
+fn turned_faces(b: &Block, v: u8, named: impl Fn(&str) -> u16) -> ([u16; 6], u8) {
+    // Base faces: +x side, -x side, top, bottom, +z front, -z side.
+    let [side, _, top, bottom, front, _] = b.faces;
+    match b.turn {
+        Turn::Axis => match v {
+            // Along x: the ends east and west, the bark round the other four turned to run along x.
+            1 => ([top, bottom, side, side, side, side], 0b11_1100),
+            // Along z: the ends south and north; on top and bottom the grain already runs along z.
+            2 => ([side, side, side, side, top, bottom], 0b00_0011),
+            _ => (b.faces, 0),
+        },
+        _ => {
+            let f = (v & 3) as usize;
+            let mut faces = [side, side, top, bottom, side, side];
+            let back = FRONT_FACE[f] ^ 1;
+            faces[FRONT_FACE[f]] = front;
+            let half = v & (CHEST_LEFT | CHEST_RIGHT);
+            if half != 0 {
+                let left = half == CHEST_LEFT;
+                faces[FRONT_FACE[f]] = named(if left { "front_left" } else { "front_right" });
+                // From behind, the left half is on the right.
+                faces[back] = named(if left { "side_right" } else { "side_left" });
+                // The lid picture is laid out on the map: split west/east or north/south.
+                let d = chest_left_dir(v);
+                let low = (d[0] + d[2] < 0) == left;
+                let (lo, hi) = if d[0] != 0 { ("top_w", "top_e") } else { ("top_n", "top_s") };
+                faces[2] = named(if low { lo } else { hi });
+                // Seen from below the picture's north is at the bottom.
+                faces[3] = named(if low == (d[0] != 0) { lo } else { hi });
+            }
+            (faces, 0)
+        }
     }
 }
 
