@@ -32,7 +32,7 @@ pub fn variant_count(shape: Shape) -> u8 {
         // Spout: 0 down, 1..4 north, east, south, west.
         Shape::Hopper => 5,
         // Chairs: the way you look when sitting.
-        Shape::Chair | Shape::Bench | Shape::Shelf | Shape::Ladder | Shape::Model => 4,
+        Shape::Chair | Shape::Bench | Shape::Shelf | Shape::Ladder | Shape::Anvil | Shape::Model => 4,
         Shape::Cake => 7,
         Shape::Sign | Shape::Banner | Shape::TallBanner => 8,
         // Beds: the way the head points | head part 4.
@@ -283,9 +283,17 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
             }
         }
         Shape::Hopper => {
-            out.push([0, 10, 0, 16, 16, 16]);
-            out.push([4, 4, 4, 12, 10, 12]);
-            out.push(if variant == 0 { [6, 0, 6, 10, 4, 10] } else { rotate([6, 4, 0, 10, 8, 4], (variant - 1) & 3) });
+            if collision {
+                // You stand on the rim; the bowl doesn't swallow your feet.
+                out.push([0, 10, 0, 16, 16, 16]);
+            } else {
+                // A bowl five pixels deep: its floor and four walls two pixels thick.
+                out.extend([[2, 10, 2, 14, 11, 14], [0, 10, 0, 16, 16, 2], [0, 10, 14, 16, 16, 16], [0, 10, 2, 2, 16, 14], [14, 10, 2, 16, 16, 14]]);
+            }
+            // The funnel narrows in two steps down to the spout.
+            out.push([3, 7, 3, 13, 10, 13]);
+            out.push([5, 4, 5, 11, 7, 11]);
+            out.push(if variant == 0 { [6, 0, 6, 10, 4, 10] } else { rotate([6, 4, 0, 10, 8, 5], (variant - 1) & 3) });
         }
         Shape::Rail => out.push(if rail_rises(variant).is_some() { [0, 0, 0, 16, 8, 16] } else { [0, 0, 0, 16, 2, 16] }),
         Shape::Chair => {
@@ -330,6 +338,50 @@ pub fn boxes(shape: Shape, variant: u8, conn: u8, collision: bool, out: &mut Vec
             }
         }
         Shape::Skull => out.push([4, 0, 4, 12, 8, 12]),
+        Shape::Anvil => {
+            // Drawn facing north, so its length runs east-west across the view: the foot, a
+            // step, the waist, then the face with its horn tapering off to the west. The last
+            // two are the working top (see `anvil_face`).
+            for b in [[2, 0, 2, 14, 4, 14], [4, 4, 3, 12, 5, 13], [5, 5, 5, 11, 10, 11], [3, 10, 3, 16, 16, 13], [0, 12, 5, 3, 16, 11]] {
+                out.push(rotate(b, f));
+            }
+        }
+        // The first boxes of these are their stand, then the rest (see `box_face`).
+        Shape::Orb => out.extend([
+            [3, 0, 3, 13, 2, 13],
+            [5, 2, 5, 11, 4, 11],
+            // The ball, rounded from three crossing boxes.
+            [4, 5, 5, 12, 13, 11],
+            [5, 5, 4, 11, 13, 12],
+            [5, 4, 5, 11, 14, 11],
+        ]),
+        Shape::Beacon => {
+            if collision {
+                out.push([0, 0, 0, 16, 16, 16]);
+                return;
+            }
+            out.extend([[2, 0, 2, 14, 3, 14], [4, 3, 4, 12, 11, 12], [0, 0, 0, 16, 16, 16]]);
+        }
+        Shape::Cage => {
+            if collision {
+                out.push([1, 0, 1, 15, 15, 15]);
+                return;
+            }
+            out.extend([[1, 0, 1, 15, 2, 15], [5, 6, 5, 11, 12, 11], [2, 3, 2, 14, 15, 14]]);
+        }
+        Shape::Crystal => out.extend([
+            // The tall middle point, stepping in to its tip.
+            [5, 0, 5, 11, 10, 11],
+            [6, 10, 6, 10, 13, 10],
+            [7, 13, 7, 9, 16, 9],
+            // Smaller points leaning round it.
+            [1, 0, 7, 5, 6, 11],
+            [2, 6, 8, 4, 8, 10],
+            [10, 0, 1, 14, 8, 5],
+            [11, 8, 2, 13, 11, 4],
+            [9, 0, 11, 13, 4, 15],
+            [10, 4, 12, 12, 6, 14],
+        ]),
         Shape::Bench => {
             // Drawn running east-west: the seat and a leg at each end.
             for b in [[0, 7, 3, 16, 9, 13], [1, 0, 4, 3, 7, 12], [13, 0, 4, 15, 7, 12]] {
@@ -449,6 +501,39 @@ pub fn has_parts(shape: Shape) -> bool {
     matches!(shape, Shape::Lever | Shape::Repeater | Shape::Comparator)
 }
 
+/// Whether box `i` of an anvil carries the polished working face on top; the rest of it is
+/// rough forged iron all over.
+pub fn anvil_face(i: usize) -> bool {
+    i >= 3
+}
+
+/// The texture slot (side 0, top 2, bottom 3, front 4) face `f` of box `i` shows, for shapes
+/// built of parts made of different stuff; None leaves the usual picture for that face.
+pub fn box_face(shape: Shape, i: usize, f: usize) -> Option<usize> {
+    let whole = |slot: usize| Some(slot);
+    let plain = || Some(match f {
+        2 => 2,
+        3 => 3,
+        _ => 0,
+    });
+    match shape {
+        Shape::Anvil if f == 2 && !anvil_face(i) => Some(0),
+        // Every face of the stand is wood; the ball is glass all round.
+        Shape::Orb => if i < 2 { whole(3) } else if f == 3 { Some(2) } else { plain() },
+        // Foot, core, then the shell.
+        Shape::Beacon | Shape::Cage => match i {
+            0 => whole(3),
+            1 => whole(4),
+            _ => if f == 3 { Some(2) } else { plain() },
+        },
+        Shape::Crystal => plain(),
+        // The bowl's floor and inner walls are the outside metal: a pack's hopper top has a
+        // see-through middle (its inside is a picture we don't have).
+        Shape::Hopper if i == 0 && f == 2 => Some(0),
+        _ => None,
+    }
+}
+
 /// Fences, walls and panes join others of their kind and full solid blocks.
 pub fn joins(shape: Shape, other: Shape, other_opaque: bool) -> bool {
     (other_opaque && shape != Shape::Table) || other == shape || (matches!(shape, Shape::Fence | Shape::Wall) && other == Shape::FenceGate)
@@ -539,6 +624,51 @@ mod tests {
         // Facing east the gate runs along z.
         assert!(v.iter().all(|b| b[0] >= 6 && b[3] <= 10));
         assert!(joins(Shape::Fence, Shape::FenceGate, false));
+    }
+
+    #[test]
+    fn anvils_lie_across_the_view() {
+        let mut v = Vec::new();
+        boxes(Shape::Anvil, 0, 0, false, &mut v);
+        // Facing north: the face runs the whole width in x, the horn at the west end.
+        assert_eq!((v[3][3], v[4][0]), (16, 0));
+        assert!(v.iter().all(|b| b[2] >= 2 && b[5] <= 14));
+        v.clear();
+        boxes(Shape::Anvil, 1, 0, false, &mut v);
+        // Facing east it runs along z instead.
+        assert!(v.iter().all(|b| b[0] >= 2 && b[3] <= 14));
+        assert!(v.iter().any(|b| b[2] == 0) && v.iter().any(|b| b[5] == 16));
+        assert!(v.iter().enumerate().all(|(i, b)| anvil_face(i) == (b[4] == 16)));
+    }
+
+    #[test]
+    fn hoppers_have_a_deep_bowl() {
+        let mut v = Vec::new();
+        boxes(Shape::Hopper, 0, 0, false, &mut v);
+        // Nothing fills the middle of the bowl above its floor.
+        assert!(v.iter().all(|b| !(b[0] < 8 && b[3] > 8 && b[2] < 8 && b[5] > 8 && b[4] > 11)));
+        assert!(v.iter().any(|b| b[1] == 0), "the spout reaches the bottom");
+        v.clear();
+        boxes(Shape::Hopper, 1, 0, true, &mut v);
+        assert_eq!(v[0], [0, 10, 0, 16, 16, 16]);
+        assert!(v.last().unwrap()[2] == 0, "a spout pointing north reaches the north side");
+    }
+
+    #[test]
+    fn parts_show_their_own_stuff() {
+        // A crystal ball's stand is wood all over; its ball never shows the stand.
+        assert_eq!(box_face(Shape::Orb, 0, 2), Some(3));
+        assert_eq!(box_face(Shape::Orb, 2, 4), Some(0));
+        assert_eq!(box_face(Shape::Orb, 2, 3), Some(2));
+        // An end crystal's crystal is the front picture on every side, the cage never is.
+        assert!((0..6).all(|f| box_face(Shape::Cage, 1, f) == Some(4) && box_face(Shape::Cage, 2, f) != Some(4)));
+        assert_eq!(box_face(Shape::Anvil, 0, 2), Some(0));
+        assert_eq!(box_face(Shape::Anvil, 3, 2), None);
+        for s in [Shape::Orb, Shape::Beacon, Shape::Cage, Shape::Crystal] {
+            let mut v = Vec::new();
+            boxes(s, 0, 0, false, &mut v);
+            assert!(v.iter().all(|b| b[0] < b[3] && b[1] < b[4] && b[2] < b[5] && b[3] <= 16 && b[4] <= 16 && b[5] <= 16), "{s:?}");
+        }
     }
 
     #[test]

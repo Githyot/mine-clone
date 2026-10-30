@@ -104,6 +104,19 @@ pub enum Shape {
     Cake,
     /// A bed: two blocks long, a head and a foot part (see `bed`).
     Bed,
+    /// An anvil: a wide foot, a narrow waist and a long working face with a horn at one end,
+    /// lying across the way the player looked when placing it (variant facing 0-3).
+    Anvil,
+    /// A crystal ball: a glass sphere (side and top pictures) on a little stand (bottom picture).
+    Orb,
+    /// A beacon: a glass shell (side and top) round an obsidian foot (bottom) and its glowing
+    /// core (front).
+    Beacon,
+    /// An end crystal: a glass cage (side and top) floating over a bedrock foot (bottom), with
+    /// the crystal (front) inside it.
+    Cage,
+    /// A cluster of pointed crystals growing from the ground.
+    Crystal,
     /// A little 3D model made of boxes (statues, trophies, fountains...), from the `models` list
     /// of a block file; faces one of four ways (variant 0 north, as `shapes::facing_of`).
     Model,
@@ -152,6 +165,11 @@ impl Shape {
                 | Shape::Ladder
                 | Shape::Cake
                 | Shape::Bed
+                | Shape::Anvil
+                | Shape::Orb
+                | Shape::Beacon
+                | Shape::Cage
+                | Shape::Crystal
         )
     }
 }

@@ -163,7 +163,7 @@ impl Game {
             temps: self.elements.temps.iter().map(|t| (t.dim, t.p.to_array(), self.reg.get(t.placed).name.clone(), self.reg.get(t.back).name.clone(), t.t)).collect(),
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
-            if let Err(e) = std::fs::write(self.elements_path(), text) {
+            if let Err(e) = voxel::save::write_atomic(self.elements_path(), text) {
                 log::error!("could not save elements.ron: {e}");
             }
         }

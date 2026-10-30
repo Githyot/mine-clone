@@ -410,6 +410,11 @@ pub fn load(names: &[String], base: &Path, enabled_packs: &[String], max_res: u3
         };
         let mc_folders: [&str; 2] = if kind == "item" { ["item", "items"] } else { ["block", "blocks"] };
         let mut found: Option<image::RgbaImage> = None;
+        // Plant bodies are painted below, once their plant's own picture is loaded.
+        if crate::flora_tex::parse(full).is_some() {
+            images.push(None);
+            continue;
+        }
         // A picture only a pack's block model uses, by its path in the pack.
         if let Some(rest) = full.strip_prefix("packtex/") {
             let (ns, path) = rest.split_once('/').unwrap_or(("minecraft", rest));
@@ -473,6 +478,13 @@ pub fn load(names: &[String], base: &Path, enabled_packs: &[String], max_res: u3
             log::warn!("missing texture '{full}'");
         }
         images.push(found.map(first_frame));
+    }
+
+    for (i, full) in names.iter().enumerate() {
+        if let Some((tex, part)) = crate::flora_tex::parse(full) {
+            let sprite = names.iter().position(|n| n == tex).and_then(|j| images[j].as_ref());
+            images[i] = Some(crate::flora_tex::generate(part, sprite, tex));
+        }
     }
 
     // All layers of a texture array share one size: use the largest (packs can be 16x, 32x,

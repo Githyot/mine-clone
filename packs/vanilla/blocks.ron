@@ -481,7 +481,7 @@
     (name: "end_portal_frame", display_name: Some("Moldura do Portal do End"), drops: Some([]), hardness: -1.0, textures: (top: Some("end_portal_frame_top"), side: Some("end_portal_frame_side"), bottom: Some("end_stone"))),
     (name: "end_portal_frame_filled", display_name: Some("Moldura com Olho"), hardness: 50.0, tool: Some(Pickaxe), tier: 4, light: 4, in_inventory: false, drops: Some([(item: "end_portal_frame")]), textures: (top: Some("end_portal_frame_eye"), side: Some("end_portal_frame_side"), bottom: Some("end_stone"))),
     (name: "end_portal", display_name: Some("Portal do End"), shape: Portal, solid: false, light: 15, hardness: -1.0, drops: Some([]), in_inventory: false, textures: (all: Some("end_portal"))),
-    (name: "end_crystal", display_name: Some("Cristal do End"), light: 15, hardness: 0.3, drops: Some([]), transparency: Cutout),
+    (name: "end_crystal", display_name: Some("Cristal do End"), shape: Cage, light: 15, hardness: 0.3, drops: Some([]), transparency: Cutout, textures: (side: Some("end_crystal_cage"), top: Some("end_crystal_cage"), bottom: Some("bedrock"), front: Some("end_crystal"))),
     (name: "chorus_plant", display_name: Some("Planta Coro"), shape: Inset, transparency: Cutout, hardness: 0.4, tool: Some(Axe), drops: Some([(item: "chorus_fruit", chance: 0.5)])),
     (name: "chorus_flower", display_name: Some("Flor do Coro"), hardness: 0.4, tool: Some(Axe), drops: Some([(item: "chorus_fruit", min: 1, max: 2)])),
     (name: "nether_portal", display_name: Some("Portal"), shape: Portal, solid: false, light: 11, hardness: -1.0, drops: Some([]), in_inventory: false, textures: (all: Some("nether_portal"))),

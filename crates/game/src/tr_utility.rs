@@ -128,7 +128,8 @@ impl Game {
         for dy in -2..=3 {
             for dz in -4..=4 {
                 for dx in -4..=4 {
-                    let id = self.world.block_or_air(me + IVec3::new(dx, dy, dz));
+                    // Any facing of a station counts (the arcane anvil turns).
+                    let id = self.reg.get(self.world.block_or_air(me + IVec3::new(dx, dy, dz))).base;
                     if let Some(&(_, b)) = ids.iter().find(|s| s.0 == id) {
                         got |= b;
                     }

@@ -171,7 +171,7 @@ impl Tr {
         self.r3.save(dir, items);
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
-            if let Err(e) = std::fs::write(dir.join("tr.ron"), text) {
+            if let Err(e) = voxel::save::write_atomic(dir.join("tr.ron"), text) {
                 log::error!("could not save tr.ron: {e}");
             }
         }

@@ -43,7 +43,7 @@ pub(crate) fn save(dir: &Path, c: &CmdBlocks) {
     }
     let _ = std::fs::create_dir_all(dir);
     if let Ok(t) = ron::ser::to_string_pretty(&c.texts, Default::default()) {
-        let _ = std::fs::write(dir.join("command_blocks.ron"), t);
+        let _ = voxel::save::write_atomic(dir.join("command_blocks.ron"), t);
     }
 }
 
