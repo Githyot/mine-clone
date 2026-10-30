@@ -178,6 +178,7 @@ impl UiBatch {
             return;
         }
         let mut boxes: Vec<voxel::shapes::PBox> = Vec::new();
+        let mut accent_from = usize::MAX;
         if b.shape.is_boxes() {
             // Stairs climb away from the viewer; fences, walls and panes show two arms.
             let (variant, conn) = match b.shape {
@@ -186,14 +187,15 @@ impl UiBatch {
                 Shape::Fence | Shape::Wall | Shape::Pane => (0, voxel::shapes::CONN_PX | voxel::shapes::CONN_NX),
                 _ => (0, 0),
             };
-            voxel::shapes::boxes(b.shape, variant, conn, false, &mut boxes);
+            accent_from = voxel::shapes::boxes_styled(b.shape, b.style, variant, conn, false, &mut boxes);
         } else {
             boxes.push([0, 0, 0, 16, 16, 16]);
         }
         // Far boxes first so near ones cover them, each keeping its part's pictures.
         let mut boxes: Vec<(usize, voxel::shapes::PBox)> = boxes.into_iter().enumerate().collect();
         boxes.sort_by_key(|(_, q)| (q[0] as u16 + q[2] as u16, q[1]));
-        let face = |i: usize, f: usize| b.faces[voxel::shapes::box_face(b.shape, i, f).unwrap_or(f)] as i32;
+        // Accent boxes (cushions, bark) take the accent picture on every face.
+        let face = |i: usize, f: usize| if i >= accent_from { b.accent as i32 } else { b.faces[voxel::shapes::box_face(b.shape, i, f).unwrap_or(f)] as i32 };
         let cx = x + size / 2.0;
         let w = size * 0.5;
         let h = size * 0.25;

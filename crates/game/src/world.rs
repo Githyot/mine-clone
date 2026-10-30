@@ -1050,7 +1050,7 @@ impl World {
             return None;
         }
         let mut v = Vec::new();
-        voxel::shapes::boxes(b.shape, b.variant, self.connections(p, b.shape), false, &mut v);
+        voxel::shapes::boxes_styled(b.shape, b.style, b.variant, self.connections(p, b.shape), false, &mut v);
         let inv = Vec3::ONE / d;
         let mut best: Option<(f32, IVec3)> = None;
         for q in v {
