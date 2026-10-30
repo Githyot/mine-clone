@@ -69,28 +69,57 @@ pub fn world_evil(seed: u64) -> Land {
     }
 }
 
+/// The patch of cell (gx, gz), if it has one; the Prism only in hard mode.
+fn zone_of(seed: u64, gx: i32, gz: i32, prism: bool) -> Option<Zone> {
+    let mut rng = Rng::new(mix(seed, gx, gz, 0x5EED_1A4D));
+    let roll = rng.f32();
+    let land = if roll < 0.5 && (gx, gz) != (0, 0) {
+        world_evil(seed)
+    } else if prism && roll > 0.6 {
+        Land::Prism
+    } else {
+        return None;
+    };
+    let center = IVec2::new(gx * CELL + rng.range(64, CELL - 64), gz * CELL + rng.range(64, CELL - 64));
+    let radius = 40.0 + rng.f32() * 30.0;
+    Some(Zone { center, radius, land, salt: mix(seed, gx, gz, 0xFEA7) })
+}
+
 /// The patches whose cells are around (x, z); the Prism only in hard mode.
 fn zones_near(seed: u64, x: i32, z: i32, prism: bool) -> Vec<Zone> {
     let (cx, cz) = (x.div_euclid(CELL), z.div_euclid(CELL));
     let mut out = Vec::new();
     for dx in -1..=1 {
         for dz in -1..=1 {
-            let (gx, gz) = (cx + dx, cz + dz);
-            let mut rng = Rng::new(mix(seed, gx, gz, 0x5EED_1A4D));
-            let roll = rng.f32();
-            let land = if roll < 0.5 && (gx, gz) != (0, 0) {
-                world_evil(seed)
-            } else if prism && roll > 0.6 {
-                Land::Prism
-            } else {
-                continue;
-            };
-            let center = IVec2::new(gx * CELL + rng.range(64, CELL - 64), gz * CELL + rng.range(64, CELL - 64));
-            let radius = 40.0 + rng.f32() * 30.0;
-            out.push(Zone { center, radius, land, salt: mix(seed, gx, gz, 0xFEA7) });
+            out.extend(zone_of(seed, cx + dx, cz + dz, prism));
         }
     }
     out
+}
+
+/// The middle of the nearest patch of a land `want` accepts, for the Guide's compass.
+pub(crate) fn nearest_land(seed: u64, x: i32, z: i32, prism: bool, want: impl Fn(Land) -> bool) -> Option<IVec2> {
+    let (cx, cz) = (x.div_euclid(CELL), z.div_euclid(CELL));
+    let here = IVec2::new(x, z);
+    let mut best: Option<IVec2> = None;
+    for r in 0..8i32 {
+        for dx in -r..=r {
+            for dz in -r..=r {
+                if dx.abs().max(dz.abs()) != r {
+                    continue;
+                }
+                let Some(zone) = zone_of(seed, cx + dx, cz + dz, prism).filter(|z| want(z.land)) else { continue };
+                if best.is_none_or(|b| (zone.center - here).length_squared() < (b - here).length_squared()) {
+                    best = Some(zone.center);
+                }
+            }
+        }
+        // A patch found within this ring can't be beaten by one two rings further out.
+        if best.is_some_and(|b| ((b - here).as_vec2().length() as i32) < r * CELL) {
+            break;
+        }
+    }
+    best
 }
 
 fn in_zone(z: &Zone, x: i32, wz: i32) -> bool {

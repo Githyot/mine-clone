@@ -1438,6 +1438,16 @@ impl crate::Game {
         put(w, 5, 0, 17, "hopper", 2);
         put(w, 6, 0, 17, "chest", 0);
         put(w, 6, 0, 19, "dispenser", 2);
+        // Up front: repeaters set to each delay (the back torch slides back), one lit by a
+        // torch, and comparators in compare and subtract mode (front torch down or up and lit).
+        put(w, -7, 0, 2, "redstone_torch", 0);
+        put(w, -6, 0, 2, "repeater", 1);
+        for d in 0..4u8 {
+            put(w, -4 + d as i32, 0, 2, "repeater", d << 2);
+        }
+        put(w, 1, 0, 2, "comparator", 0);
+        put(w, 2, 0, 2, "comparator", 4);
+        put(w, 4, 0, 2, "redstone_torch", 0);
         let at = |x: i32, y: i32, z: i32| IVec3::new(p.x + x, p.y + y, p.z - z);
         let stack = |g: &crate::Game, n: &str, c: u8| g.items.id(n).map(|i| voxel::item::ItemStack::new(i, c));
         let mut a = voxel::item::Inventory::new(27);
@@ -1450,7 +1460,12 @@ impl crate::Game {
         self.surv.containers.insert(at(5, 1, 17), crate::survival::Container::Chest(b));
         self.surv.containers.insert(at(5, 0, 17), crate::survival::Container::Chest(voxel::item::Inventory::new(5)));
         self.surv.containers.insert(at(6, 0, 17), crate::survival::Container::Chest(voxel::item::Inventory::new(27)));
-        if self.args.screenshot.is_some() {
+        if self.args.screenshot.is_some() && std::env::var("MC_RS_CLOSE").is_ok() {
+            // Test hook: close up on the repeaters and comparators in the front row.
+            self.body.pos = p.as_vec3() + glam::Vec3::new(-1.0, 1.8, 2.2);
+            self.pitch = -38f32.to_radians();
+            self.body.flying = true;
+        } else if self.args.screenshot.is_some() {
             // Step back and up to see it all.
             self.body.pos += glam::Vec3::new(0.0, 6.0, 2.0);
             self.body.flying = true;

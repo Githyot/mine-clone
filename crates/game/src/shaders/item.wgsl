@@ -15,6 +15,8 @@ struct Item {
     // pictures mirrored, a left-hinged door; 3: a box inside a box, a drawer): corners in the
     // block's 0..1 frame, and the pivot inside the block that pos stands for. On a whole item,
     // bmin is the enchantment shimmer instead: rgb its colour, w its strength (0 = none).
+    // piv.w 4: a strip of cloth (a banner): the picture spans the box's width, and from
+    // bmin.w to bmax.w of its height (a strip of a taller picture), on every face of layers.x.
     bmin: vec4<f32>,
     bmax: vec4<f32>,
     piv: vec4<f32>,
@@ -87,7 +89,14 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
     let world = it.pos.xyz + rotated;
     var o: IOut;
     o.clip = g.view_proj * vec4<f32>(world, 1.0);
-    if (flat) {
+    let cloth = it.piv.w > 3.5;
+    if (cloth) {
+        // Front (+z) as drawn, the back mirrored like the other side of a cloth; the thin edges
+        // take the picture's edge pixels.
+        let u = clamp(select(c.x, 1.0 - c.x, face == 5u), 0.002, 0.998);
+        o.uv = vec2<f32>(u, mix(it.bmin.w, it.bmax.w, clamp(1.0 - c.y, 0.002, 0.998)));
+        o.layer = i32(it.layers.x);
+    } else if (flat) {
         // Every face samples the sprite at its own position: front and back show the picture,
         // the edges show its outline pixels, like an extruded item.
         o.uv = vec2<f32>(c.x, 1.0 - c.y);
@@ -146,7 +155,7 @@ fn vs_item(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
         let n2 = n * n;
         o.shade = n2.x * 0.6 + n2.z * 0.8 + n2.y * select(0.5, 1.0, n.y > 0.0) + it.layers.w;
     }
-    if (part && it.rot.w > 0.05) {
+    if (part && !cloth && it.rot.w > 0.05) {
         // Inside open storage: faces inside the box (not on its outside or rim) are in
         // shadow, deepest at the floor (bmin.w) and lighter towards the top (rot.w); the
         // underside of a lid is dim. A box inside a box (piv.w 3, a drawer) keeps its own
@@ -265,26 +274,6 @@ fn fs_item(in: IOut) -> @location(0) vec4<f32> {
     return ishade(c, fr, in, false);
 }
 
-// A flat picture held in a hand, extruded like the classic item models: the picture on its
-// front and back, 1/16 of its width apart, and a side wall along every pixel edge where an
-// opaque pixel meets a clear one. Quads 0 and 1 are the faces; then one plane between every
-// two columns, then one between every two rows. Each plane is drawn whole and the fragment
-// keeps only the stretches where the two pixels beside it differ.
-
-struct EOut {
-    @builtin(position) clip: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-    @location(1) @interpolate(flat) layer: i32,
-    // x: 0 face, 1 plane between columns, 2 plane between rows; y: which column or row.
-    @location(2) @interpolate(flat) edge: vec2<f32>,
-    // Shading facing +axis and -axis (a face uses x).
-    @location(3) @interpolate(flat) shade: vec2<f32>,
-    @location(4) light: vec3<f32>,
-    @location(5) dist: f32,
-    @location(6) @interpolate(flat) glint: vec4<f32>,
-    @location(7) rel: vec3<f32>,
-};
-
 fn iturn(it: Item, v: vec3<f32>) -> vec3<f32> {
     let cr = cos(it.rot.y);
     let sr = sin(it.rot.y);
@@ -303,105 +292,236 @@ fn dir_shade(n: vec3<f32>) -> f32 {
     return n.x * n.x * 0.6 + n.z * n.z * 0.8 + n.y * n.y * select(0.5, 1.0, n.y > 0.0);
 }
 
-@vertex
-fn vs_extrude(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> EOut {
-    let it = items[ii];
-    // The item texture's width (item_render.rs puts it here for extruded items).
-    let res = u32(it.rot.w);
-    let q = vi / 6u;
-    var sq = array<vec2<f32>, 6>(vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(1.0, 1.0), vec2(0.0, 0.0), vec2(1.0, 1.0), vec2(0.0, 1.0));
-    let s = sq[vi % 6u];
-    let h = 1.0 / 32.0;
-    let r = f32(res);
-    var c: vec3<f32>;
-    var n: vec3<f32>;
-    var o: EOut;
-    if (q < 2u) {
-        let z = select(-h, h, q == 0u);
-        c = vec3<f32>(s.x, s.y, 0.5 + z);
-        n = vec3<f32>(0.0, 0.0, select(-1.0, 1.0, q == 0u));
-        o.edge = vec2<f32>(0.0, 0.0);
-    } else if (q < 3u + res) {
-        let i = f32(q - 2u);
-        c = vec3<f32>(i / r, s.x, 0.5 + mix(-h, h, s.y));
-        n = vec3<f32>(1.0, 0.0, 0.0);
-        o.edge = vec2<f32>(1.0, i);
-    } else {
-        let j = f32(q - 3u - res);
-        c = vec3<f32>(s.x, j / r, 0.5 + mix(-h, h, s.y));
-        n = vec3<f32>(0.0, 1.0, 0.0);
-        o.edge = vec2<f32>(2.0, j);
+// The inverse of iturn: a vector in the world back into the item's own frame.
+fn iturn_inv(it: Item, v: vec3<f32>) -> vec3<f32> {
+    let cy = cos(it.info.x);
+    let sy = sin(it.info.x);
+    var l = vec3<f32>(v.x * cy - v.z * sy, v.y, v.x * sy + v.z * cy);
+    let cp = cos(it.rot.x);
+    let sp = sin(it.rot.x);
+    l = vec3<f32>(l.x, l.y * cp + l.z * sp, -l.y * sp + l.z * cp);
+    let cr = cos(it.rot.y);
+    let sr = sin(it.rot.y);
+    return vec3<f32>(l.x * cr + l.y * sr, -l.x * sr + l.y * cr, l.z);
+}
+
+// A picture with real 3D volume (HP 2026-10-29): handles round, heads thick, blades thin at
+// their edges, instead of a picture extruded into a two-pixel slab. item_render::volumes gives
+// every cell of a 32x32 grid over the picture a half-thickness; here a box around the picture
+// is drawn and each pixel walks its ray through that grid (a 2D DDA) to the first cell whose
+// slab it enters, writing that point's depth.
+
+@group(2) @binding(2) var<storage, read> vols: array<u32>;
+
+const VOL_G: f32 = 32.0;
+// Half the box's depth in item units: a bit more than the thickest cell (item_render::VOL_MAX).
+const VOL_BOX: f32 = 1.85 / 32.0;
+
+struct VOut {
+    @builtin(position) clip: vec4<f32>,
+    // The box's surface in the item's own 0..1 frame (z: 0.5 is the picture's middle plane).
+    @location(0) loc: vec3<f32>,
+    @location(1) @interpolate(flat) ii: u32,
+};
+
+struct VFrag {
+    @location(0) color: vec4<f32>,
+    @builtin(frag_depth) depth: f32,
+};
+
+// How thick this item is drawn: rot.w, 0 meaning a tool's full volume.
+fn vthick(it: Item) -> f32 {
+    return select(it.rot.w, 1.0, it.rot.w <= 0.0);
+}
+
+// Half-thickness of cell (i, j) of a layer, in item units (0 = empty).
+fn vh(layer: i32, i: i32, j: i32) -> f32 {
+    if (i < 0 || j < 0 || i >= 32 || j >= 32 || layer < 0) {
+        return 0.0;
     }
+    let k = u32(layer) * 1024u + u32(j * 32 + i);
+    if (k / 4u >= arrayLength(&vols)) {
+        return 0.0;
+    }
+    return f32((vols[k / 4u] >> ((k % 4u) * 8u)) & 255u) / (64.0 * VOL_G);
+}
+
+@vertex
+fn vs_vol(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
+    let it = items[ii];
+    let k = icorner(vi / 6u, vi % 6u);
+    let b = VOL_BOX * vthick(it) + 0.002;
+    let c = vec3<f32>(k.x, k.y, 0.5 + (k.z * 2.0 - 1.0) * b);
     let world = it.pos.xyz + iturn(it, (c - vec3<f32>(0.5)) * it.pos.w);
-    let wn = normalize(iturn(it, n));
+    var o: VOut;
     o.clip = g.view_proj * vec4<f32>(world, 1.0);
-    o.uv = vec2<f32>(c.x, 1.0 - c.y);
-    o.layer = i32(it.layers.x);
-    o.shade = vec2<f32>(dir_shade(wn), dir_shade(-wn)) + vec2<f32>(it.layers.w);
-    o.light = vec3<f32>(it.info.z, it.info.w, it.layers.w);
-    o.dist = length(world - g.cam_pos.xyz);
-    o.glint = it.bmin;
-    o.rel = world;
+    o.loc = c;
+    o.ii = ii;
     return o;
 }
 
-// As an item seen whole (fs_item's lighting and materials) with this fragment's shading.
-fn eshade(c: vec4<f32>, fr: MatFrame, e: EOut, shade: f32) -> vec4<f32> {
-    var i: IOut;
-    i.clip = e.clip;
-    i.uv = e.uv;
-    i.layer = e.layer;
-    i.shade = shade;
-    i.light = e.light;
-    i.dist = e.dist;
-    i.glint = e.glint;
-    i.rel = e.rel;
-    i.n = vec3<f32>(0.0);
-    return ishade(c, fr, i, e.edge.x > 0.5);
-}
-
 @fragment
-fn fs_extrude(in: EOut) -> @location(0) vec4<f32> {
-    let r = f32(textureDimensions(itex).x);
-    let fr = mat_frame(in.rel, in.uv);
-    if (in.edge.x < 0.5) {
-        let c = isample(in.uv, in.layer);
-        if (c.a < 0.3) {
-            discard;
-        }
-        return eshade(c, fr, in, in.shade.x);
-    }
-    // The pixels on the low side (left / below) and the high side of this plane.
-    let k = in.edge.y;
-    var lo_uv: vec2<f32>;
-    var hi_uv: vec2<f32>;
-    if (in.edge.x < 1.5) {
-        let v = (floor(in.uv.y * r) + 0.5) / r;
-        lo_uv = vec2<f32>((k - 0.5) / r, v);
-        hi_uv = vec2<f32>((k + 0.5) / r, v);
-    } else {
-        let u = (floor(in.uv.x * r) + 0.5) / r;
-        lo_uv = vec2<f32>(u, 1.0 - (k - 0.5) / r);
-        hi_uv = vec2<f32>(u, 1.0 - (k + 0.5) / r);
-    }
-    var lo = vec4<f32>(0.0);
-    var hi = vec4<f32>(0.0);
-    if (k > 0.5) {
-        lo = isample(lo_uv, in.layer);
-    }
-    if (k < r - 0.5) {
-        hi = isample(hi_uv, in.layer);
-    }
-    let lo_on = lo.a >= 0.3;
-    let hi_on = hi.a >= 0.3;
-    if (lo_on == hi_on) {
+fn fs_vol(in: VOut) -> VFrag {
+    let it = items[in.ii];
+    let s = it.pos.w;
+    let th = vthick(it);
+    let layer = i32(it.layers.x);
+    let cam = vec3<f32>(0.5) + iturn_inv(it, g.cam_pos.xyz - it.pos.xyz) / s;
+    let rd = in.loc - cam;
+    let tf = length(rd);
+    let d = rd / tf;
+    // The ray through the box: only the fragment where it leaves the box works (one per pixel,
+    // and it still works with the eye inside the box).
+    let b = VOL_BOX * th + 0.002;
+    let inv = vec3<f32>(select(1e30, 1.0 / d.x, abs(d.x) > 1e-7), select(1e30, 1.0 / d.y, abs(d.y) > 1e-7), select(1e30, 1.0 / d.z, abs(d.z) > 1e-7));
+    let ta = (vec3<f32>(0.0, 0.0, 0.5 - b) - cam) * inv;
+    let tb = (vec3<f32>(1.0, 1.0, 0.5 + b) - cam) * inv;
+    let tn = min(ta, tb);
+    let tx = max(ta, tb);
+    let tmin = max(max(tn.x, tn.y), tn.z);
+    let tmax = min(min(tx.x, tx.y), tx.z);
+    if (tf < tmax - 1e-4 || tmax <= tmin) {
         discard;
     }
-    // The wall belongs to the opaque pixel and faces away from it.
-    if (lo_on) {
-        return eshade(lo, fr, in, in.shade.x);
+    let t0 = max(tmin, 0.0);
+    let p = cam + d * t0;
+    // Grid coordinates: columns along x, rows down the picture (-y).
+    let gx = p.x * VOL_G;
+    let gy = (1.0 - p.y) * VOL_G;
+    let ddx = d.x * VOL_G;
+    let ddy = -d.y * VOL_G;
+    var i = clamp(i32(floor(gx)), 0, 31);
+    var j = clamp(i32(floor(gy)), 0, 31);
+    let sx = select(-1, 1, ddx > 0.0);
+    let sy = select(-1, 1, ddy > 0.0);
+    let tdx = select(1e30, 1.0 / abs(ddx), abs(ddx) > 1e-7);
+    let tdy = select(1e30, 1.0 / abs(ddy), abs(ddy) > 1e-7);
+    var tmx = t0 + select(1e30, select((gx - f32(i)) / -ddx, (f32(i + 1) - gx) / ddx, ddx > 0.0), abs(ddx) > 1e-7);
+    var tmy = t0 + select(1e30, select((gy - f32(j)) / -ddy, (f32(j + 1) - gy) / ddy, ddy > 0.0), abs(ddy) > 1e-7);
+    // Which side of the cell the ray came in by: 0 across x, 1 across y, 2 the box's face.
+    var axis = 2;
+    if (tmin > 0.0) {
+        if (tn.x >= tn.y && tn.x >= tn.z) {
+            axis = 0;
+        } else if (tn.y >= tn.z) {
+            axis = 1;
+        }
     }
-    return eshade(hi, fr, in, in.shade.y);
+    var t_in = t0;
+    var hit = false;
+    var wall = false;
+    var th_hit = 0.0;
+    var nz = 0.0;
+    for (var k = 0; k < 72; k++) {
+        let t_out = min(min(tmx, tmy), tmax);
+        let h = vh(layer, i, j) * th;
+        if (h > 0.0) {
+            let z0 = cam.z + d.z * t_in - 0.5;
+            if (abs(z0) <= h && axis != 2) {
+                hit = true;
+                wall = true;
+                th_hit = t_in;
+                break;
+            }
+            if (abs(d.z) > 1e-7) {
+                let side = select(-1.0, 1.0, z0 > 0.0);
+                let tz = (0.5 + side * h - cam.z) / d.z;
+                if (tz >= t_in - 1e-6 && tz <= t_out) {
+                    hit = true;
+                    th_hit = max(tz, t_in);
+                    nz = side;
+                    break;
+                }
+            }
+        }
+        if (t_out >= tmax) {
+            break;
+        }
+        if (tmx < tmy) {
+            i += sx;
+            t_in = tmx;
+            tmx += tdx;
+            axis = 0;
+        } else {
+            j += sy;
+            t_in = tmy;
+            tmy += tdy;
+            axis = 1;
+        }
+        if (i < 0 || j < 0 || i > 31 || j > 31) {
+            break;
+        }
+    }
+    if (!hit) {
+        discard;
+    }
+    let q = cam + d * th_hit;
+    let world = it.pos.xyz + iturn(it, (q - vec3<f32>(0.5)) * s);
+    let clip = g.view_proj * vec4<f32>(world, 1.0);
+    let cell = vec2<f32>(f32(i), f32(j));
+    let centre = (cell + vec2<f32>(0.5)) / VOL_G;
+    var uv = centre;
+    var n: vec3<f32>;
+    // Tangents along the picture's u and v (for the materials' glints), tilted with the surface.
+    var tu = vec3<f32>(1.0, 0.0, 0.0);
+    var tv = vec3<f32>(0.0, -1.0, 0.0);
+    if (wall) {
+        if (axis == 0) {
+            n = vec3<f32>(f32(-sx), 0.0, 0.0);
+        } else {
+            n = vec3<f32>(0.0, f32(sy), 0.0);
+        }
+    } else {
+        uv = clamp(vec2<f32>(q.x, 1.0 - q.y), (cell + vec2<f32>(0.03)) / VOL_G, (cell + vec2<f32>(0.97)) / VOL_G);
+        // The surface's slope from the cells around: rounded handles, ridged blades.
+        let hx = (vh(layer, i + 1, j) - vh(layer, i - 1, j)) * th * VOL_G * 0.5 * 0.8;
+        let hy = (vh(layer, i, j - 1) - vh(layer, i, j + 1)) * th * VOL_G * 0.5 * 0.8;
+        n = normalize(vec3<f32>(-hx, -hy, nz));
+        tu = vec3<f32>(1.0, 0.0, hx * nz);
+        tv = vec3<f32>(0.0, -1.0, -hy * nz);
+    }
+    var c = isample(uv, layer);
+    if (c.a < 0.3) {
+        c = isample(centre, layer);
+    }
+    if (wall) {
+        // A picture's rim cells are its dark outline: seen from the side the item would be all
+        // outline. The wall shows the colour one cell further in (the handle's wood, the
+        // head's metal) unless the item is only one cell thick there.
+        var ii = i;
+        var jj = j;
+        if (axis == 0) {
+            ii = i + sx;
+        } else {
+            jj = j + sy;
+        }
+        if (vh(layer, ii, jj) > 0.0) {
+            let inner = isample((vec2<f32>(f32(ii), f32(jj)) + vec2<f32>(0.5)) / VOL_G, layer);
+            if (inner.a >= 0.3) {
+                c = vec4<f32>(mix(inner.rgb, c.rgb, 0.25), inner.a);
+            }
+        }
+    }
+    var fr: MatFrame;
+    fr.dp1 = iturn(it, tu) * (s / VOL_G);
+    fr.dp2 = iturn(it, tv) * (s / VOL_G);
+    fr.du1 = vec2<f32>(1.0 / VOL_G, 0.0);
+    fr.du2 = vec2<f32>(0.0, 1.0 / VOL_G);
+    let wn = normalize(iturn(it, n));
+    var io: IOut;
+    io.clip = clip;
+    io.uv = uv;
+    io.layer = layer;
+    io.shade = dir_shade(wn) + it.layers.w;
+    io.light = vec3<f32>(it.info.z, it.info.w, it.layers.w);
+    io.dist = length(world - g.cam_pos.xyz);
+    io.glint = it.bmin;
+    io.rel = world;
+    io.n = vec3<f32>(0.0);
+    var o: VFrag;
+    o.color = ishade(c, fr, io, wall);
+    o.depth = clip.z / clip.w;
+    return o;
 }
 
 // The soft glow around items on the ground: a round sprite facing the camera, added on top
