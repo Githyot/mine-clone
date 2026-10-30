@@ -157,11 +157,11 @@ impl Extras {
 
     pub fn save(&self, dim_dir: &Path, world_dir: &Path) {
         if let Ok(t) = ron::to_string(&self.notes) {
-            let _ = std::fs::write(dim_dir.join("notes.ron"), t);
+            let _ = voxel::save::write_atomic(dim_dir.join("notes.ron"), t);
         }
         if !self.books.is_empty() {
             if let Ok(t) = ron::ser::to_string_pretty(&self.books, ron::ser::PrettyConfig::default()) {
-                let _ = std::fs::write(world_dir.join("books.ron"), t);
+                let _ = voxel::save::write_atomic(world_dir.join("books.ron"), t);
             }
         }
     }

@@ -159,11 +159,11 @@ impl Game {
             b.extend_from_slice(t);
         }
         let _ = std::fs::create_dir_all(&dir);
-        if let Err(e) = std::fs::write(dir.join("atlas.bin"), b) {
+        if let Err(e) = voxel::save::write_atomic(dir.join("atlas.bin"), b) {
             log::error!("could not save atlas.bin: {e}");
         }
         if let Ok(t) = ron::ser::to_string_pretty(&self.atlas.marks, Default::default()) {
-            let _ = std::fs::write(dir.join("atlas.ron"), t);
+            let _ = voxel::save::write_atomic(dir.join("atlas.ron"), t);
         }
         self.atlas.dirty = false;
     }

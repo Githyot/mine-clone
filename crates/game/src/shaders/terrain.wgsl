@@ -63,20 +63,46 @@ fn wind_offset(wp: vec3<f32>, flags: u32, stack: u32, h: f32) -> vec3<f32> {
     return vec3<f32>(d.x, -dot(d, d) * 0.6, d.y);
 }
 
+// A plant with a body (voxel/src/flora.rs): x and z in 1/32 block (bit 9 of x marks a stacked
+// plant), y as the block (top four bits) and the height in it (low six bits, 1/32 block).
+fn flora_pos(x: u32) -> vec3<f32> {
+    let y = (x >> 10u) & 1023u;
+    return vec3<f32>(f32(x & 511u) / 32.0, f32(y >> 6u) + f32(y & 63u) / 32.0, f32((x >> 20u) & 511u) / 32.0);
+}
+
+// Its base stays put and each corner leans by its height in the plant; stiff plants (ao bits:
+// 1 sunflower, saplings; 2 mushrooms) lean less. Stacked plants (cane, kelp, vines) carry the
+// stack bits instead and bend as one stem, like the crossed plants.
+fn flora_wind(wp: vec3<f32>, x: u32) -> vec3<f32> {
+    var stiff = array<f32, 4>(1.0, 0.55, 0.2, 0.0);
+    let ao = (x >> 30u) & 3u;
+    let h = f32((x >> 10u) & 63u) / 32.0;
+    if (((x >> 9u) & 1u) != 0u) {
+        return wind_offset(wp, 3u, ao, h);
+    }
+    return wind_offset(wp, 3u, 0u, h * stiff[ao]);
+}
+
 @vertex
 fn vs_main(@location(0) w: vec3<u32>, @location(1) origin: vec3<f32>) -> VOut {
     var shades = array<f32, 6>(0.6, 0.6, 1.0, 0.5, 0.8, 0.8);
     var ao_curve = array<f32, 4>(0.45, 0.64, 0.82, 1.0);
+    let flags = w.y >> 25u;
+    let flora = (flags & 7u) == 7u;
     var p = vec3<f32>(f32(w.x & 1023u), f32((w.x >> 10u) & 1023u), f32((w.x >> 20u) & 1023u)) / 16.0 + origin;
+    if (flora) {
+        p = flora_pos(w.x) + origin;
+    }
     let ao = (w.x >> 30u) & 3u;
     let uv = vec2<f32>(f32(w.y & 31u), f32((w.y >> 5u) & 31u)) / 16.0;
     let layer = (w.y >> 10u) & 2047u;
     let emissive = (w.y >> 21u) & 1u;
     let face = (w.y >> 22u) & 7u;
-    let flags = w.y >> 25u;
     let wp = p + g.cam_world.xyz - g.cam_pos.xyz;
     let t = g.cam_pos.w;
-    if ((flags & 1u) != 0u) {
+    if (flora) {
+        p += flora_wind(wp, w.x);
+    } else if ((flags & 1u) != 0u) {
         // Leaves and plants sway gently in the wind (shader packs can make it stronger).
         p += wind_offset(wp, flags, ao, 1.0 - uv.y);
     }
@@ -87,7 +113,7 @@ fn vs_main(@location(0) w: vec3<u32>, @location(1) origin: vec3<f32>) -> VOut {
     var out: VOut;
     out.clip = g.view_proj * vec4<f32>(p, 1.0);
     out.uv = uv;
-    if ((flags & 4u) != 0u) {
+    if ((flags & 4u) != 0u && !flora) {
         // Merged quad: repeat the texture once per block, from the position in the section.
         let q = vec3<f32>(f32(w.x & 1023u), f32((w.x >> 10u) & 1023u), f32((w.x >> 20u) & 1023u)) / 16.0;
         switch face {
@@ -139,20 +165,23 @@ fn sun_visibility(in: VOut) -> f32 {
         n = l;
     }
     let ndl = dot(n, l);
-    if (ndl <= 0.0) {
+    // Turning away from the light, a face goes into its own shadow gradually: a hard cut at
+    // exactly side-on flickered on walls with the sun straight overhead (the test world's noon).
+    let facing = smoothstep(0.0, 0.2, ndl);
+    if (facing <= 0.0) {
         return 0.0;
     }
     let d = length(in.rel - g.cam_pos.xyz);
     let far_fade = smoothstep(g.shadow.w * 0.75, g.shadow.w, d);
     if (far_fade >= 1.0) {
-        return 1.0;
+        return facing;
     }
     // Push the lookup off the surface a little (more at grazing light) to avoid acne.
     let p = in.rel + n * (0.03 + 0.06 * (1.0 - ndl)) * (1.0 + d * 0.02);
     let c = g.shadow_mat * vec4<f32>(p, 1.0);
     let uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
     if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || c.z > 1.0) {
-        return 1.0;
+        return facing;
     }
     let z = c.z - 0.0005;
     var v = textureSampleCompareLevel(shadow_map, shadow_cmp, uv, z);
@@ -165,7 +194,7 @@ fn sun_visibility(in: VOut) -> f32 {
         v += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + vec2<f32>(o * 0.4, -o), z);
         v *= 0.2;
     }
-    return mix(v, 1.0, far_fade);
+    return min(facing, mix(v, 1.0, far_fade));
 }
 
 // 1 when nothing solid stands between this point and the light in the player's hand, 0 when a
@@ -755,12 +784,16 @@ fn vs_shadow(@location(0) w: vec3<u32>, @location(1) origin: vec3<f32>) -> Shado
     var out: ShadowOut;
     out.uv = vec2<f32>(f32(w.y & 31u), f32((w.y >> 5u) & 31u)) / 16.0;
     let flags = w.y >> 25u;
-    if ((flags & 1u) != 0u) {
+    let flora = (flags & 7u) == 7u;
+    if (flora) {
+        p = flora_pos(w.x) + origin;
+        p += flora_wind(p + g.cam_world.xyz - g.cam_pos.xyz, w.x);
+    } else if ((flags & 1u) != 0u) {
         // Shadows move with the plants that cast them.
         p += wind_offset(p + g.cam_world.xyz - g.cam_pos.xyz, flags, (w.x >> 30u) & 3u, 1.0 - out.uv.y);
     }
     out.clip = g.shadow_mat * vec4<f32>(p, 1.0);
-    if (((w.y >> 25u) & 4u) != 0u) {
+    if (((w.y >> 25u) & 4u) != 0u && !flora) {
         // Merged quads are always full blocks of opaque texture: any uv will do.
         out.uv = vec2<f32>(0.5, 0.5);
     }

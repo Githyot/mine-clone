@@ -60,7 +60,7 @@ pub(crate) fn load(dir: &Path) -> Nature {
 
 pub(crate) fn save(dir: &Path, n: &Nature) {
     if let Ok(t) = ron::ser::to_string_pretty(n, Default::default()) {
-        let _ = std::fs::write(dir.join("nature.ron"), t);
+        let _ = voxel::save::write_atomic(dir.join("nature.ron"), t);
     }
 }
 

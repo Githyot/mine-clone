@@ -104,11 +104,11 @@ BX = BLOCKS.extend
 B("    // Work blocks")
 B(block("enchanting_table", "Mesa de Encantamento", hardness=5.0, tool=PICK, tier=1, light=7, tex={"top": "enchanting_table_top", "side": "enchanting_table_side", "bottom": "enchanting_table_bottom"}))
 for n, d in (("anvil", "Bigorna"), ("chipped_anvil", "Bigorna Lascada"), ("damaged_anvil", "Bigorna Danificada")):
-    B(block(n, d, hardness=5.0, tool=PICK, tier=1, gravity=True, tex={"top": f"{n}_top", "side": "anvil_side", "bottom": "anvil_side"}))
+    B(block(n, d, shape="Anvil", hardness=5.0, tool=PICK, tier=1, gravity=True, tex={"top": f"{n}_top", "side": "anvil_side", "bottom": "anvil_side"}))
 B(block("grindstone", "Rebolo", hardness=2.0, tool=PICK, tier=1, tex={"top": "grindstone_top", "side": "grindstone_side", "bottom": "grindstone_bottom"}))
 B(block("smithing_table", "Bancada de Ferraria", hardness=2.5, tool=AXE, tex={"top": "smithing_table_top", "side": "smithing_table_side", "front": "smithing_table_front", "bottom": "smithing_table_bottom"}))
 B(block("brewing_stand", "Suporte de Poções", hardness=0.5, tool=PICK, tier=1, shape="Cross", transparency="Cutout", solid=False, light=1, tex="brewing_stand"))
-B(block("beacon", "Sinalizador", hardness=3.0, light=15, transparency="Cutout", tex="beacon"))
+B(block("beacon", "Sinalizador", shape="Beacon", hardness=3.0, light=15, transparency="Cutout", tex={"side": "glass", "top": "glass", "bottom": "obsidian", "front": "beacon"}))
 B(block("conduit", "Conduíte", hardness=3.0, tool=PICK, light=15, shape="Lantern", transparency="Cutout", tex={"side": "conduit", "top": "conduit_top", "bottom": "conduit_top"}))
 B("    // Ocean stone")
 B(block("prismarine", "Prismarinho", hardness=1.5, tool=PICK, tier=1, tex="prismarine"))

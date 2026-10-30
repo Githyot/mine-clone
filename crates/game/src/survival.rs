@@ -366,7 +366,7 @@ impl Survival {
         };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
-            if let Err(e) = std::fs::write(dir.join("survival.ron"), text) {
+            if let Err(e) = voxel::save::write_atomic(dir.join("survival.ron"), text) {
                 log::error!("could not save survival.ron: {e}");
             }
         }
@@ -703,6 +703,9 @@ impl Game {
         self.fase6_block_broken(pos, id);
         let c = pos.as_vec3() + Vec3::splat(0.5);
         let harvested = self.items.can_harvest(&self.reg, id, tool.as_ref());
+        if !harvested {
+            self.progress_gate(id);
+        }
         for d in drops {
             self.pop_drop(c, d);
         }
@@ -1008,7 +1011,9 @@ impl Game {
             let id = self.world.block_or_air(hit.block);
             let name = self.reg.get(id).name.clone();
             let sneaking = self.crouch > 0.5;
-            if (!sneaking || self.held_stack().is_none()) && self.fase6_block_use(&name, hit.block) {
+            // Work blocks that turn (the anvil) answer to their base name in any facing.
+            let base = self.reg.get(self.reg.get(id).base).name.clone();
+            if (!sneaking || self.held_stack().is_none()) && self.fase6_block_use(&base, hit.block) {
                 return true;
             }
             if !sneaking || self.held_stack().is_none() {
@@ -1443,7 +1448,11 @@ impl Game {
             self.surv.starve_t += dt;
             if self.surv.starve_t >= 4.0 {
                 self.surv.starve_t = 0.0;
-                if self.health > 1.0 {
+                // As in vanilla: hunger stops at 5 hearts on Easy, half a heart on Normal and
+                // kills on Hard; armour and Protection never soften it.
+                let floor = [f32::MAX, 10.0, 1.0, 0.0][self.settings.difficulty.min(3) as usize];
+                if self.health > floor {
+                    self.prog.next_kind = crate::progression::DamageKind::Starve;
                     self.damage(1.0, None);
                 }
             }
@@ -1756,8 +1765,10 @@ impl Game {
                         (0.0, [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32], 0.22)
                     }
                 }
-                Look::Sprite(l) => (1.0, [(self.item_base + l) as f32; 3], 0.36),
+                // Pictures have real volume on the ground too (item_render::volumes).
+                Look::Sprite(l) => (2.0, [(self.item_base + l) as f32; 3], 0.36),
             };
+            let vol = if flat > 1.5 { picture_volume(it) } else { 0.0 };
             // Stacks show as two or three copies, like the classic game.
             let copies = if d.stack.count > 16 { 3 } else if d.stack.count > 1 { 2 } else { 1 };
             if lying && flat > 0.5 {
@@ -1768,13 +1779,34 @@ impl Game {
                 if lying {
                     // Flat on the ground, a little scattered; blocks sit on their base.
                     let yaw = d.spin_rest + kf * 0.7;
-                    let (lift, pitch, spread) = if flat > 0.5 { (0.02 + kf * 0.02, -std::f32::consts::FRAC_PI_2, 0.07) } else { (size * 0.5, 0.0, size * 1.1) };
+                    // A picture lies on its back: lifted by half its thickness.
+                    let half = size * vol * crate::item_render::VOL_MAX / crate::item_render::VOL_GRID as f32;
+                    let (lift, pitch, spread) = if flat > 0.5 { (0.02 + half + kf * (0.02 + half * 2.0), -std::f32::consts::FRAC_PI_2, 0.07) } else { (size * 0.5, 0.0, size * 1.1) };
                     let off = Vec3::new(yaw.cos(), 0.0, yaw.sin()) * kf * spread;
-                    out.push(GpuItem { pos: [p.x + off.x, p.y + lift, p.z + off.z, size], info: [yaw, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [pitch, 0.0, 0.0, 0.0], bmin: glint, ..bytemuck::Zeroable::zeroed() });
+                    out.push(GpuItem { pos: [p.x + off.x, p.y + lift, p.z + off.z, size], info: [yaw, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [pitch, 0.0, 0.0, vol], bmin: glint, ..bytemuck::Zeroable::zeroed() });
                 } else {
                     let off = Vec3::new(kf * 0.05, kf * 0.04, -kf * 0.05);
-                    out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0; 4], bmin: glint, ..bytemuck::Zeroable::zeroed() });
+                    out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0, 0.0, 0.0, vol], bmin: glint, ..bytemuck::Zeroable::zeroed() });
                 }
+            }
+        }
+        if let Ok(names) = std::env::var("MC_ITEMVIEW") {
+            // Test hook: these items (comma-separated) in a row in front of the eye, big, turned
+            // MC_ITEMYAW degrees (default 35) and tipped MC_ITEMPITCH, to look at their 3D shape.
+            let deg = |k: &str, d: f32| std::env::var(k).ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(d).to_radians();
+            let list: Vec<_> = names.split(',').filter_map(|n| self.items.id(n.trim())).collect();
+            let f = self.forward();
+            let flat_f = Vec3::new(f.x, 0.0, f.z).normalize_or(Vec3::Z);
+            let side = Vec3::new(-flat_f.z, 0.0, flat_f.x);
+            let n = list.len() as f32;
+            let size = (2.2 / n.max(1.0)).min(0.9);
+            for (k, id) in list.into_iter().enumerate() {
+                let it = self.items.get(id);
+                let Look::Sprite(l) = it.look else { continue };
+                let layer = (self.item_base + l) as f32;
+                let at = eye + flat_f * 1.6 + side * ((k as f32 - (n - 1.0) / 2.0) * size * 1.05) - c;
+                let yaw = (-flat_f.x).atan2(-flat_f.z) + deg("MC_ITEMYAW", 35.0);
+                out.push(GpuItem { pos: [at.x, at.y, at.z, size], info: [yaw, 2.0, 1.0, 0.0], layers: [layer, layer, layer, 0.0], rot: [deg("MC_ITEMPITCH", 0.0), 0.0, 0.0, picture_volume(it)], ..bytemuck::Zeroable::zeroed() });
             }
         }
         for o in &self.surv.orbs {
@@ -1928,8 +1960,12 @@ impl Game {
         for i in 0..9 {
             slots.push((Slot::Inv(i), x0 + (8 + i * 18) as f32 * s, y0 + (142.0 + extra) * s));
         }
-        self.ui.label(x0 + 8.0 * s, y0 + (73.0 + extra) * s, "Inventário", dark, s);
         let n = self.surv.grid_size();
+        // The player's own screen leaves the title out, as the classic one does: the armour
+        // column runs down to where it would sit.
+        if !(matches!(open, Open::Craft) && n == 2) {
+            self.ui.label(x0 + 8.0 * s, y0 + (73.0 + extra) * s, "Inventário", dark, s);
+        }
         let mut over_shop = false;
         match open {
             Open::Craft | Open::Table => {
@@ -2133,7 +2169,16 @@ impl Game {
         } else {
             "Esq.: pegar  Dir.: metade  Shift: mover  Roda: 1 a 1  R: receita  U: usos"
         };
-        self.ui.text_centered(w / 2.0, y0 + ph + 4.0 * s, hint, WHITE);
+        // Under the panel when it fits, else across the top (it ran over the hearts at 720p),
+        // a size smaller when the line is wider than the screen.
+        let mut ts = s;
+        while ts > 1.0 && self.ui.text_width(hint, ts) > w - 8.0 * s {
+            ts -= 1.0;
+        }
+        let tw = self.ui.text_width(hint, ts);
+        let hud_top = self.ui.height - 46.0 * s;
+        let hy = if y0 + ph + 14.0 * s <= hud_top { y0 + ph + 4.0 * s } else { 2.0 * s };
+        self.ui.text_scaled((w - tw) / 2.0, hy, hint, WHITE, ts);
     }
 
     /// Extra tooltip lines (Durability Tooltip idea): wear left in colour, attack, armour, food.
@@ -2677,6 +2722,21 @@ struct HeldLook {
     layers: [f32; 3],
 }
 
+/// Held like a tool (diagonally, in the fist): tools, weapons, rods and sticks.
+fn held_like_tool(it: &voxel::item::Item) -> bool {
+    it.tool.is_some() || it.name.ends_with("_sword") || matches!(it.name.as_str(), "stick" | "blaze_rod" | "breeze_rod" | "bone" | "mace" | "trident") || it.name.ends_with("_rod") || crate::tr_weapons::is_blade(&it.name)
+}
+
+/// How thick an item picture is in 3D (`GpuItem::rot.w`): tools and weapons get their full
+/// volume (round handles, thick heads); other pictures (food, paper, gems) a thinner one.
+pub(crate) fn picture_volume(it: &voxel::item::Item) -> f32 {
+    if held_like_tool(it) {
+        1.0
+    } else {
+        0.6
+    }
+}
+
 impl HeldLook {
     fn model(&self) -> crate::player_model::HandModel {
         use crate::player_model::HandModel;
@@ -2826,7 +2886,7 @@ impl Game {
             // So are shields (shield.rs).
             return None;
         }
-        let tool = it.tool.is_some() || it.name.ends_with("_sword") || matches!(it.name.as_str(), "stick" | "blaze_rod" | "breeze_rod" | "bone" | "mace" | "trident") || it.name.ends_with("_rod") || crate::tr_weapons::is_blade(&it.name);
+        let tool = held_like_tool(it);
         Some(match it.look {
             Look::Block(b) => {
                 let bl = self.reg.get(b);
@@ -2858,7 +2918,7 @@ impl Game {
             // Flat pictures in a hand are extruded pixel by pixel (item_render.rs).
             info: [yaw, if look.flat { 2.0 } else { 0.0 }, (l >> 4) as f32 / 15.0, blk],
             layers: [look.layers[0], look.layers[1], look.layers[2], 0.0],
-            rot: [pitch, roll, 0.0, 0.0],
+            rot: [pitch, roll, 0.0, if look.kind == HeldKind::Tool { 1.0 } else { 0.6 }],
             ..bytemuck::Zeroable::zeroed()
         })
     }

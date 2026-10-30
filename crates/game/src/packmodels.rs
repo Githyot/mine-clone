@@ -27,6 +27,8 @@ pub(crate) struct PackModels {
     /// come right after the block textures.
     pub textures: Vec<String>,
     pub models: Vec<(BlockId, Vec<ModelQuad>)>,
+    /// Plants with a body (their pictures are at the end of `textures`).
+    pub flora: Vec<voxel::flora::FloraModel>,
 }
 
 /// Face names in mesh order (+x east, -x west, +y up, -y down, +z south, -z north).
@@ -108,6 +110,14 @@ fn state_model(pack: &mut Pack, mc: &str) -> Option<String> {
 /// Read every enabled pack's models for our blocks. `first_layer` is where the textures only
 /// models use will start.
 pub(crate) fn load(reg: &BlockRegistry, base: &Path, enabled: &[String]) -> PackModels {
+    let mut out = load_packs(reg, base, enabled);
+    let (names, flora) = crate::flora_tex::plan(reg, reg.textures.len() + out.textures.len());
+    out.textures.extend(names);
+    out.flora = flora;
+    out
+}
+
+fn load_packs(reg: &BlockRegistry, base: &Path, enabled: &[String]) -> PackModels {
     let mut out = PackModels::default();
     let mut packs: Vec<Pack> = enabled.iter().filter_map(|n| Pack::open(&base.join("resourcepacks").join(n))).collect();
     if packs.is_empty() {
@@ -131,8 +141,9 @@ pub(crate) fn load(reg: &BlockRegistry, base: &Path, enabled: &[String]) -> Pack
             // Doors, trapdoors, gates and stairs turn and open through their variants: one
             // model on the base id would draw only that one (a closed north door as the pack's
             // first state, open and facing east) differently from all the others.
-            // Cubes that turn when placed (furnaces, chests, logs) likewise.
-            let turns = matches!(b.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate | Shape::Stairs) || b.turn != voxel::block::Turn::None;
+            // Cubes that turn when placed (furnaces, chests, logs) likewise, and anvils and
+            // hoppers (a pack's hopper also drew without its funnel).
+            let turns = matches!(b.shape, Shape::Door | Shape::Trapdoor | Shape::FenceGate | Shape::Stairs | Shape::Anvil | Shape::Hopper) || b.turn != voxel::block::Turn::None;
             // See-through blocks (stained glass, ice) stay ours: pack models only reach the
             // solid pass, where their tinted fill would be cut away. The pack's texture is still used.
             if b.variant != 0 || turns || done.contains(&id) || matches!(b.shape, Shape::Liquid | Shape::Invisible) || b.transparency == Transparency::Translucent || b.name == "air" {
@@ -250,7 +261,9 @@ mod tests {
         let torch = reg.id("torch").unwrap();
         let (_, quads) = m.models.iter().find(|(id, _)| *id == torch).expect("torch model");
         assert_eq!(quads.len(), 6);
-        assert_eq!(m.textures, vec!["packtex/mypack/block/flame".to_string()]);
+        // The pack's own pictures come first, the painted plant parts after them.
+        assert_eq!(m.textures[0], "packtex/mypack/block/flame");
+        assert!(m.textures[1..].iter().all(|t| t.starts_with("flora/")));
         let planks = reg.textures.iter().position(|t| t == "oak_planks").unwrap() as u16;
         let up = quads.iter().find(|q| q.face == 2).unwrap();
         assert_eq!(up.layer as usize, reg.textures.len());

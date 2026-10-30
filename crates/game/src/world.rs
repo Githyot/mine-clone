@@ -5,7 +5,7 @@
 //! Lighting needs the 8 neighbours generated; meshing needs the 8 neighbours lit.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -35,7 +35,8 @@ enum Job {
 }
 
 enum Done {
-    Generated(ChunkPos, Chunk),
+    /// The chunk, and whether it is new from the seed (not read from disk).
+    Generated(ChunkPos, Chunk, bool),
     Deepened(ChunkPos, usize, usize, Vec<voxel::chunk::PalettedSection>),
     Lit(ChunkPos, u32, Vec<u8>, Band),
     Meshed(ChunkPos, u32, Vec<(usize, SectionMesh)>),
@@ -76,8 +77,12 @@ pub struct World {
     max_in_flight: usize,
     pub workers: usize,
     pub events: Vec<MeshEvent>,
-    /// Chunks edited since the last save.
+    /// Chunks edited (or newly generated) since the last save.
     unsaved: HashSet<ChunkPos>,
+    /// Chunks handed to the saver thread and not yet on disk. Loading looks here first, so a
+    /// chunk that comes back into view before its file is written is never generated anew.
+    saving: Arc<Mutex<HashMap<ChunkPos, Arc<Chunk>>>>,
+    saver: Sender<Arc<Chunk>>,
     /// Chunk offsets sorted by distance, for loading nearest-first.
     spiral: Vec<IVec2>,
     spiral_radius: i32,
@@ -90,6 +95,8 @@ pub struct World {
     top: Vec<f32>,
     /// Ladders and vines.
     climb: Vec<bool>,
+    /// Cobwebs: bodies inside crawl through (see `Terrain::sticky`).
+    sticky: Vec<bool>,
     /// How each block feels underfoot (ice slides, sand and snow drag).
     ground: Vec<voxel::physics::Ground>,
     /// Blocks that stand in water (kelp): bodies swim through them.
@@ -134,9 +141,28 @@ impl World {
         let (urgent_tx, urgent_rx) = unbounded::<Job>();
         let (done_tx, done_rx) = unbounded::<Done>();
         let workers = thread::available_parallelism().map(|n| n.get()).unwrap_or(4).saturating_sub(1).clamp(1, 16);
+        let saving: Arc<Mutex<HashMap<ChunkPos, Arc<Chunk>>>> = Arc::default();
+        let (saver_tx, saver_rx) = unbounded::<Arc<Chunk>>();
+        {
+            let (reg, save, saving) = (reg.clone(), save.clone(), saving.clone());
+            thread::Builder::new()
+                .name("world-saver".into())
+                .spawn(move || {
+                    for c in saver_rx {
+                        if let Err(e) = save.save_chunk(&reg, &c) {
+                            log::error!("could not save chunk {}: {e}", c.pos);
+                        }
+                        let mut m = saving.lock().unwrap_or_else(|e| e.into_inner());
+                        if m.get(&c.pos).is_some_and(|q| Arc::ptr_eq(q, &c)) {
+                            m.remove(&c.pos);
+                        }
+                    }
+                })
+                .expect("spawn saver");
+        }
         for i in 0..workers {
             let (jobs_rx, urgent_rx, done_tx) = (jobs_rx.clone(), urgent_rx.clone(), done_tx.clone());
-            let (reg, gen, save, tables) = (reg.clone(), gen.clone(), save.clone(), tables.clone());
+            let (reg, gen, save, tables, saving) = (reg.clone(), gen.clone(), save.clone(), tables.clone(), saving.clone());
             thread::Builder::new()
                 .name(format!("world-{i}"))
                 .spawn(move || loop {
@@ -149,7 +175,16 @@ impl World {
                         },
                     };
                     let out = match job {
-                        Job::Generate(pos, lo) => Done::Generated(pos, load_or_generate(&save, &gen, &reg, pos, lo)),
+                        Job::Generate(pos, lo) => {
+                            let queued = saving.lock().unwrap_or_else(|e| e.into_inner()).get(&pos).cloned();
+                            match queued {
+                                Some(c) => Done::Generated(pos, (*c).clone(), false),
+                                None => {
+                                    let (c, fresh) = load_or_generate_fresh(&save, &gen, &reg, pos, lo);
+                                    Done::Generated(pos, c, fresh)
+                                }
+                            }
+                        }
                         Job::Deepen(pos, lo, hi) => Done::Deepened(pos, lo, hi, gen.deep_sections(pos, lo, hi)),
                         Job::Light(pos, ver, n, band) => {
                             let refs: [Option<&Chunk>; 9] = std::array::from_fn(|i| n[i].as_deref());
@@ -186,6 +221,7 @@ impl World {
         let solid = reg.blocks.iter().map(|b| b.solid && b.shape != Shape::Liquid && b.shape != Shape::Invisible).collect();
         let top = reg.blocks.iter().map(|b| b.height as f32 / 16.0).collect();
         let climb = reg.blocks.iter().map(|b| b.shape == Shape::Ladder || matches!(b.name.as_str(), "vine" | "weeping_vines" | "twisting_vines" | "scaffolding" | "cave_vines")).collect();
+        let sticky = reg.blocks.iter().map(|b| b.name == "cobweb").collect();
         let wet = reg.blocks.iter().map(|b| b.waterlogged).collect();
         let ground = reg.blocks.iter().map(|b| voxel::physics::Ground::of_block(&reg.blocks[b.base as usize].name, b.variant)).collect();
         let spins = reg.blocks.iter().map(|b| reg.blocks[b.base as usize].name == "windmill_sails" || b.shape == Shape::TallBanner).collect();
@@ -203,6 +239,8 @@ impl World {
             workers,
             events: Vec::new(),
             unsaved: HashSet::new(),
+            saving,
+            saver: saver_tx,
             spiral: Vec::new(),
             spiral_radius: -1,
             fluid,
@@ -210,6 +248,7 @@ impl World {
             solid,
             top,
             climb,
+            sticky,
             ground,
             wet,
             meshed_count: 0,
@@ -332,13 +371,18 @@ impl World {
         while let Ok(done) = self.done.try_recv() {
             self.in_flight = self.in_flight.saturating_sub(1);
             match done {
-                Done::Generated(pos, c) => {
+                Done::Generated(pos, c, fresh) => {
                     if let Some(s) = self.slots.get_mut(&pos) {
                         // A chunk that came over the network meanwhile wins.
                         if s.chunk.is_none() {
                             let c = Arc::new(c);
                             s.chunk = Some(c.clone());
                             s.gen_pending = false;
+                            // Every visited chunk is kept, so a newer version of the terrain
+                            // generator never reshapes places the player has already seen.
+                            if fresh {
+                                self.unsaved.insert(pos);
+                            }
                             self.find_spinners(&c);
                         } else {
                             s.gen_pending = false;
@@ -357,6 +401,7 @@ impl World {
                         c.sections[lo + k] = sec;
                     }
                     c.deep_lo = lo;
+                    self.unsaved.insert(pos);
                     for i in 0..9 {
                         let p = pos + IVec2::new(i % 3 - 1, i / 3 - 1);
                         if let Some(n) = self.slots.get_mut(&p) {
@@ -573,7 +618,7 @@ impl World {
             }
             if self.unsaved.remove(&p) {
                 if let Some(c) = &s.chunk {
-                    let _ = self.save.save_chunk(&self.reg, c);
+                    self.queue_save(c.clone());
                 }
             }
             if s.mesh_done > 0 {
@@ -875,13 +920,30 @@ impl World {
         self.fluid[id as usize]
     }
 
+    /// Writes the chunk on the saver thread, off the frame.
+    fn queue_save(&self, c: Arc<Chunk>) {
+        self.saving.lock().unwrap_or_else(|e| e.into_inner()).insert(c.pos, c.clone());
+        if self.saver.send(c.clone()).is_err() {
+            // No saver (it never ends while the world lives, but just in case): write here.
+            let _ = self.save.save_chunk(&self.reg, &c);
+            self.saving.lock().unwrap_or_else(|e| e.into_inner()).remove(&c.pos);
+        }
+    }
+
+    /// Saves every changed chunk and waits until all of them are on disk.
     pub fn save_all(&mut self) {
         for p in std::mem::take(&mut self.unsaved) {
-            if let Some(c) = self.chunk(p) {
-                if let Err(e) = self.save.save_chunk(&self.reg, c) {
-                    log::error!("could not save chunk {p}: {e}");
-                }
+            if let Some(c) = self.slots.get(&p).and_then(|s| s.chunk.clone()) {
+                self.queue_save(c);
             }
+        }
+        let t = std::time::Instant::now();
+        while !self.saving.lock().unwrap_or_else(|e| e.into_inner()).is_empty() {
+            if t.elapsed().as_secs() > 30 {
+                log::error!("chunks still saving after 30 s");
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
         }
     }
 
@@ -902,9 +964,14 @@ impl World {
 /// A saved chunk, or a new one from the seed. Chunks saved before the deep world get their
 /// depths generated under them (and lose the old bedrock floor at y 0).
 pub fn load_or_generate(save: &WorldSave, gen: &Generator, reg: &BlockRegistry, pos: ChunkPos, deep_lo: usize) -> Chunk {
-    let Some(mut c) = save.load_chunk(reg, pos) else { return gen.generate_band(pos, deep_lo) };
+    load_or_generate_fresh(save, gen, reg, pos, deep_lo).0
+}
+
+/// As `load_or_generate`, and true when the chunk is new from the seed.
+fn load_or_generate_fresh(save: &WorldSave, gen: &Generator, reg: &BlockRegistry, pos: ChunkPos, deep_lo: usize) -> (Chunk, bool) {
+    let Some(mut c) = save.load_chunk(reg, pos) else { return (gen.generate_band(pos, deep_lo), true) };
     fill_legacy(gen, reg, &mut c);
-    c
+    (c, false)
 }
 
 pub fn fill_legacy(gen: &Generator, reg: &BlockRegistry, c: &mut Chunk) {
@@ -944,6 +1011,9 @@ impl Terrain for World {
     }
     fn climbable(&self, p: IVec3) -> bool {
         self.block(p).is_some_and(|id| self.climb[id as usize])
+    }
+    fn sticky(&self, p: IVec3) -> bool {
+        self.block(p).is_some_and(|id| self.sticky[id as usize])
     }
     fn top(&self, p: IVec3) -> f32 {
         self.block(p).map(|id| self.top[id as usize]).unwrap_or(1.0)
@@ -1036,4 +1106,34 @@ fn light_change(old: &[u8], new: &[u8]) -> Option<([i32; 2], [i32; 2])> {
         }
     }
     (hi[0] >= 0).then_some((lo, hi))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn visited_chunks_are_kept_on_disk() {
+        let reg = Arc::new(BlockRegistry::from_ron(r#"(blocks: [(name: "stone"), (name: "dirt"), (name: "grass_block"), (name: "water")])"#).unwrap());
+        let dir = std::env::temp_dir().join(format!("mc-visited-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let save = Arc::new(WorldSave::new(dir.clone()));
+        let gen = Arc::new(Generator::new(5, &reg));
+        let tables = Arc::new(MeshTables::new(&reg, vec![[1.0; 3]; voxel::worldgen::Biome::COUNT]));
+        let mut w = World::new(reg.clone(), gen, save.clone(), tables);
+        w.headless = true;
+        let t = std::time::Instant::now();
+        while w.chunk(ChunkPos::new(0, 0)).is_none() && t.elapsed().as_secs() < 60 {
+            w.update(ChunkPos::new(0, 0), 1);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(w.chunk(ChunkPos::new(0, 0)).is_some());
+        w.save_all();
+        // Never edited, but visited: it is on disk now, and comes back the same.
+        assert!(save.has_chunk(ChunkPos::new(0, 0)));
+        let back = save.load_chunk(&reg, ChunkPos::new(0, 0)).unwrap();
+        let now = w.chunk(ChunkPos::new(0, 0)).unwrap();
+        assert_eq!(back.all_blocks(), now.all_blocks());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

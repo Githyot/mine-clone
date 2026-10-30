@@ -204,8 +204,6 @@ impl Game {
             index: Vec::new(),
         };
 
-        // MC_TESTWORLD_LIST=1 logs where each block stands (for screenshots).
-        let list = std::env::var("MC_TESTWORLD_LIST").is_ok();
         // Blocks, by creative tab.
         for tab in [Tab::Building, Tab::Colored, Tab::Natural, Tab::Functional, Tab::Doors] {
             plan.header(tab.title());
@@ -215,8 +213,9 @@ impl Game {
                 let label = it.display_name.clone();
                 let (x, z) = plan.slot(&label);
                 plan.sc.set(x, Y, z, b);
-                if list {
-                    log::info!("test world: {label} at {x},{Y},{z}");
+                // MC_FIND=anvil,hopper prints where those blocks stand, for screenshots.
+                if std::env::var("MC_FIND").is_ok_and(|f| f.split(',').any(|n| n == self.reg.get(b).name)) {
+                    eprintln!("MC_FIND {} {x} {Y} {z}", self.reg.get(b).name);
                 }
             }
         }
@@ -270,6 +269,10 @@ impl Game {
         for &id in &held {
             let label = self.items.get(id).display_name.clone();
             let (x, z) = plan.slot(&label);
+            if std::env::var("MC_FIND").is_ok_and(|n| n == self.items.get(id).name) {
+                // Test hook: where a held item's stand is, for close-up shots.
+                log::info!("MC_FIND {} on the stand at {x} {Y} {z}", self.items.get(id).name);
+            }
             let mut gear: Gear = Default::default();
             gear[4] = Some(ItemStack::new(id, 1));
             plan.stands.push((Vec3::new(x as f32 + 0.5, Y as f32, z as f32 + 0.5), gear, label));
@@ -339,6 +342,10 @@ impl Game {
                 let label = d.display_name.clone();
                 plan.sign(x + w / 2, Y, z - 1, &label);
                 let at = Vec3::new(x as f32 + w as f32 / 2.0, Y as f32, z as f32 + dd as f32 / 2.0);
+                if std::env::var_os("MC_TESTWORLD_LIST").is_some() {
+                    // Where each pen is, for scripted screenshots.
+                    eprintln!("pen {} {:.1} {} {:.1}", d.name, at.x, Y, at.z);
+                }
                 plan.mobs.push((d.name.clone(), at, label));
             }
             shelf.close(&mut plan, 1);
