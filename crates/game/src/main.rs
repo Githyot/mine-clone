@@ -9,6 +9,7 @@ mod flora_tex;
 mod ambient_life;
 mod beds;
 mod chests;
+mod heights;
 mod material;
 mod companions;
 mod options;
@@ -3930,12 +3931,12 @@ impl Game {
         }
         // MC_POM=1: a wall of rough blocks right in front, for the block depth option.
         if std::env::var("MC_POM").is_ok() {
-            let wall = ["cobblestone", "stone_bricks", "bricks", "mossy_cobblestone", "deepslate_tiles", "oak_log", "andesite"];
-            for i in -3..=3 {
+            let wall = ["oak_planks", "cobblestone", "stone_bricks", "bricks", "mossy_cobblestone", "deepslate_tiles", "oak_log", "andesite", "spruce_planks"];
+            for i in -4..=4 {
                 let q = p + dir * 2 + side * i;
                 let ground = self.world.surface_y(q.x, q.z).unwrap_or(p.y - 1);
                 for h in 0..3 {
-                    self.world.set_block(IVec3::new(q.x, ground + 1 + h, q.z), g(wall[(i + 3) as usize]));
+                    self.world.set_block(IVec3::new(q.x, ground + 1 + h, q.z), g(wall[(i + 4) as usize]));
                 }
             }
         }

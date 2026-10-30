@@ -150,6 +150,8 @@ pub struct Renderer {
     block_view: wgpu::TextureView,
     /// Texture layers past `LAYERS_PER_ARRAY` (GPUs take at most 2048 per array).
     block_view2: wgpu::TextureView,
+    /// Height maps of the first array's layers, for block depth (heights.rs).
+    height_view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
     pipes: [ScenePipes; 2],
     pub post: PostFx,
@@ -307,6 +309,18 @@ impl Renderer {
                     },
                     count: None,
                 },
+                // Height maps for block depth (heights.rs); pipelines that don't use them get
+                // any texture array here.
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -321,7 +335,8 @@ impl Renderer {
             ..Default::default()
         });
         let ([block_view, block_view2], texture_size) = Self::upload_blocks(&device, &queue, textures);
-        let tex_bg = Self::make_tex_bg(&device, &tex_layout, &block_view, &block_view2, &sampler);
+        let height_view = Self::upload_heights(&device, &queue, textures);
+        let tex_bg = Self::make_tex_bg(&device, &tex_layout, &block_view, &block_view2, &height_view, &sampler);
 
         let terrain = shader(&device, "terrain", concat!(include_str!("shaders/material.wgsl"), "\n", include_str!("shaders/terrain.wgsl")));
         let sky = shader(&device, "sky", include_str!("shaders/sky.wgsl"));
@@ -606,6 +621,7 @@ impl Renderer {
             tex_bg,
             block_view,
             block_view2,
+            height_view,
             sampler,
             pipes,
             post,
@@ -691,7 +707,14 @@ impl Renderer {
         })
     }
 
-    pub fn make_tex_bg(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, view: &wgpu::TextureView, view2: &wgpu::TextureView, sampler: &wgpu::Sampler) -> wgpu::BindGroup {
+    pub fn make_tex_bg(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        view: &wgpu::TextureView,
+        view2: &wgpu::TextureView,
+        heights: &wgpu::TextureView,
+        sampler: &wgpu::Sampler,
+    ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("blocks"),
             layout,
@@ -699,6 +722,7 @@ impl Renderer {
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(view2) },
+                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(heights) },
             ],
         })
     }
@@ -786,10 +810,54 @@ impl Renderer {
         ([first, second], t.size)
     }
 
+    /// Height maps for block depth, one per layer of the first array (every block texture),
+    /// made from the textures when they load (heights.rs), with their own mip chain.
+    fn upload_heights(device: &wgpu::Device, queue: &wgpu::Queue, t: &TextureSet) -> wgpu::TextureView {
+        let layers = &t.layers[..t.layers.len().min(LAYERS_PER_ARRAY)];
+        let size = crate::heights::map_size(t.size);
+        let levels = size.trailing_zeros() + 1;
+        let started = std::time::Instant::now();
+        // A few thousand small pictures: shared out over the cores.
+        let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 16);
+        let chunk = layers.len().div_ceil(threads).max(1);
+        let maps: Vec<Vec<u8>> = std::thread::scope(|s| {
+            let jobs: Vec<_> = layers
+                .chunks(chunk)
+                .map(|part| s.spawn(move || part.iter().map(|px| crate::heights::height_map(px, t.size)).collect::<Vec<_>>()))
+                .collect();
+            jobs.into_iter().flat_map(|j| j.join().unwrap_or_default()).collect()
+        });
+        log::info!("block depth: {} height maps in {:.0} ms", maps.len(), started.elapsed().as_secs_f64() * 1000.0);
+        let tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("block heights"),
+            size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: maps.len().max(1) as u32 },
+            mip_level_count: levels,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::R8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        for (layer, map) in maps.iter().enumerate() {
+            for (level, data) in crate::heights::mip_chain(map, size).iter().enumerate() {
+                let s = (size >> level).max(1);
+                queue.write_texture(
+                    wgpu::TexelCopyTextureInfo { texture: &tex, mip_level: level as u32, origin: wgpu::Origin3d { x: 0, y: 0, z: layer as u32 }, aspect: wgpu::TextureAspect::All },
+                    data,
+                    wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(s), rows_per_image: Some(s) },
+                    wgpu::Extent3d { width: s, height: s, depth_or_array_layers: 1 },
+                );
+            }
+        }
+        tex.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() })
+    }
+
     /// Swap in new block textures (resource pack change) without restarting.
     pub fn reload_textures(&mut self, t: &TextureSet) {
         let ([view, view2], size) = Self::upload_blocks(&self.device, &self.queue, t);
-        self.tex_bg = Self::make_tex_bg(&self.device, &self.tex_layout, &view, &view2, &self.sampler);
+        let heights = Self::upload_heights(&self.device, &self.queue, t);
+        self.tex_bg = Self::make_tex_bg(&self.device, &self.tex_layout, &view, &view2, &heights, &self.sampler);
+        self.height_view = heights;
         let gui = Self::upload_gui(&self.device, &self.queue, &t.gui);
         self.ui_tex_bg = Self::make_ui_bg(&self.device, &self.ui_tex_layout, &self.font_view, &view, &view2, &gui, &self.sampler);
         self.block_view = view;

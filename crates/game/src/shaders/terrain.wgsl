@@ -1,5 +1,7 @@
 @group(1) @binding(0) var tex: texture_2d_array<f32>;
 @group(1) @binding(1) var samp: sampler;
+// Block depth: each block texture's height map (heights.rs), 255 = the face, 0 = deepest.
+@group(1) @binding(3) var hmap: texture_2d_array<f32>;
 // Sun shadows and water reflections (Sildur's idea). Dummies when they are off; the scene copy
 // and its depth are only real while the translucent geometry is drawn.
 @group(2) @binding(0) var shadow_map: texture_depth_2d;
@@ -395,12 +397,14 @@ fn fire_sample(in: VOut, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
 const LUM = vec3<f32>(0.3, 0.59, 0.11);
 
 // Block depth (parallax occlusion mapping, as in shader packs). The height of each texel comes
-// from the texture itself: texels darker than the texture's average sink into the face
-// (mortar, cracks, the gaps between cobbles), brighter ones stay on top. Textures are pixel art,
-// so the face is treated as a field of little square columns, one per texel: the view ray is
-// walked texel by texel into the face (no layers, no smearing) until it meets a column's top or
-// side. Sides are darker, and a short walk toward the sun darkens the bottoms of crevices.
-// Only on plain block faces near the camera (`g.pom`).
+// from the block's height map (heights.rs, made from the texture when it loads): the gaps in
+// the picture (mortar, the cracks between cobbles, the joints between planks, wood grain) are
+// grooves with sloping shoulders, the rest stays on top. Textures are pixel art, so the face is
+// treated as a field of little square columns, one per height texel: the view ray is walked
+// column by column into the face (no layers, no smearing) until it meets a column's top or
+// side. Deeper is darker, sides are darker, slopes catch the light or turn from it, and a short
+// walk toward the sun darkens the bottoms of crevices. Only on plain block faces near the
+// camera (`g.pom`).
 struct Parallax {
     uv: vec2<f32>,
     // Multiplies the colour: 1 lit, lower on a column's side or in a crevice the sun can't reach.
@@ -409,28 +413,18 @@ struct Parallax {
     weight: f32,
 };
 
-// Brightness and colourfulness of a texel: what its height is read from.
-fn pom_tone(c: vec3<f32>) -> vec2<f32> {
-    let hi = max(c.r, max(c.g, c.b));
-    let lo = min(c.r, min(c.g, c.b));
-    return vec2<f32>(dot(c, LUM), (hi - lo) / max(hi, 0.2));
-}
-
-// How far below the face a texel lies, 0 (top) to 1 (full depth). Darker than the texture's
-// average sinks (cracks, the gaps between cobbles); so does greyer than average, which puts
-// pale mortar below red bricks and leaves moss and ore bits standing out.
-fn pom_depth(cell: vec2<f32>, size: f32, layer: u32, lv: f32, avg: vec2<f32>) -> f32 {
-    let k = avg - pom_tone(textureSampleLevel(tex, samp, (cell + 0.5) / size, layer, lv).rgb);
-    return clamp(k.x * 2.4 + k.y * 2.2 + 0.12, 0.0, 1.0);
+// How far below the face a column lies, 0 (top) to 1 (full depth).
+fn pom_depth(cell: vec2<f32>, size: f32, layer: u32, lv: f32) -> f32 {
+    return 1.0 - textureSampleLevel(hmap, samp, (cell + 0.5) / size, layer, lv).r;
 }
 
 // `t` and `b`: how far the point moves (blocks, relative to the camera) per unit of u and v.
 fn parallax(in: VOut, t: vec3<f32>, b: vec3<f32>, texels: f32) -> Parallax {
     var out = Parallax(in.uv, 1.0, 0.0);
     let weight = 1.0 - smoothstep(g.pom.z * 0.6, g.pom.z, in.dist);
-    let depth = g.pom.x * weight;
+    let depth0 = g.pom.x * weight;
     // Not on plants, liquids or connected glass.
-    if (depth <= 0.002 || (in.kind & 0x7bu) != 0u) {
+    if (depth0 <= 0.002 || (in.kind & 0x7bu) != 0u) {
         return out;
     }
     let n = face_normal((in.kind >> 8u) & 7u);
@@ -444,15 +438,17 @@ fn parallax(in: VOut, t: vec3<f32>, b: vec3<f32>, texels: f32) -> Parallax {
     // Texture shift per block of depth going into the face (kept sane at grazing angles).
     var ray = vec2<f32>(dot(e, tt), dot(e, bb)) / ez;
     ray *= min(1.0, 4.0 / max(length(ray), 1e-4));
-    let full = textureDimensions(tex).x;
-    // The columns are at most 32 to a block: finer art keeps its colours but shares heights in
-    // 2x2 groups, which halves the walk on 64x textures (packs are mostly 16x anyway).
-    let coarsest = u32(max(log2(f32(full) / 16.0), 0.0));
-    let level = max(u32(clamp(floor(log2(max(texels, 1.0))), 0.0, 3.0)), coarsest);
+    // At a grazing look (the ground ahead) the walk would stretch into long bands: the depth
+    // eases off there and stays full on faces seen from the front.
+    let depth = depth0 * mix(0.35, 1.0, smoothstep(0.15, 0.5, ez / length(e)));
+    // The height maps are at most 32 columns to a block; further away the walk uses a smaller
+    // mip level (`texels` is how many texture texels one screen pixel covers).
+    let hsize = textureDimensions(hmap).x;
+    let ht = texels * f32(hsize) / f32(textureDimensions(tex).x);
+    let level = u32(clamp(floor(log2(max(ht, 1.0))), 0.0, 3.0));
     let lv = f32(level);
-    let size = f32(max(full >> level, 1u));
-    let avg = pom_tone(textureSampleLevel(tex, samp, in.uv, in.layer, f32(textureNumLevels(tex) - 1u)).rgb);
-    // In texels: start point and movement over the whole depth (d = 0 → 1).
+    let size = f32(max(hsize >> level, 1u));
+    // In columns: start point and movement over the whole depth (d = 0 → 1).
     let p0 = in.uv * size;
     let dir = -ray * depth * size;
     var cell = floor(p0);
@@ -463,9 +459,9 @@ fn parallax(in: VOut, t: vec3<f32>, b: vec3<f32>, texels: f32) -> Parallax {
     var d_in = 0.0;
     var side = 0;
     var hit_d = 1.0;
-    var h = pom_depth(cell, size, in.layer, lv, avg);
+    var h = pom_depth(cell, size, in.layer, lv);
     let most = i32(g.pom.y);
-    for (var i = 0; i < 48; i = i + 1) {
+    for (var i = 0; i < 64; i = i + 1) {
         if (h <= d_in) {
             // The ray met this column's side as it came in.
             hit_d = d_in;
@@ -488,21 +484,30 @@ fn parallax(in: VOut, t: vec3<f32>, b: vec3<f32>, texels: f32) -> Parallax {
             side = 2;
         }
         d_in = d_out;
-        h = pom_depth(cell, size, in.layer, lv, avg);
+        h = pom_depth(cell, size, in.layer, lv);
     }
     // Stay inside the column that was hit, so the colour comes from it and not a neighbour.
     let p = clamp(p0 + dir * hit_d, cell + 0.002, cell + 0.998);
     out.uv = p / size;
     out.weight = weight;
-    // Deeper is darker: less of the sky reaches the bottom of a crack.
-    out.light = 1.0 - hit_d * 0.3 * weight;
+    // Deeper is darker: less of the sky reaches the bottom of a groove.
+    out.light = 1.0 - hit_d * 0.38 * weight;
     let l = shadow_light();
     let sun = g.fog_color.w * in.light.x * smoothstep(0.02, 0.2, abs(l.y));
+    // Light across the face: the sun's direction, or by night and in caves a soft light from
+    // the top left like the pixel art's own.
+    let lt = mix(vec2<f32>(-0.45, -0.55), vec2<f32>(dot(l, normalize(t)), dot(l, normalize(b))), sun);
     if (side != 0 && hit_d > 0.0) {
         // A column's side: it faces back toward where the ray came from.
-        let sn = select(-b * stp.y, -t * stp.x, side == 1);
-        let facing = max(dot(normalize(sn), l), 0.0);
-        out.light *= 0.8 + 0.2 * facing * sun;
+        let sn = select(-stp.y * vec2<f32>(0.0, 1.0), -stp.x * vec2<f32>(1.0, 0.0), side == 1);
+        out.light *= 0.68 + 0.42 * max(dot(sn, lt), 0.0);
+    } else {
+        // A column's top on a slope (the shoulders of a groove): turned toward the light it is
+        // brighter, turned away darker. The slope in blocks per block.
+        let gx = pom_depth(cell + vec2<f32>(1.0, 0.0), size, in.layer, lv) - pom_depth(cell - vec2<f32>(1.0, 0.0), size, in.layer, lv);
+        let gy = pom_depth(cell + vec2<f32>(0.0, 1.0), size, in.layer, lv) - pom_depth(cell - vec2<f32>(0.0, 1.0), size, in.layer, lv);
+        let slope = vec2<f32>(gx, gy) * depth * size * 0.5;
+        out.light *= clamp(1.0 + dot(slope, lt) * 0.9, 0.62, 1.3);
     }
     if (g.pom.w > 0.5 && hit_d > 0.03 && sun > 0.0) {
         let lz = dot(l, n);
@@ -511,10 +516,10 @@ fn parallax(in: VOut, t: vec3<f32>, b: vec3<f32>, texels: f32) -> Parallax {
             lray *= min(1.0, 4.0 / max(length(lray), 1e-4));
             // Two looks toward the light: a third and two thirds of the way up.
             let up = lray * depth * size * hit_d;
-            let o1 = hit_d * 0.67 - pom_depth(floor(p + up * 0.33), size, in.layer, lv, avg);
-            let o2 = hit_d * 0.33 - pom_depth(floor(p + up * 0.67), size, in.layer, lv, avg);
+            let o1 = hit_d * 0.67 - pom_depth(floor(p + up * 0.33), size, in.layer, lv);
+            let o2 = hit_d * 0.33 - pom_depth(floor(p + up * 0.67), size, in.layer, lv);
             let occ = max(o1, o2) * 8.0;
-            out.light *= 1.0 - clamp(occ, 0.0, 1.0) * 0.4 * sun;
+            out.light *= 1.0 - clamp(occ, 0.0, 1.0) * 0.5 * sun;
         }
     }
     return out;
