@@ -144,7 +144,7 @@ impl Game {
             out.push((Slot::Vanity(i), px + 1.0 * s, py + (6.0 + i as f32 * 18.0) * s));
             out.push((Slot::Dye(i), px + 20.0 * s, py + (6.0 + i as f32 * 18.0) * s));
         }
-        self.ui.label(px - 1.0 * s, py + (6.0 + 4.0 * 18.0 + 5.0) * s, "Asas", [64, 64, 64, 255], s);
+        self.ui.label(px - 1.0 * s, py + (6.0 + 4.0 * 18.0 + 5.0) * s, "Asa", [64, 64, 64, 255], s);
         out.push((Slot::Dye(4), px + 20.0 * s, py + (6.0 + 4.0 * 18.0) * s));
         out
     }

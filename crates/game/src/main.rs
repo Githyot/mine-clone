@@ -3243,7 +3243,7 @@ impl Game {
 
     /// A health bar floating over each mob that was hurt lately, with its name.
     fn draw_mob_health_bars(&mut self, w: f32, h: f32) {
-        let Some((vp, cam_block)) = self.ui_view_proj else { return };
+        let Some((vp, cam_block)) = self.ui_view_proj.filter(|_| self.screen == Screen::Playing) else { return };
         let s = self.ui.scale;
         let eye = self.body.eye();
         for m in &self.mobs.list {
@@ -4284,7 +4284,7 @@ impl Game {
             self.draw_scoreboard(w, h);
             if let Some(t) = &self.toast {
                 // (Not over the open journal.)
-                if t.until > self.now && !self.progress.journal {
+                if t.until > self.now && !self.progress.journal && self.screen == Screen::Playing {
                     let text = t.text.clone();
                     let ty = if self.survival { hy - 34.0 * s } else { hy - 16.0 * s };
                     self.ui.text_centered(w / 2.0, ty, &text, WHITE);

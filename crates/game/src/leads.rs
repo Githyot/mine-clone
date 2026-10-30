@@ -194,7 +194,7 @@ impl Game {
 
     /// Names over the heads of named creatures nearby.
     pub(crate) fn draw_mob_names(&mut self, w: f32, h: f32) {
-        let Some((vp, cam)) = self.ui_view_proj else { return };
+        let Some((vp, cam)) = self.ui_view_proj.filter(|_| self.screen == crate::Screen::Playing) else { return };
         let eye = self.body.eye();
         let project = |v: Vec3| {
             let c = vp * (v - cam.as_vec3()).extend(1.0);

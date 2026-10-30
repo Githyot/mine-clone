@@ -49,7 +49,7 @@ impl Game {
             .chain(self.pets_waiting.iter().cloned())
             .collect();
         if let Ok(t) = ron::ser::to_string_pretty(&list, ron::ser::PrettyConfig::default()) {
-            let _ = std::fs::write(self.world.save.dir.join("pets.ron"), t);
+            let _ = voxel::save::write_atomic(self.world.save.dir.join("pets.ron"), t);
         }
     }
 

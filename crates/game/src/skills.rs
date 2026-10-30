@@ -147,7 +147,7 @@ impl Game {
             return;
         }
         if let Ok(text) = ron::ser::to_string_pretty(&self.skills.save, Default::default()) {
-            if let Err(e) = std::fs::write(self.skills_path(), text) {
+            if let Err(e) = voxel::save::write_atomic(self.skills_path(), text) {
                 log::error!("could not save oficios.ron: {e}");
             }
         }
