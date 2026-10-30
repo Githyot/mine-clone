@@ -1450,7 +1450,7 @@ impl EntityRenderer {
     pub fn new(r: &Renderer, reg: &MobRegistry, paintings: &[PaintingDef], base: &Path, texture_res: u32) -> EntityRenderer {
         let device = &r.device;
         let scale = (texture_res / 16).clamp(1, SKIN_DETAIL).next_power_of_two();
-        let mut skins: Vec<Skin> = reg.defs.iter().map(|d| load_skin(base, &d.name, scale)).collect();
+        let mut skins: Vec<Skin> = reg.defs.iter().map(|d| load_skin(base, d.skin.as_deref().unwrap_or(&d.name), scale)).collect();
         let back = crate::paintings::back_pixels(base);
         skins.extend(paintings.iter().map(|p| Skin { pixels: crate::paintings::skin_pixels(p, &back), scale: 1 }.rescaled(scale)));
         let player = reg.id("player").map(|i| &reg.defs[i]);

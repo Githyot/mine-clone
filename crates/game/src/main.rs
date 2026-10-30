@@ -1011,10 +1011,15 @@ impl Game {
         let mobs_text = terraria::with_extra(&merge_list(&mobs_text, &fase6_text(Some(&base), "mobs.ron")), embedded::T5_MOBS_RON);
         let mobs_text = terraria::with_extra(&terraria::with_extra(&terraria::with_extra(&terraria::with_extra(&mobs_text, embedded::TR_MOBS_RON), embedded::AGUAS_MOBS_RON), embedded::VULCAO_MOBS_RON), embedded::TR3_MOBS_RON);
         let [_, dims_mobs] = read_pack_pair(&base, "dims_mobs.ron", "", embedded::MODS_DIMS_MOBS_RON);
-        let mob_reg = voxel::mob::MobRegistry::from_ron_many(&[&mobs_text, &mods_mobs, &dims_mobs]).unwrap_or_else(|e| {
+        let mut mob_reg = voxel::mob::MobRegistry::from_ron_many(&[&mobs_text, &mods_mobs, &dims_mobs]).unwrap_or_else(|e| {
             log::error!("{e}; using built-in mobs");
             voxel::mob::MobRegistry::from_ron_many(&[embedded::MOBS_RON, embedded::MODS_MOBS_RON, embedded::MODS_DIMS_MOBS_RON]).unwrap_or_default()
         });
+        // Real animals' own bodies (tools/gen_fauna.py), over whatever model their file gave them.
+        let fauna = std::fs::read_to_string(base.join("packs/vanilla/fauna/models.ron")).unwrap_or_else(|_| embedded::FAUNA_MODELS_RON.to_string());
+        if let Err(e) = mob_reg.apply_models(&fauna).or_else(|_| mob_reg.apply_models(embedded::FAUNA_MODELS_RON)) {
+            log::error!("{e}");
+        }
         let painting_defs = paintings::load_defs(&base);
         let paintings = paintings::load(&save.dir, &painting_defs);
         let surv = survival::Survival::load(&save.dir, &items);

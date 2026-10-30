@@ -334,6 +334,10 @@ impl Game {
                 let label = d.display_name.clone();
                 plan.sign(x + w / 2, Y, z - 1, &label);
                 let at = Vec3::new(x as f32 + w as f32 / 2.0, Y as f32, z as f32 + dd as f32 / 2.0);
+                if std::env::var_os("MC_TESTWORLD_LIST").is_some() {
+                    // Where each pen is, for scripted screenshots.
+                    eprintln!("pen {} {:.1} {} {:.1}", d.name, at.x, Y, at.z);
+                }
                 plan.mobs.push((d.name.clone(), at, label));
             }
             shelf.close(&mut plan, 1);

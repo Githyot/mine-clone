@@ -62,6 +62,8 @@ enum Role {
     Seg(f32),
     /// A pincer or mandible at the side of the head; side is -1 or 1.
     Jaw(f32),
+    /// A link of a trunk hanging from the head, this many links from its base.
+    Trunk(u8),
 }
 
 /// How one kind of mob is put together and how it likes to move.
@@ -94,6 +96,11 @@ pub struct Rig {
     tentacles: bool,
     /// Many tall thin wings (blaze rods): they circle the body instead of flapping.
     orbit: bool,
+    /// Ears that fan out (radians), side to side roll of a waddling walk (radians).
+    flap: f32,
+    waddle: f32,
+    /// Parts that move with another part: (child, parent).
+    follow: Vec<(usize, usize)>,
 }
 
 fn has(name: &str, words: &[&str]) -> bool {
@@ -204,6 +211,11 @@ impl Rig {
             let mut piv = pivot_of(i);
             let small = volume(p) <= 16.0;
             let role = match p.anim {
+                _ if def.motion.trunk.contains(&i) => {
+                    // Hinged at its top, where it meets the link before.
+                    piv = Vec3::new(mid.x, b.y, mid.z);
+                    Role::Trunk(def.motion.trunk.iter().position(|&t| t == i).unwrap_or(0) as u8)
+                }
                 Anim::None if snake => {
                     piv = mid;
                     Role::Seg((head_z - mid.z).max(0.0))
@@ -221,6 +233,11 @@ impl Rig {
                     Role::Tail
                 }
                 Anim::None => Role::Fixed,
+                Anim::Head if def.motion.ears.contains(&i) && def.motion.flap.is_some() => {
+                    // A big flat ear hinged along its front edge, so it fans out sideways.
+                    piv = Vec3::new(mid.x, mid.y, b.z);
+                    Role::Ear(if mid.x < 0.0 { -1.0 } else { 1.0 })
+                }
                 Anim::Head if def.motion.ears.contains(&i) || (small && Some(i) != head && a.y >= head_hi - 0.5 && style != Style::Flyer) => {
                     piv = Vec3::new(mid.x, a.y, mid.z);
                     Role::Ear(if mid.x < 0.0 { -1.0 } else { 1.0 })
@@ -270,6 +287,9 @@ impl Rig {
             girth: (hi.x - lo.x).min(hi.y - lo.y).max(1.0),
             tentacles: legs > 4 && matches!(style, Style::Swimmer | Style::Flyer),
             orbit: wings >= 4 && parts.iter().filter(|p| matches!(p.anim, Anim::Wing(_))).all(|p| p.size.1 >= p.size.0 * 2 && p.size.1 >= p.size.2 * 2),
+            flap: def.motion.flap.unwrap_or(0.0),
+            waddle: def.motion.waddle.unwrap_or(0.0),
+            follow: def.motion.follow.iter().copied().filter(|&(c, p)| c < n && p < n && c != p).collect(),
         }
     }
 }
@@ -661,7 +681,7 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
             Style::Bird => 0.08,
             _ => 0.0,
         };
-        let sway = t.sin() * sway_k * amp.min(1.0) + if rig.shamble { (clock * 0.7).sin() * 0.04 * idle } else { 0.0 };
+        let sway = t.sin() * (sway_k + rig.waddle) * amp.min(1.0) + (clock * 1.3).sin() * rig.waddle * 0.15 * idle + if rig.shamble { (clock * 0.7).sin() * 0.04 * idle } else { 0.0 };
         // Pitch: galloping rocks, flyers nose into their dive, swimmers lift the nose.
         let mut pitch = match style {
             Style::Quadruped => (t + 0.6).sin() * 0.07 * run,
@@ -805,7 +825,7 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
         // Knee or elbow angle: positive swings the lower half back.
         let mut bend = 0.0f32;
         let rot = match role {
-            Role::Fixed | Role::Body | Role::Head | Role::Ear(_) | Role::Seg(_) => Quat::IDENTITY,
+            Role::Fixed | Role::Body | Role::Head | Role::Ear(_) | Role::Seg(_) | Role::Trunk(_) => Quat::IDENTITY,
             // Mandibles snap open and shut.
             Role::Jaw(side) => Quat::from_rotation_y(side * (0.18 + if awake { (clock * 7.0).sin() * 0.22 } else { 0.0 })),
             Role::Leg { .. } if rig.tentacles => {
@@ -1054,8 +1074,33 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
             Role::Ear(side) => {
                 // Ears flick now and then, lie back when running, swing with the spring.
                 let f = (clock * 0.9 + pivot.x * 0.7).sin().max(0.0).powi(30) * awake as u8 as f32;
-                let q = Quat::from_rotation_x(st.ear * awake as u8 as f32 - if sleeping { 0.4 } else { 0.0 }) * Quat::from_rotation_z(side * (f * 0.5 + st.tail.abs() * 0.1));
+                let mut q = Quat::from_rotation_x(st.ear * awake as u8 as f32 - if sleeping { 0.4 } else { 0.0 }) * Quat::from_rotation_z(side * (f * 0.5 + st.tail.abs() * 0.1));
+                if rig.flap > 0.0 {
+                    // Big ears: a slow fanning that comes and goes, wide open when upset.
+                    let fan = (clock * 2.4).sin() * 0.5 + 0.5;
+                    let mood = ((clock * 0.37 + mob.phase).sin() * 0.5 + 0.5).powi(2) * awake as u8 as f32;
+                    let open = rig.flap * (0.12 + fan * mood * 0.7 + if mob.aggro || hurt > 0.0 { 0.6 } else { 0.0 }).min(1.0);
+                    q = Quat::from_rotation_y(-side * open) * Quat::from_rotation_x(st.ear * 0.3 * awake as u8 as f32);
+                }
                 snake_head * chain * head_local * Mat4::from_translation(pivot) * Mat4::from_quat(q) * Mat4::from_translation(-pivot)
+            }
+            Role::Trunk(k) => {
+                // Each link turns on the end of the one before it, so the swing grows to the
+                // tip: a lazy sway, now and then a curl up to sniff, down to the ground when
+                // grazing, and swinging with the stride.
+                let mut m = snake_head * chain * head_local;
+                let sniff = ((clock * 0.29 + mob.phase * 4.0).sin().max(0.0)).powi(3) * idle;
+                for j in 0..=k as usize {
+                    let Some(&pi) = def.motion.trunk.get(j) else { break };
+                    let pv = rig.pivots[pi];
+                    let jf = j as f32;
+                    let sway = (clock * 1.1 - jf * 0.7).sin() * (0.06 + jf * 0.03) * awake as u8 as f32;
+                    let swing = (t * 2.0 - jf * 0.8).sin() * 0.12 * amp.min(1.0);
+                    let curl = -(sniff * (0.25 + jf * 0.2) + run * 0.15 * jf) + graze * 0.1 + if sleeping { 0.05 } else { 0.0 };
+                    let q = Quat::from_rotation_x(curl + swing) * Quat::from_rotation_z(sway);
+                    m = m * Mat4::from_translation(pv) * Mat4::from_quat(q) * Mat4::from_translation(-pv);
+                }
+                m
             }
             Role::Body => {
                 // Breathing: the chest swells a touch.
@@ -1090,6 +1135,9 @@ pub fn bones_for(mob: &Mob, def: &MobDef, rig: &Rig, st: &MobAnim, cam_block: IV
             b.m[MOUTH_PART] = (Mat4::from_cols_array_2d(&b.m[0]) * open).to_cols_array_2d();
         }
     }
+    for &(c, p) in &rig.follow {
+        b.m[c] = b.m[p];
+    }
     b
 }
 
@@ -1107,7 +1155,10 @@ mod tests {
             .filter_map(|f| std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/vanilla").join(f)).ok())
             .collect();
         let refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
-        voxel::mob::MobRegistry::from_ron_many(&refs).expect("mob files").defs
+        let mut reg = voxel::mob::MobRegistry::from_ron_many(&refs).expect("mob files");
+        let models = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/vanilla/fauna/models.ron")).expect("fauna models");
+        reg.apply_models(&models).expect("fauna models apply");
+        reg.defs
     }
 
     #[test]
@@ -1136,6 +1187,13 @@ mod tests {
         assert_eq!(find("minecart").style, Style::Static);
         assert!(find("squid").tentacles);
         assert!(find("blaze").orbit);
+        // Fauna models: the elephant's trunk bends link by link and its ears fan.
+        let el = find("elephant");
+        assert_eq!(el.roles.iter().filter(|r| matches!(r, Role::Trunk(_))).count(), 3, "{:?}", el.roles);
+        assert!(el.flap > 0.0);
+        assert!(find("penguin").waddle > 0.0);
+        assert_eq!(find("zebra").style, Style::Quadruped);
+        assert_eq!(find("vortex_hornet").style, Style::Flyer);
     }
 
     #[test]
@@ -1204,7 +1262,7 @@ mod audit {
         let refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
         for d in voxel::mob::MobRegistry::from_ron_many(&refs).unwrap().defs {
             let r = Rig::new(&d);
-            let roles: Vec<String> = r.roles.iter().map(|x| match x { Role::Fixed => "F".into(), Role::Body => "B".into(), Role::Head => "H".into(), Role::Ear(_) => "E".into(), Role::Leg { .. } => "L".into(), Role::Arm(_) => "A".into(), Role::ArmForward(_) => "Z".into(), Role::Wing(_) => "W".into(), Role::Tail => "T".into(), Role::Spider(_) => "S".into(), Role::Seg(_) => "s".into(), Role::Jaw(_) => "J".into() }).collect();
+            let roles: Vec<String> = r.roles.iter().map(|x| match x { Role::Fixed => "F".into(), Role::Body => "B".into(), Role::Head => "H".into(), Role::Ear(_) => "E".into(), Role::Leg { .. } => "L".into(), Role::Arm(_) => "A".into(), Role::ArmForward(_) => "Z".into(), Role::Wing(_) => "W".into(), Role::Tail => "T".into(), Role::Spider(_) => "S".into(), Role::Seg(_) => "s".into(), Role::Jaw(_) => "J".into(), Role::Trunk(_) => "K".into() }).collect();
             println!("AUDIT {} {:?} fl={} aq={} sw={} hop={} {} | {}", d.name, r.style, d.flies, d.aquatic, d.swims, d.hops, roles.join(""), d.parts.iter().map(|p| format!("{:?}@{:?}", p.size, p.origin)).collect::<Vec<_>>().join(" "));
         }
     }
