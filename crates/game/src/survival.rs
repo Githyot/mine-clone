@@ -703,6 +703,9 @@ impl Game {
         self.fase6_block_broken(pos, id);
         let c = pos.as_vec3() + Vec3::splat(0.5);
         let harvested = self.items.can_harvest(&self.reg, id, tool.as_ref());
+        if !harvested {
+            self.progress_gate(id);
+        }
         for d in drops {
             self.pop_drop(c, d);
         }
