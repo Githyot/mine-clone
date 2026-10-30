@@ -32,7 +32,7 @@ pub fn variant_count(shape: Shape) -> u8 {
         // Spout: 0 down, 1..4 north, east, south, west.
         Shape::Hopper => 5,
         // Chairs: the way you look when sitting.
-        Shape::Chair | Shape::Bench | Shape::Shelf | Shape::Ladder | Shape::Anvil => 4,
+        Shape::Chair | Shape::Bench | Shape::Shelf | Shape::Ladder | Shape::Anvil | Shape::Model => 4,
         Shape::Cake => 7,
         Shape::Sign | Shape::Banner | Shape::TallBanner => 8,
         // Beds: the way the head points | head part 4.

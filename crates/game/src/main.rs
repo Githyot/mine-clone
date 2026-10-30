@@ -442,7 +442,8 @@ fn game_data_with_mods(blocks: [&str; 2], items: [&str; 2], recipes: [&str; 2]) 
     let i0 = terraria::with_extra(&i0, embedded::TR_ITEMS_RON);
     let i0 = terraria::with_extra(&i0, embedded::VULCAO_ITEMS_RON);
     let i0 = terraria::with_extra(&i0, embedded::TR3_ITEMS_RON);
-    let reg = BlockRegistry::from_ron_many(&[b0.as_str(), blocks[1]])?;
+    // 3D models (statues, trophies, rails...) for blocks of every file above (tools/gen_block_models.py).
+    let reg = BlockRegistry::from_ron_many(&[b0.as_str(), blocks[1], embedded::MODELS_RON])?;
     let items = ItemRegistry::from_ron_many(&[i0.as_str(), items[1]], &reg)?;
     let mut recipes = Recipes::from_ron_many(&recipes, &items)?;
     terraria::add_recipes(&mut recipes, embedded::T5_RECIPES_RON, &items)?;
@@ -3487,6 +3488,8 @@ impl Game {
             Shape::FenceGate => facing(f.x, f.z),
             // A chair turns to face the player who puts it down.
             Shape::Chair => facing(-f.x, -f.z),
+            // Statues, trophies and other models turn their front to you.
+            Shape::Model => facing(-f.x, -f.z),
             // A bench runs across your view.
             Shape::Bench => facing(f.x, f.z) ^ 1,
             // An anvil lies across your view, its long side toward you.

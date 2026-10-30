@@ -15,6 +15,7 @@ pub mod mob;
 pub mod modtrees;
 pub mod noise;
 pub mod physics;
+pub mod props;
 pub mod raycast;
 pub mod recipe;
 pub mod rng;

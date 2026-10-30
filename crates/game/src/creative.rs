@@ -146,7 +146,7 @@ impl Game {
         if ["crafting_table", "furnace", "chest", "barrel", "bookshelf", "ladder", "jukebox"].contains(&name) || name.ends_with("_bed") || matches!(bl.shape, Shape::Chair | Shape::Table | Shape::Bench | Shape::Shelf) {
             return Some(Tab::Functional);
         }
-        let natural = bl.shape == Shape::Cross
+        let natural = matches!(bl.shape, Shape::Cross | Shape::Model)
             || ["_ore", "_log", "_leaves", "_sapling", "_roots"].iter().any(|s| name.ends_with(s))
             || ["grass_block", "dirt", "stone", "sand", "red_sand", "mud", "lily_pad", "gravel", "clay", "ice", "snow", "snow_block", "cactus", "pumpkin", "melon", "obsidian", "bedrock", "sandstone", "mossy_cobblestone", "podzol", "coarse_dirt"].contains(&name);
         Some(if natural { Tab::Natural } else { Tab::Building })
