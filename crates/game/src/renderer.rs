@@ -85,6 +85,19 @@ struct GpuSection {
     vis: u64,
     solid: Option<(wgpu::Buffer, u32)>,
     translucent: Option<(wgpu::Buffer, u32)>,
+    /// Quads at the start of `solid` drawn only far away, and at its end only near (plants
+    /// with a body, see `voxel::flora`).
+    far_quads: u32,
+    near_quads: u32,
+}
+
+impl GpuSection {
+    /// The quads of `solid` to draw, as (first, count), near the camera or far from it.
+    fn solid_range(&self, near: bool) -> Option<(&wgpu::Buffer, u32, u32)> {
+        let (b, q) = self.solid.as_ref()?;
+        let (first, count) = if near { (self.far_quads, q - self.far_quads) } else { (0, q - self.near_quads) };
+        (count > 0).then_some((b, first, count))
+    }
 }
 
 pub struct FrameInfo {
@@ -165,6 +178,8 @@ pub struct Renderer {
     copy_src_ok: bool,
     /// Skip sections the camera can't see through caves and solid rock.
     pub cave_cull: bool,
+    /// Plants show their body closer than this (blocks); past it the crossed pictures.
+    pub flora_near: f32,
     /// Shadows, water reflections, TAA jitter.
     pub fx: SceneFx,
     /// Raindrops on the screen (screen_drops.rs).
@@ -617,6 +632,7 @@ impl Renderer {
             copy_src_ok,
             drops,
             cave_cull: true,
+            flora_near: 40.0,
             fx,
             shadow_pipe,
             depth_changed: true,
@@ -862,7 +878,7 @@ impl Renderer {
         };
         let solid = mk(&m.solid, "section solid");
         let translucent = mk(&m.translucent, "section translucent");
-        GpuSection { section, vis: m.vis, solid, translucent }
+        GpuSection { section, vis: m.vis, solid, translucent, far_quads: m.far_quads, near_quads: m.near_quads }
     }
 
     /// Cave culling: walk from the camera's section outwards, entering a neighbour only through
@@ -989,7 +1005,14 @@ impl Renderer {
         };
 
         let mut instances: Vec<[f32; 3]> = Vec::new();
-        let mut solid_draws: Vec<(usize, &wgpu::Buffer, u32)> = Vec::new();
+        let mut solid_draws: Vec<(usize, &wgpu::Buffer, u32, u32)> = Vec::new();
+        // Whether a section lies within the distance plants keep their body.
+        let flora_near = self.flora_near;
+        let near = |origin: Vec3| {
+            let lo = origin;
+            let hi = origin + Vec3::splat(16.0);
+            cam.frac.clamp(lo, hi).distance(cam.frac) < flora_near
+        };
         let mut trans_draws: Vec<(f32, usize, &wgpu::Buffer, u32)> = Vec::new();
         let max_d = cam.far + 24.0;
         let reach = (max_d / 16.0).ceil() as i32 + 1;
@@ -1015,8 +1038,8 @@ impl Renderer {
                 }
                 let idx = instances.len();
                 instances.push(origin.to_array());
-                if let Some((b, q)) = &s.solid {
-                    solid_draws.push((idx, b, *q));
+                if let Some((b, first, q)) = s.solid_range(near(origin)) {
+                    solid_draws.push((idx, b, first, q));
                 }
                 if let Some((b, q)) = &s.translucent {
                     let d = (origin + Vec3::splat(8.0) - cam.frac).length_squared();
@@ -1047,7 +1070,7 @@ impl Renderer {
             instances.push(origin.to_array());
         }
         // Shadow casters: every section with solid blocks around the camera, seen or not.
-        let mut shadow_draws: Vec<(usize, &wgpu::Buffer, u32)> = Vec::new();
+        let mut shadow_draws: Vec<(usize, &wgpu::Buffer, u32, u32)> = Vec::new();
         if smat.is_some() {
             let reach = self.fx.shadow_radius() + 16.0;
             for (pos, sections) in &self.chunks {
@@ -1064,8 +1087,8 @@ impl Renderer {
                     if y + 16.0 < -reach * 1.5 {
                         continue;
                     }
-                    if let Some((b, q)) = &s.solid {
-                        shadow_draws.push((instances.len(), b, *q));
+                    if let Some((b, first, q)) = s.solid_range(near(Vec3::new(cx, y, cz))) {
+                        shadow_draws.push((instances.len(), b, first, q));
                         instances.push([cx, y, cz]);
                     }
                 }
@@ -1162,9 +1185,9 @@ impl Renderer {
             pass.set_bind_group(1, &self.tex_bg, &[]);
             pass.set_index_buffer(self.quad_ibuf.slice(..), wgpu::IndexFormat::Uint32);
             pass.set_vertex_buffer(1, self.inst_buf.slice(..));
-            for (i, b, q) in &shadow_draws {
+            for (i, b, first, q) in &shadow_draws {
                 pass.set_vertex_buffer(0, b.slice(..));
-                pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
+                pass.draw_indexed(first * 6..(first + q) * 6, 0, *i as u32..*i as u32 + 1);
             }
             // The player and mobs cast shadows too.
             if let Some(e) = entities {
@@ -1211,9 +1234,9 @@ impl Renderer {
             pass.set_bind_group(2, &self.fx.bg_solid, &[]);
             pass.set_index_buffer(self.quad_ibuf.slice(..), wgpu::IndexFormat::Uint32);
             pass.set_vertex_buffer(1, self.inst_buf.slice(..));
-            for (i, b, q) in &solid_draws {
+            for (i, b, first, q) in &solid_draws {
                 pass.set_vertex_buffer(0, b.slice(..));
-                pass.draw_indexed(0..q * 6, 0, *i as u32..*i as u32 + 1);
+                pass.draw_indexed(first * 6..(first + q) * 6, 0, *i as u32..*i as u32 + 1);
                 quads += *q as usize;
             }
             let mut lod_pipe = None;

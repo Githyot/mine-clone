@@ -19,6 +19,12 @@ pub const FLAG_PLANT: u32 = FLAG_WAVE | FLAG_LIQUID;
 /// Merged quad (greedy meshing): the shader repeats the texture once per block from the
 /// position instead of reading the vertex UVs.
 pub const FLAG_TILE: u32 = 4;
+/// Wave, liquid and tile together (a combination no other quad has): a plant with a body
+/// (flora.rs). x and z are in 1/32 block; y holds the block in its top four bits and the height
+/// in it (1/32 block, up to almost two blocks) in the low six, so the shader bends each corner by
+/// its height. The ao bits say how stiff it is, or, with bit 9 of x set (x itself never
+/// reaches 512), that it is stacked and they hold the stack bits like `FLAG_PLANT`.
+pub const FLAG_FLORA: u32 = FLAG_PLANT | FLAG_TILE;
 /// Connected-texture edges (see `connected_edges`).
 pub const FLAG_CTM_U0: u32 = 8;
 pub const FLAG_CTM_U1: u32 = 16;
@@ -85,6 +91,10 @@ pub struct SectionMesh {
     /// Which faces of the section see each other through non-opaque blocks: bit `a * 6 + b`
     /// (faces in mesh order +x, -x, +y, -y, +z, -z). Used to skip sections hidden in caves.
     pub vis: u64,
+    /// `solid` starts with quads drawn only far from the camera (the crossed pictures of plants
+    /// with a body) and ends with quads drawn only near it (those bodies); the rest is always drawn.
+    pub far_quads: u32,
+    pub near_quads: u32,
 }
 
 /// Every face sees every other (an empty section).
@@ -250,6 +260,15 @@ pub struct MeshTables {
     /// Shapes from resource packs (JSON block models), drawn instead of the block's own.
     /// Behind a lock so a pack change can swap them while the workers keep their tables.
     models: std::sync::RwLock<ModelSet>,
+    /// Plants with a body (flora.rs).
+    flora: std::sync::RwLock<Vec<Option<std::sync::Arc<FloraSet>>>>,
+}
+
+struct FloraSet {
+    near: Vec<crate::flora::FloraQuad>,
+    far: Option<Vec<crate::flora::FloraQuad>>,
+    fixed: bool,
+    stacked: bool,
 }
 
 #[derive(Default)]
@@ -374,6 +393,7 @@ impl MeshTables {
             base: vec![],
             liquid_h: vec![],
             models: Default::default(),
+            flora: Default::default(),
             biome_tints: biome_tints
                 .iter()
                 // The lowest bit of red marks foliage (odd), so the shader can turn it with the
@@ -686,6 +706,66 @@ impl MeshTables {
         }
         *self.models.write().unwrap() = m;
     }
+
+    /// The bodies of plants (crossed-picture blocks drawn with a shape of their own).
+    pub fn set_flora(&self, list: Vec<crate::flora::FloraModel>) {
+        let mut v = vec![None; self.shape.len()];
+        for m in list {
+            if let Some(slot) = v.get_mut(m.id as usize) {
+                if self.shape[m.id as usize] == Shape::Cross && !m.near.is_empty() {
+                    *slot = Some(std::sync::Arc::new(FloraSet { near: m.near, far: m.far, fixed: m.fixed, stacked: m.stacked }));
+                }
+            }
+        }
+        *self.flora.write().unwrap() = v;
+    }
+}
+
+/// Where a plant with a body stands, and how it is turned and lit.
+struct FloraAt {
+    cell: [u32; 3],
+    turn: u32,
+    /// Stack bits for a stacked plant.
+    stack: Option<u32>,
+    light: u8,
+    tint: [u8; 3],
+}
+
+fn flora_quads(quads: &[crate::flora::FloraQuad], at: &FloraAt, out: &mut Vec<Vertex>) {
+    let (sky, blk) = ((at.light >> 4) as u32, (at.light & 15) as u32);
+    let [lx, ly, lz] = at.cell;
+    let white = [200u8, 200, 200];
+    for q in quads {
+        let corner = |k: usize| {
+            let [mut x, y, mut z] = q.pos[k].map(|c| c as u32);
+            for _ in 0..at.turn {
+                (x, z) = (32 - z, x);
+            }
+            let mark = if at.stack.is_some() { 512 } else { 0 };
+            [(lx * 32 + x) | mark, ly << 6 | y, lz * 32 + z]
+        };
+        let ao = at.stack.unwrap_or(q.stiff as u32);
+        let layer = q.layer as u32 | if q.glow { LAYER_EMISSIVE } else { 0 };
+        let tint = if q.tint { at.tint } else { white };
+        let face = |f: u8| {
+            let mut f = f as u32;
+            for _ in 0..at.turn {
+                // +x -> +z -> -x -> -z, as the corners turn.
+                f = match f { 0 => 4, 4 => 1, 1 => 5, 5 => 0, o => o };
+            }
+            f
+        };
+        for k in 0..4 {
+            let uv = q.uv[k];
+            out.push(pack(corner(k), ao, [uv[0] as u32, uv[1] as u32], layer, face(q.face[0]), FLAG_FLORA, sky, blk, tint));
+        }
+        if q.two {
+            for k in [1usize, 0, 3, 2] {
+                let uv = q.uv[k];
+                out.push(pack(corner(k), ao, [uv[0] as u32, uv[1] as u32], layer, face(q.face[1]), FLAG_FLORA, sky, blk, tint));
+            }
+        }
+    }
 }
 
 /// Whether the quads close all six sides of the block (each side has a quad covering it all).
@@ -705,6 +785,8 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
     let model_set = t.models.read().unwrap();
     let models = &model_set.quads;
     let open = &model_set.open;
+    let flora = t.flora.read().unwrap();
+    let (mut far, mut near): (Vec<Vertex>, Vec<Vertex>) = (Vec::new(), Vec::new());
     // Opaque for drawing: a full block, unless a pack model opened it up.
     let solid = |id: usize| t.opaque[id] && !open.get(id).copied().unwrap_or(false);
     let blocks = &input.blocks;
@@ -735,7 +817,9 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                 let wave = if t.wave[idu] { FLAG_WAVE } else { 0 };
                 let base = [lx as u32 * 16, ly as u32 * 16, lz as u32 * 16];
 
-                if let Some(Some(quads)) = models.get(idu) {
+                let flora_here = if shape == Shape::Cross { flora.get(idu).and_then(|f| f.as_ref()) } else { None };
+                // A pack's own model of a plant gives way to its body (far away it shows the crossed pictures).
+                if let (Some(Some(quads)), None) = (models.get(idu), flora_here) {
                     for q in quads.iter() {
                         let ni = |f: usize| {
                             let n = FACES[f].normal;
@@ -757,6 +841,26 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     continue;
                 }
 
+                if let Some(m) = flora_here {
+                    let l = light[i];
+                    // A quarter turn picked by the place, so a meadow is not all alike (the same
+                    // all the way up a stack, so cane stalks line up).
+                    let turn = if m.fixed { 0 } else { ((lx * 7 + lz * 13 + (lx ^ lz) * 3 + if m.stacked { 0 } else { ly * 5 }) & 3) as u32 };
+                    let stack = m.stacked.then(|| {
+                        let stem = |j: usize| flora.get(blocks[j] as usize).and_then(|f| f.as_ref()).is_some_and(|f| f.stacked);
+                        stem(i - P * P) as u32 | (stem(i + P * P) as u32) << 1
+                    });
+                    let at = FloraAt { cell: [lx as u32, ly as u32, lz as u32], turn, stack, light: l, tint: biome_tint };
+                    match &m.far {
+                        Some(f) => {
+                            flora_quads(&m.near, &at, &mut near);
+                            flora_quads(f, &at, &mut far);
+                        }
+                        None => flora_quads(&m.near, &at, &mut out.solid),
+                    }
+                    continue;
+                }
+
                 if shape == Shape::Cross {
                     let l = light[i];
                     let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
@@ -773,12 +877,13 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     } else {
                         (0, 3)
                     };
+                    let target = &mut out.solid;
                     for q in quads {
                         // Front and back so the plant is visible from both sides.
                         for order in [[0usize, 1, 2, 3], [1, 0, 3, 2]] {
                             for &k in &order {
                                 let c = q[k];
-                                out.solid.push(pack(
+                                target.push(pack(
                                     [base[0] + c[0], base[1] + c[1], base[2] + c[2]],
                                     stack,
                                     uvs[k],
@@ -952,6 +1057,9 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                                 // The face it points to shows the piston top, the back its bottom.
                                 let df = DIR6_FACE[pdir];
                                 t.faces[idu][if f == df { 2 } else if f == df ^ 1 { 3 } else { 0 }]
+                            } else if let Some(slot) = crate::shapes::box_face(shape, bi, f) {
+                                // Parts of different stuff: an anvil's rough steps, a ball's stand.
+                                t.faces[idu][slot]
                             } else if shape == Shape::Pot && f == 3 {
                                 t.faces[idu][0]
                             } else {
@@ -1145,6 +1253,13 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
         }
     }
     greedy(&mut masks, &mut out);
+    if !far.is_empty() || !near.is_empty() {
+        out.far_quads = (far.len() / 4) as u32;
+        out.near_quads = (near.len() / 4) as u32;
+        far.append(&mut out.solid);
+        far.append(&mut near);
+        out.solid = far;
+    }
     out
 }
 
@@ -1345,6 +1460,18 @@ pub fn quad_indices(quads: usize) -> Vec<u32> {
 mod tests {
     use super::*;
     use crate::chunk::ChunkPos;
+
+    #[test]
+    fn hopper_draws_its_bowl_and_funnel() {
+        let reg = BlockRegistry::from_ron(r#"(blocks: [(name: "hopper", shape: Hopper, transparency: Cutout)])"#).unwrap();
+        let t = MeshTables::new(&reg, vec![]);
+        const B: usize = crate::chunk::BASE_SECTION;
+        let mut c = Chunk::new(ChunkPos::new(0, 0));
+        c.set(5, 5, 5, 1);
+        let input = MeshInput::new([None, None, None, None, Some(&c), None, None, None, None]);
+        // Floor, four walls and three steps of funnel, every face showing.
+        assert_eq!(mesh_section(&t, &input, B).solid.len(), 8 * 6 * 4);
+    }
 
     #[test]
     fn single_block_has_six_faces() {

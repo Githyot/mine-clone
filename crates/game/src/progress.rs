@@ -403,7 +403,7 @@ impl Game {
             return;
         }
         if let Ok(text) = ron::ser::to_string_pretty(&self.progress.save, ron::ser::PrettyConfig::default()) {
-            if let Err(e) = std::fs::write(self.progress_path(), text) {
+            if let Err(e) = voxel::save::write_atomic(self.progress_path(), text) {
                 log::error!("could not save progress: {e}");
             }
         }
@@ -1099,7 +1099,8 @@ impl Game {
         if ready {
             self.draw_guide_mark(w, h);
         }
-        if self.survival && !self.show_debug && !self.progress.journal {
+        // The goal list stays off while a screen is open, so it never shows through its panels.
+        if self.survival && !self.show_debug && !self.progress.journal && self.screen == crate::Screen::Playing {
             self.draw_aim_marker(w, h);
             self.draw_goal_list(current, ready);
             self.draw_summon_hint(w, h);

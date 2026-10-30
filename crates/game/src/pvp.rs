@@ -185,7 +185,7 @@ impl Game {
             self.net.board_dirty = false;
             self.net_broadcast(&ToGuest::Board(self.net.board.clone()));
             if let Ok(t) = ron::ser::to_string_pretty(&self.net.board, Default::default()) {
-                let _ = std::fs::write(board_path(&self.base, &self.world_name), t);
+                let _ = voxel::save::write_atomic(board_path(&self.base, &self.world_name), t);
             }
         }
     }

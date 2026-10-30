@@ -1822,7 +1822,7 @@ impl Game {
 
     /// The hunter potion: hostile monsters marked through walls.
     pub(crate) fn draw_hunter_marks(&mut self, w: f32, h: f32) {
-        if !self.has_effect(HUNTER) {
+        if !self.has_effect(HUNTER) || self.screen != crate::Screen::Playing {
             return;
         }
         let Some((vp, cam_block)) = self.ui_view_proj else { return };

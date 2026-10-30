@@ -5,6 +5,7 @@
 
 mod ambient;
 mod armor_design;
+mod flora_tex;
 mod ambient_life;
 mod beds;
 mod chests;
@@ -987,6 +988,7 @@ impl Game {
         let tints: Vec<[f32; 3]> = (0..Biome::COUNT).map(|b| Biome::from_u8(b as u8).tint()).collect();
         let tables = Arc::new(MeshTables::new(&reg, tints));
         tables.set_models(pack_models.models);
+        tables.set_flora(pack_models.flora);
         let reg_for_fluids = reg.clone();
         let mut world = World::new(reg.clone(), gen.clone(), save.clone(), tables);
         world.headless = window.is_none();
@@ -998,6 +1000,10 @@ impl Game {
         let mut renderer = window.clone().map(|w| pollster::block_on(Renderer::new(w, settings.vsync, &tex, &font)));
         if let Some(r) = renderer.as_mut() {
             r.cave_cull = !args.no_cave_cull;
+            // Test hook: how near plants keep their full body (the far LOD shows past it).
+            if let Some(d) = std::env::var("MC_FLORA_NEAR").ok().and_then(|v| v.parse().ok()) {
+                r.flora_near = d;
+            }
         }
         let mut ui = UiBatch::new(&font);
         ui.gui = tex.gui.sprites.clone();
@@ -1657,6 +1663,7 @@ impl Game {
         let names: Vec<String> =
             self.reg.textures.iter().chain(pack_models.textures.iter()).chain(self.items.textures.iter()).cloned().chain(extra_textures()).collect();
         self.world.tables.set_models(pack_models.models);
+        self.world.tables.set_flora(pack_models.flora);
         self.world.remesh_all();
         let tex = textures::load(&names, &self.base, &self.settings.resource_packs, self.settings.texture_resolution);
         self.textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
@@ -2015,6 +2022,9 @@ impl Game {
                 self.unstick();
                 if self.args.demo {
                     self.build_demo();
+                }
+                if std::env::var("MC_FLORA").is_ok() {
+                    self.build_flora_test();
                 }
                 if std::env::var("MC_SHADOWS").is_ok() {
                     self.build_shadow_test();
@@ -3243,7 +3253,7 @@ impl Game {
 
     /// A health bar floating over each mob that was hurt lately, with its name.
     fn draw_mob_health_bars(&mut self, w: f32, h: f32) {
-        let Some((vp, cam_block)) = self.ui_view_proj else { return };
+        let Some((vp, cam_block)) = self.ui_view_proj.filter(|_| self.screen == Screen::Playing) else { return };
         let s = self.ui.scale;
         let eye = self.body.eye();
         for m in &self.mobs.list {
@@ -3478,6 +3488,8 @@ impl Game {
             Shape::Chair => facing(-f.x, -f.z),
             // A bench runs across your view.
             Shape::Bench => facing(f.x, f.z) ^ 1,
+            // An anvil lies across your view, its long side toward you.
+            Shape::Anvil => facing(f.x, f.z),
             // A sign hangs on the wall clicked, or stands facing you.
             Shape::Sign | Shape::Banner | Shape::TallBanner => if hit.normal.y == 0 { facing(-hit.normal.x as f32, -hit.normal.z as f32) | 4 } else if hit.normal.y > 0 { facing(f.x, f.z) } else { return None },
             // A shelf goes on the wall you clicked.
@@ -3764,6 +3776,50 @@ impl Game {
         // Look from above.
         self.body.pos.y += 3.5;
         self.body.flying = true;
+    }
+
+    /// Test hook MC_FLORA=1 (or a list of names): a grass bed in front of the player with every
+    /// plant that has a body, in rows two blocks apart, for screenshots.
+    fn build_flora_test(&mut self) {
+        let p = self.body.pos.floor().as_ivec3();
+        let f = self.forward();
+        let dir = if f.x.abs() > f.z.abs() { IVec3::new(f.x.signum() as i32, 0, 0) } else { IVec3::new(0, 0, f.z.signum() as i32) };
+        let side = IVec3::new(-dir.z, 0, dir.x);
+        let only = std::env::var("MC_FLORA").unwrap_or_default();
+        let wanted: Vec<&str> = only.split(',').filter(|n| !n.is_empty() && *n != "1").collect();
+        let plants: Vec<BlockId> = self
+            .reg
+            .blocks
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.shape == voxel::block::Shape::Cross && voxel::flora::kind_of(&b.name).is_some())
+            .filter(|(_, b)| wanted.is_empty() || wanted.contains(&b.name.as_str()))
+            .map(|(i, _)| i as BlockId)
+            .collect();
+        let (grass, dirt) = (self.reg.id_or_air("grass_block"), self.reg.id_or_air("dirt"));
+        let per_row: usize = std::env::var("MC_FLORA_ROW").ok().and_then(|v| v.parse().ok()).unwrap_or(8);
+        let ground = p.y - 1;
+        for a in -10..=10 {
+            for b in -2..=40 {
+                let col = p + side * a + dir * b;
+                for h in -3..6 {
+                    let q = IVec3::new(col.x, ground + h, col.z);
+                    let id = if h < 0 { dirt } else if h == 0 { grass } else { AIR };
+                    self.world.set_block(q, id);
+                }
+            }
+        }
+        for (k, id) in plants.iter().enumerate() {
+            let (row, colm) = ((k / per_row) as i32, (k % per_row) as i32);
+            let start: i32 = std::env::var("MC_FLORA_START").ok().and_then(|v| v.parse().ok()).unwrap_or(3);
+            let q = p + dir * (start + row * 2) + side * (colm * 2 - per_row as i32 + 1);
+            // Stacked plants (cane, kelp, vines) three high, so they show how they join.
+            let name = &self.reg.blocks[*id as usize].name;
+            let high = if voxel::flora::kind_of(name).is_some_and(|k| k.stacked()) { 3 } else { 1 };
+            for h in 1..=high {
+                self.world.set_block(IVec3::new(q.x, ground + h, q.z), *id);
+            }
+        }
     }
 
     /// Test hook MC_SHADOWS=1: flat sand around the player, a pool of water in front and a stone
@@ -4282,7 +4338,7 @@ impl Game {
             self.draw_scoreboard(w, h);
             if let Some(t) = &self.toast {
                 // (Not over the open journal.)
-                if t.until > self.now && !self.progress.journal {
+                if t.until > self.now && !self.progress.journal && self.screen == Screen::Playing {
                     let text = t.text.clone();
                     let ty = if self.survival { hy - 34.0 * s } else { hy - 16.0 * s };
                     self.ui.text_centered(w / 2.0, ty, &text, WHITE);

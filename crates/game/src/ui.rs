@@ -191,10 +191,11 @@ impl UiBatch {
         } else {
             boxes.push([0, 0, 0, 16, 16, 16]);
         }
+        // Far boxes first so near ones cover them, each keeping its part's pictures.
+        let mut boxes: Vec<(usize, voxel::shapes::PBox)> = boxes.into_iter().enumerate().collect();
+        boxes.sort_by_key(|(_, q)| (q[0] as u16 + q[2] as u16, q[1]));
         // Accent boxes (cushions, bark) take the accent picture on every face.
-        let mut boxes: Vec<(voxel::shapes::PBox, bool)> = boxes.into_iter().enumerate().map(|(i, q)| (q, i >= accent_from)).collect();
-        // Far boxes first so near ones cover them.
-        boxes.sort_by_key(|(q, _)| (q[0] as u16 + q[2] as u16, q[1]));
+        let face = |i: usize, f: usize| if i >= accent_from { b.accent as i32 } else { b.faces[voxel::shapes::box_face(b.shape, i, f).unwrap_or(f)] as i32 };
         let cx = x + size / 2.0;
         let w = size * 0.5;
         let h = size * 0.25;
@@ -202,8 +203,7 @@ impl UiBatch {
         let side = size * 0.58;
         // A point of the block (in pixels, 0..16) on the screen.
         let at = |px: f32, py: f32, pz: f32| [cx + w * (px - pz) / 16.0, y0 + h * (px + pz) / 16.0 + side * (16.0 - py) / 16.0];
-        for (q, acc) in boxes {
-            let face = |f: usize| if acc { b.accent as i32 } else { b.faces[f] as i32 };
+        for (bi, q) in boxes {
             let [x0, y0b, z0, x1, y1, z1] = q.map(|v| v as f32);
             let t = |v: f32| v / 16.0;
             // Front (+z), seen on the left.
@@ -211,21 +211,21 @@ impl UiBatch {
                 [at(x0, y1, z1), at(x1, y1, z1), at(x1, y0b, z1), at(x0, y0b, z1)],
                 [[t(x0), t(16.0 - y1)], [t(x1), t(16.0 - y1)], [t(x1), t(16.0 - y0b)], [t(x0), t(16.0 - y0b)]],
                 [205, 205, 205, 255],
-                face(4),
+                face(bi, 4),
             );
             // Side (+x), seen on the right.
             self.quad(
                 [at(x1, y1, z1), at(x1, y1, z0), at(x1, y0b, z0), at(x1, y0b, z1)],
                 [[t(16.0 - z1), t(16.0 - y1)], [t(16.0 - z0), t(16.0 - y1)], [t(16.0 - z0), t(16.0 - y0b)], [t(16.0 - z1), t(16.0 - y0b)]],
                 [150, 150, 150, 255],
-                face(0),
+                face(bi, 0),
             );
             // Top.
             self.quad(
                 [at(x0, y1, z0), at(x1, y1, z0), at(x1, y1, z1), at(x0, y1, z1)],
                 [[t(x0), t(z0)], [t(x1), t(z0)], [t(x1), t(z1)], [t(x0), t(z1)]],
                 WHITE,
-                face(2),
+                face(bi, 2),
             );
         }
     }

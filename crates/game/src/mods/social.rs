@@ -185,7 +185,7 @@ impl Game {
 
     pub(crate) fn save_server_config(&self, c: &ServerConfig) {
         if let Ok(text) = ron::ser::to_string_pretty(c, ron::ser::PrettyConfig::default()) {
-            let _ = std::fs::write(self.server_file(), text);
+            let _ = voxel::save::write_atomic(self.server_file(), text);
         }
     }
 

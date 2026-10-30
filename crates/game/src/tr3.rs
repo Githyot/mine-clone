@@ -75,7 +75,7 @@ impl Tr3 {
         let s = Saved { balls: self.golf.saved(), golf_points: self.golf.points, golf_holes: self.golf.holes, golf_trophies: self.golf.trophies, traps: self.traps.saved(), world: self.world.saved(items) };
         if let Ok(text) = ron::ser::to_string_pretty(&s, Default::default()) {
             let _ = std::fs::create_dir_all(dir);
-            if let Err(e) = std::fs::write(dir.join("tr3.ron"), text) {
+            if let Err(e) = voxel::save::write_atomic(dir.join("tr3.ron"), text) {
                 log::error!("could not save tr3.ron: {e}");
             }
         }

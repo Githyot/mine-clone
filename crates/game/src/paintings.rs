@@ -272,7 +272,7 @@ pub fn save(dir: &Path, list: &[Painting]) {
     let _ = std::fs::create_dir_all(dir);
     match ron::ser::to_string_pretty(&list.to_vec(), ron::ser::PrettyConfig::default()) {
         Ok(t) => {
-            let _ = std::fs::write(dir.join("paintings.ron"), t);
+            let _ = voxel::save::write_atomic(dir.join("paintings.ron"), t);
         }
         Err(e) => log::error!("could not save paintings: {e}"),
     }

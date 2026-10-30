@@ -99,7 +99,7 @@ impl Game {
         }
         let save = ModSave { aircraft: self.aircraft_to_save(), ..self.mods.save.clone() };
         if let Ok(text) = ron::ser::to_string_pretty(&save, ron::ser::PrettyConfig::default()) {
-            let _ = std::fs::write(self.mods_file(), text);
+            let _ = voxel::save::write_atomic(self.mods_file(), text);
         }
     }
 
