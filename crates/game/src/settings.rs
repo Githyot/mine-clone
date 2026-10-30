@@ -91,6 +91,9 @@ pub struct Settings {
     pub drop_glow: bool,
     /// Animals and monsters spawn in the world.
     pub mobs: bool,
+    /// Monsters keep the mob files' numbers instead of the health and damage of their stage of
+    /// the progression (mob_tiers.rs).
+    pub classic_mobs: bool,
     /// Textures get a little carved relief near the camera.
     pub relief: bool,
     /// Largest texture size in pixels per block face (16, 32, 64, 128). The game's own art is 64;
@@ -161,6 +164,7 @@ impl Default for Settings {
             music_mode: MusicMode::Classic,
             music_volume: 0.6,
             difficulty: 2,
+            classic_mobs: false,
             relief: true,
             texture_resolution: crate::textures::BASE_RESOLUTION,
             sound_volume: 0.8,

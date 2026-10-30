@@ -103,6 +103,7 @@ mod tr_feel3d;
 mod tr_weapons;
 #[cfg(test)]
 mod balance;
+mod mob_tiers;
 mod tr_world;
 mod glyphs;
 mod hardmode;
@@ -1021,6 +1022,7 @@ impl Game {
         let mut mobs = mobs::Mobs::new(mob_reg, reg.id_or_air("grass_block"), seed);
         mobs.enabled = settings.mobs;
         mobs.peaceful = settings.difficulty == 0;
+        mobs.set_staged(!settings.classic_mobs);
 
         let (sx, sy, sz) = gen.find_spawn();
         let mut body = Body::new(Vec3::new(sx as f32 + 0.5, sy as f32, sz as f32 + 0.5));

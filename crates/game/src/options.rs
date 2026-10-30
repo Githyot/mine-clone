@@ -32,6 +32,7 @@ pub struct OptState {
 /// Every option of the screen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Id {
+    MobStrength,
     Preset,
     RenderDistance,
     Fov,
@@ -315,6 +316,11 @@ impl Game {
                 v.extend([
                     b(Id::Difficulty, format!("Dificuldade: {}", settings::DIFFICULTIES[st.difficulty.min(3) as usize])),
                     b(Id::Mobs, format!("Mobs: {}", onoff(st.mobs))),
+                    self.opt_button(
+                        Id::MobStrength,
+                        format!("Força dos monstros: {}", if st.classic_mobs { "Clássica" } else { "Por etapa" }),
+                        "Por etapa: vida e dano de cada monstro seguem a etapa do jogo em que ele aparece. Clássica: os números do Minecraft e dos arquivos.",
+                    ),
                     self.opt_button(Id::Structures, format!("Construções: {}", if st.sparse_structures { "Espaçadas" } else { "Normais" }), "Construções mais afastadas nos chunks novos."),
                     header("Interface e acessibilidade"),
                     b(Id::Language, format!("Idioma: {}", crate::lang::language_name(&st.language))),
@@ -411,6 +417,10 @@ impl Game {
             Id::Mobs => {
                 self.settings.mobs = !self.settings.mobs;
                 self.mobs.enabled = self.settings.mobs;
+            }
+            Id::MobStrength => {
+                self.settings.classic_mobs = !self.settings.classic_mobs;
+                self.mobs.set_staged(!self.settings.classic_mobs);
             }
             Id::Structures => self.settings.sparse_structures = !self.settings.sparse_structures,
             Id::Language => {
