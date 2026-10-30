@@ -408,7 +408,7 @@ impl Game {
     // ---- shared helpers -------------------------------------------------------------------
 
     fn content_hash(&self) -> u64 {
-        let blocks = self.reg.blocks.iter().map(|b| b.name.as_str());
+        let blocks = self.reg.blocks.iter().map(|b| b.key.as_str());
         // Plugins' items are left out: a guest gets the host's plugins only after joining.
         let items = self.items.items.iter().take(self.plugins.base_items.max(1)).map(|i| i.name.as_str());
         let mobs = self.mobs.reg.defs.iter().map(|d| d.name.as_str());

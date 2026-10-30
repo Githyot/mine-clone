@@ -46,6 +46,10 @@ pub struct Mobs {
     pub anim: crate::anim::Animator,
     /// Who gets along with, fears and plays with whom (social.rs), and its clock.
     pub(crate) social: crate::social::Director,
+    /// The mob files' own health and attack of the monsters tuned by stage (mob_tiers.rs), and
+    /// whether the tuned numbers are in use (off: "Força dos monstros: Clássica").
+    tier_orig: crate::mob_tiers::Original,
+    pub staged: bool,
 }
 
 /// What happened to the player this tick.
@@ -150,7 +154,7 @@ impl Mobs {
     }
 
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, school_cd: 0.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, spawning: true, peaceful: false, calm: false, hp_scale: 1.0, spawn_mult: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false, anim: Default::default(), social: Default::default() }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, school_cd: 0.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, spawning: true, peaceful: false, calm: false, hp_scale: 1.0, spawn_mult: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false, anim: Default::default(), social: Default::default(), tier_orig: Vec::new(), staged: false }
     }
 
     pub(crate) fn next_rand(&mut self) -> u64 {
@@ -164,6 +168,21 @@ impl Mobs {
 
     pub(crate) fn rand_f32(&mut self) -> f32 {
         (self.next_rand() >> 40) as f32 / (1u64 << 24) as f32
+    }
+
+    /// Monster health and damage by stage of the progression (on) or as the mob files have them.
+    /// Monsters already out keep theirs until they respawn.
+    pub fn set_staged(&mut self, on: bool) {
+        if on == self.staged {
+            return;
+        }
+        if on {
+            self.tier_orig = crate::mob_tiers::apply(&mut self.reg);
+        } else {
+            crate::mob_tiers::restore(&mut self.reg, &self.tier_orig);
+            self.tier_orig.clear();
+        }
+        self.staged = on;
     }
 
     pub fn spawn(&mut self, name: &str, pos: Vec3) -> bool {
