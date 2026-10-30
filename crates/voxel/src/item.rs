@@ -312,6 +312,10 @@ impl ItemRegistry {
             if t.kind == ToolKind::Sword && b.name.ends_with("_leaves") {
                 speed = 1.5;
             }
+            // Any sword slices a cobweb in a moment, like shears.
+            if t.kind == ToolKind::Sword && b.name == "cobweb" {
+                speed = 15.0;
+            }
         }
         let factor = if self.can_harvest(blocks, block, tool) { 1.5 } else { 5.0 };
         (b.hardness * factor / speed).max(0.05)

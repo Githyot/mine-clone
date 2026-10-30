@@ -464,6 +464,7 @@ impl Mob {
     pub fn new(def_index: usize, def: &MobDef, pos: Vec3, seed: u64) -> Mob {
         let mut body = Body::sized(pos, def.width, def.height);
         body.speed_override = Some(def.speed);
+        body.web_proof = def.name.contains("spider");
         let mut rng = Rng::new(seed);
         Mob {
             def: def_index,
