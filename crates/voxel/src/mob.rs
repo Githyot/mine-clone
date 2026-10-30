@@ -170,6 +170,31 @@ pub struct MobDef {
     /// Glows by itself (creatures of fire and magma): drawn lit in the dark.
     #[serde(default)]
     pub lit: bool,
+    /// The skin's file name in textures/entity when it isn't the mob's name (models replaced by
+    /// packs/vanilla/fauna/models.ron bring their own skins).
+    #[serde(default)]
+    pub skin: Option<String>,
+}
+
+/// A new body for a mob that is already defined: its boxes, relief layers, animation hints and
+/// skin, leaving its stats and behaviour alone. packs/vanilla/fauna/models.ron (written by
+/// tools/gen_fauna.py) gives real animals their own anatomy this way, whatever file defines them.
+#[derive(Deserialize, Clone, Debug)]
+pub struct ModelDef {
+    pub name: String,
+    pub skin: String,
+    pub parts: Vec<PartDef>,
+    #[serde(default)]
+    pub layers: Vec<LayerDef>,
+    #[serde(default)]
+    pub motion: MotionDef,
+    #[serde(default)]
+    pub scale: Option<f32>,
+}
+
+#[derive(Deserialize)]
+struct ModelFile {
+    models: Vec<ModelDef>,
 }
 
 /// How a mob moves, for the animation. All optional.
@@ -195,6 +220,20 @@ pub struct MotionDef {
     pub tails: Vec<usize>,
     #[serde(default)]
     pub ears: Vec<usize>,
+    /// A trunk (elephants): these parts, base first, hang from the head and swing and curl as a
+    /// chain, each link turning on the end of the one before.
+    #[serde(default)]
+    pub trunk: Vec<usize>,
+    /// Big ears that fan out from the head now and then (elephants): how far, in radians.
+    #[serde(default)]
+    pub flap: Option<f32>,
+    /// Parts fixed to another part (child, parent): a tail's tuft, tusks on a jaw. The child
+    /// moves exactly as its parent does.
+    #[serde(default)]
+    pub follow: Vec<(usize, usize)>,
+    /// Rolls from side to side as it walks (penguins, ducks): how far, in radians.
+    #[serde(default)]
+    pub waddle: Option<f32>,
 }
 
 fn d_range() -> f32 {
@@ -225,6 +264,32 @@ pub struct MobRegistry {
 impl MobRegistry {
     pub fn from_ron(text: &str) -> Result<Self, String> {
         Self::from_ron_many(&[text])
+    }
+
+    /// Puts the models of a models.ron (see `ModelDef`) on the mobs they name; names that no
+    /// mob has are skipped. Returns how many mobs changed.
+    pub fn apply_models(&mut self, text: &str) -> Result<usize, String> {
+        if text.trim().is_empty() {
+            return Ok(0);
+        }
+        let f: ModelFile = ron::from_str(text).map_err(|e| format!("models.ron: {e}"))?;
+        let mut n = 0;
+        for m in f.models {
+            if m.parts.len() > 16 {
+                return Err(format!("model '{}' has more than 16 parts", m.name));
+            }
+            for d in self.defs.iter_mut().filter(|d| d.name == m.name) {
+                d.parts = m.parts.clone();
+                d.layers = m.layers.clone();
+                d.motion = m.motion.clone();
+                d.skin = Some(m.skin.clone());
+                if let Some(s) = m.scale {
+                    d.scale = s;
+                }
+                n += 1;
+            }
+        }
+        Ok(n)
     }
 
     /// Several mob files read as one list (the base game, then mod packs).
@@ -464,6 +529,7 @@ impl Mob {
     pub fn new(def_index: usize, def: &MobDef, pos: Vec3, seed: u64) -> Mob {
         let mut body = Body::sized(pos, def.width, def.height);
         body.speed_override = Some(def.speed);
+        body.web_proof = def.name.contains("spider");
         let mut rng = Rng::new(seed);
         Mob {
             def: def_index,

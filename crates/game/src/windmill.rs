@@ -63,11 +63,15 @@ impl Game {
         let mut out = Vec::new();
         for list in self.world.spinners.values() {
             for &p in list {
+                let b = self.reg.get(self.world.block_or_air(p));
+                if b.shape == voxel::block::Shape::TallBanner {
+                    continue;
+                }
                 let center = p.as_vec3() + Vec3::splat(0.5);
                 if (center - eye).length_squared() > reach * reach {
                     continue;
                 }
-                let facing = (self.reg.get(self.world.block_or_air(p)).variant & 3) as usize;
+                let facing = (b.variant & 3) as usize;
                 let dir = Vec3::new(FACING_YAW[facing].sin(), 0.0, FACING_YAW[facing].cos());
                 let front = p + dir.round().as_ivec3();
                 let l = self.world.light(front);

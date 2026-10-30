@@ -32,6 +32,7 @@ pub struct OptState {
 /// Every option of the screen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Id {
+    MobStrength,
     Preset,
     RenderDistance,
     Fov,
@@ -55,6 +56,7 @@ pub enum Id {
     LodDetail,
     Drops,
     AmbientLife,
+    RainDrops,
     DropLabels,
     DropGlow,
     Master,
@@ -229,6 +231,11 @@ impl Game {
                     format!("Vida no ambiente: {}", crate::ambient_life::LEVELS[st.ambient_life.min(3) as usize].0),
                     "Folhas caindo, vaga-lumes, borboletas, abelhas, pássaros, peixes e poeira no ar.",
                 ),
+                self.opt_button(
+                    Id::RainDrops,
+                    format!("Gotas na tela: {}", crate::screen_drops::LEVELS[st.rain_drops.min(2) as usize].0),
+                    "Na chuva, ao ar livre, gotas molham a tela e escorrem. Somem sob um teto ou na água.",
+                ),
                 self.opt_button(Id::DropLabels, format!("Nomes dos itens no chão: {}", onoff(st.drop_labels)), "Mostra o nome e a quantidade dos itens caídos por perto."),
                 self.opt_button(Id::DropGlow, format!("Brilho dos itens no chão: {}", onoff(st.drop_glow)), "Um brilho suave, mais forte nos encantados e raros."),
                 self.opt_button(Id::TextureRes, format!("Resolução das texturas: {}x", st.texture_resolution), "Diminua em computadores com pouca memória de vídeo."),
@@ -315,6 +322,11 @@ impl Game {
                 v.extend([
                     b(Id::Difficulty, format!("Dificuldade: {}", settings::DIFFICULTIES[st.difficulty.min(3) as usize])),
                     b(Id::Mobs, format!("Mobs: {}", onoff(st.mobs))),
+                    self.opt_button(
+                        Id::MobStrength,
+                        format!("Força dos monstros: {}", if st.classic_mobs { "Clássica" } else { "Por etapa" }),
+                        "Por etapa: vida e dano de cada monstro seguem a etapa do jogo em que ele aparece. Clássica: os números do Minecraft e dos arquivos.",
+                    ),
                     self.opt_button(Id::Structures, format!("Construções: {}", if st.sparse_structures { "Espaçadas" } else { "Normais" }), "Construções mais afastadas nos chunks novos."),
                     header("Interface e acessibilidade"),
                     b(Id::Language, format!("Idioma: {}", crate::lang::language_name(&st.language))),
@@ -358,6 +370,7 @@ impl Game {
             Id::ViewBobbing => self.settings.view_bobbing = !self.settings.view_bobbing,
             Id::Drops => self.settings.flat_drops = !self.settings.flat_drops,
             Id::AmbientLife => self.settings.ambient_life = (self.settings.ambient_life + 1) % 4,
+            Id::RainDrops => self.settings.rain_drops = (self.settings.rain_drops.min(2) + 1) % 3,
             Id::DropLabels => self.settings.drop_labels = !self.settings.drop_labels,
             Id::DropGlow => self.settings.drop_glow = !self.settings.drop_glow,
             Id::TextureRes => {
@@ -411,6 +424,10 @@ impl Game {
             Id::Mobs => {
                 self.settings.mobs = !self.settings.mobs;
                 self.mobs.enabled = self.settings.mobs;
+            }
+            Id::MobStrength => {
+                self.settings.classic_mobs = !self.settings.classic_mobs;
+                self.mobs.set_staged(!self.settings.classic_mobs);
             }
             Id::Structures => self.settings.sparse_structures = !self.settings.sparse_structures,
             Id::Language => {

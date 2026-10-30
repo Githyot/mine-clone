@@ -387,8 +387,9 @@ impl Survival {
             let cont = if c.furnace {
                 Container::Furnace(Furnace { inv: load_stacks(items, &c.slots, 3), burn: c.burn, burn_max: c.burn_max, cook: c.cook, xp: 0.0 })
             } else {
-                // Chests hold 27, hoppers 5, droppers and dispensers 9.
-                Container::Chest(load_stacks(items, &c.slots, c.slots.len().clamp(1, CHEST_SIZE)))
+                // Chests hold 27 (54 when a double chest was saved open), hoppers 5, droppers
+                // and dispensers 9.
+                Container::Chest(load_stacks(items, &c.slots, c.slots.len().clamp(1, 2 * CHEST_SIZE)))
             };
             sv.containers.insert(pos, cont);
         }
@@ -690,6 +691,7 @@ impl Game {
             }
         }
         self.surv.saplings.retain(|(p, _)| *p != pos);
+        self.chest_neighbours_split(pos);
     }
 
     pub(crate) fn surv_block_broken(&mut self, pos: IVec3, id: BlockId) {
@@ -701,6 +703,9 @@ impl Game {
         self.fase6_block_broken(pos, id);
         let c = pos.as_vec3() + Vec3::splat(0.5);
         let harvested = self.items.can_harvest(&self.reg, id, tool.as_ref());
+        if !harvested {
+            self.progress_gate(id);
+        }
         for d in drops {
             self.pop_drop(c, d);
         }
@@ -726,6 +731,7 @@ impl Game {
             }
         }
         self.surv.saplings.retain(|(p, _)| *p != pos);
+        self.chest_neighbours_split(pos);
         // The other half went with it (World::break_block); the spawn point is over the head.
         let b = self.reg.get(id);
         let head = if voxel::bed::is_head(b.variant) { pos } else { pos + IVec3::new(voxel::bed::dir(b.variant)[0], 0, voxel::bed::dir(b.variant)[1]) };
@@ -736,7 +742,7 @@ impl Game {
     }
 
     /// A chest the world generator placed comes filled from its building's loot list.
-    fn structure_loot(&mut self, p: IVec3) -> Inventory {
+    pub(crate) fn structure_loot(&mut self, p: IVec3) -> Inventory {
         let mut inv = Inventory::new(CHEST_SIZE);
         let Some(loot) = self.world.gen.structure_chest(p).map(|l| l.to_vec()) else { return inv };
         for l in loot {
@@ -1046,11 +1052,8 @@ impl Game {
                         return true;
                     }
                     "chest" => {
-                        if !self.surv.containers.contains_key(&hit.block) {
-                            let inv = self.structure_loot(hit.block);
-                            self.surv.containers.insert(hit.block, Container::Chest(inv));
-                        }
-                        self.open_container(Open::Chest(hit.block));
+                        let at = self.chest_open_at(hit.block);
+                        self.open_container(Open::Chest(at));
                         self.sfx(Sfx::Place(Material::Wood));
                         return true;
                     }
@@ -1251,6 +1254,7 @@ impl Game {
 
     /// Closing a screen gives back what was left on the crafting grid and the cursor.
     pub(crate) fn surv_close(&mut self) {
+        self.chest_closed();
         if let Open::Chest(p) = self.surv.open {
             if crate::backpacks::is_backpack(p) {
                 self.backpack_closed(p);
@@ -1730,6 +1734,7 @@ impl Game {
         let c = cam_block.as_vec3();
         let mut out = Vec::with_capacity(self.surv.drops.len() + self.surv.orbs.len());
         out.extend(self.swing_instances(cam_block));
+        self.banner_instances(cam_block, &mut out);
         // The orb sprite is loaded right after the item sprites.
         let orb_layer = (self.item_base as usize + self.items.textures.len()) as f32;
         let hand = self.hand_light_level();
@@ -1752,14 +1757,16 @@ impl Game {
             let (flat, layers, mut size) = match it.look {
                 Look::Block(b) => {
                     let bl = self.reg.get(b);
-                    if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail) {
+                    if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail | Shape::TallBanner) {
                         (1.0, [bl.faces[0] as f32; 3], 0.4)
                     } else {
                         (0.0, [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32], 0.22)
                     }
                 }
-                Look::Sprite(l) => (1.0, [(self.item_base + l) as f32; 3], 0.36),
+                // Pictures have real volume on the ground too (item_render::volumes).
+                Look::Sprite(l) => (2.0, [(self.item_base + l) as f32; 3], 0.36),
             };
+            let vol = if flat > 1.5 { picture_volume(it) } else { 0.0 };
             // Stacks show as two or three copies, like the classic game.
             let copies = if d.stack.count > 16 { 3 } else if d.stack.count > 1 { 2 } else { 1 };
             if lying && flat > 0.5 {
@@ -1770,13 +1777,34 @@ impl Game {
                 if lying {
                     // Flat on the ground, a little scattered; blocks sit on their base.
                     let yaw = d.spin_rest + kf * 0.7;
-                    let (lift, pitch, spread) = if flat > 0.5 { (0.02 + kf * 0.02, -std::f32::consts::FRAC_PI_2, 0.07) } else { (size * 0.5, 0.0, size * 1.1) };
+                    // A picture lies on its back: lifted by half its thickness.
+                    let half = size * vol * crate::item_render::VOL_MAX / crate::item_render::VOL_GRID as f32;
+                    let (lift, pitch, spread) = if flat > 0.5 { (0.02 + half + kf * (0.02 + half * 2.0), -std::f32::consts::FRAC_PI_2, 0.07) } else { (size * 0.5, 0.0, size * 1.1) };
                     let off = Vec3::new(yaw.cos(), 0.0, yaw.sin()) * kf * spread;
-                    out.push(GpuItem { pos: [p.x + off.x, p.y + lift, p.z + off.z, size], info: [yaw, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [pitch, 0.0, 0.0, 0.0], bmin: glint, ..bytemuck::Zeroable::zeroed() });
+                    out.push(GpuItem { pos: [p.x + off.x, p.y + lift, p.z + off.z, size], info: [yaw, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [pitch, 0.0, 0.0, vol], bmin: glint, ..bytemuck::Zeroable::zeroed() });
                 } else {
                     let off = Vec3::new(kf * 0.05, kf * 0.04, -kf * 0.05);
-                    out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0; 4], bmin: glint, ..bytemuck::Zeroable::zeroed() });
+                    out.push(GpuItem { pos: [p.x + off.x, p.y + off.y, p.z + off.z, size], info: [d.spin, flat, sky, blk], layers: [layers[0], layers[1], layers[2], 0.0], rot: [0.0, 0.0, 0.0, vol], bmin: glint, ..bytemuck::Zeroable::zeroed() });
                 }
+            }
+        }
+        if let Ok(names) = std::env::var("MC_ITEMVIEW") {
+            // Test hook: these items (comma-separated) in a row in front of the eye, big, turned
+            // MC_ITEMYAW degrees (default 35) and tipped MC_ITEMPITCH, to look at their 3D shape.
+            let deg = |k: &str, d: f32| std::env::var(k).ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(d).to_radians();
+            let list: Vec<_> = names.split(',').filter_map(|n| self.items.id(n.trim())).collect();
+            let f = self.forward();
+            let flat_f = Vec3::new(f.x, 0.0, f.z).normalize_or(Vec3::Z);
+            let side = Vec3::new(-flat_f.z, 0.0, flat_f.x);
+            let n = list.len() as f32;
+            let size = (2.2 / n.max(1.0)).min(0.9);
+            for (k, id) in list.into_iter().enumerate() {
+                let it = self.items.get(id);
+                let Look::Sprite(l) = it.look else { continue };
+                let layer = (self.item_base + l) as f32;
+                let at = eye + flat_f * 1.6 + side * ((k as f32 - (n - 1.0) / 2.0) * size * 1.05) - c;
+                let yaw = (-flat_f.x).atan2(-flat_f.z) + deg("MC_ITEMYAW", 35.0);
+                out.push(GpuItem { pos: [at.x, at.y, at.z, size], info: [yaw, 2.0, 1.0, 0.0], layers: [layer, layer, layer, 0.0], rot: [deg("MC_ITEMPITCH", 0.0), 0.0, 0.0, picture_volume(it)], ..bytemuck::Zeroable::zeroed() });
             }
         }
         for o in &self.surv.orbs {
@@ -2692,6 +2720,21 @@ struct HeldLook {
     layers: [f32; 3],
 }
 
+/// Held like a tool (diagonally, in the fist): tools, weapons, rods and sticks.
+fn held_like_tool(it: &voxel::item::Item) -> bool {
+    it.tool.is_some() || it.name.ends_with("_sword") || matches!(it.name.as_str(), "stick" | "blaze_rod" | "breeze_rod" | "bone" | "mace" | "trident") || it.name.ends_with("_rod") || crate::tr_weapons::is_blade(&it.name)
+}
+
+/// How thick an item picture is in 3D (`GpuItem::rot.w`): tools and weapons get their full
+/// volume (round handles, thick heads); other pictures (food, paper, gems) a thinner one.
+pub(crate) fn picture_volume(it: &voxel::item::Item) -> f32 {
+    if held_like_tool(it) {
+        1.0
+    } else {
+        0.6
+    }
+}
+
 impl HeldLook {
     fn model(&self) -> crate::player_model::HandModel {
         use crate::player_model::HandModel;
@@ -2841,11 +2884,11 @@ impl Game {
             // So are shields (shield.rs).
             return None;
         }
-        let tool = it.tool.is_some() || it.name.ends_with("_sword") || matches!(it.name.as_str(), "stick" | "blaze_rod" | "breeze_rod" | "bone" | "mace" | "trident") || it.name.ends_with("_rod") || crate::tr_weapons::is_blade(&it.name);
+        let tool = held_like_tool(it);
         Some(match it.look {
             Look::Block(b) => {
                 let bl = self.reg.get(b);
-                if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail) {
+                if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail | Shape::TallBanner) {
                     // Plants and torches are flat item pictures in the hand.
                     HeldLook { kind: HeldKind::Flat, flat: true, layers: [bl.faces[0] as f32; 3] }
                 } else {
@@ -2873,7 +2916,7 @@ impl Game {
             // Flat pictures in a hand are extruded pixel by pixel (item_render.rs).
             info: [yaw, if look.flat { 2.0 } else { 0.0 }, (l >> 4) as f32 / 15.0, blk],
             layers: [look.layers[0], look.layers[1], look.layers[2], 0.0],
-            rot: [pitch, roll, 0.0, 0.0],
+            rot: [pitch, roll, 0.0, if look.kind == HeldKind::Tool { 1.0 } else { 0.6 }],
             ..bytemuck::Zeroable::zeroed()
         })
     }
@@ -3210,7 +3253,7 @@ impl Game {
         for dy in -2..=3 {
             for dz in -4..=4 {
                 for dx in -4..=4 {
-                    if self.world.block_or_air(c + IVec3::new(dx, dy, dz)) == id {
+                    if self.reg.get(self.world.block_or_air(c + IVec3::new(dx, dy, dz))).base == id {
                         return true;
                     }
                 }

@@ -95,6 +95,8 @@ pub struct World {
     top: Vec<f32>,
     /// Ladders and vines.
     climb: Vec<bool>,
+    /// Cobwebs: bodies inside crawl through (see `Terrain::sticky`).
+    sticky: Vec<bool>,
     /// How each block feels underfoot (ice slides, sand and snow drag).
     ground: Vec<voxel::physics::Ground>,
     /// Blocks that stand in water (kelp): bodies swim through them.
@@ -118,7 +120,7 @@ pub struct World {
     /// The sections lit and drawn: a band around the player's height, so a 1024-block world
     /// costs no more light and mesh work than a 256-block one.
     pub band: Band,
-    /// Blocks with a turning model drawn over them (windmill sails), by block id.
+    /// Blocks with a moving model drawn over them (windmill sails, tall banners), by block id.
     spins: Vec<bool>,
     /// Where those blocks are in the loaded chunks, kept up to date as chunks come and go and
     /// blocks change, so drawing them never has to search the world.
@@ -219,9 +221,10 @@ impl World {
         let solid = reg.blocks.iter().map(|b| b.solid && b.shape != Shape::Liquid && b.shape != Shape::Invisible).collect();
         let top = reg.blocks.iter().map(|b| b.height as f32 / 16.0).collect();
         let climb = reg.blocks.iter().map(|b| b.shape == Shape::Ladder || matches!(b.name.as_str(), "vine" | "weeping_vines" | "twisting_vines" | "scaffolding" | "cave_vines")).collect();
+        let sticky = reg.blocks.iter().map(|b| b.name == "cobweb").collect();
         let wet = reg.blocks.iter().map(|b| b.waterlogged).collect();
         let ground = reg.blocks.iter().map(|b| voxel::physics::Ground::of_block(&reg.blocks[b.base as usize].name, b.variant)).collect();
-        let spins = reg.blocks.iter().map(|b| reg.blocks[b.base as usize].name == "windmill_sails").collect();
+        let spins = reg.blocks.iter().map(|b| reg.blocks[b.base as usize].name == "windmill_sails" || b.shape == Shape::TallBanner).collect();
         World {
             tables,
             reg,
@@ -245,6 +248,7 @@ impl World {
             solid,
             top,
             climb,
+            sticky,
             ground,
             wet,
             meshed_count: 0,
@@ -847,6 +851,19 @@ impl World {
                 self.set_block(other, AIR);
             }
         }
+        // Half of a double chest: the other half is a chest on its own again.
+        let (turn, base) = (self.reg.get(was).turn, self.reg.get(was).base);
+        if turn == voxel::block::Turn::Chest && variant & (voxel::block::CHEST_LEFT | voxel::block::CHEST_RIGHT) != 0 {
+            let l = IVec3::from(voxel::block::chest_left_dir(variant));
+            for other in [p + l, p - l] {
+                let o = self.block_or_air(other);
+                let ob = self.reg.get(o);
+                if ob.base == base && ob.variant == variant ^ (voxel::block::CHEST_LEFT | voxel::block::CHEST_RIGHT) {
+                    let single = self.reg.variant(o, variant & 3);
+                    self.set_block(other, single);
+                }
+            }
+        }
         let mut y = p.y + 1;
         loop {
             let above = IVec3::new(p.x, y, p.z);
@@ -994,6 +1011,9 @@ impl Terrain for World {
     }
     fn climbable(&self, p: IVec3) -> bool {
         self.block(p).is_some_and(|id| self.climb[id as usize])
+    }
+    fn sticky(&self, p: IVec3) -> bool {
+        self.block(p).is_some_and(|id| self.sticky[id as usize])
     }
     fn top(&self, p: IVec3) -> f32 {
         self.block(p).map(|id| self.top[id as usize]).unwrap_or(1.0)

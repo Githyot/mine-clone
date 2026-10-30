@@ -124,7 +124,7 @@ pub fn encode_chunk(reg: &BlockRegistry, chunk: &Chunk) -> Vec<u8> {
     let mut lid = |b: BlockId| {
         let next = names.len() as u16;
         *local.entry(b).or_insert_with(|| {
-            names.push(&reg.get(b).name);
+            names.push(&reg.get(b).key);
             next
         })
     };

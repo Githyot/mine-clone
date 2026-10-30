@@ -28,10 +28,11 @@ pub const FLAG_CTM_V1: u32 = 64;
 /// glowing pixels (Continuity's emissive textures) that the shader draws at full brightness.
 pub const LAYER_EMISSIVE: u32 = 2048;
 
-/// Blocks whose textures have glowing parts: gem and precious ores, amethyst, crying obsidian.
+/// Blocks whose textures have glowing parts: gem and precious ores, amethyst, crying obsidian,
+/// the lit redstone torch's head.
 pub fn is_emissive(name: &str) -> bool {
     const GLOW: [&str; 14] = ["diamond", "emerald", "redstone", "lapis", "gold", "quartz", "ruby", "sapphire", "topaz", "platinum", "ambrosium", "zanite", "gravitite", "resonarium"];
-    (name.ends_with("_ore") && GLOW.iter().any(|g| name.contains(g))) || matches!(name, "amethyst_block" | "budding_amethyst" | "crying_obsidian" | "ancient_debris")
+    (name.ends_with("_ore") && GLOW.iter().any(|g| name.contains(g))) || matches!(name, "amethyst_block" | "budding_amethyst" | "crying_obsidian" | "ancient_debris" | "redstone_torch")
 }
 
 /// How a block's texture joins its neighbours (Continuity's connected textures).
@@ -210,6 +211,8 @@ pub struct MeshTables {
     shape: Vec<Shape>,
     transp: Vec<Transparency>,
     faces: Vec<[u16; 6]>,
+    /// Bit per face: its picture lies a quarter turn round (a log on its side).
+    uv_turn: Vec<u8>,
     tint: Vec<u8>, // bit per face: tinted
     cull_same: Vec<bool>,
     wave: Vec<bool>,
@@ -236,6 +239,11 @@ pub struct MeshTables {
     /// Redstone: 1 wire, 2 something wire runs into from any side, 3 a repeater (joins along
     /// its facing), 0 anything else.
     rs: Vec<u8>,
+    /// Texture layers of the redstone torch unlit and lit, for the little torches on
+    /// repeaters and comparators (the comparator's front one shows its mode, not its power).
+    rs_torch: [u16; 2],
+    /// Repeaters and comparators sending power: their torches glow.
+    lit_parts: Vec<bool>,
     /// Shapes from resource packs (JSON block models), drawn instead of the block's own.
     /// Behind a lock so a pack change can swap them while the workers keep their tables.
     models: std::sync::RwLock<ModelSet>,
@@ -348,6 +356,7 @@ impl MeshTables {
             shape: vec![],
             transp: vec![],
             faces: vec![],
+            uv_turn: vec![],
             tint: vec![],
             cull_same: vec![],
             wave: vec![],
@@ -369,6 +378,8 @@ impl MeshTables {
             water: vec![],
             wlog: vec![],
             rs: vec![],
+            rs_torch: ["redstone_torch_off", "redstone_torch"].map(|n| reg.textures.iter().position(|t| t == n).unwrap_or(0) as u16),
+            lit_parts: vec![],
             water_tints: (0..crate::worldgen::Biome::COUNT)
                 .map(|i| crate::worldgen::Biome::from_u8(i as u8).water_tint().map(|c| (c * 200.0).min(255.0) as u8 & !1))
                 .collect(),
@@ -377,10 +388,12 @@ impl MeshTables {
             t.water.push(b.shape == Shape::Liquid && b.name.starts_with("water"));
             t.wlog.push(b.waterlogged);
             t.rs.push(redstone_join(reg, i as BlockId));
+            t.lit_parts.push(matches!(b.shape, Shape::Repeater | Shape::Comparator) && b.name.ends_with("_on"));
             t.opaque.push(reg.is_opaque(i as BlockId));
             t.shape.push(b.shape);
             t.transp.push(b.transparency);
             t.faces.push(b.faces);
+            t.uv_turn.push(b.uv_turn);
             let leaves = b.name.ends_with("_leaves");
             let mut tint = 0u8;
             if b.tint {
@@ -706,7 +719,8 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                 }
                 let idu = id as usize;
                 let shape = t.shape[idu];
-                if shape == Shape::Invisible {
+                // Tall banners are drawn whole by the game, swaying.
+                if shape == Shape::Invisible || shape == Shape::TallBanner {
                     continue;
                 }
                 let biome = input.biomes[lx + lz * 16] as usize;
@@ -786,7 +800,7 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     let v = t.variant[idu];
                     let wall = v > 0;
                     for (f, fi) in FACES.iter().enumerate() {
-                        let layer = t.faces[idu][f] as u32;
+                        let layer = t.faces[idu][f] as u32 | t.emissive[idu];
                         for (k, c) in fi.corners.iter().enumerate() {
                             let mut pos = [if c[0] == 1 { 9 } else { 7 }, if c[1] == 1 { 10 } else { 0 }, if c[2] == 1 { 9 } else { 7 }];
                             if wall {
@@ -919,8 +933,12 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                             }
                             let l = if edge { light[ni] } else { light[i] };
                             let (sky, blk) = ((l >> 4) as u32, (l & 15) as u32);
-                            let layer = if part {
-                                t.faces[idu][4]
+                            let layer = if part && shape == Shape::Comparator && bi == 1 {
+                                // Lit in subtract mode, whatever the comparator puts out.
+                                let sub = t.variant[idu] & 4 != 0;
+                                t.rs_torch[sub as usize] | if sub { LAYER_EMISSIVE as u16 } else { 0 }
+                            } else if part {
+                                t.faces[idu][4] | if t.lit_parts[idu] { LAYER_EMISSIVE as u16 } else { 0 }
                             } else if piston {
                                 // The face it points to shows the piston top, the back its bottom.
                                 let df = DIR6_FACE[pdir];
@@ -1071,6 +1089,9 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                             pos[1] = base[1] + lh[(c[0] + c[2] * 2) as usize];
                         }
                         let mut uv = fi.uv[k];
+                        if t.uv_turn[idu] & (1 << f) != 0 {
+                            uv = turn_uv(uv, 1);
+                        }
                         if liquid && c[1] == 1 && f != 2 && f != 3 {
                             uv[1] = 16 - lh[(c[0] + c[2] * 2) as usize];
                         }
@@ -1088,7 +1109,8 @@ pub fn mesh_section(t: &MeshTables, input: &MeshInput, section: usize) -> Sectio
                     // Plain full faces with even light go to the merge masks instead.
                     let uniform = aos.iter().all(|&a| a == 3) && lights.iter().all(|&l| l == lights[0]);
                     let flat = !liquid || (f == 2 && (lh == [14; 4] || lh == [16; 4]));
-                    if uniform && hgt == 16 && flat && t.connected[idu] == Connect::None {
+                    // Merged faces take their picture from the map, so a turned one stays alone.
+                    if uniform && hgt == 16 && flat && t.connected[idu] == Connect::None && t.uv_turn[idu] & (1 << f) == 0 {
                         let (na, aa, ba) = face_axes(f);
                         let lp = [lx, ly, lz];
                         masks[f * 16 + lp[na]][lp[aa] + lp[ba] * 16] = Some(FaceKey {

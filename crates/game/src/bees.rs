@@ -30,7 +30,9 @@ impl Game {
             _ => false,
         };
         if fill {
-            self.world.set_block(p, self.reg.id_or_air(&format!("{name}_honey")));
+            // Facing the same way.
+            let full = self.reg.variant(self.reg.id_or_air(&format!("{name}_honey")), self.reg.get(id).variant);
+            self.world.set_block(p, full);
         }
     }
 
@@ -48,7 +50,9 @@ impl Game {
         } else if let Some(comb) = self.items.id("honeycomb") {
             self.pop_drop(at, ItemStack::new(comb, 3));
         }
-        self.world.set_block(p, self.reg.id_or_air(empty));
+        let v = self.reg.get(self.world.block_or_air(p)).variant;
+        let empty = self.reg.variant(self.reg.id_or_air(empty), v);
+        self.world.set_block(p, empty);
         self.anim.start_swing();
         self.sfx(Sfx::Break(Material::Grass));
         // Smoke from a campfire below keeps the bees calm.

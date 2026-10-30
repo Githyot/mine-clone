@@ -271,7 +271,7 @@ impl Game {
         let mut amount = amount;
         if from.is_some() {
             if self.t5.hard.on {
-                amount *= 1.5;
+                amount *= crate::mob_tiers::HARD_HIT;
             }
             if self.t5.hard.blood_moon() {
                 amount *= 1.2;
