@@ -965,6 +965,7 @@ impl Game {
                     self.net_guest_shots.remove(&id);
                     self.take_remote_shots(id, &[]);
                     self.host_guest_drops_gone(id);
+                    self.host_guest_props_gone(id);
                     if let Some(g) = self.host().guests.remove(&id) {
                         if g.welcomed {
                             self.net.remotes.remove(&id);
@@ -1224,6 +1225,7 @@ impl Game {
             ToHost::Drops(list) => self.host_got_drops(id, list),
             ToHost::Take { owner, id: item } => self.host_got_take(id, owner, item),
             ToHost::Give { to, stack } => self.host_got_give(to, stack),
+            ToHost::Props(list) => self.host_got_props(id, list),
         }
     }
 
@@ -1990,6 +1992,7 @@ impl Game {
             ToGuest::Take { by, id } => self.hand_over(by, id),
             ToGuest::Give { stack } => self.receive_net_stack(&stack),
             ToGuest::Events(e) => self.net_events.from_host = Some(e),
+            ToGuest::Props { dim, list } => self.guest_got_props(dim, list),
             ToGuest::SkillShare { skill, xp } => {
                 if let Some(&k) = crate::skills::ALL.get(skill as usize) {
                     self.skill_gain(k, xp.min(500));

@@ -493,7 +493,8 @@ impl Game {
             self.settle_wagon(&mut w);
             self.wagons.list.push(w);
         }
-        if !self.mobs.enabled {
+        // A guest in the host's world sees the host's travelling wagons (net_props.rs).
+        if !self.mobs.enabled || !self.net_simulates() {
             return;
         }
         let moving = self.wagons.list.iter().filter(|w| !w.parked).count();
@@ -992,7 +993,16 @@ impl Game {
     }
 
     /// What to draw for every wagon in sight.
+    /// The travelling wagons only, anywhere (multijogador: net_props.rs).
+    pub(crate) fn wagon_instances_moving(&self, cam_block: IVec3) -> Vec<(usize, Bones)> {
+        self.wagon_instances_of(cam_block, f32::MAX, true)
+    }
+
     pub(crate) fn wagon_instances(&self, cam_block: IVec3, max_dist: f32) -> Vec<(usize, Bones)> {
+        self.wagon_instances_of(cam_block, max_dist, false)
+    }
+
+    fn wagon_instances_of(&self, cam_block: IVec3, max_dist: f32, moving_only: bool) -> Vec<(usize, Bones)> {
         let mut out = Vec::new();
         if self.wagons.list.is_empty() {
             return out;
@@ -1002,7 +1012,7 @@ impl Game {
         let reg = &self.mobs.reg;
         let s = |i: usize| Mat4::from_scale(Vec3::splat(reg.defs[i].scale / 16.0));
         for w in &self.wagons.list {
-            if (w.pos - cam).length() > max_dist {
+            if (w.pos - cam).length() > max_dist || (moving_only && w.parked) {
                 continue;
             }
             let l = self.world.light((w.pos + Vec3::Y * 1.2).floor().as_ivec3());
