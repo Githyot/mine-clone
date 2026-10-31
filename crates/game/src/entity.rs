@@ -1382,6 +1382,16 @@ fn armor_mesh(def: &MobDef, piece: usize, layer: u32, name: &str, color: [u8; 3]
     (verts, indices)
 }
 
+/// One armour piece as worn, for drawing its item icon (armor_icon.rs): the triangles (position,
+/// texture coordinate, face shade, body part) and the set's armour texture (RGBA, width, height).
+#[cfg(test)]
+pub(crate) fn armor_piece_model(def: &MobDef, name: &str, color: [u8; 3], piece: usize) -> (Vec<([f32; 3], [f32; 2], f32, usize)>, Vec<u32>, Vec<u8>, u32, u32) {
+    let (verts, idx) = armor_mesh(def, piece, 0, name, color);
+    let skin = armor_skin(def, name, color, SKIN_DETAIL);
+    let v = verts.iter().map(|v| (v.pos, v.uv, ((v.packed >> 4) & 255) as f32 / 255.0, (v.packed & 15) as usize)).collect();
+    (v, idx, skin.pixels, SKIN_W * SKIN_DETAIL, SKIN_H * SKIN_DETAIL)
+}
+
 fn armor_mesh_over(def: &MobDef, piece: usize, layer: u32, over: f32) -> (Vec<EntityVertex>, Vec<u32>) {
     let mut mb = MeshBuilder::new(layer, Some(def));
     for (part, origin, size, uv, inflate) in armor_boxes(def, piece) {
