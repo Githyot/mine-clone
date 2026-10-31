@@ -439,7 +439,7 @@ impl Game {
 
     fn land_spawns(&mut self) {
         let Some(land) = self.t5.tr.lands.here else { return };
-        if self.mobs.peaceful || self.mobs.calm || !self.survival {
+        if !self.mobs.monster_room() || self.mobs.calm || !self.survival {
             return;
         }
         let names: &[&str] = match land {

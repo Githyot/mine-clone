@@ -429,7 +429,7 @@ impl Game {
     fn vulcao_spawns(&mut self, dt: f32) {
         self.vulcao.spawn_t -= dt;
         let Some(v) = self.vulcao.near else { return };
-        if self.vulcao.spawn_t > 0.0 || !self.mobs.enabled || self.mobs.peaceful || !self.survival_or_mobs() {
+        if self.vulcao.spawn_t > 0.0 || !self.mobs.monster_room() {
             return;
         }
         self.vulcao.spawn_t = 4.0;
@@ -475,9 +475,6 @@ impl Game {
         }
     }
 
-    fn survival_or_mobs(&self) -> bool {
-        self.mobs.spawning
-    }
 
     /// Basalt golems curl up and roll down at you.
     fn vulcao_rolls(&mut self, dt: f32) {

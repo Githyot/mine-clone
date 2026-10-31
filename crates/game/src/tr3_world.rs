@@ -398,7 +398,7 @@ impl Game {
         let full = self.moon_phase() == 0;
         let w = &mut self.t5.tr.r3.world;
         w.spawn_t -= dt;
-        if night && full && w.spawn_t <= 0.0 && self.body.pos.y > 40.0 && !self.mobs.peaceful && self.mobs.enabled {
+        if night && full && w.spawn_t <= 0.0 && self.body.pos.y > 40.0 && self.mobs.monster_room() && !self.mobs.calm {
             w.spawn_t = 25.0;
             if self.count_alive(&["zombie", "skeleton"]) < 8 {
                 let name = if self.surv.rng.f32() < 0.6 { "zombie" } else { "skeleton" };

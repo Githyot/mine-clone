@@ -174,7 +174,13 @@ impl Game {
     }
 
     /// A monster of `name` somewhere 18 to 30 blocks away on the ground.
+    /// Nothing on Peaceful, with spawning off or "Monstros: nenhum"; and only near the
+    /// player's own height (a player deep in a mine gets no walkers on the surface far above,
+    /// that would just vanish again past the despawn distance).
     pub(crate) fn spawn_around(&mut self, name: &str, flying: bool) -> bool {
+        if !self.mobs.monsters_may_spawn() {
+            return false;
+        }
         for _ in 0..6 {
             let a = self.surv.rng.f32() * std::f32::consts::TAU;
             let r = 18.0 + self.surv.rng.f32() * 12.0;
@@ -182,6 +188,9 @@ impl Game {
             let z = (self.body.pos.z + a.sin() * r).floor() as i32;
             let Some(y) = self.world.surface_y(x, z) else { continue };
             let y = if flying { (y + 6).max(self.body.pos.y as i32 + 4) } else { y + 1 };
+            if (y as f32 - self.body.pos.y).abs() > 40.0 {
+                continue;
+            }
             let at = Vec3::new(x as f32 + 0.5, y as f32, z as f32 + 0.5);
             if self.mobs.spawn(name, at) {
                 if let Some(m) = self.mobs.list.last_mut() {
@@ -199,7 +208,7 @@ impl Game {
 
     /// Demon eyes on any night, and the blood moon's crowd.
     fn update_night_spawns(&mut self, dt: f32, night: bool) {
-        if !night || self.mobs.peaceful || !self.mobs.enabled {
+        if !night || !self.mobs.monsters_may_spawn() {
             return;
         }
         self.t5.hard.spawn_t -= dt;
@@ -209,7 +218,9 @@ impl Game {
         let blood = self.t5.hard.blood;
         self.t5.hard.spawn_t = if blood { 3.0 } else { 20.0 };
         let eyes = self.count_alive(&["demon_eye"]);
-        if eyes < if blood { 4 } else { 2 } && self.surv.rng.f32() < 0.6 {
+        // An ordinary night's eyes are ambient: the shared cap and a calm night hold them.
+        let ambient = blood || (self.mobs.monster_room() && !self.mobs.calm);
+        if ambient && eyes < if blood { 4 } else { 2 } && self.surv.rng.f32() < 0.6 {
             self.spawn_around("demon_eye", true);
         }
         if blood && self.count_alive(&["blood_zombie"]) < 8 {
