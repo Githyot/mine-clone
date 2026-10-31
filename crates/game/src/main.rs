@@ -8,6 +8,7 @@ mod armor_design;
 mod flora_tex;
 mod ambient_life;
 mod beds;
+mod bowdraw;
 mod chests;
 mod heights;
 mod material;
@@ -853,6 +854,8 @@ struct Game {
     structures: Arc<voxel::structures::Structures>,
     /// First texture layer of the item sprites (they come after the block textures).
     item_base: u16,
+    /// Every bow's drawn-back pictures and shape (bowdraw.rs).
+    bows: bowdraw::Bows,
     surv: survival::Survival,
     /// Phase 6: effects, stations, enchantment play, statistics and advancements.
     prog: progression::Prog,
@@ -971,7 +974,7 @@ impl Game {
         let pack_models = packmodels::load(&reg, &base, &settings.resource_packs);
         let item_base = (reg.textures.len() + pack_models.textures.len()) as u16;
         let texture_names: Vec<String> =
-            reg.textures.iter().chain(pack_models.textures.iter()).chain(items.textures.iter()).cloned().chain(extra_textures()).collect();
+            reg.textures.iter().chain(pack_models.textures.iter()).chain(items.textures.iter()).cloned().chain(extra_textures()).chain(bowdraw::texture_names(&items)).collect();
 
         // Without --world the game opens on the title screen, with the last played world behind it.
         let camera_mode = args.camera.min(2);
@@ -996,6 +999,7 @@ impl Game {
         world.headless = window.is_none();
 
         let tex = textures::load(&texture_names, &base, &settings.resource_packs, settings.texture_resolution);
+        let bows = bowdraw::Bows::new(&texture_names, &tex);
         let textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
         let lod = lod::Lod::new(gen.clone(), lod::LodColors::new(&reg, &tex));
         let font = FontAtlas::new();
@@ -1277,6 +1281,7 @@ impl Game {
             recipes,
             structures,
             item_base,
+            bows,
             surv,
             prog,
             extras,
@@ -1663,11 +1668,12 @@ impl Game {
         let pack_models = packmodels::load(&self.reg, &self.base, &self.settings.resource_packs);
         self.item_base = (self.reg.textures.len() + pack_models.textures.len()) as u16;
         let names: Vec<String> =
-            self.reg.textures.iter().chain(pack_models.textures.iter()).chain(self.items.textures.iter()).cloned().chain(extra_textures()).collect();
+            self.reg.textures.iter().chain(pack_models.textures.iter()).chain(self.items.textures.iter()).cloned().chain(extra_textures()).chain(bowdraw::texture_names(&self.items)).collect();
         self.world.tables.set_models(pack_models.models);
         self.world.tables.set_flora(pack_models.flora);
         self.world.remesh_all();
         let tex = textures::load(&names, &self.base, &self.settings.resource_packs, self.settings.texture_resolution);
+        self.bows = bowdraw::Bows::new(&names, &tex);
         self.textures_name = tex.packs.first().cloned().unwrap_or_else(|| "Padrão".into());
         if let Some(r) = self.renderer.get_mut() {
             r.reload_textures(&tex);
@@ -2568,6 +2574,7 @@ impl Game {
         self.anim.update(&pose, dt);
         let ready = if self.survival { self.attack_charge() } else { 1.0 };
         self.anim.follow_hand(self.held_stack().map(|s| s.item), ready, dt);
+        self.anim.follow_bow(self.bow_pull() > 0.0 && self.held_bow().is_some(), dt);
 
         // Water: splash going in, strokes while swimming, drips coming out, bubbles below.
         let in_water = self.body.in_water;
@@ -3110,6 +3117,7 @@ impl Game {
             torch: self.held_torch().is_some(),
             shield_up: if self.shields_worn().iter().any(|(l, m)| l.kind == 0 && matches!(m, shield::Mount::Hand { .. })) { self.extras.raise } else { 0.0 },
             shield_left: !self.held_stack().is_some_and(|s| self.items.get(s.item).name == "shield"),
+            bow: if self.held_bow().is_some() { self.anim.bow_aim } else { 0.0 },
             mantle: self.body.mantle.map_or(0.0, |m| m.progress().max(1e-3)),
             ledge: self.body.mantle.map_or(0.0, |m| m.ledge - self.body.pos.y),
             sleeping: self.sleep.map(|s| beds::body_yaw(s.facing)),
@@ -5100,7 +5108,7 @@ impl Game {
             }
             self.anim.hand_height = 1.0;
         }
-        let mut held_third = None;
+        let mut held_third = Vec::new();
         // Drawn but casting no shadow (first-person arm, inventory figure), and the other way
         // round (the body in first person still casts its shadow).
         let mut overlay = Vec::new();
@@ -5122,7 +5130,13 @@ impl Game {
                 let pv = def.parts[2].pivot;
                 // Asleep, the hands are empty.
                 let awake = self.sleep.is_none();
-                held_third = self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32)).filter(|_| awake);
+                held_third = match self.bow_third_person(def, &bones) {
+                    Some(bow) => bow,
+                    None => self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32)).into_iter().collect(),
+                };
+                if !awake {
+                    held_third.clear();
+                }
                 if let Some((t, mesh)) = self.held_torch().filter(|_| awake).and_then(|t| Some((t, self.entities.torch_mesh(t)?))) {
                     let (tb, top) = torch::hold(t, bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 1.0, 0.62, self.now, [bones.light[0], 1.0, 0.0, 0.0]);
                     items.push((mesh, tb));
@@ -5270,6 +5284,7 @@ impl Game {
                 }
                 g
             }));
+            drops.extend(self.held_arrow_instance(eye, block));
         }
         drops.extend(held_third);
         drops.extend(mob_items);
