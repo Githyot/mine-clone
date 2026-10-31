@@ -22,6 +22,7 @@ mod vanity;
 mod net_fx;
 mod net_drops;
 mod net_events;
+mod net_props;
 mod wings;
 mod worlds;
 mod anim;
@@ -738,6 +739,7 @@ struct Game {
     net_drops: Vec<net_drops::RemoteDrop>,
     net_drop_state: net_drops::NetDrops,
     net_events: net_events::NetEvents,
+    net_props: net_props::NetProps,
     /// Host: each guest's own shots as it last sent them (relayed to the other guests).
     net_guest_shots: std::collections::HashMap<u32, Vec<net::ShotFx>>,
     town: npcs::Town,
@@ -1213,6 +1215,7 @@ impl Game {
             net_drops: Vec::new(),
             net_drop_state: Default::default(),
             net_events: Default::default(),
+            net_props: Default::default(),
             net_guest_shots: Default::default(),
             town: npcs::Town::new(town_npcs),
             progress: progress::Progress::new(),
@@ -1957,6 +1960,7 @@ impl Game {
         self.update_remote_shots(dt);
         self.update_net_drops(dt);
         self.update_net_events(dt);
+        self.update_net_props(dt);
         self.voice_update(dt);
         self.prof.mark("rede e voz");
         // A guest in the host's dimension gets the world's own changes from the host.
@@ -5258,6 +5262,7 @@ impl Game {
         items.extend(self.minion_instances(block));
         items.extend(self.sentry_instances(block));
         items.extend(self.tr_sentry_models(block));
+        items.extend(self.remote_prop_instances(block));
         // The player figure in the inventory, in 3D, turning its head toward the mouse.
         let mut figure_backdrop = None;
         if let (Some((bx, by, bw, bh)), Some(pd)) = (self.surv.figure_box.take(), self.mobs.reg.id("player")) {

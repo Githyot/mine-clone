@@ -73,6 +73,23 @@ pub enum ToHost {
     Take { owner: u32, id: u32 },
     /// The guest handed one of its items over to player `to` (it was asked by `ToGuest::Take`).
     Give { to: u32, stack: Vec<u8> },
+    /// The guest's own things with a body: its minions and sentries, the boats and carts it
+    /// placed (`PropFx`), as pictures.
+    Props(Vec<PropFx>),
+}
+
+/// Something with a 3D body as the others see it: a mob-registry model and its posed parts,
+/// already in world space. Only a picture: it is run where it lives.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct PropFx {
+    /// Index in the mob registry (same on every machine: the content hash matches).
+    pub def: u16,
+    /// Each part's matrix, its first three rows (column-major: x, y, z, translation).
+    pub parts: Vec<[f32; 12]>,
+    /// Knee/elbow bends of the parts that have one (height, depth, angle).
+    pub bend: Vec<[f32; 3]>,
+    pub light: [f32; 4],
+    pub tint: [f32; 4],
 }
 
 /// An item on the ground, as the others see it. `stack` is the game's own item stack,
@@ -196,6 +213,8 @@ pub enum ToGuest {
     /// The world's events as the host runs them: their bars, the pillars' line, and what
     /// colours the sky (blood moon, eclipse). Sent when it changes and now and then.
     Events(EventsFx),
+    /// The things with a body near the guest (`PropFx`): the host's and the other guests'.
+    Props { dim: u8, list: Vec<PropFx> },
 }
 
 /// One event bar at the top of the screen.
