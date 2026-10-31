@@ -2756,8 +2756,13 @@ impl Game {
             return None;
         }
         let look = self.held_look()?;
-        let place = self.anim.first_person_item(look.model(), eye - cam_block.as_vec3(), self.yaw, self.pitch);
         let l = self.world.light(eye.floor().as_ivec3());
+        if self.holding_spear() {
+            // Both hands on a long shaft (spear.rs).
+            let cam = glam::Mat4::from_translation(eye - cam_block.as_vec3()) * glam::Mat4::from_rotation_y(self.yaw) * glam::Mat4::from_rotation_x(self.pitch);
+            return self.held_gpu_item(crate::spear::first_person_frame(&self.anim, cam), 1.0, look, l, Vec3::ZERO);
+        }
+        let place = self.anim.first_person_item(look.model(), eye - cam_block.as_vec3(), self.yaw, self.pitch);
         let eat = if self.surv.eat > 0.0 { (self.surv.eat * 14.0).sin().abs() * 0.04 } else { 0.0 };
         // The food gets smaller as it is eaten.
         let left = 1.0 - 0.45 * (self.surv.eat / 1.6).clamp(0.0, 1.0);
@@ -2772,6 +2777,10 @@ impl Game {
         }
         let look = self.held_look()?;
         let e = eye - cam_block.as_vec3();
+        if self.holding_spear() {
+            let cam = glam::Mat4::from_translation(e) * glam::Mat4::from_rotation_y(self.yaw) * glam::Mat4::from_rotation_x(self.pitch);
+            return Some(crate::spear::first_person_arms(&self.anim, def, cam, [sky, blk, 0.0, 0.0]));
+        }
         let place = self.anim.first_person_item(look.model(), e, self.yaw, self.pitch);
         Some(self.anim.first_person_arm_holding(def, place, look.model(), e, self.yaw, self.pitch, sky, blk))
     }
@@ -2845,6 +2854,19 @@ impl Game {
     pub(crate) fn held_item_third_person(&self, arm: [[f32; 4]; 4], pivot: Vec3) -> Option<GpuItem> {
         let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
         self.held_in_fist(arm, pivot, 1.0, l, Vec3::ZERO)
+    }
+
+    /// A spear held in both hands by a model posed with `Pose::spear` (spear.rs), placed with
+    /// its body bone; `swing` is that model's swing.
+    pub(crate) fn held_spear_third_person(&self, bones: &crate::entity::Bones, swing: f32, light_at: Vec3) -> Option<GpuItem> {
+        let look = self.held_look()?;
+        let l = self.world.light(light_at.floor().as_ivec3());
+        self.held_gpu_item(crate::spear::third_person(bones, 1, swing), 1.0, look, l, Vec3::ZERO)
+    }
+
+    /// The item in hand is a spear, held in both hands.
+    pub(crate) fn holding_spear(&self) -> bool {
+        self.held_stack().is_some_and(|s| crate::spear::is_spear(&self.items.get(s.item).name))
     }
 
     /// The held item placed in the fist of the right arm bone `arm` (shoulder at `pivot`),

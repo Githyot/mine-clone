@@ -10,6 +10,7 @@ mod armor_icon;
 mod flora_tex;
 mod ambient_life;
 mod beds;
+mod spear;
 mod chests;
 mod heights;
 mod material;
@@ -3115,6 +3116,7 @@ impl Game {
             sitting: self.riding.is_some() || self.seat.is_some() || self.mods.aircraft.pilot.is_some() || self.t5.comp.mount.is_some(),
             holding: self.held_stack().is_some(),
             torch: self.held_torch().is_some(),
+            spear: self.holding_spear(),
             shield_up: if self.shields_worn().iter().any(|(l, m)| l.kind == 0 && matches!(m, shield::Mount::Hand { .. })) { self.extras.raise } else { 0.0 },
             shield_left: !self.held_stack().is_some_and(|s| self.items.get(s.item).name == "shield"),
             mantle: self.body.mantle.map_or(0.0, |m| m.progress().max(1e-3)),
@@ -5155,7 +5157,12 @@ impl Game {
                 let pv = def.parts[2].pivot;
                 // Asleep, the hands are empty.
                 let awake = self.sleep.is_none();
-                held_third = self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32)).filter(|_| awake);
+                held_third = if self.anim.spear_hold(&pose) {
+                    self.held_spear_third_person(&bones, self.anim.swing, self.body.pos + Vec3::Y)
+                } else {
+                    self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32))
+                }
+                .filter(|_| awake);
                 if let Some((t, mesh)) = self.held_torch().filter(|_| awake).and_then(|t| Some((t, self.entities.torch_mesh(t)?))) {
                     let (tb, top) = torch::hold(t, bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32), 1.0, 0.62, self.now, [bones.light[0], 1.0, 0.0, 0.0]);
                     items.push((mesh, tb));

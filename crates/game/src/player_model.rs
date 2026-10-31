@@ -42,6 +42,8 @@ pub struct Pose {
     pub holding: bool,
     /// A torch in the right hand: held up high ahead, lighting the way (torch.rs).
     pub torch: bool,
+    /// A spear held in both hands (spear.rs): the body turns sideways, both fists on the shaft.
+    pub spear: bool,
     /// A shield coming up to block: 0..1, and in which hand (shield.rs).
     pub shield_up: f32,
     pub shield_left: bool,
@@ -113,6 +115,18 @@ impl Animator {
             self.swing = 0.001;
             self.swing_style = 0;
         }
+    }
+
+    /// A spear is held in both hands right now (not while swimming, climbing, sitting or
+    /// lying down; then it rides in the fist like any other tool).
+    pub fn spear_hold(&self, p: &Pose) -> bool {
+        p.spear && self.swim < 0.5 && p.mantle <= 0.0 && !p.sitting && p.sleeping.is_none() && p.crawling * (1.0 - self.swim) < 0.5
+    }
+
+    /// The walking sway of the hands in first person (camera space).
+    pub fn hand_sway(&self) -> Vec3 {
+        let a = self.amount.min(1.0);
+        Vec3::new(self.walk.sin() * 0.02 * a, -self.walk.cos().abs() * 0.025 * a, 0.0)
     }
 
     /// Both hands are on a ledge being climbed: nothing is held up in first person.
@@ -370,7 +384,7 @@ impl Animator {
             let up = Quat::from_rotation_y(-side * 0.45) * Quat::from_rotation_x(-0.95 + arm * 0.15);
             rot[i] = rot[i].slerp(up, p.shield_up.clamp(0.0, 1.0));
         }
-        if self.swing > 0.0 {
+        if self.swing > 0.0 && !p.spear {
             // Hit: the right arm comes down from above, the body twists into it. Combo swings
             // cut across, thrust ahead or come up from below instead.
             let s = (self.swing * PI).sin();
@@ -455,11 +469,33 @@ impl Animator {
             let s = (self.swing * PI).sin();
             bend[R_ARM] = -0.15 - 0.8 * (1.0 - s);
         }
+        // A spear in both hands: the torso turns sideways, the front foot forward, and both arms
+        // reach the shaft (bent at the elbows); a thrust lunges into it (spear.rs).
+        let spear = self.spear_hold(p);
+        let spear_turn = crate::spear::torso_turn(self.swing);
+        if spear {
+            rot[BODY] = rot[BODY] * spear_turn;
+            let e = crate::spear::thrust(self.swing);
+            let stance = idle.min(1.0) * 0.18 + e * 0.3;
+            rot[L_LEG] = Quat::from_rotation_x(-stance) * rot[L_LEG];
+            rot[R_LEG] = Quat::from_rotation_x(stance * 0.8) * rot[R_LEG];
+            let h = crate::spear::hold(self.swing);
+            for (i, target) in [(R_ARM, h.right), (L_ARM, h.left)] {
+                let (q, b, slide) = crate::spear::reach(&def.parts[i], target);
+                rot[i] = q;
+                bend[i] = b;
+                shift[i] = slide;
+            }
+        }
         // Head follows the camera, relative to the body.
         let head_yaw = wrap(p.look_yaw + PI - self.body_yaw).clamp(-1.3, 1.3);
         // Lying down the head lifts to look ahead instead of at the ground.
         let head_lift = -prone * 1.25;
         rot[HEAD] = Quat::from_rotation_y(head_yaw) * Quat::from_rotation_x(head_lift - p.look_pitch * (1.0 - self.swim * 0.6) * (1.0 - prone * 0.5)) * rot[HEAD];
+        if spear {
+            // The head keeps looking ahead while the shoulders turn.
+            rot[HEAD] = spear_turn.inverse() * rot[HEAD];
+        }
         if p.sleeping.is_some() {
             // Still, arms along the sides, the head resting on the pillow, slow breaths.
             rot = [Quat::IDENTITY; 6];

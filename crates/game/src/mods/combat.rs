@@ -44,7 +44,9 @@ const fn at(style: u8, damage: f32, arc: f32, push: f32) -> Attack {
 const SWORD: Weapon = Weapon { reach: 3.2, cooldown: 0.625, sweep: 0.5, two_handed: false, combo: [at(1, 1.0, 50.0, 1.0), at(1, 1.0, 50.0, 1.0), at(2, 1.3, 14.0, 2.0)] };
 const AXE: Weapon = Weapon { reach: 3.0, cooldown: 1.0, sweep: 0.35, two_handed: false, combo: [at(0, 1.0, 28.0, 1.5), at(0, 1.0, 28.0, 1.5), at(3, 1.35, 30.0, 3.0)] };
 const GREATSWORD: Weapon = Weapon { reach: 3.8, cooldown: 1.2, sweep: 0.8, two_handed: true, combo: [at(1, 1.0, 80.0, 2.0), at(1, 1.0, 80.0, 2.0), at(0, 1.6, 40.0, 4.0)] };
-const SPEAR: Weapon = Weapon { reach: 4.8, cooldown: 0.85, sweep: 0.8, two_handed: true, combo: [at(2, 1.0, 12.0, 1.5), at(2, 1.0, 12.0, 1.5), at(2, 1.45, 16.0, 3.5)] };
+/// A spear outreaches every other melee weapon (whips reach 5, rpg.rs).
+pub const SPEAR_REACH: f32 = 5.6;
+const SPEAR: Weapon = Weapon { reach: SPEAR_REACH, cooldown: 0.85, sweep: 0.8, two_handed: true, combo: [at(2, 1.0, 12.0, 1.5), at(2, 1.0, 12.0, 1.5), at(2, 1.45, 16.0, 3.5)] };
 const HALBERD: Weapon = Weapon { reach: 4.3, cooldown: 1.35, sweep: 0.7, two_handed: true, combo: [at(0, 1.0, 45.0, 2.5), at(1, 1.1, 65.0, 2.5), at(2, 1.5, 15.0, 4.5)] };
 
 impl Weapon {
@@ -224,6 +226,11 @@ mod tests {
     fn weapon_classes_from_names() {
         assert!(weapon_of("iron_greatsword", Some(ToolKind::Sword)).unwrap().two_handed);
         assert!(weapon_of("iron_spear", Some(ToolKind::Sword)).unwrap().reach > 4.0);
+        // The spear reaches further than any other melee weapon.
+        for w in [SWORD, AXE, GREATSWORD, HALBERD] {
+            assert!(SPEAR.reach > w.reach + 1.0);
+        }
+        assert!(SPEAR_REACH > 5.0);
         assert!(!weapon_of("iron_sword", Some(ToolKind::Sword)).unwrap().two_handed);
         assert!(weapon_of("iron_pickaxe", Some(ToolKind::Pickaxe)).is_none());
         // Every combo ends with a heavier blow.

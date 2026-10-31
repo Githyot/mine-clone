@@ -436,6 +436,14 @@ pub fn load(names: &[String], base: &Path, enabled_packs: &[String], max_res: u3
                 found = Some(first_frame(img));
                 break;
             }
+            if kind == "item" && crate::spear::is_spear(name) {
+                // A pack's spear icon is short and stubby; its long in-hand picture is the
+                // spear itself, held in both hands (spear.rs). It points up-left, ours up-right.
+                if let Some(img) = pack.read(&format!("assets/minecraft/textures/item/{name}_in_hand.png")).and_then(|b| decode(&b)) {
+                    found = Some(image::imageops::flip_horizontal(&first_frame(img)));
+                    break;
+                }
+            }
             for mc in minecraft_names(name) {
                 for folder in mc_folders {
                     let path = format!("assets/minecraft/textures/{folder}/{mc}.png");

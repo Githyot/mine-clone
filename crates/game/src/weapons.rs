@@ -190,10 +190,11 @@ impl Game {
     }
 
     /// Reach for hitting mobs: 3 blocks in survival and 5 in creative, as in Java Edition;
-    /// spears reach further.
+    /// spears reach furthest of all (HP 2026-10-31: further than swords and every other melee
+    /// weapon, whips included).
     pub(crate) fn weapon_reach(&self) -> f32 {
-        if self.held_key().ends_with("_spear") {
-            4.5
+        if crate::spear::is_spear(&self.held_key()) {
+            crate::mods::combat::SPEAR_REACH
         } else if crate::rpg::is_whip(&self.held_key()) {
             // Whips reach further (rpg.rs).
             5.0

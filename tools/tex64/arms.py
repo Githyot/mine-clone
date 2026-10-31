@@ -1284,3 +1284,136 @@ def boots_icon(mat):
 
 
 ARMOR_ICONS = {"helmet": helmet_icon, "chestplate": chest_icon, "leggings": legs_icon, "boots": boots_icon}
+
+
+# ---------------------------------------------------------------- spears
+#
+# A spear is a long, thin pole from corner to corner with a small head at the tip (HP
+# 2026-10-31: the old icon was a stubby club). Same frame as the swords: butt at u 0, the
+# point near u 76. Every material has its own head; the shaft is ash wood with a hand wrap
+# where the rear hand holds it.
+
+SPEAR_TIP = 76.5
+
+
+def _shaft(art, f, u1, pal=WOOD, w=1.75, wrap=LEATHER_GRIP, ferrule=None):
+    m = f.box(1.2, u1, -w, w)
+    cyl = np.sqrt(np.clip(1 - (f.V / w) ** 2, 0, 1)) * w * 0.9
+    alb = np.sin(f.V * 2.4 + value_noise(art.rng, 8) * 3.0) * 0.06 + (value_noise(art.rng, 4) - 0.5) * 0.05
+    art.paint(m, cyl, pal, base=0.5, diff=1.25, spec=0.05, albedo=alb)
+    if wrap is not None:
+        grip(art, f, 13, 23, w + 0.35, wrap, "cross", base=0.48)
+    cap = f.box(0.0, 3.2, -(w + 0.45), w + 0.45)
+    art.paint(cap, dome(cap, 1.0), ferrule if ferrule is not None else _pal("#6a6e74", 0.6), base=0.45, spec=0.3, power=12)
+
+
+def _socket(art, f, u0, u1, pal, w=2.3, rings=True):
+    s = f.poly([(u0, -w), (u1, -w * 0.8), (u1, w * 0.8), (u0, w)])
+    art.paint(s, dome(s, 1.2), pal, base=0.46, spec=0.3, power=14)
+    if rings:
+        r = f.box(u0, u0 + 1.2, -w - 0.3, w + 0.3)
+        art.paint(r, np.ones((N, N)), pal, base=0.66, outline=False)
+
+
+def _head(art, f, us, wl, wr, mat, hmax=2.6, ridge=0.0, extra=None, facet=None, base=0.52):
+    m, h, s, side = blade(f, us, wl, wr, ridge=ridge, hmax=hmax)
+    _sword_paint(art, f, m, h, mat, base=base, extra=extra, facet=facet)
+    return m, h, s, side
+
+
+def sp_wooden(art, f):
+    # A fire-hardened pole: the shaft itself sharpened to a charred point, bound with cord.
+    pal = mpal("wooden")
+    _shaft(art, f, 58, wrap=CORD)
+    us = [54, 61, 69, SPEAR_TIP - 1]
+    m, h, s, side = blade(f, us, [1.9, 3.2, 1.8, 0.2], [1.9, 3.2, 1.8, 0.2], hmax=2.0, edge=0.0)
+    char = np.clip((f.U - 60) / 12, 0, 1) * -0.32
+    art.paint(m, h, pal, base=0.52, diff=1.3, spec=0.05, albedo=tex_for(art, m, f, "wood") + char)
+    x = (np.abs(f.U - 52.5 - f.V * 0.6) < 0.7) | (np.abs(f.U - 52.5 + f.V * 0.6) < 0.7)
+    art.paint(x & (np.abs(f.V) < 2.2) & (np.abs(f.U - 52.5) < 2.4), np.ones((N, N)), CORD, base=0.6, outline=False)
+
+
+def sp_stone(art, f):
+    # A knapped flint leaf lashed into a split shaft.
+    rng = art.rng
+    _shaft(art, f, 58, wrap=LEATHER_GRIP, ferrule=mpal("stone"))
+    us = np.linspace(53, SPEAR_TIP - 1, 12)
+    w = np.interp(us, [53, 60, 67, SPEAR_TIP - 1], [2.6, 5.4, 3.8, 0.2])
+    m, h, s, side = blade(f, us, w - rng.random(12) * 0.8 * (us < 73), w - rng.random(12) * 0.8 * (us < 73), hmax=3.0, edge=0.0)
+    pts = rng.uniform([54, -5], [76, 5], (10, 2))
+    dd = (f.U[..., None] - pts[:, 0]) ** 2 + (f.V[..., None] - pts[:, 1]) ** 2
+    srt = np.sort(dd, -1)
+    seam = (np.sqrt(srt[..., 1]) - np.sqrt(srt[..., 0])) < 0.7
+    _sword_paint(art, f, m, h, "stone", base=0.48, extra=seam * -0.12)
+    lash = f.box(50.5, 54.5, -2.4, 2.4) & (np.abs(((f.U - f.V * 0.5) % 1.6) - 0.8) < 0.5)
+    art.paint(lash, np.ones((N, N)), CORD, base=0.58)
+
+
+def sp_copper(art, f):
+    pal = mpal("copper")
+    _shaft(art, f, 52, ferrule=pal)
+    _socket(art, f, 50, 56, pal)
+    _head(art, f, [55, 60, 67, SPEAR_TIP], [2.2, 5.2, 4.0, 0.2], [2.2, 5.2, 4.0, 0.2], "copper", ridge=0.0)
+    patina(art, f.box(52, 78, -6, 6), 0.3)
+
+
+def sp_iron(art, f):
+    pal = mpal("iron")
+    _shaft(art, f, 56, ferrule=pal)
+    _socket(art, f, 49, 56, pal)
+    art.dots([f.xy(52.5, 0)], 0.9, pal)
+    # A long narrow leaf with a raised midrib.
+    m, h, s, side = blade(f, [55, 61, 69, SPEAR_TIP], [2.4, 5.0, 3.6, 0.2], [2.4, 5.0, 3.6, 0.2], hmax=2.8)
+    rib = (np.abs(f.V) < 0.7) & (f.U > 56) & (f.U < 73)
+    _sword_paint(art, f, m, h + rib * 0.8, "iron", base=0.5)
+
+
+def sp_golden(art, f):
+    pal = mpal("golden")
+    _shaft(art, f, 55, wrap=VELVET, ferrule=pal)
+    _socket(art, f, 47, 55, pal, w=2.5)
+    # Ceremonial: a broad head with two lugs (wings) at its base and a ruby.
+    for sgn in (-1, 1):
+        lug = f.poly([(51.5, sgn * 2.0), (53.6, sgn * 6.6), (55.2, sgn * 6.0), (55.0, sgn * 2.0)])
+        art.paint(lug, dome(lug, 1.0), pal, base=0.5, spec=0.45, power=12)
+    etch = (f.U > 58) & (f.U < 68) & (np.abs(f.V) < 0.6)
+    _head(art, f, [55, 60, 67, SPEAR_TIP], [2.6, 5.8, 4.2, 0.2], [2.6, 5.8, 4.2, 0.2], "golden", extra=etch * -0.2)
+    art.dots([f.xy(51, 0)], 1.3, RED_GEM)
+
+
+def sp_diamond(art, f):
+    pal = mpal("diamond")
+    _shaft(art, f, 56, wrap=DARK_GRIP, ferrule=_pal("#c8ccd4", 0.6))
+    _socket(art, f, 49, 56, _pal("#c8ccd4", 0.6))
+    # A cut crystal: a long faceted point with a shoulder.
+    us = [54.5, 60, 67, SPEAR_TIP]
+    band = np.floor((f.U - np.abs(f.V) * 0.7) / 5.0)
+    facet = np.where(f.V < 0, 0.2, -0.16) + ((band % 2) - 0.5) * 0.24
+    m, h, s, side = blade(f, us, [2.4, 5.6, 4.0, 0.2], [2.4, 5.6, 4.0, 0.2], hmax=3.0, edge=0.0)
+    _sword_paint(art, f, m, h * 0.2, "diamond", base=0.55, facet=facet)
+
+
+def sp_netherite(art, f):
+    pal = mpal("netherite")
+    trim = _pal("#7a5a46", 0.5, 1.1)
+    _shaft(art, f, 56, pal=_pal("#3a2a2c", 0.36), wrap=trim, ferrule=pal)
+    _socket(art, f, 48, 56, pal, w=2.5)
+    # A barbed head: two hooks swept back at its base.
+    for sgn in (-1, 1):
+        hk = polyline([f.xy(58.0, sgn * 2.5), f.xy(55.6, sgn * 6.0), f.xy(52.4, sgn * 6.8)], 2.0)
+        art.paint(hk, dome(hk, 1.0), pal, base=0.5, spec=0.25)
+    seams = (np.abs(((f.U - f.V * 0.3) % 5.0) - 2.5) < 0.35) & (np.abs(f.V) < 2.0)
+    _head(art, f, [55, 60, 68, SPEAR_TIP], [2.4, 5.0, 3.4, 0.2], [2.4, 5.0, 3.4, 0.2], "netherite", ridge=-0.3, extra=seams * -0.12)
+
+
+SPEARS = {
+    "wooden": sp_wooden, "stone": sp_stone, "copper": sp_copper, "iron": sp_iron,
+    "golden": sp_golden, "diamond": sp_diamond, "netherite": sp_netherite,
+}
+
+
+def spear(mat):
+    art = Art(f"{mat}_spear")
+    f = Frame()
+    SPEARS[mat](art, f)
+    return art.done()
