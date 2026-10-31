@@ -32,7 +32,7 @@ use crate::audio::Sfx;
 use crate::Game;
 
 #[derive(Clone, Copy, PartialEq)]
-enum At {
+pub(crate) enum At {
     /// The surface of these biomes.
     Surface(&'static [Biome]),
     /// Underground, in this cave biome.
@@ -48,7 +48,7 @@ enum At {
 }
 
 /// (mob, where, hardmode only, weight, flies)
-const SPAWNS: &[(&str, At, bool, u32, bool)] = &[
+pub(crate) const SPAWNS: &[(&str, At, bool, u32, bool)] = &[
     ("antlion", At::Surface(&[Biome::Desert]), false, 4, false),
     ("antlion_charger", At::Surface(&[Biome::Desert]), false, 3, false),
     ("antlion", At::Under(UBiome::Desert), false, 2, false),
@@ -119,33 +119,37 @@ impl Game {
             return;
         }
         f.spawn_t = 3.0;
-        if !self.survival || self.mobs.peaceful || !self.mobs.enabled || self.dim != voxel::worldgen::Dim::Overworld {
+        if !self.survival || !self.mobs.monster_room() || self.dim != voxel::worldgen::Dim::Overworld {
             return;
         }
         self.foe_spawn();
     }
 
     fn foe_spawn(&mut self) {
-        let me = self.body.pos;
         let names: Vec<&str> = SPAWNS.iter().map(|s| s.0).collect();
         if self.count_alive(&names) >= MOST {
             return;
         }
+        // Around us or (host) a guest: the biome and depth are where that player stands.
+        let (me, mine) = self.spawn_center();
         let layer = Layer::at(me.y.floor() as i32);
         let under = !matches!(layer, Layer::Sky | Layer::Surface);
-        let ub = self.ubiome();
-        let biome = self.world.gen.base_biome_at(me.x.floor() as i32, me.z.floor() as i32);
+        let mp = me.floor().as_ivec3();
+        let ub = self.world.gen.ubiome_at(mp.x, mp.y, mp.z);
+        let biome = self.world.gen.base_biome_at(mp.x, mp.z);
         let night = self.is_night();
         let hard = self.t5.hard.on;
-        let dungeon = self.t5.tr.dungeon.inside;
-        let prism = self.t5.tr.lands.here == Some(crate::tr_world::Land::Prism);
+        let dungeon = mine && self.t5.tr.dungeon.inside;
+        // A calm night (lanterns) keeps the surface free, like the natural spawning.
+        let calm = self.mobs.calm;
+        let prism = mine && self.t5.tr.lands.here == Some(crate::tr_world::Land::Prism);
         let fits = |at: At| match at {
-            At::Surface(bs) => !under && !dungeon && bs.contains(&biome),
+            At::Surface(bs) => !under && !dungeon && !calm && bs.contains(&biome),
             At::Under(u) => under && !dungeon && ub == u,
             At::Caves => under && !dungeon && layer != Layer::Underworld && ub != UBiome::Underworld,
             At::Dungeon => dungeon,
             At::Prism(deep) => prism && under == deep,
-            At::Night => !under && night && !dungeon,
+            At::Night => !under && night && !dungeon && !calm,
         };
         let pool: Vec<(&str, u32, bool, bool)> = SPAWNS.iter().filter(|s| (!s.2 || hard) && fits(s.1)).map(|s| (s.0, s.3, s.4, !matches!(s.1, At::Surface(_) | At::Night | At::Prism(false)))).collect();
         let total: u32 = pool.iter().map(|p| p.1).sum();
@@ -164,6 +168,11 @@ impl Game {
         }
         let (who, _, flies, cave) = pick;
         let Some(at) = self.spot_near(me, 12.0, 26.0, cave) else { return };
+        // Torch light keeps them off, as it does the natural monsters (the Underworld's lava
+        // lights everything, so not there).
+        if ub != UBiome::Underworld && self.world.light((at + Vec3::Y * 0.5).floor().as_ivec3()) & 15 > 0 {
+            return;
+        }
         let at = at + Vec3::Y * if flies { 2.0 } else { 0.1 };
         if chain_of(who).is_some() {
             let dir = (me - at).normalize_or_zero();

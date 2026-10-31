@@ -13,6 +13,18 @@ pub mod aquatic;
 const MAX_PASSIVE: usize = 14;
 const MAX_HOSTILE: usize = 12;
 const DESPAWN_DIST: f32 = 128.0;
+/// Every monster out at once, from every spawner together: this file's natural spawning and
+/// the Terraria side's biome, night and land spawners (hardmode.rs, tr3_foes.rs, tr_world.rs...).
+/// Events (invasions, blood moon, bosses' helpers) bring theirs on top.
+pub const MAX_MONSTERS: usize = 28;
+/// A monster this far from every player for a while goes away (Java: 32 blocks), so far-off
+/// ones nobody meets don't fill the caps and stop new ones near the player.
+const QUIET_DIST: f32 = 32.0;
+/// Seconds out there before it goes; each mob adds up to 30 more of its own (by its id).
+const QUIET_TIME: f32 = 30.0;
+/// Monster spawn spots: the block light must be this or less (Java 1.18+: none at all), so a
+/// torch keeps its whole circle of light safe.
+const MONSTER_BLOCK_LIGHT: u8 = 0;
 
 pub struct Mobs {
     pub reg: MobRegistry,
@@ -50,6 +62,31 @@ pub struct Mobs {
     /// whether the tuned numbers are in use (off: "Força dos monstros: Clássica").
     tier_orig: crate::mob_tiers::Original,
     pub staged: bool,
+    /// MC_SPAWN_LOG=1: every 10 s the log tells how many mobs are out (the spawn audit's check).
+    log_t: f32,
+}
+
+/// The deep world's natural monsters by layer and underground biome, with their weights.
+pub(crate) fn deep_pool(layer: voxel::worldgen::deep::Layer, ub: voxel::worldgen::deep::UBiome) -> &'static [(&'static str, u32)] {
+    use voxel::worldgen::deep::{Layer, UBiome};
+    if layer == Layer::Underworld {
+        return &[("fire_imp", 6), ("magma_cube", 5), ("wither_skeleton", 3), ("blaze", 3), ("ember_wraith", 3), ("ash_skeleton", 4), ("jelly_lava", 4)];
+    }
+    match ub {
+        UBiome::Ice => &[("frost_archer", 5), ("skeleton", 4), ("zombie", 2), ("jelly_ice", 3)],
+        UBiome::Desert => &[("mummy", 6), ("spider", 3), ("skeleton", 2)],
+        UBiome::Jungle => &[("ooze", 5), ("cave_spider", 3), ("zombie", 3), ("hive_drone", 2)],
+        UBiome::Spider => &[("cave_spider", 7), ("spider", 5)],
+        UBiome::Mushroom => &[("ooze", 3), ("zombie", 2)],
+        _ if layer == Layer::Caverns => &[("skeleton", 5), ("zombie", 4), ("stalker", 3), ("spider", 3), ("wither_skeleton", 1), ("ooze", 2), ("jelly_red", 3), ("jelly_pink", 1)],
+        _ => &[("zombie", 5), ("skeleton", 5), ("spider", 3), ("stalker", 2), ("cave_spider", 1), ("jelly_blue", 2), ("jelly_red", 1)],
+    }
+}
+
+/// Blocks nothing spawns on even though they are solid: leaves and glass (Java's rule), and
+/// bedrock.
+pub(crate) fn no_spawn_floor(name: &str) -> bool {
+    name.ends_with("leaves") || name.contains("glass") || name == "bedrock"
 }
 
 /// What happened to the player this tick.
@@ -154,7 +191,7 @@ impl Mobs {
     }
 
     pub fn new(reg: MobRegistry, grass: BlockId, seed: u64) -> Mobs {
-        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, school_cd: 0.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, spawning: true, peaceful: false, calm: false, hp_scale: 1.0, spawn_mult: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false, anim: Default::default(), social: Default::default(), tier_orig: Vec::new(), staged: false }
+        Mobs { reg, list: Vec::new(), spawn_cd: 2.0, school_cd: 0.0, seed: seed ^ 0x6d6f6273, grass, enabled: true, spawning: true, peaceful: false, calm: false, hp_scale: 1.0, spawn_mult: 1.0, arrows: Vec::new(), ground: Vec::new(), others: Vec::new(), raining: false, anim: Default::default(), social: Default::default(), tier_orig: Vec::new(), staged: false, log_t: 0.0 }
     }
 
     pub(crate) fn next_rand(&mut self) -> u64 {
@@ -201,17 +238,46 @@ impl Mobs {
         self.list.push(m);
     }
 
+    /// Monsters may come by themselves at all: mobs on, spawning on, not Peaceful and not
+    /// "Monstros: nenhum" (Journey) — every spawner asks this first.
+    pub fn monsters_may_spawn(&self) -> bool {
+        self.enabled && self.spawning && !self.peaceful && self.spawn_mult > 0.0
+    }
+
+    /// Living monsters out now, bosses, town folk and summoned ghosts aside.
+    pub fn monsters_out(&self) -> usize {
+        self.list
+            .iter()
+            .filter(|m| m.alive() && !m.ghost && {
+                let d = &self.reg.defs[m.def];
+                d.kind == Kind::Hostile && !d.boss && !d.town
+            })
+            .count()
+    }
+
+    /// The shared cap for all monster spawners, grown or shrunk by candles and potions.
+    pub fn monster_cap(&self) -> usize {
+        (MAX_MONSTERS as f32 * self.spawn_mult.clamp(0.0, 2.0)).round() as usize
+    }
+
+    /// Room for one more monster from an ambient spawner (Terraria biomes, night walkers...).
+    pub fn monster_room(&self) -> bool {
+        self.monsters_may_spawn() && self.monsters_out() < self.monster_cap()
+    }
+
     /// Natural spawning around the player: animals on grass in the light, monsters in the dark.
     fn natural_spawn(&mut self, world: &World, player: Vec3, daylight: f32) {
         let passive = self.list.iter().filter(|m| self.reg.defs[m.def].kind != Kind::Hostile).count();
         let hostile = self.list.len() - passive;
-        let max_hostile = ((MAX_HOSTILE as f32 * self.spawn_mult) as usize).max(1);
+        // "Monstros: nenhum" really means none (it used to still let one through).
+        let max_hostile = (MAX_HOSTILE as f32 * self.spawn_mult).round() as usize;
+        let room = hostile < max_hostile && self.monster_room();
         // The Nether: everything lives in its caves, in the dark, and only its own creatures.
         // The End: always dark, on the islands' tops. Overworld creatures stay home.
         let nether = matches!(world.gen.dim, voxel::worldgen::Dim::Nether | voxel::worldgen::Dim::Otherside);
         if world.gen.dim == voxel::worldgen::Dim::Overworld && player.y < -16.0 {
             // The deep world has its own monsters, near the player's own depth.
-            if hostile < max_hostile && !self.peaceful {
+            if room {
                 self.deep_spawn(world, player);
             }
             return;
@@ -229,16 +295,26 @@ impl Mobs {
             let Some(g) = ground else { continue };
             let below = world.block_or_air(g);
             let water = world.fluid(below) == 1;
-            if below == AIR || (world.is_liquid(below) && !water) {
+            // Something to stand on: a solid top (not a torch, flower or lava), or water for
+            // the swimmers; leaves and glass don't count, like Java's.
+            if below == AIR || (world.is_liquid(below) && !water) || (!water && (!world.solid(g) || no_spawn_floor(&world.reg.get(below).name))) {
                 continue;
             }
-            if world.block_or_air(g + IVec3::Y) != AIR || world.block_or_air(g + IVec3::Y * 2) != AIR {
+            // Room for the body: grass, flowers and snow layers are fine, blocks and water aren't.
+            let open = |p: IVec3| {
+                let b = world.block_or_air(p);
+                b == AIR || (!world.solid(p) && !world.is_liquid(b))
+            };
+            if !open(g + IVec3::Y) || !open(g + IVec3::Y * 2) {
                 continue;
             }
             let light = world.light(g + IVec3::Y);
             let sky = (light >> 4) as f32 * daylight;
-            let blk = (light & 15) as f32;
-            let dark = away || sky.max(blk) < 7.0;
+            let blk = light & 15;
+            // Animals want the light; monsters need no block light at all and a dim sky (the
+            // darker the sky, the likelier: Java's "sky light at most a random 0 to 7").
+            let lit = sky.max(blk as f32) >= 7.0;
+            let dark = away || (blk <= MONSTER_BLOCK_LIGHT && sky <= (self.next_rand() % 8) as f32);
             let here = world.gen.biome_at(x, z);
             let (biome, base) = (here.name(), here.base().name());
             if self.ground.len() != self.reg.defs.len() {
@@ -250,7 +326,10 @@ impl Mobs {
                     .map(|d| if d.ground.is_empty() { vec![grass] } else { d.ground.iter().map(|n| world.reg.id_or_air(n)).filter(|&b| b != AIR).collect() })
                     .collect();
             }
-            let animals = if away { passive < MAX_PASSIVE } else { !cave && !dark && passive < MAX_PASSIVE };
+            let animals = if away { passive < MAX_PASSIVE } else { !cave && lit && passive < MAX_PASSIVE };
+            // Monsters that walk out by day (slimes, komodos, hoglins) count as monsters: the
+            // monster caps, Peaceful and calm nights hold them too (they used to pile up).
+            let day_monsters = room && !self.calm;
             let candidates: Vec<usize> = self
                 .reg
                 .defs
@@ -260,11 +339,11 @@ impl Mobs {
                     (d.in_biome(biome) || d.in_biome(base) || (!away && d.biomes.iter().any(|b| b == "Overworld")))
                         && (!away || !d.biomes.is_empty())
                         && match d.spawn {
-                            SpawnRule::Grass => animals && !water && self.ground[*i].contains(&below),
+                            SpawnRule::Grass => animals && !water && self.ground[*i].contains(&below) && (d.kind != Kind::Hostile || day_monsters),
                             // In the Overworld the water creatures have their own spawning
                             // (aquatic.rs); elsewhere they go by biome.
                             SpawnRule::Water => animals && water && away,
-                            SpawnRule::Dark => dark && !water && hostile < max_hostile && !self.peaceful && !self.calm && (self.reg.defs[*i].ground.is_empty() || self.ground[*i].contains(&below)),
+                            SpawnRule::Dark => dark && !water && (if d.kind == Kind::Hostile { room } else { passive < MAX_PASSIVE }) && !self.peaceful && !self.calm && (self.reg.defs[*i].ground.is_empty() || self.ground[*i].contains(&below)),
                             SpawnRule::Never => false,
                         }
                 })
@@ -305,7 +384,7 @@ impl Mobs {
     /// Monsters of the deep layers (worldgen/deep.rs): a cave floor in the dark within a few
     /// blocks of the player's height, and a monster that fits the layer and underground biome.
     fn deep_spawn(&mut self, world: &World, player: Vec3) {
-        use voxel::worldgen::deep::{Layer, UBiome};
+        use voxel::worldgen::deep::Layer;
         for _ in 0..4 {
             let a = self.rand_f32() * std::f32::consts::TAU;
             let r = 14.0 + self.rand_f32() * 26.0;
@@ -324,23 +403,16 @@ impl Mobs {
                 }
             }
             let Some(p) = g else { continue };
-            if world.light(p) & 15 >= 7 && self.rand_f32() < 0.8 {
+            let uw = Layer::at(p.y) == Layer::Underworld;
+            // Torches keep the deep safe like the surface (it used to let one in five through);
+            // the Underworld glows with lava everywhere, so its monsters don't care.
+            if !uw && world.light(p) & 15 > MONSTER_BLOCK_LIGHT {
                 continue;
             }
-            let uw = Layer::at(p.y) == Layer::Underworld;
-            let names: &[(&str, u32)] = if uw {
-                &[("fire_imp", 6), ("magma_cube", 5), ("wither_skeleton", 3), ("blaze", 3), ("ember_wraith", 3), ("ash_skeleton", 4), ("jelly_lava", 4)]
-            } else {
-                match world.gen.ubiome_at(p.x, p.y, p.z) {
-                    UBiome::Ice => &[("frost_archer", 5), ("skeleton", 4), ("zombie", 2), ("jelly_ice", 3)],
-                    UBiome::Desert => &[("mummy", 6), ("spider", 3), ("skeleton", 2)],
-                    UBiome::Jungle => &[("ooze", 5), ("cave_spider", 3), ("zombie", 3), ("hive_drone", 2)],
-                    UBiome::Spider => &[("cave_spider", 7), ("spider", 5)],
-                    UBiome::Mushroom => &[("ooze", 3), ("zombie", 2)],
-                    _ if Layer::at(p.y) == Layer::Caverns => &[("skeleton", 5), ("zombie", 4), ("stalker", 3), ("spider", 3), ("wither_skeleton", 1), ("ooze", 2), ("jelly_red", 3), ("jelly_pink", 1)],
-                    _ => &[("zombie", 5), ("skeleton", 5), ("spider", 3), ("stalker", 2), ("cave_spider", 1), ("jelly_blue", 2), ("jelly_red", 1)],
-                }
-            };
+            if no_spawn_floor(&world.reg.get(world.block_or_air(p - IVec3::Y)).name) {
+                continue;
+            }
+            let names = deep_pool(Layer::at(p.y), world.gen.ubiome_at(p.x, p.y, p.z));
             let total: u32 = names.iter().map(|n| n.1).sum();
             let mut roll = (self.next_rand() % total as u64) as u32;
             let mut pick = names[0].0;
@@ -356,12 +428,15 @@ impl Mobs {
         }
     }
 
+    /// A cave floor under the surface column, from just under it down to the deep world's top
+    /// (y -16; the deep has its own spawning).
     fn find_cave_floor(&mut self, world: &World, x: i32, top: i32, z: i32) -> Option<IVec3> {
-        let start = 8 + (self.next_rand() % (top.max(9) - 8) as u64) as i32;
+        const LOW: i32 = -12;
+        let start = LOW + (self.next_rand() % (top - LOW).max(1) as u64) as i32;
         let mut y = start;
-        while y > 2 {
+        while y > LOW - 4 {
             let p = IVec3::new(x, y, z);
-            if world.block_or_air(p) == AIR && world.block_or_air(p - IVec3::Y) != AIR && world.block(p - IVec3::Y).is_some() {
+            if world.block_or_air(p) == AIR && world.solid(p - IVec3::Y) {
                 return Some(p - IVec3::Y);
             }
             y -= 1;
@@ -390,6 +465,28 @@ impl Mobs {
                 let p = self.others[k].0;
                 self.natural_spawn(world, p, daylight);
                 self.water_spawn(world, p, daylight);
+            }
+        }
+        self.log_t -= dt;
+        if self.log_t <= 0.0 {
+            self.log_t = 10.0;
+            static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+            if *ON.get_or_init(|| std::env::var("MC_SPAWN_LOG").is_ok()) {
+                let reg = &self.reg;
+                let near = |m: &Mob| (m.body.pos - player).length() < QUIET_DIST;
+                let alive = self.list.iter().filter(|m| m.alive());
+                let (mut animals, mut monsters, mut close) = (0, 0, 0);
+                let mut names: std::collections::BTreeMap<&str, u32> = Default::default();
+                for m in alive {
+                    if reg.defs[m.def].kind == Kind::Hostile {
+                        monsters += 1;
+                        close += near(m) as u32;
+                        *names.entry(reg.defs[m.def].name.as_str()).or_default() += 1;
+                    } else {
+                        animals += 1;
+                    }
+                }
+                log::info!("spawn: {monsters} monstros ({close} a menos de 32 blocos, limite {}), {animals} outros, y {:.0}, luz do dia {daylight:.2}: {names:?}", self.monster_cap(), player.y);
             }
         }
         self.school_cd -= dt;
@@ -529,6 +626,16 @@ impl Mobs {
         self.update_arrows(world, player, dt, &mut out);
         let reg = &self.reg;
         let others = &self.others;
+        // Monsters nobody is near for a while go (bosses, named, leashed, town folk and pets stay).
+        for m in self.list.iter_mut() {
+            let d = &reg.defs[m.def];
+            if d.kind != Kind::Hostile || d.boss || d.town || m.ghost || m.still || m.leashed || m.name.is_some() || !m.alive() {
+                m.far_t = 0.0;
+                continue;
+            }
+            let near = (m.body.pos - player).length() < QUIET_DIST || others.iter().any(|(p, _)| (m.body.pos - *p).length() < QUIET_DIST);
+            m.far_t = if near { 0.0 } else { m.far_t + dt };
+        }
         self.list.retain(|m| {
             let gone = !m.alive() && m.dead_age > DEATH_TIME;
             let keep = m.name.is_some() || m.leashed;
@@ -541,7 +648,8 @@ impl Mobs {
             };
             let far = (m.body.pos - player).length() > reach && !reg.defs[m.def].town && others.iter().all(|(p, _)| (m.body.pos - *p).length() > reach);
             let fell = m.body.pos.y < voxel::chunk::MIN_Y as f32 - 64.0;
-            !(gone || (far && !m.still) || fell)
+            let quiet = m.far_t > QUIET_TIME + (m.net_id % 31) as f32;
+            !(gone || (far && !m.still) || fell || quiet)
         });
         out
     }
@@ -625,3 +733,124 @@ pub fn registry_for_tests() -> voxel::mob::MobRegistry {
     voxel::mob::MobRegistry::from_ron_many(&[&text, embedded::MODS_MOBS_RON, embedded::MODS_DIMS_MOBS_RON]).unwrap()
 }
 
+
+/// The spawn audit (plan/spawn-de-mobs.md): every name the spawners use is real, so no spawn
+/// fails quietly, and nothing of a late stage comes by itself early.
+#[cfg(test)]
+mod spawn_audit {
+    use voxel::mob::{Kind, SpawnRule};
+    use voxel::worldgen::deep::{Layer, UBiome};
+    use voxel::worldgen::Biome;
+
+    fn biome_names() -> Vec<&'static str> {
+        (0..Biome::COUNT as u8).map(|i| Biome::from_u8(i).name()).collect()
+    }
+
+    #[test]
+    fn spawn_biomes_and_grounds_exist() {
+        let reg = super::registry_for_tests();
+        let (blocks, _, _) = crate::game_data(crate::embedded::BLOCKS_RON, crate::embedded::ITEMS_RON, crate::embedded::RECIPES_RON).unwrap();
+        let names = biome_names();
+        let mut bad = Vec::new();
+        for d in reg.defs.iter().filter(|d| d.spawn != SpawnRule::Never) {
+            for b in &d.biomes {
+                if b != "Overworld" && !names.contains(&b.as_str()) {
+                    bad.push(format!("{}: bioma {b:?}", d.name));
+                }
+            }
+            for g in &d.ground {
+                if blocks.id(g).is_none() && g != "lava" {
+                    bad.push(format!("{}: chão {g:?}", d.name));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "nomes que não existem: {bad:?}");
+    }
+
+    #[test]
+    fn spawner_tables_name_real_mobs() {
+        let reg = super::registry_for_tests();
+        let mut bad = Vec::new();
+        let layers = [Layer::Underground, Layer::Deep, Layer::Caverns, Layer::Underworld];
+        let ubs = [UBiome::Plain, UBiome::Jungle, UBiome::Ice, UBiome::Desert, UBiome::Mushroom, UBiome::Marble, UBiome::Granite, UBiome::Spider, UBiome::Gems, UBiome::Underworld];
+        for l in layers {
+            for u in ubs {
+                for (n, _) in super::deep_pool(l, u) {
+                    if reg.id(n).is_none() {
+                        bad.push(n.to_string());
+                    }
+                }
+            }
+        }
+        for s in crate::tr3_foes::SPAWNS {
+            if reg.id(s.0).is_none() {
+                bad.push(s.0.to_string());
+            }
+        }
+        bad.sort();
+        bad.dedup();
+        assert!(bad.is_empty(), "spawners chamam mobs que não existem: {bad:?}");
+    }
+
+    /// "Monstros: nenhum", Peaceful and spawning off stop every spawner; the shared cap follows
+    /// candles and potions, and day-walking monsters (slimes) count in it.
+    #[test]
+    fn gates_and_cap() {
+        let reg = super::registry_for_tests();
+        let mut m = super::Mobs::new(reg, 1, 7);
+        assert!(m.monster_room());
+        m.spawn_mult = 0.0;
+        assert!(!m.monsters_may_spawn() && !m.monster_room(), "nenhum é nenhum");
+        m.spawn_mult = 0.4;
+        assert_eq!(m.monster_cap(), 11);
+        m.spawn_mult = 2.0;
+        assert_eq!(m.monster_cap(), 56);
+        m.spawn_mult = 1.0;
+        for k in 0..super::MAX_MONSTERS {
+            assert!(m.spawn("jelly_blue", glam::Vec3::new(k as f32, 70.0, 0.0)));
+        }
+        assert!(!m.monster_room(), "as geleias contam no limite");
+        m.list.clear();
+        m.peaceful = true;
+        assert!(!m.monster_room());
+        m.peaceful = false;
+        m.spawning = false;
+        assert!(!m.monster_room());
+    }
+
+    /// What comes by itself before hardmode belongs to the stages before it (mob_tiers.rs):
+    /// the Overworld's natural spawning, the deep world's tables and the non-hardmode foes.
+    #[test]
+    fn nothing_late_comes_early() {
+        let reg = super::registry_for_tests();
+        let stage = |n: &str| crate::mob_tiers::tier(n).map(|t| t.0);
+        let mut late = Vec::new();
+        const AWAY: [&str; 13] = [
+            "Nether Wastes", "Soul Sand Valley", "Crimson Forest", "Warped Forest", "Basalt Deltas", "The End", "End Highlands", "Aether", "Golden Grove", "Deeplands", "Echoing Forest", "Overcast Columns", "Blooming Caverns",
+        ];
+        let overworld: Vec<&str> = biome_names().into_iter().filter(|b| !AWAY.contains(b)).collect();
+        for d in reg.defs.iter().filter(|d| d.kind == Kind::Hostile && matches!(d.spawn, SpawnRule::Dark | SpawnRule::Grass) && d.waters.is_empty()) {
+            let in_overworld = d.biomes.is_empty() || d.biomes.iter().any(|b| b == "Overworld" || overworld.contains(&b.as_str()));
+            if in_overworld && stage(&d.name).is_some_and(|s| s >= 3) {
+                late.push(format!("{} (natural)", d.name));
+            }
+        }
+        for l in [Layer::Underground, Layer::Deep, Layer::Caverns, Layer::Underworld] {
+            for u in [UBiome::Plain, UBiome::Jungle, UBiome::Ice, UBiome::Desert, UBiome::Mushroom, UBiome::Spider] {
+                for (n, _) in super::deep_pool(l, u) {
+                    if stage(n).is_some_and(|s| s >= 3) {
+                        late.push(format!("{n} (fundo)"));
+                    }
+                }
+            }
+        }
+        for s in crate::tr3_foes::SPAWNS.iter().filter(|s| !s.2) {
+            if stage(s.0).is_some_and(|s| s >= 3) {
+                late.push(format!("{} (tr3)", s.0));
+            }
+        }
+        late.sort();
+        late.dedup();
+        assert!(late.is_empty(), "monstros de hardmode vindo antes da hora: {late:?}");
+    }
+}

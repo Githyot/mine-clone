@@ -71,7 +71,7 @@ impl Game {
             return;
         }
         self.t5.tr.r3.folk.spawn_t = 5.0;
-        if !self.survival || self.mobs.peaceful || !self.mobs.enabled || self.dim != voxel::worldgen::Dim::Overworld {
+        if !self.survival || !self.mobs.monsters_may_spawn() || self.dim != voxel::worldgen::Dim::Overworld {
             return;
         }
         self.event_minis();

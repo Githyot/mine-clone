@@ -1606,7 +1606,11 @@ impl Game {
             let col = if on { [90, 160, 90, 255] } else if over { [170, 170, 170, 255] } else { [120, 120, 120, 255] };
             self.ui.rect(bx, y, 7.0 * s, 7.0 * s, [40, 40, 40, 255]);
             self.ui.rect(bx + s * 0.5, y + s * 0.5, 6.0 * s, 6.0 * s, col);
-            self.ui.text(bx + 1.5 * s, y + 0.2 * s, &(k + 1).to_string(), [255, 255, 255, 255]);
+            // The digit at two thirds of the UI scale, centred: full size ran out of the button.
+            let ls = (s * 2.0 / 3.0).round().max(1.0);
+            let label = (k + 1).to_string();
+            let tw = self.ui.text_width(&label, ls);
+            self.ui.label(bx + (7.0 * s - tw) / 2.0, y + (7.0 * s - 8.0 * ls) / 2.0, &label, [255, 255, 255, 255], ls);
             if over && self.clicked && self.surv.cursor.is_none() {
                 self.clicked = false;
                 self.switch_loadout(k);

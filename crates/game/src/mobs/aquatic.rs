@@ -182,8 +182,8 @@ impl Mobs {
                 }
             }
         }
-        let max_wild = ((MAX_WATER_HOSTILE as f32 * self.spawn_mult) as usize).max(1);
-        let room_wild = wild < max_wild && !self.peaceful;
+        let max_wild = (MAX_WATER_HOSTILE as f32 * self.spawn_mult).round() as usize;
+        let room_wild = wild < max_wild && self.monster_room();
         if tame >= MAX_WATER && !room_wild {
             return;
         }

@@ -138,13 +138,15 @@ impl Game {
         let ph = (5.0 * 18.0 + 16.0) * s;
         self.ui.rect(px - 2.0 * s, py - 10.0 * s, 42.0 * s, ph + 10.0 * s, [198, 198, 198, 255]);
         self.ui.frame(px - 2.0 * s, py - 10.0 * s, 42.0 * s, ph + 10.0 * s, s, [255, 255, 255, 255]);
-        self.ui.label(px - 1.0 * s, py - 6.0 * s, "Visual", [64, 64, 64, 255], s);
+        // Small labels (two thirds of the UI scale): at full size they ran over the slots.
+        let ls = (s * 2.0 / 3.0).round().max(1.0);
+        self.ui.label(px, py - 7.0 * s, "Visual", [64, 64, 64, 255], ls);
         let mut out = Vec::new();
         for i in 0..4 {
             out.push((Slot::Vanity(i), px + 1.0 * s, py + (6.0 + i as f32 * 18.0) * s));
             out.push((Slot::Dye(i), px + 20.0 * s, py + (6.0 + i as f32 * 18.0) * s));
         }
-        self.ui.label(px - 1.0 * s, py + (6.0 + 4.0 * 18.0 + 5.0) * s, "Asa", [64, 64, 64, 255], s);
+        self.ui.label(px + 1.0 * s, py + (6.0 + 4.0 * 18.0 + 5.0) * s, "Asa", [64, 64, 64, 255], ls);
         out.push((Slot::Dye(4), px + 20.0 * s, py + (6.0 + 4.0 * 18.0) * s));
         out
     }

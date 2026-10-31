@@ -259,7 +259,8 @@ fn lit(c: vec3<f32>, in: VOut) -> vec3<f32> {
     }
     let blk = light_curve(max(in.light.y, hand));
     // Torches are a little warm, sky light is neutral.
-    var l = max(vec3<f32>(sky), vec3<f32>(blk, blk * 0.93, blk * 0.82));
+    var torch = vec3<f32>(blk, blk * 0.93, blk * 0.82);
+    var wash = vec3<f32>(0.0);
     // Lit redstone tints the light around it red; walls stop it where the block light does.
     var red = 0.0;
     for (var i = 0; i < 8; i++) {
@@ -270,10 +271,37 @@ fn lit(c: vec3<f32>, in: VOut) -> vec3<f32> {
         let r = clamp(min(red, in.light.y + 0.08) * 1.8, 0.0, 1.0);
         // The block light turns red (the green and blue of it fade), and a red wash shows
         // on the ground around it, softer in daylight.
-        let tinted = vec3<f32>(blk, blk * 0.3, blk * 0.22);
-        l = max(vec3<f32>(sky), mix(vec3<f32>(blk, blk * 0.93, blk * 0.82), tinted, r));
-        l += vec3<f32>(0.42, 0.035, 0.025) * r * (1.0 - 0.5 * sky);
+        torch = mix(torch, vec3<f32>(blk, blk * 0.3, blk * 0.22), r);
+        wash += vec3<f32>(0.42, 0.035, 0.025) * r;
     }
+    // Gem blocks shine with their own colour. Their light adds up like real coloured lights:
+    // a wide, soft glow as far as their block light reaches, and a strong pool right around
+    // each block, so a row of gems lights the ground in front of each one with its own colour.
+    // Walls stop it where they stop the block light.
+    var gem = 0.0;
+    var gem_sum = vec3<f32>(0.0);
+    var gem_w = 0.0;
+    var gem_wash = vec3<f32>(0.0);
+    for (var i = 0; i < 12; i++) {
+        let d = g.gem_lights[i];
+        let dist = length(in.rel - d.xyz);
+        let s = d.w - dist / 15.0;
+        if (d.w > 0.0 && s > 0.0) {
+            let r = clamp(min(s, in.light.y + 0.08) * 1.6, 0.0, 1.0);
+            let near = pow(clamp(1.0 - dist / 3.5, 0.0, 1.0), 2.0) * r;
+            let w = r * r * 0.2 + near;
+            let col = g.gem_colors[i].rgb;
+            gem_sum += col * w;
+            gem_w += w;
+            gem_wash += col * (0.22 * r * r + 0.5 * near);
+            gem = max(gem, r);
+        }
+    }
+    if (gem_w > 0.0) {
+        torch = mix(torch, blk * (gem_sum / gem_w), gem * 0.9);
+        wash += min(gem_wash, vec3<f32>(0.7));
+    }
+    var l = max(vec3<f32>(sky), torch) + wash * (1.0 - 0.5 * sky);
     let b = g.fog.w;
     l = mix(l, sqrt(l), b * 0.5);
     l = max(l, vec3<f32>(0.03 + b * 0.04));

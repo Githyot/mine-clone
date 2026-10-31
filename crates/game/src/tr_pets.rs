@@ -149,7 +149,7 @@ impl Game {
             let me = self.body.pos.floor().as_ivec3();
             let open = self.world.surface_y(me.x, me.z).map_or(true, |y| y <= me.y + 1);
             let n = self.mobs.list.iter().filter(|m| m.alive() && self.mobs.reg.defs[m.def].name == "harpy").count();
-            if self.body.pos.y > 120.0 && open && n < 3 && !self.mobs.peaceful && self.survival && self.surv.rng.f32() < 0.6 {
+            if self.body.pos.y > 120.0 && open && n < 3 && self.mobs.monster_room() && self.survival && self.surv.rng.f32() < 0.6 {
                 self.spawn_around("harpy", true);
             }
         }

@@ -24,7 +24,7 @@ pub const INV_SIZE: usize = 36;
 const CHEST_SIZE: usize = 27;
 const SMELT_TIME: f32 = 10.0;
 /// Seconds before a dropped item can be picked up; items the player throws wait longer.
-const PICKUP_DELAY: f32 = 0.5;
+pub(crate) const PICKUP_DELAY: f32 = 0.5;
 const THROWN_DELAY: f32 = 2.0;
 const DESPAWN: f32 = 300.0;
 
@@ -35,6 +35,8 @@ pub struct Dropped {
     pub spin: f32,
     /// Fixed turn when lying on the ground.
     pub spin_rest: f32,
+    /// Its number for the other players (net_drops.rs).
+    pub net_id: u32,
 }
 
 /// What `drop_instances` needs of a drop.
@@ -149,6 +151,8 @@ pub struct Survival {
     pub side: Side,
     /// R was pressed over an item: show its recipes.
     pub want_recipe: bool,
+    /// The next number a drop gets (net_drops.rs).
+    pub(crate) next_drop: u32,
     /// Screen box where the 3D player figure goes this frame (inventory open).
     pub figure_box: Option<(f32, f32, f32, f32)>,
     /// The slot under the mouse last frame (for the wheel).
@@ -216,6 +220,7 @@ impl Survival {
             side: Side::Closed,
             want_recipe: false,
             figure_box: None,
+            next_drop: 1,
             hover_slot: None,
             opened_at: None,
             juice: Default::default(),
@@ -650,7 +655,9 @@ impl Game {
         body.vel = vel;
         body.no_jump = true;
         let spin = self.surv.rng.f32() * 6.28;
-        self.surv.drops.push(Dropped { stack, body, age: 0.0, spin, spin_rest: spin });
+        let net_id = self.surv.next_drop;
+        self.surv.next_drop = self.surv.next_drop.wrapping_add(1).max(1);
+        self.surv.drops.push(Dropped { stack, body, age: 0.0, spin, spin_rest: spin, net_id });
     }
 
     pub(crate) fn pop_drop(&mut self, center: Vec3, stack: ItemStack) {
@@ -1748,6 +1755,9 @@ impl Game {
             let (lying, bob) = self.drop_lift(d);
             (d.body.pos, d.stack, lying, bob, d.spin, d.spin_rest)
         });
+        // The other players' drops (net_drops.rs), as they last told us.
+        let spin = self.now * 1.2;
+        let all = all.chain(self.net_drops.iter().filter(|d| !d.asked).map(|d| (d.pos, d.stack, false, 0.12 + (self.now * 2.0 + d.id as f32).sin() * 0.05, spin, spin)));
         for (pos, stack, lying, bob, spin, spin_rest) in all.chain(shown.into_iter().map(|(p, st, yaw)| (p, st, true, 0.0, yaw, yaw))) {
             let d = Shown { stack, spin, spin_rest };
             let it = self.items.get(d.stack.item);
@@ -2761,8 +2771,13 @@ impl Game {
             return self.held_gpu_item(hold.bow, 1.0, look, l, Vec3::ZERO);
         }
         let look = self.held_look()?;
-        let place = self.anim.first_person_item(look.model(), eye - cam_block.as_vec3(), self.yaw, self.pitch);
         let l = self.world.light(eye.floor().as_ivec3());
+        if self.holding_spear() {
+            // Both hands on a long shaft (spear.rs).
+            let cam = glam::Mat4::from_translation(eye - cam_block.as_vec3()) * glam::Mat4::from_rotation_y(self.yaw) * glam::Mat4::from_rotation_x(self.pitch);
+            return self.held_gpu_item(crate::spear::first_person_frame(&self.anim, cam), 1.0, look, l, Vec3::ZERO);
+        }
+        let place = self.anim.first_person_item(look.model(), eye - cam_block.as_vec3(), self.yaw, self.pitch);
         let eat = if self.surv.eat > 0.0 { (self.surv.eat * 14.0).sin().abs() * 0.04 } else { 0.0 };
         // The food gets smaller as it is eaten.
         let left = 1.0 - 0.45 * (self.surv.eat / 1.6).clamp(0.0, 1.0);
@@ -2779,6 +2794,10 @@ impl Game {
         if let Some((_, shape, stage)) = self.bow_look() {
             let hold = self.anim.first_person_bow(&shape, stage, e, self.yaw, self.pitch);
             return Some(self.anim.first_person_bow_arms(def, &hold, e, self.yaw, self.pitch, sky, blk));
+        }
+        if self.holding_spear() {
+            let cam = glam::Mat4::from_translation(e) * glam::Mat4::from_rotation_y(self.yaw) * glam::Mat4::from_rotation_x(self.pitch);
+            return Some(crate::spear::first_person_arms(&self.anim, def, cam, [sky, blk, 0.0, 0.0]));
         }
         let look = self.held_look()?;
         let place = self.anim.first_person_item(look.model(), e, self.yaw, self.pitch);
@@ -2894,6 +2913,7 @@ impl Game {
         }
         out.extend(self.bobber_instance(cam_block));
         out.extend(self.shot_instances(cam_block));
+        out.extend(self.remote_shot_instances(cam_block));
         out.extend(self.tr_weapon_instances(cam_block));
         out.extend(self.golf_instances(cam_block));
         out.extend(self.tr_wing_instances(cam_block));
@@ -2931,6 +2951,19 @@ impl Game {
     pub(crate) fn held_item_third_person(&self, arm: [[f32; 4]; 4], pivot: Vec3) -> Option<GpuItem> {
         let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
         self.held_in_fist(arm, pivot, 1.0, l, Vec3::ZERO)
+    }
+
+    /// A spear held in both hands by a model posed with `Pose::spear` (spear.rs), placed with
+    /// its body bone; `swing` is that model's swing.
+    pub(crate) fn held_spear_third_person(&self, bones: &crate::entity::Bones, swing: f32, light_at: Vec3) -> Option<GpuItem> {
+        let look = self.held_look()?;
+        let l = self.world.light(light_at.floor().as_ivec3());
+        self.held_gpu_item(crate::spear::third_person(bones, 1, swing), 1.0, look, l, Vec3::ZERO)
+    }
+
+    /// The item in hand is a spear, held in both hands.
+    pub(crate) fn holding_spear(&self) -> bool {
+        self.held_stack().is_some_and(|s| crate::spear::is_spear(&self.items.get(s.item).name))
     }
 
     /// The held item placed in the fist of the right arm bone `arm` (shoulder at `pivot`),

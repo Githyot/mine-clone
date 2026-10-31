@@ -160,7 +160,7 @@ pub struct Vortex {
     damage: f32,
 }
 
-fn color(school: u8) -> [f32; 3] {
+pub(crate) fn color(school: u8) -> [f32; 3] {
     match school {
         0 => [1.6, 0.55, 0.15],
         1 => [0.5, 0.85, 1.6],
@@ -195,6 +195,12 @@ pub struct Magic {
 }
 
 impl Magic {
+    /// Bolts in flight for the other players to see (net_fx.rs): (where, velocity, school).
+    /// `mine_only` leaves the monsters' bolts out.
+    pub(crate) fn bolts_for_net(&self, mine_only: bool) -> Vec<(Vec3, Vec3, u8)> {
+        self.bolts.iter().filter(|b| !mine_only || b.hostile.is_none()).map(|b| (b.pos, b.vel, b.hostile.map(|h| h.0).unwrap_or(SPELLS[b.spell].school))).collect()
+    }
+
     /// Test pictures: no bolts in front of the camera.
     pub(crate) fn clear_bolts_for_test(&mut self) {
         self.bolts.clear();

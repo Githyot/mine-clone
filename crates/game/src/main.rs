@@ -5,10 +5,13 @@
 
 mod ambient;
 mod armor_design;
+#[cfg(test)]
+mod armor_icon;
 mod flora_tex;
 mod ambient_life;
 mod beds;
 mod bowdraw;
+mod spear;
 mod chests;
 mod heights;
 mod material;
@@ -17,7 +20,11 @@ mod options;
 mod sentries;
 mod shield;
 mod vanity;
+mod net_fx;
+mod net_drops;
+mod net_events;
 mod wings;
+mod worlds;
 mod anim;
 mod deep;
 mod keybinds;
@@ -129,6 +136,7 @@ mod torch;
 mod summons;
 mod fire_fx;
 mod redstone_fx;
+mod gem_glow;
 mod item_render;
 mod juice;
 mod menus;
@@ -726,6 +734,13 @@ struct Game {
     /// The Terraria side (Etapa 5): accessories, glyph spells, hard mode and its events.
     t5: terraria::Terraria,
     ne: nether_end::NetherEnd,
+    /// Other players' and the host's shots in flight, as pictures (net_fx.rs).
+    net_shots: Vec<net_fx::RemoteShot>,
+    net_drops: Vec<net_drops::RemoteDrop>,
+    net_drop_state: net_drops::NetDrops,
+    net_events: net_events::NetEvents,
+    /// Host: each guest's own shots as it last sent them (relayed to the other guests).
+    net_guest_shots: std::collections::HashMap<u32, Vec<net::ShotFx>>,
     town: npcs::Town,
     progress: progress::Progress,
     raid: raids::Raid,
@@ -804,6 +819,8 @@ struct Game {
     fire_fx: fire_fx::FireFx,
     /// Red glow and sparks off lit redstone (redstone_fx.rs).
     redstone_fx: redstone_fx::RedstoneFx,
+    /// Coloured light of gem blocks (gem_glow.rs).
+    gem_glow: gem_glow::GemGlow,
     torch_fx: f32,
     torch_sparks: u32,
     /// Screenshots: the held torch's fire has been lit up once already.
@@ -1196,6 +1213,11 @@ impl Game {
             boss: bosses::BossState::new(bosses_beaten),
             t5: terraria::Terraria::default(),
             ne: nether_end::NetherEnd::default(),
+            net_shots: Vec::new(),
+            net_drops: Vec::new(),
+            net_drop_state: Default::default(),
+            net_events: Default::default(),
+            net_guest_shots: Default::default(),
             town: npcs::Town::new(town_npcs),
             progress: progress::Progress::new(),
             raid: raids::Raid::default(),
@@ -1246,6 +1268,7 @@ impl Game {
             musicians: Default::default(),
             fire_fx: Default::default(),
             redstone_fx: Default::default(),
+            gem_glow: Default::default(),
             torch_fx: 0.0,
             torch_sparks: 0,
             torch_lit: false,
@@ -1415,6 +1438,11 @@ impl Game {
             Ok("paused") => game.set_screen(Screen::Paused),
             Ok("keys") => game.set_screen(Screen::Keys),
             Ok("voice") => game.set_screen(Screen::Voice),
+            Ok("worlds") => {
+                game.worlds = menus::list_worlds(&game.base);
+                game.world_sel = (!game.worlds.is_empty()).then_some(0);
+                game.set_screen(Screen::Worlds);
+            }
             _ => {}
         }
         game
@@ -1932,6 +1960,9 @@ impl Game {
             self.plugins_tick(dt);
         }
         self.net_update(dt);
+        self.update_remote_shots(dt);
+        self.update_net_drops(dt);
+        self.update_net_events(dt);
         self.voice_update(dt);
         self.prof.mark("rede e voz");
         // A guest in the host's dimension gets the world's own changes from the host.
@@ -1974,6 +2005,7 @@ impl Game {
                 self.update_life(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_fire_fx(dt, self.args.screenshot.is_some());
                 self.update_redstone_fx(dt, self.args.screenshot.is_some());
+                self.update_gem_glow(dt);
                 self.update_musicians(dt);
                 self.update_immersion(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
@@ -3115,6 +3147,7 @@ impl Game {
             sitting: self.riding.is_some() || self.seat.is_some() || self.mods.aircraft.pilot.is_some() || self.t5.comp.mount.is_some(),
             holding: self.held_stack().is_some(),
             torch: self.held_torch().is_some(),
+            spear: self.holding_spear(),
             shield_up: if self.shields_worn().iter().any(|(l, m)| l.kind == 0 && matches!(m, shield::Mount::Hand { .. })) { self.extras.raise } else { 0.0 },
             shield_left: !self.held_stack().is_some_and(|s| self.items.get(s.item).name == "shield"),
             bow: if self.held_bow().is_some() { self.anim.bow_aim } else { 0.0 },
@@ -3874,6 +3907,29 @@ impl Game {
         let dir = if f.x.abs() > f.z.abs() { IVec3::new(f.x.signum() as i32, 0, 0) } else { IVec3::new(0, 0, f.z.signum() as i32) };
         let side = IVec3::new(-dir.z, 0, dir.x);
         let g = |n: &str| self.reg.id_or_air(n);
+        // MC_GEMS=1: every gem block on a cleared stone floor, two apart, and nothing else, for
+        // their coloured light (night: --time 18000 --look 0,-30).
+        if std::env::var("MC_GEMS").is_ok() {
+            let gems = ["topaz_block", "ruby_block", "amethyst_block", "sapphire_block", "emerald_block", "diamond_block", "lapis_block", "zanite_block"];
+            let y = p.y - 1;
+            for a in -16..=16 {
+                for b in -2..=14 {
+                    let q = p + side * a + dir * b;
+                    self.world.set_block(IVec3::new(q.x, y, q.z), g("smooth_stone"));
+                    for h in 1..8 {
+                        self.world.set_block(IVec3::new(q.x, y + h, q.z), AIR);
+                    }
+                }
+            }
+            // MC_GEMS=row: side by side, close up.
+            let row = std::env::var("MC_GEMS").is_ok_and(|v| v == "row");
+            for (i, n) in gems.iter().enumerate() {
+                let (b, a) = if row { (3, i as i32 - 4) } else { (if i % 2 == 0 { 6 } else { 9 }, (i as i32 - 4) * 2 + 1) };
+                let q = p + dir * b + side * a;
+                self.world.set_block(IVec3::new(q.x, y + 1, q.z), g(n));
+            }
+            return;
+        }
         let (planks, log, glass, cobble, torch, glow) = (g("oak_planks"), g("oak_log"), g("glass"), g("cobblestone"), g("torch"), g("glowstone"));
         let origin = p + dir * 6;
         let ground = self.world.surface_y(origin.x, origin.z).unwrap_or(p.y);
@@ -4903,6 +4959,7 @@ impl Game {
         self.lod.update(&self.renderer.device, eye, lod_inner, if extra > 0.0 { view_end } else { 0.0 }, self.settings.lod_detail as usize);
         let mut effects = self.terrain_effects();
         effects[3] = lod_inner;
+        let gem = self.gem_lights(block);
         let mut g = Globals {
             cam_pos: [eye.x - block.x as f32, eye.y - block.y as f32, eye.z - block.z as f32, (self.fx_time % 3600.0) as f32],
             cam_world: [eye.x, eye.y, eye.z, CLOUD_HEIGHT],
@@ -4918,6 +4975,8 @@ impl Game {
             weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else if end { 2.0 } else { self.mod_dim_uniform() }, self.night_vision()],
             dyn_lights: self.dynamic_lights(eye, block),
             red_lights: self.red_lights(block),
+            gem_lights: gem.0,
+            gem_colors: gem.1,
             extra: [self.settings.layered_clouds as u8 as f32, self.settings.emissive_textures as u8 as f32, 0.0, self.season_uniform()],
             pom: self.parallax_uniform(),
             clouds: [self.cloud_wind[0], self.cloud_wind[1], self.cloud_drift, (self.fx_time % 100_000.0) as f32],
@@ -5130,9 +5189,12 @@ impl Game {
                 let pv = def.parts[2].pivot;
                 // Asleep, the hands are empty.
                 let awake = self.sleep.is_none();
-                held_third = match self.bow_third_person(def, &bones) {
-                    Some(bow) => bow,
-                    None => self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32)).into_iter().collect(),
+                held_third = if let Some(bow) = self.bow_third_person(def, &bones) {
+                    bow
+                } else if self.anim.spear_hold(&pose) {
+                    self.held_spear_third_person(&bones, self.anim.swing, self.body.pos + Vec3::Y).into_iter().collect()
+                } else {
+                    self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32)).into_iter().collect()
                 };
                 if !awake {
                     held_third.clear();
@@ -5241,7 +5303,7 @@ impl Game {
             overlay.extend(self.shield_instances(&self.shields_worn(), &b, Game::arm_pivots(def), 0.0));
             overlay.push((pd, b));
             let back = center + f * (world_h * 1.3) - block.as_vec3();
-            figure_backdrop = Some(item_render::GpuItem { pos: [back.x, back.y, back.z, world_h * 1.22 * (d + world_h * 1.3) / d], info: [0.0, 0.0, 0.0, 0.0], layers: [0.0; 4], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
+            figure_backdrop = Some(item_render::GpuItem { pos: [back.x, back.y, back.z, world_h * 1.06 * (d + world_h * 1.3) / d], info: [0.0, 0.0, 0.0, 0.0], layers: [0.0; 4], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
         }
         if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
             let def = &self.mobs.reg.defs[pd];

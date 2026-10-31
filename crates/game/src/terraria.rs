@@ -299,7 +299,7 @@ impl Game {
             // The world looks red under a blood moon.
             self.ui.rect(0.0, 0.0, w, h, [120, 0, 0, 38]);
         }
-        self.draw_event_bar(w);
+        self.draw_event_bars(w);
         self.draw_tr_hud(w, h);
         self.draw_accessory_hud(w, h);
         self.draw_info_hud(h);

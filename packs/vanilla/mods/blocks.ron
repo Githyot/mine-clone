@@ -14,7 +14,7 @@
     (name: "zanite_ore", display_name: Some("Minério de Zanita"), hardness: 3.0, tool: Some(Pickaxe), tier: 2, drops: Some([(item: "zanite_gemstone")]), xp: (1, 3)),
     (name: "gravitite_ore", display_name: Some("Minério de Gravitita"), hardness: 5.0, tool: Some(Pickaxe), tier: 3),
     (name: "enchanted_gravitite", display_name: Some("Gravitita Encantada"), hardness: 5.0, tool: Some(Pickaxe), tier: 3, light: 3),
-    (name: "zanite_block", display_name: Some("Bloco de Zanita"), hardness: 5.0, tool: Some(Pickaxe), tier: 2),
+    (name: "zanite_block", display_name: Some("Bloco de Zanita"), light: 9, hardness: 5.0, tool: Some(Pickaxe), tier: 2),
     (name: "cold_aercloud", display_name: Some("Aeronuvem Fria"), hardness: 0.2, transparency: Translucent),
     (name: "blue_aercloud", display_name: Some("Aeronuvem Azul"), hardness: 0.2, transparency: Translucent),
     (name: "golden_aercloud", display_name: Some("Aeronuvem Dourada"), hardness: 0.2, transparency: Translucent, solid: false, light: 5),

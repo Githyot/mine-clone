@@ -42,6 +42,8 @@ pub struct Pose {
     pub holding: bool,
     /// A torch in the right hand: held up high ahead, lighting the way (torch.rs).
     pub torch: bool,
+    /// A spear held in both hands (spear.rs): the body turns sideways, both fists on the shaft.
+    pub spear: bool,
     /// A shield coming up to block: 0..1, and in which hand (shield.rs).
     pub shield_up: f32,
     pub shield_left: bool,
@@ -117,6 +119,18 @@ impl Animator {
             self.swing = 0.001;
             self.swing_style = 0;
         }
+    }
+
+    /// A spear is held in both hands right now (not while swimming, climbing, sitting or
+    /// lying down; then it rides in the fist like any other tool).
+    pub fn spear_hold(&self, p: &Pose) -> bool {
+        p.spear && self.swim < 0.5 && p.mantle <= 0.0 && !p.sitting && p.sleeping.is_none() && p.crawling * (1.0 - self.swim) < 0.5
+    }
+
+    /// The walking sway of the hands in first person (camera space).
+    pub fn hand_sway(&self) -> Vec3 {
+        let a = self.amount.min(1.0);
+        Vec3::new(self.walk.sin() * 0.02 * a, -self.walk.cos().abs() * 0.025 * a, 0.0)
     }
 
     /// Both hands are on a ledge being climbed: nothing is held up in first person.
@@ -393,7 +407,7 @@ impl Animator {
             rot[R_ARM] = rot[R_ARM].slerp(right, bow);
             rot[BODY] = rot[BODY] * Quat::from_rotation_y(-0.25 * bow);
         }
-        if self.swing > 0.0 {
+        if self.swing > 0.0 && !p.spear {
             // Hit: the right arm comes down from above, the body twists into it. Combo swings
             // cut across, thrust ahead or come up from below instead.
             let s = (self.swing * PI).sin();
@@ -483,11 +497,33 @@ impl Animator {
             let s = (self.swing * PI).sin();
             bend[R_ARM] = -0.15 - 0.8 * (1.0 - s);
         }
+        // A spear in both hands: the torso turns sideways, the front foot forward, and both arms
+        // reach the shaft (bent at the elbows); a thrust lunges into it (spear.rs).
+        let spear = self.spear_hold(p);
+        let spear_turn = crate::spear::torso_turn(self.swing);
+        if spear {
+            rot[BODY] = rot[BODY] * spear_turn;
+            let e = crate::spear::thrust(self.swing);
+            let stance = idle.min(1.0) * 0.18 + e * 0.3;
+            rot[L_LEG] = Quat::from_rotation_x(-stance) * rot[L_LEG];
+            rot[R_LEG] = Quat::from_rotation_x(stance * 0.8) * rot[R_LEG];
+            let h = crate::spear::hold(self.swing);
+            for (i, target) in [(R_ARM, h.right), (L_ARM, h.left)] {
+                let (q, b, slide) = crate::spear::reach(&def.parts[i], target);
+                rot[i] = q;
+                bend[i] = b;
+                shift[i] = slide;
+            }
+        }
         // Head follows the camera, relative to the body.
         let head_yaw = wrap(p.look_yaw + PI - self.body_yaw).clamp(-1.3, 1.3);
         // Lying down the head lifts to look ahead instead of at the ground.
         let head_lift = -prone * 1.25;
         rot[HEAD] = Quat::from_rotation_y(head_yaw) * Quat::from_rotation_x(head_lift - p.look_pitch * (1.0 - self.swim * 0.6) * (1.0 - prone * 0.5)) * rot[HEAD];
+        if spear {
+            // The head keeps looking ahead while the shoulders turn.
+            rot[HEAD] = spear_turn.inverse() * rot[HEAD];
+        }
         if p.sleeping.is_some() {
             // Still, arms along the sides, the head resting on the pillow, slow breaths.
             rot = [Quat::IDENTITY; 6];
@@ -532,6 +568,14 @@ impl Animator {
         Mat4::from_translation(eye) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(pitch)
     }
 
+    /// The camera frame for the held item and the arm gripping it. They are laid out at their
+    /// true sizes, the item as big against the arm as it is in the views from outside, with the
+    /// fist about an arm's length ahead; then the whole of it is drawn smaller towards the eye
+    /// (`HAND_NEAR`), which looks the same on screen but keeps it out of a wall in front.
+    fn hand_camera(eye: Vec3, yaw: f32, pitch: f32) -> Mat4 {
+        Self::camera(eye, yaw, pitch) * Mat4::from_scale(Vec3::splat(HAND_NEAR))
+    }
+
     /// Where the right arm sits in camera space, with walking sway and the swing. The shoulder
     /// is the origin and the arm hangs along -Y from it.
     fn arm_place(&self) -> Mat4 {
@@ -570,9 +614,9 @@ impl Animator {
         let f1 = (s.sqrt() * PI).sin();
         let env = (s * PI).sin();
         let a = self.amount.min(1.0);
-        let sway = Vec3::new(self.walk.sin() * 0.02 * a, -self.walk.cos().abs() * 0.025 * a, 0.0);
+        let sway = Vec3::new(self.walk.sin() * 0.02 * a, -self.walk.cos().abs() * 0.025 * a, 0.0) * HAND_REACH;
         let (rest, grip, fist) = hand_rest(model);
-        let fist = fist + sway + Vec3::Y * -(1.0 - self.hand_height.clamp(0.0, 1.0)) * 0.6;
+        let fist = fist + sway + Vec3::Y * -(1.0 - self.hand_height.clamp(0.0, 1.0)) * 0.6 * HAND_REACH;
         let (shift, turn) = match self.swing_style {
             // Slash: the blade lies down and sweeps from the right across the view.
             1 => (Vec3::new(0.05 - 0.45 * s, 0.1, -0.1) * env, Quat::from_rotation_y(env * (0.3 - 0.9 * s)) * Quat::from_rotation_z(env * 1.3)),
@@ -588,7 +632,9 @@ impl Animator {
                 Quat::from_rotation_z(deg(55.0 * f1 - 10.0 * f)) * Quat::from_rotation_x(deg(-30.0 * f1)),
             ),
         };
-        Self::camera(eye, yaw, pitch) * Mat4::from_translation(fist + shift) * Mat4::from_quat(turn) * rest * Mat4::from_translation(-grip)
+        // The swings were tuned with the fist two thirds of a block ahead; further out they
+        // move as far to keep the same sweep on screen.
+        Self::hand_camera(eye, yaw, pitch) * Mat4::from_translation(fist + shift * HAND_REACH) * Mat4::from_quat(turn) * rest * Mat4::from_translation(-grip)
     }
 
     /// The right arm gripping the held item placed by `first_person_item`: the fist on the
@@ -599,7 +645,7 @@ impl Animator {
         for m in b.m.iter_mut() {
             *m = [[0.0f32; 4]; 4];
         }
-        let cam = Self::camera(eye, yaw, pitch);
+        let cam = Self::hand_camera(eye, yaw, pitch);
         let (_, grip, _) = hand_rest(model);
         // In camera space; the item's own turn decides which way the knuckles face.
         let local = cam.inverse() * item;
@@ -617,7 +663,7 @@ impl Animator {
     /// the player; brought up (`bow_aim`) the left hand holds it out ahead, canted, and the
     /// right pulls the string back towards the eye, the arrow pointing along the view.
     pub fn first_person_bow(&self, shape: &crate::bowdraw::Shape, stage: usize, eye: Vec3, yaw: f32, pitch: f32) -> BowHold {
-        let cam = Self::camera(eye, yaw, pitch);
+        let cam = Self::hand_camera(eye, yaw, pitch);
         let a = self.bow_aim.clamp(0.0, 1.0);
         let a = a * a * (3.0 - 2.0 * a);
         let flat = |v: glam::Vec2| Vec3::new(v.x, v.y, 0.0);
@@ -658,7 +704,7 @@ impl Animator {
         for m in b.m.iter_mut() {
             *m = [[0.0f32; 4]; 4];
         }
-        let cam = Self::camera(eye, yaw, pitch);
+        let cam = Self::hand_camera(eye, yaw, pitch);
         let a = hold.aim;
         // Drawing, the right elbow sticks out to the side behind the string hand.
         let shoulder = (hold.right + Vec3::new(0.46, -0.66, 0.41)).lerp(Vec3::new(0.7, -0.95, -0.45), a);
@@ -786,6 +832,12 @@ fn arm_reaching(def: &MobDef, part: usize, cam: Mat4, fist: Vec3, shoulder: Vec3
     (cam * place).to_cols_array_2d()
 }
 
+/// How much smaller the first-person hand is drawn, towards the eye (`hand_camera`).
+const HAND_NEAR: f32 = 0.25;
+/// How much further ahead the fist is than the two thirds of a block the swing offsets were
+/// written for.
+const HAND_REACH: f32 = 1.6;
+
 /// A held item at rest in first person: its turn and scale (from the item model's centre
 /// frame), the point of it the fist holds (in that frame, one block wide), and where the fist
 /// is in camera space.
@@ -803,17 +855,17 @@ fn hand_rest(model: HandModel) -> (Mat4, Vec3, Vec3) {
         // the left so the edge shows.
         HandModel::Tool => {
             let q = lay(Vec3::new(1.0, 1.0, 0.0).normalize(), Vec3::new(-0.25, 0.8, -0.55), Vec3::new(-1.0, 0.15, 0.3));
-            (Mat4::from_quat(q) * Mat4::from_scale(Vec3::splat(0.6)), Vec3::new(-0.3, -0.3, 0.0), Vec3::new(0.44, -0.29, -0.66))
+            (Mat4::from_quat(q) * Mat4::from_scale(Vec3::splat(0.8)), Vec3::new(-0.3, -0.3, 0.0), Vec3::new(0.62, -0.52, -1.05))
         }
         // A picture stands up in the hand, turned a little towards the middle.
         HandModel::Flat => {
             let q = lay(Vec3::Y, Vec3::new(-0.1, 1.0, -0.15), Vec3::new(-0.55, 0.15, 0.8));
-            (Mat4::from_quat(q) * Mat4::from_scale(Vec3::splat(0.42)), Vec3::new(0.0, -0.4, 0.0), Vec3::new(0.5, -0.4, -0.78))
+            (Mat4::from_quat(q) * Mat4::from_scale(Vec3::splat(0.46)), Vec3::new(0.0, -0.4, 0.0), Vec3::new(0.58, -0.55, -1.1))
         }
         // A block sits on the fist, turned 45° and tipped towards the eye.
         HandModel::Block => {
             let q = Quat::from_rotation_x(0.25) * Quat::from_rotation_y(f32::to_radians(45.0));
-            (Mat4::from_quat(q) * Mat4::from_scale(Vec3::splat(0.34)), Vec3::new(0.0, -0.62, 0.1), Vec3::new(0.52, -0.42, -0.92))
+            (Mat4::from_quat(q) * Mat4::from_scale(Vec3::splat(0.32)), Vec3::new(0.0, -0.62, 0.1), Vec3::new(0.6, -0.6, -1.2))
         }
     }
 }
@@ -880,7 +932,8 @@ mod tests {
         assert!(full.right.z > half.right.z && half.right.z > full.left.z);
         // The arrow sits on the string and points away from the eye, past the grip.
         let arrow = full.arrow.expect("arrow on the string");
-        let (nock, tip) = (arrow.transform_point3(ARROW_NOCK), arrow.transform_point3(-ARROW_NOCK));
+        // (Drawn towards the eye like the other held items: undo that to compare with the fists.)
+        let (nock, tip) = (arrow.transform_point3(ARROW_NOCK) / HAND_NEAR, arrow.transform_point3(-ARROW_NOCK) / HAND_NEAR);
         assert!(nock.distance(full.right) < 0.05 && tip.z < full.left.z);
         // At rest nothing is nocked and the right hand holds the grip.
         let rest = Animator { hand_height: 1.0, ..Default::default() }.first_person_bow(&shape, 0, Vec3::ZERO, 0.0, 0.0);
@@ -892,7 +945,10 @@ mod tests {
         let a = Animator { hand_height: 1.0, ..Default::default() };
         let m = a.first_person_item(HandModel::Tool, Vec3::ZERO, 0.0, 0.0);
         let (_, grip, fist) = hand_rest(HandModel::Tool);
+        let fist = fist * HAND_NEAR;
         assert!(m.transform_point3(grip).distance(fist) < 1e-4);
+        // Drawn near the eye, so the tip stays out of a wall the player is against.
+        assert!(m.transform_point3(Vec3::new(0.45, 0.45, 0.0)).z > -0.45);
         // The tip is above, left of and further away than the handle.
         let tip = m.transform_point3(Vec3::new(0.45, 0.45, 0.0));
         assert!(tip.y > fist.y && tip.x < fist.x && tip.z < fist.z);
