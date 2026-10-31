@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a message changes shape. Host and guest must match.
-pub const PROTOCOL: u32 = 8;
+pub const PROTOCOL: u32 = 9;
 
 /// Default UDP port for hosted worlds.
 pub const DEFAULT_PORT: u16 = 24454;
@@ -63,7 +63,53 @@ pub enum ToHost {
     /// Voice chat: the group the guest listens to (0 = none) and whether its voice is on at
     /// all. The voice itself travels as datagrams (see `voice`).
     VoiceSet { group: u8, on: bool },
+    /// The guest's own arrows, tridents and spells in flight (drawn for the others; they hit
+    /// only on the guest's side). Sent while there are any, and once empty when they end.
+    Shots(Vec<ShotFx>),
+    /// The guest's items lying on the ground near it, for the others to see and pick up.
+    /// Sent while there are any, and once empty after.
+    Drops(Vec<DropFx>),
+    /// The guest walked over someone else's item (`owner` 0 = the host's): may it have it?
+    Take { owner: u32, id: u32 },
+    /// The guest handed one of its items over to player `to` (it was asked by `ToGuest::Take`).
+    Give { to: u32, stack: Vec<u8> },
 }
+
+/// An item on the ground, as the others see it. `stack` is the game's own item stack,
+/// encoded (both sides load the same items: the content hash says so).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct DropFx {
+    /// Whose it is: the player who runs it (0 = the host).
+    pub owner: u32,
+    /// Its number on the owner's side.
+    pub id: u32,
+    pub stack: Vec<u8>,
+    pub pos: [f32; 3],
+    /// Old enough to be picked up.
+    pub ready: bool,
+}
+
+/// Something in flight, as others see it: only a picture (damage travels as `Hurt`/`HurtMob`).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct ShotFx {
+    /// `SHOT_*` below.
+    pub kind: u8,
+    pub pos: [f32; 3],
+    pub vel: [f32; 3],
+}
+
+/// Kinds of `ShotFx`: arrows fall, the rest fly straight.
+pub const SHOT_ARROW: u8 = 0;
+pub const SHOT_TRIDENT: u8 = 1;
+pub const SHOT_WIND: u8 = 2;
+/// The Nether and End's shots: ghast, blaze, wither skull, shulker bullet, dragon fireball.
+pub const SHOT_GHAST: u8 = 10;
+pub const SHOT_BLAZE: u8 = 11;
+pub const SHOT_SKULL: u8 = 12;
+pub const SHOT_SHULKER: u8 = 13;
+pub const SHOT_DRAGON: u8 = 14;
+/// A spell bolt: `SHOT_BOLT + school` (magic.rs schools).
+pub const SHOT_BOLT: u8 = 20;
 
 /// Host → guest.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -138,6 +184,36 @@ pub enum ToGuest {
     /// A share of a craft's experience (the game's `skills.rs`, by index) for helping a
     /// friend nearby: a monster the group fought died.
     SkillShare { skill: u8, xp: u32 },
+    /// Everything in flight near the guest that it doesn't run itself: the host's mobs'
+    /// arrows and fireballs, monsters' spells, and the host's and the other players' shots.
+    Shots { dim: u8, list: Vec<ShotFx> },
+    /// Items lying near the guest that someone else runs (the host's, the other guests').
+    Drops { dim: u8, list: Vec<DropFx> },
+    /// Player `by` walked over our item `id`: hand it over (`ToHost::Give`) if it is still there.
+    Take { by: u32, id: u32 },
+    /// Someone's item we walked over is ours now.
+    Give { stack: Vec<u8> },
+    /// The world's events as the host runs them: their bars, the pillars' line, and what
+    /// colours the sky (blood moon, eclipse). Sent when it changes and now and then.
+    Events(EventsFx),
+}
+
+/// One event bar at the top of the screen.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct EventBar {
+    pub title: String,
+    /// Progress 0..1.
+    pub frac: f32,
+    pub color: [u8; 3],
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct EventsFx {
+    pub bars: Vec<EventBar>,
+    /// Extra text under the bars (empty = none).
+    pub line: String,
+    pub blood: bool,
+    pub eclipse: bool,
 }
 
 /// The world's scoreboard and teams (`/placar`, `/equipe`), kept by the host in

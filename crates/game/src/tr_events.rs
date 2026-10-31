@@ -61,6 +61,13 @@ pub struct Events {
     head_t: f32,
 }
 
+impl Events {
+    /// The jelly rain's (killed, needed), while it falls.
+    pub(crate) fn rain_progress(&self) -> Option<(u32, u32)> {
+        self.rain.as_ref().map(|r| (r.killed, r.need))
+    }
+}
+
 impl Game {
     pub(crate) fn update_tr_events(&mut self, dt: f32) {
         let night = self.is_night();
@@ -68,6 +75,12 @@ impl Game {
         let dusk = night && !self.t5.tr.ev.night_was;
         let dawn = !night && self.t5.tr.ev.night_was;
         self.t5.tr.ev.night_was = night;
+        // A guest in the host's world: the host runs the events (net_events.rs); only the
+        // weather where we stand stays ours.
+        if !self.net_simulates() {
+            self.update_sandstorm(dt, over);
+            return;
+        }
         if dusk {
             self.events_at_dusk(over);
         }
@@ -515,43 +528,12 @@ impl Game {
         }
     }
 
-    /// The events' HUD: the sandstorm's haze and the jelly rain's bar.
+    /// The events' HUD: the sandstorm's haze (the bars are in net_events.rs).
     pub(crate) fn draw_tr_hud(&mut self, w: f32, h: f32) {
         let k = self.t5.tr.ev.storm_k;
         if k > 0.02 {
             self.ui.rect(0.0, 0.0, w, h, [200, 160, 100, (k * 80.0) as u8]);
         }
-        if let Some((title, k)) = self.invasion_hud() {
-            let s = self.ui.scale;
-            let bw = 160.0 * s;
-            let (x, y) = ((w - bw) / 2.0, 44.0 * s);
-            let tw = self.ui.text_width(&title, s);
-            self.ui.text((w - tw) / 2.0, y - 11.0 * s, &title, [240, 210, 160, 255]);
-            self.ui.rect(x - s, y - s, bw + 2.0 * s, 6.0 * s, [0, 0, 0, 200]);
-            self.ui.rect(x, y, bw, 4.0 * s, [60, 40, 30, 255]);
-            self.ui.rect(x, y, bw * k.min(1.0), 4.0 * s, [230, 150, 60, 255]);
-        }
-        if let Some(line) = self.pillar_status() {
-            let s = self.ui.scale;
-            let t = format!("Pilares: {line}");
-            let tw = self.ui.text_width(&t, s);
-            self.ui.text((w - tw) / 2.0, 58.0 * s, &t, [200, 210, 255, 255]);
-        }
-        let Some((killed, need)) = self.t5.tr.ev.rain.as_ref().map(|r| (r.killed, r.need)) else { return };
-        let s = self.ui.scale;
-        let boss_up = self.mobs.list.iter().any(|m| m.alive() && self.mobs.reg.defs[m.def].boss && m.body.pos.distance(self.body.pos) < 64.0);
-        let mut y = if boss_up { 38.0 * s } else { 14.0 * s };
-        if self.t5.hard.invasion().is_some() {
-            y += 24.0 * s;
-        }
-        let bw = 140.0 * s;
-        let x = (w - bw) / 2.0;
-        let t = "Chuva de Geleias";
-        let tw = self.ui.text_width(t, s);
-        self.ui.text((w - tw) / 2.0, y - 10.0 * s, t, [150, 200, 240, 255]);
-        self.ui.rect(x - s, y - s, bw + 2.0 * s, 6.0 * s, [0, 0, 0, 200]);
-        self.ui.rect(x, y, bw, 4.0 * s, [30, 40, 60, 255]);
-        self.ui.rect(x, y, bw * (killed as f32 / need as f32).min(1.0), 4.0 * s, [80, 150, 230, 255]);
     }
 
     fn count_tr(&self, names: &[&str]) -> usize {

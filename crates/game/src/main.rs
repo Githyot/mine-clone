@@ -16,6 +16,9 @@ mod options;
 mod sentries;
 mod shield;
 mod vanity;
+mod net_fx;
+mod net_drops;
+mod net_events;
 mod wings;
 mod worlds;
 mod anim;
@@ -726,6 +729,13 @@ struct Game {
     /// The Terraria side (Etapa 5): accessories, glyph spells, hard mode and its events.
     t5: terraria::Terraria,
     ne: nether_end::NetherEnd,
+    /// Other players' and the host's shots in flight, as pictures (net_fx.rs).
+    net_shots: Vec<net_fx::RemoteShot>,
+    net_drops: Vec<net_drops::RemoteDrop>,
+    net_drop_state: net_drops::NetDrops,
+    net_events: net_events::NetEvents,
+    /// Host: each guest's own shots as it last sent them (relayed to the other guests).
+    net_guest_shots: std::collections::HashMap<u32, Vec<net::ShotFx>>,
     town: npcs::Town,
     progress: progress::Progress,
     raid: raids::Raid,
@@ -1193,6 +1203,11 @@ impl Game {
             boss: bosses::BossState::new(bosses_beaten),
             t5: terraria::Terraria::default(),
             ne: nether_end::NetherEnd::default(),
+            net_shots: Vec::new(),
+            net_drops: Vec::new(),
+            net_drop_state: Default::default(),
+            net_events: Default::default(),
+            net_guest_shots: Default::default(),
             town: npcs::Town::new(town_npcs),
             progress: progress::Progress::new(),
             raid: raids::Raid::default(),
@@ -1932,6 +1947,9 @@ impl Game {
             self.plugins_tick(dt);
         }
         self.net_update(dt);
+        self.update_remote_shots(dt);
+        self.update_net_drops(dt);
+        self.update_net_events(dt);
         self.voice_update(dt);
         self.prof.mark("rede e voz");
         // A guest in the host's dimension gets the world's own changes from the host.

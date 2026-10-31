@@ -65,16 +65,6 @@ pub fn stamp(secs: u64) -> String {
     format!("{y:04}{m:02}{d:02}-{:02}{:02}{:02}", rest / 3600, rest % 3600 / 60, rest % 60)
 }
 
-/// `20261031-145903` as `31/10 14:59`.
-pub fn pretty(stamp: &str) -> String {
-    let s: Vec<char> = stamp.chars().collect();
-    if s.len() < 15 {
-        return stamp.to_string();
-    }
-    let p = |a: usize, b: usize| s[a..b].iter().collect::<String>();
-    format!("{}/{} {}:{}", p(6, 8), p(4, 6), p(9, 11), p(11, 13))
-}
-
 /// Copy a folder with everything in it, leaving half-written `.tmp` files out.
 pub fn copy_dir(from: &Path, to: &Path) -> std::io::Result<u64> {
     std::fs::create_dir_all(to)?;
@@ -263,7 +253,6 @@ mod tests {
     fn stamps_sort_and_read() {
         assert_eq!(stamp(0), "19700101-000000");
         assert_eq!(stamp(1_793_458_743), "20261031-145903");
-        assert_eq!(pretty("20261031-145903"), "31/10 14:59");
         assert_eq!(clean_name("  a/b:c?  "), "abc");
         assert_eq!(clean_name(" .. "), "Novo mundo");
     }

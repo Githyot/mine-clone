@@ -88,13 +88,15 @@ impl Game {
         let overworld = self.dim == Dim::Overworld;
         // Day and night: a new night may rise red.
         let night = self.is_night();
+        // A guest in the host's world: the host's blood moon and invasion (net_events.rs).
+        let overworld = overworld && self.net_simulates();
         if night && !self.t5.hard.was_night && overworld {
             let chance = if self.t5.hard.on { 0.16 } else if !self.boss.defeated.is_empty() { 0.11 } else { 0.0 };
             if self.surv.rng.f32() < chance {
                 self.start_blood_moon();
             }
         }
-        if !night && self.t5.hard.blood {
+        if !night && self.t5.hard.blood && self.net_simulates() {
             self.t5.hard.blood = false;
             self.toast("A lua de sangue se pôs", 3.0);
         }
@@ -177,18 +179,21 @@ impl Game {
     /// Nothing on Peaceful, with spawning off or "Monstros: nenhum"; and only near the
     /// player's own height (a player deep in a mine gets no walkers on the surface far above,
     /// that would just vanish again past the despawn distance).
+    /// In multijogador the host spawns around any player in its world (survival guests too),
+    /// so the Terraria monsters come to everyone, not only to the host.
     pub(crate) fn spawn_around(&mut self, name: &str, flying: bool) -> bool {
         if !self.mobs.monsters_may_spawn() {
             return false;
         }
+        let (center, _) = self.spawn_center();
         for _ in 0..6 {
             let a = self.surv.rng.f32() * std::f32::consts::TAU;
             let r = 18.0 + self.surv.rng.f32() * 12.0;
-            let x = (self.body.pos.x + a.cos() * r).floor() as i32;
-            let z = (self.body.pos.z + a.sin() * r).floor() as i32;
+            let x = (center.x + a.cos() * r).floor() as i32;
+            let z = (center.z + a.sin() * r).floor() as i32;
             let Some(y) = self.world.surface_y(x, z) else { continue };
-            let y = if flying { (y + 6).max(self.body.pos.y as i32 + 4) } else { y + 1 };
-            if (y as f32 - self.body.pos.y).abs() > 40.0 {
+            let y = if flying { (y + 6).max(center.y as i32 + 4) } else { y + 1 };
+            if (y as f32 - center.y).abs() > 40.0 {
                 continue;
             }
             let at = Vec3::new(x as f32 + 0.5, y as f32, z as f32 + 0.5);
@@ -200,6 +205,22 @@ impl Game {
             }
         }
         false
+    }
+
+    /// Who the next spawn is around: us, or (host) one of the survival guests in our world,
+    /// each as likely. `true` when it is us.
+    pub(crate) fn spawn_center(&mut self) -> (Vec3, bool) {
+        let guests: Vec<Vec3> = self.mobs.others.iter().filter(|(_, creative)| !creative).map(|(p, _)| *p).collect();
+        if guests.is_empty() || !self.net.is_host() {
+            return (self.body.pos, true);
+        }
+        // A host in creative gets nothing around itself, like the natural spawning.
+        let n = guests.len() + usize::from(self.survival);
+        let k = ((self.surv.rng.f32() * n as f32) as usize).min(n - 1);
+        match guests.get(k) {
+            Some(p) => (*p, false),
+            None => (self.body.pos, true),
+        }
     }
 
     pub(crate) fn count_alive(&self, names: &[&str]) -> usize {
@@ -264,27 +285,11 @@ impl Game {
     }
 
     /// Kills of the invasion so far, as a fraction (for its bar).
-    fn invasion_progress(&self) -> Option<f32> {
+    pub(crate) fn invasion_progress(&self) -> Option<f32> {
         let (to_come, total) = self.t5.hard.invasion()?;
         let alive = self.count_alive(&["goblin_warrior", "goblin_archer", "goblin_sorcerer"]) as u32;
         let killed = total.saturating_sub(to_come + alive);
         Some(killed as f32 / total as f32)
-    }
-
-    /// The event bar at the top, under the boss bar if there is one.
-    pub(crate) fn draw_event_bar(&mut self, w: f32) {
-        let Some(frac) = self.invasion_progress() else { return };
-        let s = self.ui.scale;
-        let boss_up = self.mobs.list.iter().any(|m| m.alive() && self.mobs.reg.defs[m.def].boss && m.body.pos.distance(self.body.pos) < 64.0);
-        let y = if boss_up { 38.0 * s } else { 14.0 * s };
-        let bw = 140.0 * s;
-        let x = (w - bw) / 2.0;
-        let t = "Invasão Goblin";
-        let tw = self.ui.text_width(t, s);
-        self.ui.text((w - tw) / 2.0, y - 10.0 * s, t, [230, 200, 140, 255]);
-        self.ui.rect(x - s, y - s, bw + 2.0 * s, 6.0 * s, [0, 0, 0, 200]);
-        self.ui.rect(x, y, bw, 4.0 * s, [50, 40, 30, 255]);
-        self.ui.rect(x, y, bw * frac, 4.0 * s, [200, 140, 60, 255]);
     }
 
     /// Hard mode ores in the stone of loaded chunks near the player that don't have them yet,

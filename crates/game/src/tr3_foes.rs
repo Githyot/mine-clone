@@ -126,21 +126,23 @@ impl Game {
     }
 
     fn foe_spawn(&mut self) {
-        let me = self.body.pos;
         let names: Vec<&str> = SPAWNS.iter().map(|s| s.0).collect();
         if self.count_alive(&names) >= MOST {
             return;
         }
+        // Around us or (host) a guest: the biome and depth are where that player stands.
+        let (me, mine) = self.spawn_center();
         let layer = Layer::at(me.y.floor() as i32);
         let under = !matches!(layer, Layer::Sky | Layer::Surface);
-        let ub = self.ubiome();
-        let biome = self.world.gen.base_biome_at(me.x.floor() as i32, me.z.floor() as i32);
+        let mp = me.floor().as_ivec3();
+        let ub = self.world.gen.ubiome_at(mp.x, mp.y, mp.z);
+        let biome = self.world.gen.base_biome_at(mp.x, mp.z);
         let night = self.is_night();
         let hard = self.t5.hard.on;
-        let dungeon = self.t5.tr.dungeon.inside;
+        let dungeon = mine && self.t5.tr.dungeon.inside;
         // A calm night (lanterns) keeps the surface free, like the natural spawning.
         let calm = self.mobs.calm;
-        let prism = self.t5.tr.lands.here == Some(crate::tr_world::Land::Prism);
+        let prism = mine && self.t5.tr.lands.here == Some(crate::tr_world::Land::Prism);
         let fits = |at: At| match at {
             At::Surface(bs) => !under && !dungeon && !calm && bs.contains(&biome),
             At::Under(u) => under && !dungeon && ub == u,
