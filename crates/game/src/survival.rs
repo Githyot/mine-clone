@@ -2728,6 +2728,8 @@ enum HeldKind {
 #[derive(Clone, Copy)]
 struct HeldLook {
     kind: HeldKind,
+    /// A digging tool (pickaxe, axe, shovel, hoe): held with its head up, not like a blade.
+    digger: bool,
     flat: bool,
     layers: [f32; 3],
 }
@@ -2751,6 +2753,7 @@ impl HeldLook {
     fn model(&self) -> crate::player_model::HandModel {
         use crate::player_model::HandModel;
         match self.kind {
+            HeldKind::Tool if self.digger => HandModel::Digger,
             HeldKind::Tool => HandModel::Tool,
             HeldKind::Flat => HandModel::Flat,
             HeldKind::Block => HandModel::Block,
@@ -2920,19 +2923,20 @@ impl Game {
             return None;
         }
         let tool = held_like_tool(it);
+        let digger = it.tool.as_ref().is_some_and(|t| t.kind != voxel::block::ToolKind::Sword);
         Some(match it.look {
             Look::Block(b) => {
                 let bl = self.reg.get(b);
                 if matches!(bl.shape, Shape::Cross | Shape::Torch | Shape::Rail | Shape::TallBanner | Shape::Model) {
                     // Plants and torches are flat item pictures in the hand.
-                    HeldLook { kind: HeldKind::Flat, flat: true, layers: [bl.faces[0] as f32; 3] }
+                    HeldLook { kind: HeldKind::Flat, digger: false, flat: true, layers: [bl.faces[0] as f32; 3] }
                 } else {
-                    HeldLook { kind: HeldKind::Block, flat: false, layers: [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32] }
+                    HeldLook { kind: HeldKind::Block, digger: false, flat: false, layers: [bl.faces[0] as f32, bl.faces[2] as f32, bl.faces[3] as f32] }
                 }
             }
             Look::Sprite(l) => {
                 let layer = (self.item_base + l) as f32;
-                HeldLook { kind: if tool { HeldKind::Tool } else { HeldKind::Flat }, flat: true, layers: [layer; 3] }
+                HeldLook { kind: if tool { HeldKind::Tool } else { HeldKind::Flat }, digger, flat: true, layers: [layer; 3] }
             }
         })
     }
