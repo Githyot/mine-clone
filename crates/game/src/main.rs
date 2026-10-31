@@ -5,6 +5,8 @@
 
 mod ambient;
 mod armor_design;
+#[cfg(test)]
+mod armor_icon;
 mod flora_tex;
 mod ambient_life;
 mod beds;

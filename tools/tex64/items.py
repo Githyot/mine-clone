@@ -7,7 +7,10 @@ top-right, like the classic game. A tool is the same drawing for every material,
 only needs a colour in MATERIALS.
 """
 
+import os
+
 import numpy as np
+from PIL import Image
 
 from style import N, XX, YY, canvas, clusters, dist_inside, from_oklab, hexrgb, light, quantize, ramp, rng_for, segment_dist, to_oklab
 
@@ -377,6 +380,14 @@ for _m in arms.SWORDS:
 for _m in arms.STYLE:
     for _t, _f in arms.ARMOR_ICONS.items():
         REGISTRY[f"{_m}_{_t}"] = lambda m=_m, f=_f: f(m)
+
+# Armour icons are pictures of the worn 3D piece (crates/game/src/armor_icon.rs writes them to
+# armor3d/), so horns, crests, plumes and colours match the model (HP 2026-10-31).
+_ARMOR3D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "armor3d")
+if os.path.isdir(_ARMOR3D):
+    for _f in sorted(os.listdir(_ARMOR3D)):
+        if _f.endswith(".png"):
+            REGISTRY[_f[:-4]] = lambda p=os.path.join(_ARMOR3D, _f): np.asarray(Image.open(p).convert("RGBA"), dtype=np.float64)
 
 import beds as _beds  # noqa: E402  (each bed's icon is its 3D model)
 REGISTRY.update(_beds.ITEMS)
