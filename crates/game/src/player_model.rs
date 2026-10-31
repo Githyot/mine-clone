@@ -47,6 +47,8 @@ pub struct Pose {
     /// A shield coming up to block: 0..1, and in which hand (shield.rs).
     pub shield_up: f32,
     pub shield_left: bool,
+    /// 0..1 a bow raised and drawn: held out in the left hand, the right pulling the string.
+    pub bow: f32,
     /// Pulling up onto a ledge: 0 = not climbing, else 0..1 through the climb, and the
     /// ledge's top above the feet.
     pub mantle: f32,
@@ -88,6 +90,8 @@ pub struct Animator {
     /// comes back up as the weapon gets ready (`follow_hand`), like the classic game.
     pub hand_height: f32,
     hand_item: Option<u16>,
+    /// 0..1 a bow brought up to shoot (`follow_bow`): from the right hand at rest to both hands.
+    pub bow_aim: f32,
 }
 
 /// Which classic item model places what is held in first person.
@@ -143,6 +147,13 @@ impl Animator {
         if self.hand_height <= 0.0 {
             self.hand_item = item;
         }
+    }
+
+    /// A bow comes up while it is being drawn and goes back down after the shot.
+    pub fn follow_bow(&mut self, drawing: bool, dt: f32) {
+        let want = if drawing { 1.0 } else { 0.0 };
+        let rate = if drawing { 7.0 } else { 4.0 };
+        self.bow_aim += (want - self.bow_aim).clamp(-dt * rate, dt * rate);
     }
 
     /// Start a weapon swing of the given style right away (combo attacks).
@@ -384,6 +395,18 @@ impl Animator {
             let up = Quat::from_rotation_y(-side * 0.45) * Quat::from_rotation_x(-0.95 + arm * 0.15);
             rot[i] = rot[i].slerp(up, p.shield_up.clamp(0.0, 1.0));
         }
+        let bow = p.bow.clamp(0.0, 1.0);
+        if bow > 0.0 {
+            // Drawing a bow: the left arm holds it straight out towards the look, the right
+            // reaches across and folds back to pull the string to the cheek.
+            let yaw = wrap(p.look_yaw + PI - self.body_yaw).clamp(-1.0, 1.0);
+            let pitch = p.look_pitch.clamp(-1.2, 1.2);
+            let left = Quat::from_rotation_y(yaw - 0.1) * Quat::from_rotation_x(-FRAC_PI_2 - pitch);
+            let right = Quat::from_rotation_y(yaw - 0.75) * Quat::from_rotation_x(-FRAC_PI_2 - pitch + 0.05) * Quat::from_rotation_y(FRAC_PI_2);
+            rot[L_ARM] = rot[L_ARM].slerp(left, bow);
+            rot[R_ARM] = rot[R_ARM].slerp(right, bow);
+            rot[BODY] = rot[BODY] * Quat::from_rotation_y(-0.25 * bow);
+        }
         if self.swing > 0.0 && !p.spear {
             // Hit: the right arm comes down from above, the body twists into it. Combo swings
             // cut across, thrust ahead or come up from below instead.
@@ -463,6 +486,11 @@ impl Animator {
         if p.burning {
             bend[R_ARM] = -0.8;
             bend[L_ARM] = -0.8;
+        }
+        if bow > 0.0 {
+            // The bow arm straight, the drawing arm folded at the elbow.
+            bend[L_ARM] = bend[L_ARM] * (1.0 - bow);
+            bend[R_ARM] = bend[R_ARM] * (1.0 - bow) - 2.0 * bow;
         }
         if self.swing > 0.0 {
             // Cocked before the blow, nearly straight at its height.
@@ -625,18 +653,67 @@ impl Animator {
         // The shoulder keeps its place behind the fist (down, right and back), so the arm
         // follows a swing instead of stretching across the view.
         let shoulder = fist + Vec3::new(0.46, -0.66, 0.41);
-        let d = (fist - shoulder).normalize();
-        // The palm wraps the handle: the arm's front (+z in the model, -z after the half
-        // turn) faces the way the item's blade runs.
         let along = local.transform_vector3(Vec3::new(1.0, 1.0, 0.0)).normalize();
-        let x = along.cross(d).normalize_or_zero();
-        let z = d.cross(x);
-        let turn = if x == Vec3::ZERO { Quat::from_rotation_arc(Vec3::NEG_Y, d) } else { Quat::from_mat3(&glam::Mat3::from_cols(x, -d, z)) };
-        let p = &def.parts[R_ARM];
-        let pivot = Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32, p.pivot.2 as f32);
-        let fist_px = Vec3::new(0.0, -8.5, 0.0);
-        let place = Mat4::from_translation(fist) * Mat4::from_quat(turn) * Mat4::from_rotation_y(PI) * Mat4::from_scale(Vec3::splat(1.0 / 16.0)) * Mat4::from_translation(-fist_px - pivot);
-        b.m[R_ARM] = (cam * place).to_cols_array_2d();
+        b.m[R_ARM] = arm_reaching(def, R_ARM, cam, fist, shoulder, along);
+        b
+    }
+
+    /// A bow in first person, drawn to `stage` (0..3, see bowdraw.rs). At rest it stands in
+    /// the right fist at the lower right, the limb out ahead to the left and the string towards
+    /// the player; brought up (`bow_aim`) the left hand holds it out ahead, canted, and the
+    /// right pulls the string back towards the eye, the arrow pointing along the view.
+    pub fn first_person_bow(&self, shape: &crate::bowdraw::Shape, stage: usize, eye: Vec3, yaw: f32, pitch: f32) -> BowHold {
+        let cam = Self::hand_camera(eye, yaw, pitch);
+        let a = self.bow_aim.clamp(0.0, 1.0);
+        let a = a * a * (3.0 - 2.0 * a);
+        let flat = |v: glam::Vec2| Vec3::new(v.x, v.y, 0.0);
+        let along = flat(shape.top - shape.bottom).normalize();
+        let belly = flat(shape.belly);
+        let w = self.amount.min(1.0);
+        let sway = Vec3::new(self.walk.sin() * 0.02 * w, -self.walk.cos().abs() * 0.025 * w, 0.0);
+        let rest_fist = Vec3::new(0.6, -0.5, -1.05) + sway + Vec3::Y * -(1.0 - self.hand_height.clamp(0.0, 1.0)) * 0.6;
+        let rest = lay_bow(along, belly, Vec3::new(-0.18, 1.0, 0.1), Vec3::new(-1.0, 0.05, -0.65));
+        // Held at full draw the arms tire and the bow trembles a little.
+        let shake = if stage >= 3 { Vec3::new((self.time * 37.0).sin(), (self.time * 29.0).cos(), 0.0) * 0.004 } else { Vec3::ZERO };
+        // Drawn, the bow stands just below the middle of the view, its top canted right and its
+        // face half turned to the eye; the string comes back to the lower right, so the arrow
+        // runs up from there and points at the middle.
+        let drawn_grip = Vec3::new(0.06, -0.26, -1.45) + sway * 0.4 + shake;
+        let drawn = lay_bow(along, belly, Vec3::new(0.4, 0.92, 0.0), Vec3::new(-0.5, 0.3, -0.81));
+        let q = rest.slerp(drawn, a);
+        let grip = rest_fist.lerp(drawn_grip, a);
+        // The bow is a little bigger drawn, as it comes up close to the eye.
+        let size = 0.7 + 0.15 * a;
+        let local = Mat4::from_translation(grip) * Mat4::from_quat(q) * Mat4::from_scale(Vec3::splat(size)) * Mat4::from_translation(-flat(shape.grip));
+        let nock = local.transform_point3(flat(shape.nock(stage)));
+        let up = q * along;
+        let arrow = (stage > 0 && a > 0.4).then(|| {
+            // Lying on the bow's face, its nock on the string, as long as a full draw and a
+            // hand's width more.
+            let dir = q * belly;
+            let face = q * Vec3::Z;
+            cam * arrow_on(nock + face * 0.012, dir, face, (shape.grip - shape.nock(3)).dot(shape.belly) * size + 0.2)
+        });
+        BowHold { bow: cam * local, arrow, right: rest_fist.lerp(nock, a), left: grip, aim: a, up }
+    }
+
+    /// Both arms on a bow placed by `first_person_bow`: the right fist on the grip at rest or
+    /// on the string while drawing, the left on the grip once the bow is raised.
+    pub fn first_person_bow_arms(&self, def: &MobDef, hold: &BowHold, eye: Vec3, yaw: f32, pitch: f32, sky: f32, blk: f32) -> Bones {
+        let mut b = Bones { light: [sky, blk, 0.0, 0.0], ..Default::default() };
+        for m in b.m.iter_mut() {
+            *m = [[0.0f32; 4]; 4];
+        }
+        let cam = Self::hand_camera(eye, yaw, pitch);
+        let a = hold.aim;
+        // Drawing, the right elbow sticks out to the side behind the string hand.
+        let shoulder = (hold.right + Vec3::new(0.46, -0.66, 0.41)).lerp(Vec3::new(0.7, -0.95, -0.45), a);
+        b.m[R_ARM] = arm_reaching(def, R_ARM, cam, hold.right, shoulder, hold.up);
+        if a > 0.02 {
+            // The left arm comes up from below the view to take the bow.
+            let fist = hold.left + Vec3::new(-0.15, -0.65, 0.25) * (1.0 - a);
+            b.m[L_ARM] = arm_reaching(def, L_ARM, cam, fist, Vec3::new(-0.95, -0.75, -0.9), hold.up);
+        }
         b
     }
 
@@ -700,6 +777,59 @@ impl Animator {
         b.m[R_ARM] = arm_model(R_ARM, place);
         b
     }
+}
+
+/// A bow held in first person (`Animator::first_person_bow`).
+pub struct BowHold {
+    /// The bow picture's frame (one block wide before its scale), relative to the camera's block.
+    pub bow: Mat4,
+    /// The nocked arrow's picture frame while the string is drawn.
+    pub arrow: Option<Mat4>,
+    /// Fists in camera space, the bow's 0..1 rise and its string's direction (for the knuckles).
+    right: Vec3,
+    left: Vec3,
+    aim: f32,
+    up: Vec3,
+}
+
+/// The arrow picture's nock end and its length from there to the point (the picture's
+/// diagonal, one block wide before its scale).
+const ARROW_NOCK: Vec3 = Vec3::new(-0.4, -0.4, 0.0);
+const ARROW_SPAN: f32 = 1.13;
+
+/// The frame of an arrow picture with its nock at `nock`, flying along `dir`, its face towards
+/// `face`, `length` long.
+pub(crate) fn arrow_on(nock: Vec3, dir: Vec3, face: Vec3, length: f32) -> Mat4 {
+    let turn = lay_bow(Vec3::new(1.0, 1.0, 0.0), Vec3::new(-1.0, 1.0, 0.0), dir, face.cross(dir));
+    Mat4::from_translation(nock) * Mat4::from_quat(turn) * Mat4::from_scale(Vec3::splat(length / ARROW_SPAN)) * Mat4::from_translation(-ARROW_NOCK)
+}
+
+/// The turn that lays a picture's `along` and `across` (both in its plane) onto `to` and
+/// towards `toward`.
+pub(crate) fn lay_bow(along: Vec3, across: Vec3, to: Vec3, toward: Vec3) -> Quat {
+    let along = along.normalize();
+    let across = (across - along * across.dot(along)).normalize();
+    let to = to.normalize();
+    let toward = (toward - to * toward.dot(to)).normalize();
+    let from = glam::Mat3::from_cols(along, across, along.cross(across));
+    let onto = glam::Mat3::from_cols(to, toward, to.cross(toward));
+    Quat::from_mat3(&(onto * from.transpose()))
+}
+
+/// The first-person arm `part` with its fist at `fist` (camera space), reaching from
+/// `shoulder`, its palm facing the way `along` runs (a handle, a bow's grip).
+fn arm_reaching(def: &MobDef, part: usize, cam: Mat4, fist: Vec3, shoulder: Vec3, along: Vec3) -> [[f32; 4]; 4] {
+    let d = (fist - shoulder).normalize();
+    // The palm wraps the handle: the arm's front (+z in the model, -z after the half turn)
+    // faces the way the handle runs.
+    let x = along.cross(d).normalize_or_zero();
+    let z = d.cross(x);
+    let turn = if x == Vec3::ZERO { Quat::from_rotation_arc(Vec3::NEG_Y, d) } else { Quat::from_mat3(&glam::Mat3::from_cols(x, -d, z)) };
+    let p = &def.parts[part];
+    let pivot = Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32, p.pivot.2 as f32);
+    let fist_px = Vec3::new(0.0, -8.5, 0.0);
+    let place = Mat4::from_translation(fist) * Mat4::from_quat(turn) * Mat4::from_rotation_y(PI) * Mat4::from_scale(Vec3::splat(1.0 / 16.0)) * Mat4::from_translation(-fist_px - pivot);
+    (cam * place).to_cols_array_2d()
 }
 
 /// How much smaller the first-person hand is drawn, towards the eye (`hand_camera`).
@@ -793,6 +923,24 @@ mod tests {
     }
 
     #[test]
+    fn drawn_bow_pulls_the_string_back_towards_the_eye() {
+        let shape = crate::bowdraw::Shape::fallback();
+        let a = Animator { hand_height: 1.0, bow_aim: 1.0, ..Default::default() };
+        let full = a.first_person_bow(&shape, 3, Vec3::ZERO, 0.0, 0.0);
+        let half = a.first_person_bow(&shape, 1, Vec3::ZERO, 0.0, 0.0);
+        // The string hand comes back towards the eye the further it is drawn, behind the grip.
+        assert!(full.right.z > half.right.z && half.right.z > full.left.z);
+        // The arrow sits on the string and points away from the eye, past the grip.
+        let arrow = full.arrow.expect("arrow on the string");
+        // (Drawn towards the eye like the other held items: undo that to compare with the fists.)
+        let (nock, tip) = (arrow.transform_point3(ARROW_NOCK) / HAND_NEAR, arrow.transform_point3(-ARROW_NOCK) / HAND_NEAR);
+        assert!(nock.distance(full.right) < 0.05 && tip.z < full.left.z);
+        // At rest nothing is nocked and the right hand holds the grip.
+        let rest = Animator { hand_height: 1.0, ..Default::default() }.first_person_bow(&shape, 0, Vec3::ZERO, 0.0, 0.0);
+        assert!(rest.arrow.is_none() && rest.right.distance(rest.left) < 1e-4);
+    }
+
+    #[test]
     fn sword_rests_lower_right_with_the_fist_on_the_handle() {
         let a = Animator { hand_height: 1.0, ..Default::default() };
         let m = a.first_person_item(HandModel::Tool, Vec3::ZERO, 0.0, 0.0);
@@ -806,3 +954,4 @@ mod tests {
         assert!(tip.y > fist.y && tip.x < fist.x && tip.z < fist.z);
     }
 }
+

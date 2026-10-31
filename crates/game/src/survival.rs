@@ -2765,6 +2765,11 @@ impl Game {
         if self.anim.hands_busy() {
             return None;
         }
+        if let Some((look, shape, stage)) = self.bow_look() {
+            let hold = self.anim.first_person_bow(&shape, stage, eye - cam_block.as_vec3(), self.yaw, self.pitch);
+            let l = self.world.light(eye.floor().as_ivec3());
+            return self.held_gpu_item(hold.bow, 1.0, look, l, Vec3::ZERO);
+        }
         let look = self.held_look()?;
         let l = self.world.light(eye.floor().as_ivec3());
         if self.holding_spear() {
@@ -2785,14 +2790,95 @@ impl Game {
         if self.anim.hands_busy() {
             return None;
         }
-        let look = self.held_look()?;
         let e = eye - cam_block.as_vec3();
+        if let Some((_, shape, stage)) = self.bow_look() {
+            let hold = self.anim.first_person_bow(&shape, stage, e, self.yaw, self.pitch);
+            return Some(self.anim.first_person_bow_arms(def, &hold, e, self.yaw, self.pitch, sky, blk));
+        }
         if self.holding_spear() {
             let cam = glam::Mat4::from_translation(e) * glam::Mat4::from_rotation_y(self.yaw) * glam::Mat4::from_rotation_x(self.pitch);
             return Some(crate::spear::first_person_arms(&self.anim, def, cam, [sky, blk, 0.0, 0.0]));
         }
+        let look = self.held_look()?;
         let place = self.anim.first_person_item(look.model(), e, self.yaw, self.pitch);
         Some(self.anim.first_person_arm_holding(def, place, look.model(), e, self.yaw, self.pitch, sky, blk))
+    }
+
+    /// The held bow: its picture layer, its drawn pictures and its shape (bowdraw.rs).
+    pub(crate) fn held_bow(&self) -> Option<(u16, [u16; 3], crate::bowdraw::Shape)> {
+        let st = self.held_stack()?;
+        let it = self.items.get(st.item);
+        if !crate::bowdraw::is_bow(&it.name) {
+            return None;
+        }
+        let Look::Sprite(l) = it.look else { return None };
+        let base = self.item_base + l;
+        let (stages, shape) = self.bows.get(base)?;
+        Some((base, *stages, *shape))
+    }
+
+    /// The held bow's picture for how far it is drawn, its shape and the draw stage.
+    fn bow_look(&self) -> Option<(HeldLook, crate::bowdraw::Shape, usize)> {
+        let (base, stages, shape) = self.held_bow()?;
+        let stage = crate::bowdraw::stage(self.bow_pull());
+        let layer = if stage == 0 { base } else { stages[stage - 1] };
+        Some((HeldLook { kind: HeldKind::Flat, flat: true, layers: [layer as f32; 3] }, shape, stage))
+    }
+
+    /// The picture of the arrow the bow would shoot (a plain one in creative without any).
+    fn nocked_arrow_look(&self) -> Option<HeldLook> {
+        let item = match self.find_arrow() {
+            Some((usize::MAX, _)) => self.surv.offhand.map(|s| s.item),
+            Some((i, _)) => self.surv.inv.slots[i].map(|s| s.item),
+            None => self.items.id("arrow"),
+        }?;
+        let Look::Sprite(l) = self.items.get(item).look else { return None };
+        Some(HeldLook { kind: HeldKind::Flat, flat: true, layers: [(self.item_base + l) as f32; 3] })
+    }
+
+    /// The arrow on the string of the bow being drawn, in first person.
+    pub(crate) fn held_arrow_instance(&self, eye: Vec3, cam_block: IVec3) -> Option<GpuItem> {
+        if self.anim.hands_busy() {
+            return None;
+        }
+        let (_, shape, stage) = self.bow_look()?;
+        let place = self.anim.first_person_bow(&shape, stage, eye - cam_block.as_vec3(), self.yaw, self.pitch).arrow?;
+        let l = self.world.light(eye.floor().as_ivec3());
+        self.held_gpu_item(place, 1.0, self.nocked_arrow_look()?, l, Vec3::ZERO)
+    }
+
+    /// A held bow in third person, and its arrow while it is drawn. Raised, it stands in the
+    /// left fist with the arrow flying along the arm; at rest it hangs in the right hand,
+    /// tipped forward, the string towards the body.
+    pub(crate) fn bow_third_person(&self, def: &voxel::mob::MobDef, bones: &crate::entity::Bones) -> Option<Vec<GpuItem>> {
+        use crate::player_model::{arrow_on, lay_bow};
+        use glam::Mat4;
+        let (look, shape, stage) = self.bow_look()?;
+        let raised = self.anim.bow_aim > 0.5;
+        let part = if raised { 3 } else { 2 };
+        let p = def.parts.get(part)?;
+        let pivot = Vec3::new(p.pivot.0 as f32, p.pivot.1 as f32, p.pivot.2 as f32);
+        let m = Mat4::from_cols_array_2d(&bones.forearm(part));
+        let flat = |v: glam::Vec2| Vec3::new(v.x, v.y, 0.0);
+        let along = flat(shape.top - shape.bottom);
+        let belly = flat(shape.belly);
+        // The arm hangs along -Y with its front at +Z; raised ahead, -Y points at the target.
+        let q = if raised { lay_bow(along, belly, Vec3::new(0.25, 0.0, 1.0), Vec3::NEG_Y) } else { lay_bow(along, belly, Vec3::new(0.0, 0.55, 1.0), Vec3::new(0.0, -1.0, 0.55)) };
+        const SIZE: f32 = 14.0;
+        let fist = pivot + Vec3::new(0.0, -10.0, 1.0);
+        let place = m * Mat4::from_translation(fist) * Mat4::from_quat(q) * Mat4::from_scale(Vec3::splat(SIZE)) * Mat4::from_translation(-flat(shape.grip));
+        let l = self.world.light((self.body.pos + Vec3::Y).floor().as_ivec3());
+        let mut out: Vec<GpuItem> = self.held_gpu_item(place, 1.0, look, l, Vec3::ZERO).into_iter().collect();
+        if raised && stage > 0 {
+            let nock = place.transform_point3(flat(shape.nock(stage)));
+            let dir = place.transform_vector3(belly).normalize();
+            let face = place.transform_vector3(Vec3::Z).normalize();
+            let length = place.transform_vector3(belly * (shape.grip - shape.nock(3)).dot(shape.belly)).length() + 0.12;
+            if let Some(arrow) = self.nocked_arrow_look() {
+                out.extend(self.held_gpu_item(arrow_on(nock + face * 0.01, dir, face, length), 1.0, arrow, l, Vec3::ZERO));
+            }
+        }
+        Some(out)
     }
 
     /// Skeletons' bows and the arrows in flight or stuck in blocks.

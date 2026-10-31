@@ -481,7 +481,7 @@ impl Game {
 
     /// An arrow from the inventory: tipped arrows first if one is in hand's reach... the first
     /// arrow stack found, like vanilla (offhand, then hotbar, then the rest).
-    fn find_arrow(&self) -> Option<(usize, Option<&'static PotionDef>)> {
+    pub(crate) fn find_arrow(&self) -> Option<(usize, Option<&'static PotionDef>)> {
         let off = self.surv.offhand.map(|s| self.items.get(s.item).name.clone());
         if let Some(n) = off {
             if n == "arrow" || n == "spectral_arrow" || crate::tr3_tools::is_arrow(&n) {
@@ -577,6 +577,9 @@ impl Game {
     /// How far the bow is drawn (0..1), for the arm pose and the zoom.
     pub(crate) fn bow_pull(&self) -> f32 {
         let n = self.held_key();
+        if let Some(k) = test_bow_pull().filter(|_| crate::bowdraw::is_bow(&n)) {
+            return k;
+        }
         if n == "bow" || crate::tr_weapons::bow_power(&n).is_some() {
             (self.prog.draw / 1.0).min(1.0)
         } else if n == "crossbow" {
@@ -925,4 +928,10 @@ impl Game {
         }
         out
     }
+}
+
+/// Test hook: MC_BOW_PULL=0..1 holds a bow drawn that far (for screenshots).
+fn test_bow_pull() -> Option<f32> {
+    static PULL: std::sync::OnceLock<Option<f32>> = std::sync::OnceLock::new();
+    *PULL.get_or_init(|| std::env::var("MC_BOW_PULL").ok().and_then(|v| v.parse().ok()))
 }

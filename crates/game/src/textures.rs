@@ -411,7 +411,7 @@ pub fn load(names: &[String], base: &Path, enabled_packs: &[String], max_res: u3
         let mc_folders: [&str; 2] = if kind == "item" { ["item", "items"] } else { ["block", "blocks"] };
         let mut found: Option<image::RgbaImage> = None;
         // Plant bodies are painted below, once their plant's own picture is loaded.
-        if crate::flora_tex::parse(full).is_some() {
+        if crate::flora_tex::parse(full).is_some() || crate::bowdraw::parse(full).is_some() {
             images.push(None);
             continue;
         }
@@ -492,6 +492,11 @@ pub fn load(names: &[String], base: &Path, enabled_packs: &[String], max_res: u3
         if let Some((tex, part)) = crate::flora_tex::parse(full) {
             let sprite = names.iter().position(|n| n == tex).and_then(|j| images[j].as_ref());
             images[i] = Some(crate::flora_tex::generate(part, sprite, tex));
+        }
+        // Bows drawn back, painted from the bow's own picture.
+        if let Some((tex, stage)) = crate::bowdraw::parse(full) {
+            let sprite = names.iter().position(|n| n == tex).and_then(|j| images[j].as_ref());
+            images[i] = Some(crate::bowdraw::generate(sprite, stage));
         }
     }
 
