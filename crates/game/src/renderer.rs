@@ -70,6 +70,10 @@ pub struct Globals {
     /// Red glow of lit redstone (redstone_fx.rs): xyz relative to the camera's block, w: glow
     /// 0..1 (0 = unused).
     pub red_lights: [[f32; 4]; 8],
+    /// Coloured glow of gem blocks (gem_glow.rs): xyz relative to the camera's block, w: the
+    /// block's light level 0..1 (0 = unused); their colours in `gem_colors`.
+    pub gem_lights: [[f32; 4]; 12],
+    pub gem_colors: [[f32; 4]; 12],
 }
 
 #[repr(C)]

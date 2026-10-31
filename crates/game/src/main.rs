@@ -128,6 +128,7 @@ mod torch;
 mod summons;
 mod fire_fx;
 mod redstone_fx;
+mod gem_glow;
 mod item_render;
 mod juice;
 mod menus;
@@ -803,6 +804,8 @@ struct Game {
     fire_fx: fire_fx::FireFx,
     /// Red glow and sparks off lit redstone (redstone_fx.rs).
     redstone_fx: redstone_fx::RedstoneFx,
+    /// Coloured light of gem blocks (gem_glow.rs).
+    gem_glow: gem_glow::GemGlow,
     torch_fx: f32,
     torch_sparks: u32,
     /// Screenshots: the held torch's fire has been lit up once already.
@@ -1242,6 +1245,7 @@ impl Game {
             musicians: Default::default(),
             fire_fx: Default::default(),
             redstone_fx: Default::default(),
+            gem_glow: Default::default(),
             torch_fx: 0.0,
             torch_sparks: 0,
             torch_lit: false,
@@ -1968,6 +1972,7 @@ impl Game {
                 self.update_life(if self.args.screenshot.is_some() { 0.0 } else { dt });
                 self.update_fire_fx(dt, self.args.screenshot.is_some());
                 self.update_redstone_fx(dt, self.args.screenshot.is_some());
+                self.update_gem_glow(dt);
                 self.update_musicians(dt);
                 self.update_immersion(if self.args.screenshot.is_some() { 0.0 } else { dt });
             }
@@ -3866,6 +3871,29 @@ impl Game {
         let dir = if f.x.abs() > f.z.abs() { IVec3::new(f.x.signum() as i32, 0, 0) } else { IVec3::new(0, 0, f.z.signum() as i32) };
         let side = IVec3::new(-dir.z, 0, dir.x);
         let g = |n: &str| self.reg.id_or_air(n);
+        // MC_GEMS=1: every gem block on a cleared stone floor, two apart, and nothing else, for
+        // their coloured light (night: --time 18000 --look 0,-30).
+        if std::env::var("MC_GEMS").is_ok() {
+            let gems = ["topaz_block", "ruby_block", "amethyst_block", "sapphire_block", "emerald_block", "diamond_block", "lapis_block", "zanite_block"];
+            let y = p.y - 1;
+            for a in -16..=16 {
+                for b in -2..=14 {
+                    let q = p + side * a + dir * b;
+                    self.world.set_block(IVec3::new(q.x, y, q.z), g("smooth_stone"));
+                    for h in 1..8 {
+                        self.world.set_block(IVec3::new(q.x, y + h, q.z), AIR);
+                    }
+                }
+            }
+            // MC_GEMS=row: side by side, close up.
+            let row = std::env::var("MC_GEMS").is_ok_and(|v| v == "row");
+            for (i, n) in gems.iter().enumerate() {
+                let (b, a) = if row { (3, i as i32 - 4) } else { (if i % 2 == 0 { 6 } else { 9 }, (i as i32 - 4) * 2 + 1) };
+                let q = p + dir * b + side * a;
+                self.world.set_block(IVec3::new(q.x, y + 1, q.z), g(n));
+            }
+            return;
+        }
         let (planks, log, glass, cobble, torch, glow) = (g("oak_planks"), g("oak_log"), g("glass"), g("cobblestone"), g("torch"), g("glowstone"));
         let origin = p + dir * 6;
         let ground = self.world.surface_y(origin.x, origin.z).unwrap_or(p.y);
@@ -4895,6 +4923,7 @@ impl Game {
         self.lod.update(&self.renderer.device, eye, lod_inner, if extra > 0.0 { view_end } else { 0.0 }, self.settings.lod_detail as usize);
         let mut effects = self.terrain_effects();
         effects[3] = lod_inner;
+        let gem = self.gem_lights(block);
         let mut g = Globals {
             cam_pos: [eye.x - block.x as f32, eye.y - block.y as f32, eye.z - block.z as f32, (self.fx_time % 3600.0) as f32],
             cam_world: [eye.x, eye.y, eye.z, CLOUD_HEIGHT],
@@ -4910,6 +4939,8 @@ impl Game {
             weather: [self.weather.rain, self.weather.flash, if nether { 1.0 } else if end { 2.0 } else { self.mod_dim_uniform() }, self.night_vision()],
             dyn_lights: self.dynamic_lights(eye, block),
             red_lights: self.red_lights(block),
+            gem_lights: gem.0,
+            gem_colors: gem.1,
             extra: [self.settings.layered_clouds as u8 as f32, self.settings.emissive_textures as u8 as f32, 0.0, self.season_uniform()],
             pom: self.parallax_uniform(),
             clouds: [self.cloud_wind[0], self.cloud_wind[1], self.cloud_drift, (self.fx_time % 100_000.0) as f32],

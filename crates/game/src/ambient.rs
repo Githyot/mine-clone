@@ -209,9 +209,10 @@ impl Game {
                 self.particles.glow(at, v, glow, [1.0, 0.6, 0.2], 0.03, 0.9);
                 continue;
             }
-            if roll < 0.03 && (b.name == "amethyst_block" || b.name == "budding_amethyst" || (b.shape == Shape::Cube && self.reg.light_of(id) >= 14 && fluid == 0)) && above == AIR {
-                // A glint over glowing blocks and amethyst.
-                let tint = if b.name.contains("amethyst") { [0.8, 0.55, 1.0] } else { [1.0, 0.92, 0.6] };
+            let gem = crate::gem_glow::gem_color(&b.name);
+            if roll < 0.03 && (gem.is_some() || (b.shape == Shape::Cube && self.reg.light_of(id) >= 14 && fluid == 0)) && above == AIR {
+                // A glint over glowing blocks and gem blocks, in the gem's colour.
+                let tint = gem.map_or([1.0, 0.92, 0.6], |c| [0.35 + c[0] * 0.65, 0.35 + c[1] * 0.65, 0.35 + c[2] * 0.65]);
                 self.particles.glow(p.as_vec3() + Vec3::new(jit.x, 1.05, jit.z), Vec3::new(0.0, 0.25, 0.0), glow, tint, 0.025, 1.2);
                 continue;
             }
