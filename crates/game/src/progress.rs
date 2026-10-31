@@ -1142,7 +1142,9 @@ impl Game {
     /// Top left: the chapter, its next goals, where the followed one is and what it takes.
     fn draw_goal_list(&mut self, current: Option<usize>, ready: bool) {
         let Some(c) = current.or(self.progress.reward_ready()) else { return };
-        let s = self.ui.scale;
+        // A size under the rest of the interface on big scales: at full size the list took half
+        // the width of a 1280×720 screen.
+        let s = if self.ui.scale >= 3.0 { (self.ui.scale * 2.0 / 3.0).round() } else { self.ui.scale };
         // The details under the followed goal are a size smaller.
         let small = (s - 1.0).max(1.0);
         let max_w = 200.0 * s;

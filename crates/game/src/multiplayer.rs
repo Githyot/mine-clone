@@ -247,6 +247,8 @@ struct GuestInfo {
     containers: HashMap<IVec3, u64>,
     /// Voice chat: the group it listens to (0 = none) and whether its voice is on.
     voice: (u8, bool),
+    /// Shots were in the last picture sent to it (so the empty one that ends them goes too).
+    shots_out: bool,
 }
 
 /// A dimension the host is not in, kept on disk for guests who are.
@@ -310,6 +312,8 @@ struct GuestState {
     own_difficulty: u8,
     /// The host lets us use the commands that change things.
     op: bool,
+    /// Our shots were in the last picture sent to the host.
+    shots_out: bool,
 }
 
 fn hash_text(s: &str) -> u64 {
@@ -750,6 +754,12 @@ impl Game {
     }
 
     /// Our own player id in the game we are in.
+    /// Host: each welcomed guest's id, dimension and position.
+    pub(crate) fn net_guest_spots(&self) -> Vec<(u32, u8, Vec3)> {
+        let Mode::Host(h) = &self.net.mode else { return Vec::new() };
+        h.guests.iter().filter(|(_, g)| g.welcomed).filter_map(|(id, g)| g.state.as_ref().map(|s| (*id, s.dim, Vec3::from(s.pos)))).collect()
+    }
+
     pub(crate) fn net_my_id(&self) -> u32 {
         match &self.net.mode {
             Mode::Guest(g) => g.my_id,
@@ -949,9 +959,12 @@ impl Game {
                     log::info!("guest {id} connected from {addr}");
                     self.host()
                         .guests
-                        .insert(id, GuestInfo { name: String::new(), welcomed: false, state: None, sent: HashSet::new(), view: 8, containers: HashMap::new(), voice: (0, false) });
+                        .insert(id, GuestInfo { name: String::new(), welcomed: false, state: None, sent: HashSet::new(), view: 8, containers: HashMap::new(), voice: (0, false), shots_out: false });
                 }
                 HostEvent::Left(id, why) => {
+                    self.net_guest_shots.remove(&id);
+                    self.take_remote_shots(id, &[]);
+                    self.host_guest_drops_gone(id);
                     if let Some(g) = self.host().guests.remove(&id) {
                         if g.welcomed {
                             self.net.remotes.remove(&id);
@@ -1201,6 +1214,16 @@ impl Game {
                     g.voice = (group.min(9), on);
                 }
             }
+            ToHost::Shots(list) => {
+                // Only drawn here when the guest is in our dimension; relayed to the others.
+                let here = self.host_ref().guests.get(&id).and_then(|g| g.state.as_ref()).is_some_and(|s| s.dim == self.dim.as_u8());
+                let list: Vec<net::ShotFx> = list.into_iter().take(256).collect();
+                self.take_remote_shots(id, if here { &list } else { &[] });
+                self.net_guest_shots.insert(id, list);
+            }
+            ToHost::Drops(list) => self.host_got_drops(id, list),
+            ToHost::Take { owner, id: item } => self.host_got_take(id, owner, item),
+            ToHost::Give { to, stack } => self.host_got_give(to, stack),
         }
     }
 
@@ -1318,6 +1341,37 @@ impl Game {
                 })
                 .collect();
             h.host.send(*id, &ToGuest::Mobs { dim: my_dim, list: mobs });
+        }
+        self.host_send_shots();
+    }
+
+    /// What is in flight near each guest: our world's and our own shots, and the other
+    /// guests' (in the same dimension), as pictures.
+    fn host_send_shots(&mut self) {
+        let my_dim = self.dim.as_u8();
+        let ours = self.shots_for_net(true);
+        let ids: Vec<ConnId> = self.host_ref().guests.keys().copied().collect();
+        for id in ids {
+            let Some(g) = self.host_ref().guests.get(&id) else { continue };
+            let Some(s) = g.state.as_ref().filter(|_| g.welcomed) else { continue };
+            let (dim, at) = (s.dim, Vec3::from(s.pos));
+            let near = |f: &&net::ShotFx| (Vec3::from(f.pos) - at).length() < MOB_RANGE;
+            let mut list: Vec<net::ShotFx> = if dim == my_dim { ours.iter().filter(near).copied().collect() } else { Vec::new() };
+            for (other, theirs) in &self.net_guest_shots {
+                let same = self.host_ref().guests.get(other).and_then(|o| o.state.as_ref()).is_some_and(|o| o.dim == dim);
+                if *other != id && same {
+                    list.extend(theirs.iter().filter(near).copied());
+                }
+            }
+            list.truncate(512);
+            let was = g.shots_out;
+            if list.is_empty() && !was {
+                continue;
+            }
+            if let Some(g) = self.host().guests.get_mut(&id) {
+                g.shots_out = !list.is_empty();
+            }
+            self.host_ref().host.send(id, &ToGuest::Shots { dim, list });
         }
     }
 
@@ -1613,6 +1667,7 @@ impl Game {
             addr,
             own_difficulty: self.settings.difficulty,
             op: false,
+            shots_out: false,
         }));
     }
 
@@ -1749,6 +1804,13 @@ impl Game {
             g.send_t = 0.0;
             let s = self.my_state();
             self.guest_ref().guest.send(&ToHost::State(s));
+            // Our shots for the others to see (all of them when we run this dimension alone).
+            let world = !self.guest_ref().host_mobs;
+            let shots = self.shots_for_net(world);
+            if !shots.is_empty() || self.guest_ref().shots_out {
+                self.guest().shots_out = !shots.is_empty();
+                self.guest_ref().guest.send(&ToHost::Shots(shots));
+            }
         }
         if self.guest_ref().save_t >= 20.0 {
             self.guest().save_t = 0.0;
@@ -1920,6 +1982,14 @@ impl Game {
                     self.sfx(Sfx::Explode);
                 }
             }
+            ToGuest::Shots { dim, list } => {
+                let list = if dim == self.dim.as_u8() { list } else { Vec::new() };
+                self.take_remote_shots(HOST_ID, &list);
+            }
+            ToGuest::Drops { dim, list } => self.guest_got_drops(dim, list),
+            ToGuest::Take { by, id } => self.hand_over(by, id),
+            ToGuest::Give { stack } => self.receive_net_stack(&stack),
+            ToGuest::Events(e) => self.net_events.from_host = Some(e),
             ToGuest::SkillShare { skill, xp } => {
                 if let Some(&k) = crate::skills::ALL.get(skill as usize) {
                     self.skill_gain(k, xp.min(500));

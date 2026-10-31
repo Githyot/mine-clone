@@ -19,7 +19,11 @@ mod options;
 mod sentries;
 mod shield;
 mod vanity;
+mod net_fx;
+mod net_drops;
+mod net_events;
 mod wings;
+mod worlds;
 mod anim;
 mod deep;
 mod keybinds;
@@ -729,6 +733,13 @@ struct Game {
     /// The Terraria side (Etapa 5): accessories, glyph spells, hard mode and its events.
     t5: terraria::Terraria,
     ne: nether_end::NetherEnd,
+    /// Other players' and the host's shots in flight, as pictures (net_fx.rs).
+    net_shots: Vec<net_fx::RemoteShot>,
+    net_drops: Vec<net_drops::RemoteDrop>,
+    net_drop_state: net_drops::NetDrops,
+    net_events: net_events::NetEvents,
+    /// Host: each guest's own shots as it last sent them (relayed to the other guests).
+    net_guest_shots: std::collections::HashMap<u32, Vec<net::ShotFx>>,
     town: npcs::Town,
     progress: progress::Progress,
     raid: raids::Raid,
@@ -1198,6 +1209,11 @@ impl Game {
             boss: bosses::BossState::new(bosses_beaten),
             t5: terraria::Terraria::default(),
             ne: nether_end::NetherEnd::default(),
+            net_shots: Vec::new(),
+            net_drops: Vec::new(),
+            net_drop_state: Default::default(),
+            net_events: Default::default(),
+            net_guest_shots: Default::default(),
             town: npcs::Town::new(town_npcs),
             progress: progress::Progress::new(),
             raid: raids::Raid::default(),
@@ -1417,6 +1433,11 @@ impl Game {
             Ok("paused") => game.set_screen(Screen::Paused),
             Ok("keys") => game.set_screen(Screen::Keys),
             Ok("voice") => game.set_screen(Screen::Voice),
+            Ok("worlds") => {
+                game.worlds = menus::list_worlds(&game.base);
+                game.world_sel = (!game.worlds.is_empty()).then_some(0);
+                game.set_screen(Screen::Worlds);
+            }
             _ => {}
         }
         game
@@ -1933,6 +1954,9 @@ impl Game {
             self.plugins_tick(dt);
         }
         self.net_update(dt);
+        self.update_remote_shots(dt);
+        self.update_net_drops(dt);
+        self.update_net_events(dt);
         self.voice_update(dt);
         self.prof.mark("rede e voz");
         // A guest in the host's dimension gets the world's own changes from the host.
@@ -5267,7 +5291,7 @@ impl Game {
             overlay.extend(self.shield_instances(&self.shields_worn(), &b, Game::arm_pivots(def), 0.0));
             overlay.push((pd, b));
             let back = center + f * (world_h * 1.3) - block.as_vec3();
-            figure_backdrop = Some(item_render::GpuItem { pos: [back.x, back.y, back.z, world_h * 1.22 * (d + world_h * 1.3) / d], info: [0.0, 0.0, 0.0, 0.0], layers: [0.0; 4], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
+            figure_backdrop = Some(item_render::GpuItem { pos: [back.x, back.y, back.z, world_h * 1.06 * (d + world_h * 1.3) / d], info: [0.0, 0.0, 0.0, 0.0], layers: [0.0; 4], rot: [0.0; 4], ..bytemuck::Zeroable::zeroed() });
         }
         if let Some(pd) = self.mobs.reg.id("player").filter(|_| playing_view) {
             let def = &self.mobs.reg.defs[pd];

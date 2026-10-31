@@ -393,7 +393,7 @@ impl Game {
         self.ui.rect(px - 2.0 * s, py - 10.0 * s, 24.0 * s, ph + 10.0 * s, [198, 198, 198, 255]);
         self.ui.frame(px - 2.0 * s, py - 10.0 * s, 24.0 * s, ph + 10.0 * s, s, [255, 255, 255, 255]);
         self.draw_loadout_buttons(px - 0.5 * s, py - 8.5 * s, mouse);
-        self.ui.label(px - 1.0 * s, py + 2.0 * s, "Ac.", [64, 64, 64, 255], s);
+        self.ui.label(px + 1.0 * s, py + 1.5 * s, "Ac.", [64, 64, 64, 255], (s * 2.0 / 3.0).round().max(1.0));
         if self.t5.rpg.sheet {
             self.draw_stats_sheet(px - 4.0 * s, py - 10.0 * s);
         } else {

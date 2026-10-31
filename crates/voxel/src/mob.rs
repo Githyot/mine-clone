@@ -409,6 +409,9 @@ pub struct Mob {
     pub walk_speed: f32,
     pub age: f32,
     pub dead_age: f32,
+    /// Seconds a monster has spent far from every player (game/src/mobs.rs despawns it after a
+    /// while, like Java's random despawn past 32 blocks).
+    pub far_t: f32,
     /// A per-mob offset for idle animations, so a herd doesn't move in step.
     pub phase: f32,
     wander: Option<Vec3>,
@@ -545,6 +548,7 @@ impl Mob {
             walk_speed: 0.0,
             age: 0.0,
             dead_age: 0.0,
+            far_t: 0.0,
             phase: rng.f32() * std::f32::consts::TAU,
             wander: None,
             idle: rng.f32() * 3.0,

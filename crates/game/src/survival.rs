@@ -24,7 +24,7 @@ pub const INV_SIZE: usize = 36;
 const CHEST_SIZE: usize = 27;
 const SMELT_TIME: f32 = 10.0;
 /// Seconds before a dropped item can be picked up; items the player throws wait longer.
-const PICKUP_DELAY: f32 = 0.5;
+pub(crate) const PICKUP_DELAY: f32 = 0.5;
 const THROWN_DELAY: f32 = 2.0;
 const DESPAWN: f32 = 300.0;
 
@@ -35,6 +35,8 @@ pub struct Dropped {
     pub spin: f32,
     /// Fixed turn when lying on the ground.
     pub spin_rest: f32,
+    /// Its number for the other players (net_drops.rs).
+    pub net_id: u32,
 }
 
 /// What `drop_instances` needs of a drop.
@@ -149,6 +151,8 @@ pub struct Survival {
     pub side: Side,
     /// R was pressed over an item: show its recipes.
     pub want_recipe: bool,
+    /// The next number a drop gets (net_drops.rs).
+    pub(crate) next_drop: u32,
     /// Screen box where the 3D player figure goes this frame (inventory open).
     pub figure_box: Option<(f32, f32, f32, f32)>,
     /// The slot under the mouse last frame (for the wheel).
@@ -216,6 +220,7 @@ impl Survival {
             side: Side::Closed,
             want_recipe: false,
             figure_box: None,
+            next_drop: 1,
             hover_slot: None,
             opened_at: None,
             juice: Default::default(),
@@ -650,7 +655,9 @@ impl Game {
         body.vel = vel;
         body.no_jump = true;
         let spin = self.surv.rng.f32() * 6.28;
-        self.surv.drops.push(Dropped { stack, body, age: 0.0, spin, spin_rest: spin });
+        let net_id = self.surv.next_drop;
+        self.surv.next_drop = self.surv.next_drop.wrapping_add(1).max(1);
+        self.surv.drops.push(Dropped { stack, body, age: 0.0, spin, spin_rest: spin, net_id });
     }
 
     pub(crate) fn pop_drop(&mut self, center: Vec3, stack: ItemStack) {
@@ -1748,6 +1755,9 @@ impl Game {
             let (lying, bob) = self.drop_lift(d);
             (d.body.pos, d.stack, lying, bob, d.spin, d.spin_rest)
         });
+        // The other players' drops (net_drops.rs), as they last told us.
+        let spin = self.now * 1.2;
+        let all = all.chain(self.net_drops.iter().filter(|d| !d.asked).map(|d| (d.pos, d.stack, false, 0.12 + (self.now * 2.0 + d.id as f32).sin() * 0.05, spin, spin)));
         for (pos, stack, lying, bob, spin, spin_rest) in all.chain(shown.into_iter().map(|(p, st, yaw)| (p, st, true, 0.0, yaw, yaw))) {
             let d = Shown { stack, spin, spin_rest };
             let it = self.items.get(d.stack.item);
@@ -2817,6 +2827,7 @@ impl Game {
         }
         out.extend(self.bobber_instance(cam_block));
         out.extend(self.shot_instances(cam_block));
+        out.extend(self.remote_shot_instances(cam_block));
         out.extend(self.tr_weapon_instances(cam_block));
         out.extend(self.golf_instances(cam_block));
         out.extend(self.tr_wing_instances(cam_block));
