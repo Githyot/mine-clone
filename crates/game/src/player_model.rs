@@ -93,8 +93,10 @@ pub struct Animator {
 /// Which classic item model places what is held in first person.
 #[derive(Clone, Copy, PartialEq)]
 pub enum HandModel {
-    /// "handheld": tools and weapons, gripped at the handle.
+    /// "handheld": weapons, gripped at the handle.
     Tool,
+    /// "handheld" digging tools: the same grip, with the head up and facing the player.
+    Digger,
     /// "generated": flat pictures.
     Flat,
     Block,
@@ -727,6 +729,13 @@ fn hand_rest(model: HandModel) -> (Mat4, Vec3, Vec3) {
             let q = lay(Vec3::new(1.0, 1.0, 0.0).normalize(), Vec3::new(-0.25, 0.8, -0.55), Vec3::new(-1.0, 0.15, 0.3));
             (Mat4::from_quat(q) * Mat4::from_scale(Vec3::splat(0.8)), Vec3::new(-0.3, -0.3, 0.0), Vec3::new(0.62, -0.52, -1.05))
         }
+        // A pickaxe, axe, shovel or hoe: the handle rises a little to the right with the head
+        // across the top, its face towards the eye, like the classic hand, not pointing ahead
+        // like a blade.
+        HandModel::Digger => {
+            let q = lay(Vec3::new(1.0, 1.0, 0.0).normalize(), Vec3::new(0.3, 0.9, 0.12), Vec3::new(-0.4, 0.0, 0.9));
+            (Mat4::from_quat(q) * Mat4::from_scale(Vec3::splat(0.8)), Vec3::new(-0.3, -0.3, 0.0), Vec3::new(0.5, -0.56, -1.05))
+        }
         // A picture stands up in the hand, turned a little towards the middle.
         HandModel::Flat => {
             let q = lay(Vec3::Y, Vec3::new(-0.1, 1.0, -0.15), Vec3::new(-0.55, 0.15, 0.8));
@@ -804,5 +813,18 @@ mod tests {
         // The tip is above, left of and further away than the handle.
         let tip = m.transform_point3(Vec3::new(0.45, 0.45, 0.0));
         assert!(tip.y > fist.y && tip.x < fist.x && tip.z < fist.z);
+    }
+
+    #[test]
+    fn pickaxe_rests_head_up_facing_the_eye() {
+        let a = Animator { hand_height: 1.0, ..Default::default() };
+        let m = a.first_person_item(HandModel::Digger, Vec3::ZERO, 0.0, 0.0);
+        let (_, grip, _) = hand_rest(HandModel::Digger);
+        let fist = m.transform_point3(grip);
+        // The head is above the fist, not ahead of it, and its face turns to the eye.
+        let head = m.transform_point3(Vec3::new(0.45, 0.45, 0.0));
+        let up = head - fist;
+        assert!(up.y > 0.0 && up.y > -up.z * 3.0);
+        assert!(m.transform_vector3(Vec3::Z).normalize().z > 0.7);
     }
 }
