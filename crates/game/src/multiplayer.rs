@@ -2110,6 +2110,7 @@ impl Game {
                     sleeping: s.has(flags::SLEEPING).then(|| self.bed_under(r.shown)).flatten().map(crate::beds::body_yaw),
                     holding: !s.held.is_empty(),
                     torch: crate::torch::index(&s.held).is_some(),
+                    spear: crate::spear::is_spear(&s.held),
                     ..Default::default()
                 };
                 let shield = crate::shield::net_unpack(s.shield);
@@ -2156,7 +2157,11 @@ impl Game {
                 let sel = self.selected;
                 let mine = self.surv.inv.slots[sel];
                 self.surv.inv.slots[sel] = Some(ItemStack::new(it, 1));
-                held.extend(self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32)));
+                held.extend(if self.net.remotes[&id].anim.spear_hold(&pose) {
+                    self.held_spear_third_person(&bones, swing, pose.pos + Vec3::Y)
+                } else {
+                    self.held_item_third_person(bones.forearm(2), Vec3::new(pv.0 as f32, pv.1 as f32, pv.2 as f32))
+                });
                 self.surv.inv.slots[sel] = mine;
             }
         }

@@ -388,3 +388,7 @@ for _k, _d in toolart.KINDS.items():
     for _m in _d:
         REGISTRY[f"{_m}_{_k}"] = lambda m=_m, k=_k: toolart.tool(k, m)
 REGISTRY.update(toolart.EXTRA_ITEMS)
+
+# Spears: a long pole with a head of its own per material (arms.py, HP 2026-10-31).
+for _m in arms.SPEARS:
+    REGISTRY[f"{_m}_spear"] = lambda m=_m: arms.spear(m)
