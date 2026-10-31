@@ -16,8 +16,8 @@
     (name: "dark_prismarine", display_name: Some("Prismarinho Escuro"), hardness: 1.5, tool: Some(Pickaxe), tier: 1, textures: (all: Some("dark_prismarine"))),
     (name: "sea_lantern", display_name: Some("Lanterna do Mar"), hardness: 0.3, light: 15, drops: Some([(item: "prismarine_crystals", min: 2, max: 3)]), textures: (all: Some("sea_lantern"))),
     // Metal blocks for beacons
-    (name: "emerald_block", display_name: Some("Bloco de Esmeralda"), hardness: 5.0, tool: Some(Pickaxe), tier: 3, textures: (all: Some("emerald_block"))),
-    (name: "lapis_block", display_name: Some("Bloco de Lápis-lazúli"), hardness: 3.0, tool: Some(Pickaxe), tier: 2, textures: (all: Some("lapis_block"))),
+    (name: "emerald_block", display_name: Some("Bloco de Esmeralda"), light: 9, hardness: 5.0, tool: Some(Pickaxe), tier: 3, textures: (all: Some("emerald_block"))),
+    (name: "lapis_block", display_name: Some("Bloco de Lápis-lazúli"), light: 9, hardness: 3.0, tool: Some(Pickaxe), tier: 2, textures: (all: Some("lapis_block"))),
     (name: "frosted_ice", display_name: Some("Gelo Fosco"), hardness: 0.5, transparency: Translucent, in_inventory: false, drops: Some([]), textures: (all: Some("frosted_ice"))),
     // Lava under frost magic: a crust that cracks back into lava after a while (elements.rs).
     (name: "lava_crust", display_name: Some("Crosta de Lava"), hardness: 1.0, light: 4, in_inventory: false, drops: Some([]), tool: Some(Pickaxe), textures: (all: Some("lava_crust"))),

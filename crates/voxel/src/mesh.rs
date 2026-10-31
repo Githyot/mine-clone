@@ -34,11 +34,11 @@ pub const FLAG_CTM_V1: u32 = 64;
 /// glowing pixels (Continuity's emissive textures) that the shader draws at full brightness.
 pub const LAYER_EMISSIVE: u32 = 2048;
 
-/// Blocks whose textures have glowing parts: gem and precious ores, amethyst, crying obsidian,
+/// Blocks whose textures have glowing parts: gem and precious ores, gem blocks, crying obsidian,
 /// the lit redstone torch's head.
 pub fn is_emissive(name: &str) -> bool {
     const GLOW: [&str; 14] = ["diamond", "emerald", "redstone", "lapis", "gold", "quartz", "ruby", "sapphire", "topaz", "platinum", "ambrosium", "zanite", "gravitite", "resonarium"];
-    (name.ends_with("_ore") && GLOW.iter().any(|g| name.contains(g))) || matches!(name, "amethyst_block" | "budding_amethyst" | "crying_obsidian" | "ancient_debris" | "redstone_torch")
+    (name.ends_with("_ore") && GLOW.iter().any(|g| name.contains(g))) || matches!(name, "amethyst_block" | "budding_amethyst" | "ruby_block" | "sapphire_block" | "topaz_block" | "emerald_block" | "diamond_block" | "lapis_block" | "zanite_block" | "crying_obsidian" | "ancient_debris" | "redstone_torch")
 }
 
 /// How a block's texture joins its neighbours (Continuity's connected textures).

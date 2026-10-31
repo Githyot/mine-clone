@@ -48,6 +48,9 @@ struct Globals {
     anim: vec4<f32>,
     // Red glow of lit redstone: xyz like hand_light, w: glow 0..1 (0 = unused).
     red_lights: array<vec4<f32>, 8>,
+    // Gem blocks' glow: xyz like hand_light, w: light level 0..1 (0 = unused); colours apart.
+    gem_lights: array<vec4<f32>, 12>,
+    gem_colors: array<vec4<f32>, 12>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
