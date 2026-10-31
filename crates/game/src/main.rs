@@ -17,6 +17,7 @@ mod sentries;
 mod shield;
 mod vanity;
 mod wings;
+mod worlds;
 mod anim;
 mod deep;
 mod keybinds;
@@ -1410,6 +1411,11 @@ impl Game {
             Ok("paused") => game.set_screen(Screen::Paused),
             Ok("keys") => game.set_screen(Screen::Keys),
             Ok("voice") => game.set_screen(Screen::Voice),
+            Ok("worlds") => {
+                game.worlds = menus::list_worlds(&game.base);
+                game.world_sel = (!game.worlds.is_empty()).then_some(0);
+                game.set_screen(Screen::Worlds);
+            }
             _ => {}
         }
         game
