@@ -131,7 +131,7 @@ fn analyse(px: &[u8], w: usize) -> Option<Found> {
     let pale = |x: usize, y: usize| {
         let c = at(x, y);
         let (hi, lo) = (c[0].max(c[1]).max(c[2]) as i32, c[0].min(c[1]).min(c[2]) as i32);
-        c[3] > 127 && hi - lo < 50 && (c[0] as i32 + c[1] as i32 + c[2] as i32) > 3 * 135
+        c[3] > 127 && hi - lo < 64 && (c[0] as i32 + c[1] as i32 + c[2] as i32) > 3 * 135
     };
     // The string is the diagonal line holding the most pale pixels.
     let mut hist = vec![0usize; 2 * w];
@@ -411,7 +411,7 @@ mod tests {
 
     #[test]
     fn finds_the_string_of_our_bows() {
-        for name in ["bow", "copper_bow", "umbral_bow", "silver_bow", "lumite_bow"] {
+        for name in ["bow", "copper_bow", "silver_bow", "platinum_bow", "umbral_bow", "sanguinite_bow", "magmarite_bow", "cobalt_bow", "mythril_bow", "adamantite_bow", "radiant_bow", "verdite_bow", "lumite_bow"] {
             let Some(img) = load(name) else { continue };
             let f = analyse(img.as_raw(), img.width() as usize).unwrap_or_else(|| panic!("{name}: no string"));
             let s = f.shape();

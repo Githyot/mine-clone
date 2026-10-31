@@ -1875,24 +1875,8 @@ DYNAMITE = [
     "................",
 ]
 
-BOW = [
-    "................",
-    ".........1111...",
-    "........1a..21..",
-    ".......1a....21.",
-    "......1a......1.",
-    ".....1a.......1.",
-    "....1a........21",
-    "...1a.........21",
-    "..1a..........21",
-    ".1a...........21",
-    ".1............1.",
-    ".1...........21.",
-    ".12.........21..",
-    "..12.......21...",
-    "...12111121.....",
-    "....1111........",
-]
+# Ore bows: one design per metal, all shaped like the plain bow (tools/gen_bow_shapes.py).
+from gen_bow_shapes import BOW_SHAPES  # noqa: E402
 
 SENTRY = [
     "................",
@@ -1977,11 +1961,11 @@ def items_l4():
         ("bomb", "Bomba", icon2(BOMB, pal("#0e0e14", "#2a2a36", "#5a5a6e", "#9a9ab0"), pal("#5a3a1a", "#f8a830")), "max_stack: Some(16)"),
         ("grenade", "Granada", icon2(GRENADE, pal("#1a2a14", "#2e4a24", "#4a6a3a", "#7a9a5a"), STEEL), "max_stack: Some(16)"),
         ("dynamite", "Dinamite", icon2(DYNAMITE, pal("#5a0e0e", "#a01c1c", "#d83a2a", "#f88a6a"), pal("#5a3a1a", "#f8a830", "#e8dcc0", "#e8dcc0")), "max_stack: Some(16)"),
-        ("copper_bow", "Arco de Cobre", icon2(BOW, copper, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 300))"),
-        ("silver_bow", "Arco de Prata", icon2(BOW, silver, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 450))"),
-        ("platinum_bow", "Arco de Platina", icon2(BOW, plat, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 600))"),
-        ("umbral_bow", "Arco de Sombraço", icon2(BOW, umbral, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 800))"),
-        ("sanguinite_bow", "Arco de Sanguinita", icon2(BOW, sang, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 800))"),
+        ("copper_bow", "Arco de Cobre", icon2(BOW_SHAPES["copper"], copper, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 300))"),
+        ("silver_bow", "Arco de Prata", icon2(BOW_SHAPES["silver"], silver, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 450))"),
+        ("platinum_bow", "Arco de Platina", icon2(BOW_SHAPES["platinum"], plat, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 600))"),
+        ("umbral_bow", "Arco de Sombraço", icon2(BOW_SHAPES["umbral"], umbral, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 800))"),
+        ("sanguinite_bow", "Arco de Sanguinita", icon2(BOW_SHAPES["sanguinite"], sang, STRING), "max_stack: Some(1), tool: Some((kind: Sword, tier: 1, speed: 1.0, damage: 1.0, durability: 800))"),
         ("ballista_rod", "Cajado da Balista", icon2(SENTRY, pal("#3a2a14", "#7a5a2e", "#c4a060", "#f0d890", "#fff8e0"), WOOD), stack1),
         ("enchanted_sword", "Espada Encantada", gi.tool("enchanted", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 2, speed: 8.0, damage: 4.5, durability: 900))"),
         ("star_saber", "Sabre Estelar", gi.tool("star", "sword"), "max_stack: Some(1), tool: Some((kind: Sword, tier: 3, speed: 8.0, damage: 4.5, durability: 1200))"),
@@ -2001,7 +1985,7 @@ def items_l4():
         ("verdite", "de Verdita", m5["verdite"], 2000),
         ("lumite", "de Lumita", m5["lumite"], 2400),
     ]:
-        out.append((f"{name}_bow", f"Arco {disp}", icon2(BOW, col, STRING), bow.format(dur)))
+        out.append((f"{name}_bow", f"Arco {disp}", icon2(BOW_SHAPES[name], col, STRING), bow.format(dur)))
     out += [
         ("adamantite_rifle", "Fuzil de Adamantita", icon2(MUSKET, m5["adamantite"], STEEL), stack1),
         ("poison_knife", "Faca Envenenada", icon2(KNIFE, jungle, WOOD), ""),
