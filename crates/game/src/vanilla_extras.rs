@@ -348,7 +348,7 @@ impl Game {
                 self.world.set_block(p, id);
                 if let Some(b) = self.items.id("sweet_berries") {
                     let n = if ripe { 2 + self.surv.rng.below(2) } else { 1 + self.surv.rng.below(2) };
-                    self.pop_drop(p.as_vec3() + Vec3::splat(0.5), ItemStack::new(b, n as u8));
+                    self.pop_drop(p.as_vec3() + Vec3::splat(0.5), ItemStack::new(b, n as u16));
                 }
                 self.sfx(Sfx::Place(Material::Leaves));
                 self.anim.start_swing();
@@ -390,7 +390,7 @@ impl Game {
         m.def = d;
         if let Some(w) = self.items.id("white_wool") {
             let n = 1 + self.surv.rng.below(3) as u8;
-            self.pop_drop(at, ItemStack::new(w, n));
+            self.pop_drop(at, ItemStack::new(w, u16::from(n)));
         }
         self.sfx(Sfx::Place(Material::Cloth));
         self.anim.start_swing();
@@ -1150,7 +1150,7 @@ impl Game {
     pub(crate) fn extras_mob_drop(&mut self, name: &str, pos: Vec3) {
         let give = |g: &mut Game, item: &str, n: u8| {
             if let Some(i) = g.items.id(item) {
-                g.pop_drop(pos + Vec3::Y * 0.5, ItemStack::new(i, n));
+                g.pop_drop(pos + Vec3::Y * 0.5, ItemStack::new(i, u16::from(n)));
             }
         };
         match name {
@@ -1181,7 +1181,7 @@ impl Game {
         };
         if let Some((n, c)) = pick {
             if let Some(i) = self.items.id(n) {
-                let _ = inv.add(&self.items, ItemStack::new(i, c));
+                let _ = inv.add(&self.items, ItemStack::new(i, u16::from(c)));
             }
         }
     }

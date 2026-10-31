@@ -489,7 +489,7 @@ impl Game {
         };
         let (name, count) = rewards[(n as usize * 7 + self.surv.rng.below(4) as usize) % rewards.len()];
         if let Some(id) = self.items.id(name) {
-            self.spawn_drop(at, ItemStack::new(id, count as u8), Vec3::Y * 2.0);
+            self.spawn_drop(at, ItemStack::new(id, count as u16), Vec3::Y * 2.0);
         }
         let glow = self.glow_layer();
         let tint = if ruin { [1.2, 0.5, 2.0] } else { [2.0, 0.4, 0.4] };

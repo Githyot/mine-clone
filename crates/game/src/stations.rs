@@ -347,7 +347,7 @@ impl Game {
         }
         self.prog.bench.slots[0] = Some(st);
         if self.survival {
-            self.prog.bench.take(1, need as u8);
+            self.prog.bench.take(1, need as u16);
             self.spend_levels(need);
         }
         self.prog.ench_seed = self.prog.ench_seed.wrapping_mul(1_103_515_245).wrapping_add(12345 + self.surv.xp);
@@ -511,7 +511,7 @@ impl Game {
                     1
                 };
                 self.prog.bench.slots[0] = None;
-                self.prog.bench.take(1, used);
+                self.prog.bench.take(1, u16::from(used));
                 self.sfx(Sfx::Place(Material::Metal));
                 self.prog.event(crate::progression::Event::Repaired);
                 // The anvil wears: chipped, then damaged, then it breaks.

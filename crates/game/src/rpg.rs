@@ -1854,7 +1854,7 @@ impl Game {
         }
         let give = |g: &mut Game, name: &str, slot: usize, n: u8| {
             if let Some(id) = g.items.id(name) {
-                g.surv.inv.slots[slot] = Some(ItemStack::new(id, n));
+                g.surv.inv.slots[slot] = Some(ItemStack::new(id, u16::from(n)));
             }
         };
         let f = self.forward();

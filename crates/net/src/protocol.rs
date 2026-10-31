@@ -7,7 +7,8 @@
 use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a message changes shape. Host and guest must match.
-pub const PROTOCOL: u32 = 9;
+/// 10: stacks hold up to 9999 (counts in containers and drops no longer fit a u8).
+pub const PROTOCOL: u32 = 10;
 
 /// Default UDP port for hosted worlds.
 pub const DEFAULT_PORT: u16 = 24454;

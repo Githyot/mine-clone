@@ -80,14 +80,14 @@ impl Game {
             1 => rig.line.replace(name.clone()).map(|n| (n, 1)),
             _ => {
                 // Baits pile up on the rod (up to 16) when they are the same kind.
-                let n = st.count.min(16);
+                let n = st.count.min(16) as u8;
                 match rig.bait.take() {
                     Some((b, k)) if b == name => {
                         let total = (k + n).min(16);
                         let used = total - k;
                         rig.bait = Some((b, total));
                         if self.survival {
-                            self.surv.inv.take(sel, used);
+                            self.surv.inv.take(sel, u16::from(used));
                         }
                         self.toast(format!("Isca na vara: {total}"), 2.0);
                         return true;
@@ -95,7 +95,7 @@ impl Game {
                     prev => {
                         rig.bait = Some((name.clone(), n));
                         if self.survival {
-                            self.surv.inv.take(sel, n);
+                            self.surv.inv.take(sel, u16::from(n));
                         }
                         if let Some((b, k)) = prev {
                             self.give_back(&b, k);
@@ -123,7 +123,7 @@ impl Game {
             return;
         }
         if let Some(id) = self.items.id(name) {
-            if let Some(left) = self.surv.inv.add(&self.items, ItemStack::new(id, n)) {
+            if let Some(left) = self.surv.inv.add(&self.items, ItemStack::new(id, u16::from(n))) {
                 let at = self.body.pos + glam::Vec3::Y;
                 self.pop_drop(at, left);
             }

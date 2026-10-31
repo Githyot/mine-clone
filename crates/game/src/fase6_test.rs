@@ -12,7 +12,7 @@ use crate::survival::{Container, Open};
 
 impl crate::Game {
     fn t_stack(&self, name: &str, n: u8) -> Option<ItemStack> {
-        self.items.id(name).map(|i| ItemStack::new(i, n))
+        self.items.id(name).map(|i| ItemStack::new(i, u16::from(n)))
     }
 
     fn t_put(&mut self, p: IVec3, name: &str) {

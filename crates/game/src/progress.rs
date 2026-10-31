@@ -670,7 +670,7 @@ impl Game {
             for (item, n) in self.progress.chapters()[c].reward.clone() {
                 let Some(id) = self.items.id(&item) else { continue };
                 got.push(format!("{n} {}", self.items.get(id).display_name));
-                if let Some(left) = self.surv.inv.add(&self.items, ItemStack::new(id, n)) {
+                if let Some(left) = self.surv.inv.add(&self.items, ItemStack::new(id, u16::from(n))) {
                     self.pop_drop(self.body.pos + Vec3::Y, left);
                 }
             }
@@ -816,7 +816,7 @@ impl Game {
             return Some((vec![(s.input.clone(), 1)], true));
         }
         // Unpacking a storage block ("1 block of diamond = 9 diamonds") is no way to get one.
-        let unpack = |parts: &Vec<(Vec<ItemId>, u32)>, count: u8| count > 1 && parts.len() == 1 && parts[0].1 == 1;
+        let unpack = |parts: &Vec<(Vec<ItemId>, u32)>, count: u16| count > 1 && parts.len() == 1 && parts[0].1 == 1;
         for s in r.shaped.iter().filter(|s| s.result.item == id) {
             let parts = group(&mut s.cells.iter().flatten());
             if !unpack(&parts, s.result.count) {

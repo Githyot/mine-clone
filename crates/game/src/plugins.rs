@@ -245,7 +245,7 @@ fn linker(engine: &Engine) -> Result<Linker<Ctx>, wasmi::Error> {
         let name = text(&c, ptr, len);
         let Some(g) = game(&mut c) else { return 0 };
         let Some(id) = g.items.id(name.trim_start_matches("minecraft:")) else { return 0 };
-        let n = count.clamp(1, 64) as u8;
+        let n = count.clamp(1, voxel::item::PILE as i32) as u16;
         g.surv.inv.add(&g.items, voxel::item::ItemStack::new(id, n)).is_none() as i32
     })?;
     l.func_wrap("jogo", "spawn", |mut c: Caller<'_, Ctx>, ptr: i32, len: i32, x: f32, y: f32, z: f32| -> i32 {
@@ -364,7 +364,7 @@ impl Plugins {
                     t.push((tex.clone(), px));
                 }
                 let food = (it.food > 0).then_some(voxel::item::FoodDef { hunger: it.food, saturation: it.food as f32 * 0.6 });
-                if items.add_plain(&it.name, &it.label, &tex, it.max_stack, food).is_some() {
+                if items.add_plain(&it.name, &it.label, &tex, u16::from(it.max_stack), food).is_some() {
                     self.item_names.insert(it.name);
                     added += 1;
                 }

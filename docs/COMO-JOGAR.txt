@@ -838,6 +838,11 @@ VULCÕES
     (fumarolas te lançam mais alto, bombas não te derrubam) e às vezes o Martelo Vulcânico
     (quebra 3x3 e põe fogo nos monstros).
 
+PILHAS DE 9999 (como no Terraria)
+  Tudo que empilha (blocos, minérios, comida, flechas, poções, pérolas...) agora junta até
+  9999 num espaço só, nos baús também. Ferramentas, armas e armaduras continuam uma por espaço.
+  Q com Ctrl joga a pilha inteira. Para jogar com amigos, os dois precisam desta versão.
+
 OPÇÕES DE TESTE (linha de comando)
   --world NOME   --seed NUMERO   --render-distance N   --size 1920x1080
   --survival (começa no modo sobrevivência)   --mobs (um de cada mob na sua frente)

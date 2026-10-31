@@ -574,7 +574,7 @@ impl Game {
         // A crafter facing you with planks in it, and a lever to work it.
         put(w, -1, 0, 18, "crafter", 2);
         put(w, -2, 0, 18, "lever", 3);
-        let stack = |g: &crate::Game, n: &str, c: u8| g.items.id(n).map(|i| voxel::item::ItemStack::new(i, c));
+        let stack = |g: &crate::Game, n: &str, c: u8| g.items.id(n).map(|i| voxel::item::ItemStack::new(i, u16::from(c)));
         let mut inv = voxel::item::Inventory::new(9);
         inv.slots[0] = stack(self, "oak_planks", 8);
         inv.slots[3] = stack(self, "oak_planks", 8);

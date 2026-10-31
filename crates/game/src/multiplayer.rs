@@ -323,7 +323,7 @@ fn hash_text(s: &str) -> u64 {
 #[derive(Serialize, Deserialize, Default)]
 struct SavedContainer {
     furnace: bool,
-    slots: Vec<Option<(String, u8, u16)>>,
+    slots: Vec<Option<(String, u16, u16)>>,
     burn: f32,
     burn_max: f32,
     cook: f32,
@@ -345,9 +345,9 @@ struct PlayerSave {
     saturation: f32,
     xp: u32,
     spawn: Option<[i32; 3]>,
-    inv: Vec<Option<(String, u8, u16)>>,
-    armor: Vec<Option<(String, u8, u16)>>,
-    offhand: Option<(String, u8, u16)>,
+    inv: Vec<Option<(String, u16, u16)>>,
+    armor: Vec<Option<(String, u16, u16)>>,
+    offhand: Option<(String, u16, u16)>,
     hotbar: Vec<String>,
 }
 
@@ -395,13 +395,13 @@ impl Net {
     }
 }
 
-fn stack_out(items: &voxel::item::ItemRegistry, s: &Option<ItemStack>) -> Option<(String, u8, u16)> {
+fn stack_out(items: &voxel::item::ItemRegistry, s: &Option<ItemStack>) -> Option<(String, u16, u16)> {
     s.map(|s| (items.get(s.item).name.clone(), s.count, s.damage))
 }
 
-fn stack_in(items: &voxel::item::ItemRegistry, s: &Option<(String, u8, u16)>) -> Option<ItemStack> {
+fn stack_in(items: &voxel::item::ItemRegistry, s: &Option<(String, u16, u16)>) -> Option<ItemStack> {
     let (n, c, d) = s.as_ref()?;
-    Some(ItemStack { item: items.id(n)?, count: *c, damage: *d, ench: Default::default(), sockets: 0 })
+    Some(ItemStack { item: items.id(n)?, count: u16::from(*c), damage: *d, ench: Default::default(), sockets: 0 })
 }
 
 fn chunk_file(dir: &std::path::Path, p: ChunkPos) -> PathBuf {

@@ -136,7 +136,7 @@ impl Game {
         for (k, name) in ["diamond", "apple", "iron_ingot"].iter().enumerate() {
             if let Some(id) = self.items.id(name) {
                 let p = at + Vec3::new(k as f32 * 0.6 - 0.6, 0.6, 1.2);
-                self.spawn_drop(p, ItemStack::new(id, 3 + k as u8), Vec3::ZERO);
+                self.spawn_drop(p, ItemStack::new(id, u16::from(3 + k as u8)), Vec3::ZERO);
             }
         }
         // Screenshots stop the drops' clocks: these are ready at once.

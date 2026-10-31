@@ -480,7 +480,7 @@ impl Game {
                         continue;
                     };
                     let k = lo + ((hi - lo + 1) as f32 * self.surv.rng.f32()) as u8;
-                    self.give_or_drop(item, k.min(hi));
+                    self.give_or_drop(item, u16::from(k.min(hi)));
                 }
                 self.sfx(Sfx::Hit(crate::audio::Material::Sand));
                 self.anim.start_swing();

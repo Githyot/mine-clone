@@ -48,7 +48,7 @@ pub(crate) fn is_block(name: &str) -> bool {
 impl Game {
     /// How many of an item it takes to research it.
     fn research_need(&self, item: voxel::item::ItemId) -> u32 {
-        match self.items.get(item).max_stack {
+        match self.items.get(item).vanilla_stack {
             0 | 1 => 1,
             2..=16 => 10,
             _ => 50,
@@ -117,7 +117,7 @@ impl Game {
             self.toast(format!("{display} já foi pesquisado. Agache e clique para copiar."), 2.5);
             return true;
         }
-        let give = (need - have).min(st.count as u32) as u8;
+        let give = (need - have).min(st.count as u32) as u16;
         if self.survival {
             let sel = self.selected;
             self.surv.inv.take(sel, give);

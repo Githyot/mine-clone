@@ -152,7 +152,7 @@ impl crate::Game {
                 if r < w {
                     if let Some(id) = self.items.id(name) {
                         let n = lo + self.prog.rng.below((hi - lo + 1) as u32) as u8;
-                        let mut st = ItemStack::new(id, n.max(1));
+                        let mut st = ItemStack::new(id, u16::from(n.max(1)));
                         if name == "enchanted_book" {
                             st.ench = crate::enchanting::random_any(&self.items, id, &mut self.prog.rng);
                         }

@@ -144,7 +144,7 @@ impl Game {
             let Some(id) = self.items.id(item) else { continue };
             let n = lo + self.surv.rng.below((hi - lo + 1) as u32) as u8;
             let at = self.surv.rng.below(27) as usize;
-            let _ = inv.add_in(&self.items, ItemStack::new(id, n), (0..27).map(move |i| (i + at) % 27));
+            let _ = inv.add_in(&self.items, ItemStack::new(id, u16::from(n)), (0..27).map(move |i| (i + at) % 27));
         }
         let chest = self.reg.id_or_air("chest");
         self.world.set_block(p, chest);

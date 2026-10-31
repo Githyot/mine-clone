@@ -370,7 +370,7 @@ impl Game {
     // The Shimmer Lake.
 
     /// What a stack turns into in the shimmer: (new stacks, how many of the old one it used).
-    fn shimmer_result(&self, st: ItemStack) -> Option<(Vec<ItemStack>, u8)> {
+    fn shimmer_result(&self, st: ItemStack) -> Option<(Vec<ItemStack>, u16)> {
         let name = &self.items.get(st.item).name;
         let swap = SHIMMER.iter().find_map(|(a, b)| if a == name { Some(*b) } else if b == name { Some(*a) } else { None });
         let to = swap.or_else(|| SHIMMER_ONEWAY.iter().find(|(a, _)| a == name).map(|(_, b)| *b));
@@ -379,7 +379,7 @@ impl Game {
             return Some((vec![ItemStack::new(id, st.count)], st.count));
         }
         // Taken apart into what made it.
-        let mut parts: Option<(Vec<voxel::item::ItemId>, u8)> = None;
+        let mut parts: Option<(Vec<voxel::item::ItemId>, u16)> = None;
         for r in &self.recipes.shaped {
             if r.result.item == st.item {
                 parts = Some((r.cells.iter().flatten().filter_map(|i| i.first().copied()).collect(), r.result.count));

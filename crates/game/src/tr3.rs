@@ -132,7 +132,7 @@ impl Game {
     }
 
     /// Give the player an item (on the ground at their feet when the bag is full).
-    pub(crate) fn give_or_drop(&mut self, item: &str, n: u8) {
+    pub(crate) fn give_or_drop(&mut self, item: &str, n: u16) {
         let Some(id) = self.items.id(item) else { return };
         let st = voxel::item::ItemStack::new(id, n);
         if let Some(rest) = self.surv.inv.add(&self.items, st) {

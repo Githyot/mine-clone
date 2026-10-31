@@ -91,7 +91,7 @@ impl Game {
                 let mut v = Vec::new();
                 let it = |n: String| self.items.id(&n);
                 if let Some(log) = it(format!("{t}_log")) {
-                    v.push(ItemStack::new(log, 1 + (rng.f32() < 0.4) as u8));
+                    v.push(ItemStack::new(log, u16::from(1 + (rng.f32() < 0.4) as u8)));
                 }
                 if rng.f32() < 0.1 {
                     if let Some(s) = it(voxel::trees::sapling_of(t)) {
@@ -105,7 +105,7 @@ impl Game {
                 }
                 if rng.f32() < 0.2 {
                     if let Some(s) = it("stick".into()) {
-                        v.push(ItemStack::new(s, 1 + (rng.f32() < 0.5) as u8));
+                        v.push(ItemStack::new(s, u16::from(1 + (rng.f32() < 0.5) as u8)));
                     }
                 }
                 v

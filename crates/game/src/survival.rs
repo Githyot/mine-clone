@@ -448,12 +448,25 @@ pub fn item_icon(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRegistry,
         ui.rect(x, y, 3.0 * s, s, voxel::gems::RARITY_COLORS[r]);
         ui.rect(x, y + s, s, 2.0 * s, voxel::gems::RARITY_COLORS[r]);
     }
-    if stack.count > 1 {
-        let t = stack.count.to_string();
-        let tw = ui.text_width(&t, s);
-        ui.text(x + size - tw + 2.0 * s, y + size - 6.0 * s, &t, [62, 62, 62, 255]);
-        ui.text(x + size - tw + s, y + size - 7.0 * s, &t, WHITE);
+    count_label(ui, stack.count, x, y, size, s);
+}
+
+/// The number in a slot's corner. Piles go up to 9999 now, so a long number gets smaller
+/// letters (in half steps, so the pixel font stays crisp) instead of running out of the slot.
+fn count_label(ui: &mut UiBatch, count: u16, x: f32, y: f32, size: f32, s: f32) {
+    if count <= 1 {
+        return;
     }
+    let t = count.to_string();
+    let mut ts = s;
+    while ts > s * 0.5 && ui.text_width(&t, ts) > size {
+        ts -= s * 0.25;
+    }
+    // Same corner as before: the right edge one pixel past the slot, the bottom on its floor.
+    let (right, floor) = (x + size + s, y + size);
+    let tw = ui.text_width(&t, ts);
+    ui.text_scaled(right - tw + ts, floor - 6.0 * ts, &t, [62, 62, 62, 255], ts);
+    ui.text_scaled(right - tw, floor - 7.0 * ts, &t, WHITE, ts);
 }
 
 /// An item icon turned by `angle` (radians) about its centre: flat item pictures turn, block
@@ -474,13 +487,8 @@ pub fn item_icon_tilted(ui: &mut UiBatch, blocks: &BlockRegistry, items: &ItemRe
     let rot = |dx: f32, dy: f32| [cx + dx * c - dy * sn, cy + dx * sn + dy * c];
     let full = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
     ui.quad([rot(-h, -h), rot(h, -h), rot(h, h), rot(-h, h)], full, WHITE, (item_base + l) as i32);
-    if stack.count > 1 {
-        let s = ui.scale;
-        let t = stack.count.to_string();
-        let tw = ui.text_width(&t, s);
-        ui.text(x + size - tw + 2.0 * s, y + size - 6.0 * s, &t, [62, 62, 62, 255]);
-        ui.text(x + size - tw + s, y + size - 7.0 * s, &t, WHITE);
-    }
+    let s = ui.scale;
+    count_label(ui, stack.count, x, y, size, s);
 }
 
 /// Fill `r` except for the `hole` rectangle inside it.
@@ -761,7 +769,7 @@ impl Game {
             // Scattered over the slots, like a chest someone filled by hand.
             let slot = self.surv.rng.below(CHEST_SIZE as u32) as usize;
             let order = (0..CHEST_SIZE).map(move |i| (i + slot) % CHEST_SIZE);
-            let mut st = ItemStack::new(id, n.max(1));
+            let mut st = ItemStack::new(id, u16::from(n.max(1)));
             if l.item == "enchanted_book" {
                 st.ench = crate::enchanting::random_any(&self.items, id, &mut self.prog.rng);
             }
@@ -898,7 +906,7 @@ impl Game {
                 let looting = crate::enchanting::level(&self.held_stack(), crate::enchanting::LOOTING) as u32;
                 let n = n + if looting > 0 { self.surv.rng.below(looting + 1) as i32 } else { 0 };
                 if n > 0 {
-                    self.pop_drop(pos + Vec3::Y * 0.5, ItemStack::new(i, n as u8));
+                    self.pop_drop(pos + Vec3::Y * 0.5, ItemStack::new(i, n as u16));
                 }
             }
             self.spawn_orbs(pos + Vec3::Y * 0.5, xp);
@@ -1291,7 +1299,7 @@ impl Game {
             self.toast("Favorito: não se joga fora (Alt + clique para desmarcar)", 2.0);
             return;
         }
-        let n = if all { 64 } else { 1 };
+        let n = if all { voxel::item::PILE } else { 1 };
         if let Some(s) = self.surv.inv.take(sel, n) {
             let f = self.forward();
             self.spawn_drop(self.body.eye() - Vec3::Y * 0.3, s, f * 5.0 + Vec3::Y);
@@ -1600,7 +1608,7 @@ impl Game {
                 while j < self.surv.drops.len() {
                     let (a, b) = (&self.surv.drops[i], &self.surv.drops[j]);
                     let max = self.items.get(a.stack.item).max_stack;
-                    if a.stack.stacks_with(&b.stack) && (a.body.pos - b.body.pos).length_squared() < 0.6 && a.stack.count as u16 + b.stack.count as u16 <= max as u16 {
+                    if a.stack.stacks_with(&b.stack) && (a.body.pos - b.body.pos).length_squared() < 0.6 && a.stack.count + b.stack.count <= max {
                         let c = b.stack.count;
                         self.surv.drops[i].stack.count += c;
                         self.surv.drops.swap_remove(j);
@@ -2407,7 +2415,7 @@ impl Game {
             (Some(c), _, _) if furnace_out => {
                 // The furnace output only gives; take more of the same onto the cursor.
                 if let Some(st) = cur {
-                    if c.stacks_with(&st) && c.count as u16 + st.count as u16 <= max(c.item) as u16 {
+                    if c.stacks_with(&st) && c.count + st.count <= max(c.item) {
                         self.surv.cursor = Some(ItemStack { count: c.count + st.count, ..c });
                         self.slot_set(slot, None);
                         self.take_furnace_xp();
@@ -2553,7 +2561,7 @@ impl Game {
             } else {
                 match self.surv.cursor {
                     None => self.surv.cursor = Some(r),
-                    Some(c) if c.stacks_with(&r) && c.count as u16 + r.count as u16 <= self.items.get(c.item).max_stack as u16 => {
+                    Some(c) if c.stacks_with(&r) && c.count + r.count <= self.items.get(c.item).max_stack => {
                         self.surv.cursor = Some(ItemStack { count: c.count + r.count, ..c });
                     }
                     _ => break,
@@ -2569,7 +2577,7 @@ impl Game {
                 }
             }
             crafted += 1;
-            if !shift || crafted > 64 {
+            if !shift || crafted >= voxel::item::PILE as u32 {
                 break;
             }
         }
@@ -2585,7 +2593,7 @@ impl Game {
     pub(crate) fn test_kit(&mut self) {
         let give = |g: &mut Game, slot: usize, name: &str, count: u8, damage: u16| {
             if let Some(id) = g.items.id(name) {
-                g.surv.inv.slots[slot] = Some(ItemStack { damage, ..ItemStack::new(id, count) });
+                g.surv.inv.slots[slot] = Some(ItemStack { damage, ..ItemStack::new(id, u16::from(count)) });
             }
         };
         give(self, 0, "iron_pickaxe", 1, 60);
@@ -2686,7 +2694,7 @@ impl Game {
                 let p = IVec3::new(crate::backpacks::BACKPACK_X, 0, 1);
                 if let Some(Container::Chest(inv)) = self.surv.containers.get_mut(&p) {
                     for (i, n) in ["diamond", "iron_ingot", "bread", "oak_log", "torch", "copper_block"].iter().enumerate() {
-                        inv.slots[i * 8 + 2] = self.items.id(n).map(|id| ItemStack::new(id, 5 + i as u8 * 7));
+                        inv.slots[i * 8 + 2] = self.items.id(n).map(|id| ItemStack::new(id, u16::from(5 + i as u8 * 7)));
                     }
                 }
             }
@@ -2701,7 +2709,7 @@ impl Game {
                 let p = IVec3::new(0, -101, 0);
                 let mut inv = Inventory::new(CHEST_SIZE);
                 for (i, n) in ["bone", "rotten_flesh", "gunpowder", "gold_ingot", "bread", "emerald", "flint"].iter().enumerate() {
-                    inv.slots[i * 3 + 1] = self.items.id(n).map(|id| ItemStack::new(id, 1 + i as u8 * 3));
+                    inv.slots[i * 3 + 1] = self.items.id(n).map(|id| ItemStack::new(id, u16::from(1 + i as u8 * 3)));
                 }
                 self.surv.containers.insert(p, Container::Chest(inv));
                 self.surv.open = Open::Chest(p);
@@ -3299,7 +3307,7 @@ impl Game {
 
     /// Inventory slots that would pay for these ingredients (one item each), if there are enough.
     fn pay_for(&self, needs: &[Vec<ItemId>]) -> Option<Vec<usize>> {
-        let mut left: Vec<u8> = self.surv.inv.slots.iter().map(|s| s.map_or(0, |s| if s.damage == 0 { s.count } else { 0 })).collect();
+        let mut left: Vec<u16> = self.surv.inv.slots.iter().map(|s| s.map_or(0, |s| if s.damage == 0 { s.count } else { 0 })).collect();
         let mut out = Vec::with_capacity(needs.len());
         for n in needs {
             let k = (0..left.len()).find(|&k| left[k] > 0 && self.surv.inv.slots[k].is_some_and(|st| n.contains(&st.item)))?;

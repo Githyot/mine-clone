@@ -323,7 +323,7 @@ impl Game {
             let Some(id) = self.items.id(item) else { continue };
             let n = lo + self.surv.rng.below((hi - lo + 1) as u32) as u8;
             let v = Vec3::new(self.surv.rng.f32() - 0.5, 2.5, self.surv.rng.f32() - 0.5);
-            self.spawn_drop(at, ItemStack::new(id, n), v);
+            self.spawn_drop(at, ItemStack::new(id, u16::from(n)), v);
         }
         self.sfx(Sfx::Place(Material::Cloth));
         if self.survival {

@@ -365,7 +365,7 @@ impl Game {
             if let Some(s) = self.surv.inv.slots[k] {
                 if s.item == id {
                     let t = (s.count as u32).min(left);
-                    self.surv.inv.take(k, t as u8);
+                    self.surv.inv.take(k, t as u16);
                     left -= t;
                 }
             }

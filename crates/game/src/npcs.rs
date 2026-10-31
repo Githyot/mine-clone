@@ -283,7 +283,7 @@ impl Game {
                 let mut inv = Inventory::new(offers.len());
                 for (k, &(item, count, _)) in offers.iter().enumerate() {
                     if let Some(id) = self.items.id(item) {
-                        inv.slots[k] = Some(ItemStack::new(id, count));
+                        inv.slots[k] = Some(ItemStack::new(id, u16::from(count)));
                     }
                 }
                 self.surv.shop = inv;
