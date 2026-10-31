@@ -185,11 +185,11 @@ impl Game {
             "/dar" | "/give" => {
                 let name = a0.trim_start_matches("minecraft:");
                 let Some(id) = self.items.id(name) else { return format!("Item desconhecido: {name}") };
-                let mut n: u32 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(1).clamp(1, 64 * 36);
+                let mut n: u32 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(1).clamp(1, voxel::item::PILE as u32 * 36);
                 let total = n;
                 let max = self.items.get(id).max_stack.max(1) as u32;
                 while n > 0 {
-                    let k = n.min(max) as u8;
+                    let k = n.min(max) as u16;
                     if let Some(left) = self.surv.inv.add(&self.items, ItemStack::new(id, k)) {
                         n = n - k as u32 + left.count as u32;
                         break;

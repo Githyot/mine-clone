@@ -219,7 +219,7 @@ impl Game {
             for (it, c) in [(item, count), ("emerald", 3 + (n as u8 % 4))] {
                 if let Some(id) = self.items.id(it) {
                     let at = self.body.pos + Vec3::Y;
-                    self.spawn_drop(at, ItemStack::new(id, c), Vec3::Y * 2.0);
+                    self.spawn_drop(at, ItemStack::new(id, u16::from(c)), Vec3::Y * 2.0);
                 }
             }
             self.toast(format!("Pescador: Isso! Tome, pelo seu trabalho. ({} missões feitas)", n + 1), 4.0);
@@ -258,7 +258,7 @@ impl Game {
             }
             let Some(id) = self.items.id(item) else { continue };
             let n = lo + (self.surv.rng.f32() * (hi - lo + 1) as f32) as u8;
-            self.spawn_drop(at, ItemStack::new(id, n.min(hi)), Vec3::Y * 2.5);
+            self.spawn_drop(at, ItemStack::new(id, u16::from(n.min(hi))), Vec3::Y * 2.5);
             got += 1;
         }
         if got == 0 {

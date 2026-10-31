@@ -114,7 +114,7 @@ impl Game {
                 }
                 let Some(id) = self.items.id(&d.item) else { continue };
                 let n = d.min + (self.surv.rng.f32() * (d.max.saturating_sub(d.min) + 1) as f32) as u8;
-                stacks.push(ItemStack::new(id, n.clamp(1, d.max.max(1))));
+                stacks.push(ItemStack::new(id, u16::from(n.clamp(1, d.max.max(1)))));
             }
         }
         if let Some(&(_, item)) = EXPERT_ITEMS.iter().find(|e| e.0 == boss) {
@@ -123,7 +123,7 @@ impl Game {
             }
         }
         if let Some(id) = self.items.id("emerald") {
-            stacks.push(ItemStack::new(id, 3 + (self.surv.rng.f32() * 6.0) as u8));
+            stacks.push(ItemStack::new(id, u16::from(3 + (self.surv.rng.f32() * 6.0) as u8)));
         }
         for st in stacks {
             let v = Vec3::new(self.surv.rng.f32() - 0.5, 2.5, self.surv.rng.f32() - 0.5);
@@ -170,7 +170,7 @@ impl Game {
                 self.t5.tr.modes.rewards |= 1 << k;
                 if let Some(id) = self.items.id(item) {
                     let at = self.body.pos + Vec3::Y;
-                    self.spawn_drop(at, ItemStack::new(id, n), Vec3::Y * 2.0);
+                    self.spawn_drop(at, ItemStack::new(id, u16::from(n)), Vec3::Y * 2.0);
                 }
                 self.toast(format!("Bestiário {}% completo: um presente para você!", (need * 100.0) as u32), 4.0);
                 self.sfx(Sfx::Xp);

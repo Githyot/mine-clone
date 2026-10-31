@@ -190,7 +190,7 @@ impl Game {
                 continue;
             }
             if let Some(id) = self.items.id(item) {
-                self.spawn_drop(at, ItemStack::new(id, n), Vec3::Y * 3.0);
+                self.spawn_drop(at, ItemStack::new(id, u16::from(n)), Vec3::Y * 3.0);
             }
         }
     }

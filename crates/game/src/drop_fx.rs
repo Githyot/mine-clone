@@ -192,7 +192,7 @@ impl Game {
         let flat = Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
         let side = Vec3::new(-flat.z, 0.0, flat.x);
         let make = |name: &str, count: u8, ench: &[(u8, u8)], sockets: u32| {
-            let mut st = ItemStack::new(self.items.id(name)?, count);
+            let mut st = ItemStack::new(self.items.id(name)?, u16::from(count));
             for &(id, l) in ench {
                 st.ench.set(id, l);
             }

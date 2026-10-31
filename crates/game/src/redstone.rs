@@ -1159,7 +1159,7 @@ impl crate::Game {
                 let mut any = false;
                 for st in inv.slots.iter().flatten() {
                     any = true;
-                    fill += st.count as f32 / self.items.get(st.item).max_stack.max(1) as f32;
+                    fill += (st.count as f32 / self.items.get(st.item).vanilla_stack.max(1) as f32).min(1.0);
                 }
                 let level = if any { (1.0 + fill / inv.slots.len() as f32 * 14.0) as u8 } else { 0 };
                 (*p, level.min(15))
@@ -1449,7 +1449,7 @@ impl crate::Game {
         put(w, 2, 0, 2, "comparator", 4);
         put(w, 4, 0, 2, "redstone_torch", 0);
         let at = |x: i32, y: i32, z: i32| IVec3::new(p.x + x, p.y + y, p.z - z);
-        let stack = |g: &crate::Game, n: &str, c: u8| g.items.id(n).map(|i| voxel::item::ItemStack::new(i, c));
+        let stack = |g: &crate::Game, n: &str, c: u8| g.items.id(n).map(|i| voxel::item::ItemStack::new(i, u16::from(c)));
         let mut a = voxel::item::Inventory::new(27);
         for k in 0..10 {
             a.slots[k] = stack(self, "cobblestone", 64);

@@ -40,7 +40,7 @@ pub fn add_recipes(recipes: &mut Recipes, text: &str, items: &ItemRegistry) -> R
     Ok(())
 }
 
-type SavedStack = Option<(String, u8, u16)>;
+type SavedStack = Option<(String, u16, u16)>;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Saved {
@@ -116,7 +116,7 @@ impl Terraria {
         let Some(s) = std::fs::read_to_string(dir.join("terraria.ron")).ok().and_then(|x| ron::from_str::<Saved>(&x).ok()) else {
             return t;
         };
-        let stack = |st: &SavedStack| st.as_ref().and_then(|(name, count, damage)| items.id(name).map(|id| ItemStack { item: id, count: *count, damage: *damage, ench: Default::default(), sockets: 0 }));
+        let stack = |st: &SavedStack| st.as_ref().and_then(|(name, count, damage)| items.id(name).map(|id| ItemStack { item: id, count: u16::from(*count), damage: *damage, ench: Default::default(), sockets: 0 }));
         for (i, st) in s.acc.iter().enumerate().take(MAX_ACC) {
             t.acc[i] = stack(st);
         }

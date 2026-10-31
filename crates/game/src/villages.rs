@@ -105,7 +105,7 @@ impl Game {
             }
             if let Some(st) = self.surv.inv.slots[k].filter(|s| s.item == id) {
                 let take = (st.count as u32).min(n);
-                self.surv.inv.take(k, take as u8);
+                self.surv.inv.take(k, take as u16);
                 n -= take;
             }
         }
@@ -157,7 +157,7 @@ impl Game {
         let mut k = 0;
         for &(item, count, price) in offers {
             if let Some(id) = self.items.id(item) {
-                inv.slots[k] = Some(ItemStack::new(id, count));
+                inv.slots[k] = Some(ItemStack::new(id, u16::from(count)));
                 prices.push(price);
                 k += 1;
             }

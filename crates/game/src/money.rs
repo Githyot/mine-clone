@@ -120,7 +120,7 @@ impl Game {
                 let k = n.min(100);
                 n -= k;
                 let vel = Vec3::new(self.surv.rng.f32() - 0.5, 3.5, self.surv.rng.f32() - 0.5);
-                self.spawn_drop(at, ItemStack::new(id, k as u8), vel);
+                self.spawn_drop(at, ItemStack::new(id, k as u16), vel);
             }
         }
     }
@@ -340,7 +340,7 @@ impl Game {
             return;
         }
         self.surv.money -= n * worth;
-        self.surv.cursor = Some(ItemStack::new(id, n as u8));
+        self.surv.cursor = Some(ItemStack::new(id, n as u16));
         self.sfx(Sfx::Fx(crate::sfx_extra::Fx::Armor(true)));
     }
 

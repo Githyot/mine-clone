@@ -65,7 +65,7 @@ impl Game {
             let sel = self.selected;
             self.surv.inv.take(sel, 1);
         }
-        if let Some(left) = self.surv.inv.add(&self.items, ItemStack::new(out, count)) {
+        if let Some(left) = self.surv.inv.add(&self.items, ItemStack::new(out, u16::from(count))) {
             self.throw_stack(left);
         }
         self.anim.start_swing();

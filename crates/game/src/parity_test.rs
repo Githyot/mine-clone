@@ -697,7 +697,7 @@ fn parity_with_vanilla() {
         r.check(format!("item {name}: velocidade"), close(t.speed, speed), format!("nossa {} · vanilla {speed}", t.speed));
         r.check(format!("item {name}: dano"), close(t.damage, damage), format!("nosso {} · vanilla {damage}", t.damage));
         r.check(format!("item {name}: durabilidade"), t.durability == dur, format!("nossa {} · vanilla {dur}", t.durability));
-        r.check(format!("item {name}: pilha"), it.max_stack == 1, format!("nossa {} · vanilla 1", it.max_stack));
+        r.check(format!("item {name}: pilha"), it.vanilla_stack == 1, format!("nossa {} · vanilla 1", it.vanilla_stack));
     }
     for &(name, slot, points, dur) in ARMOR {
         let Some(it) = item(name) else {
@@ -729,7 +729,7 @@ fn parity_with_vanilla() {
             r.missing.push(format!("item {name}"));
             continue;
         };
-        r.check(format!("item {name}: pilha"), it.max_stack == n, format!("nossa {} · vanilla {n}", it.max_stack));
+        r.check(format!("item {name}: pilha"), it.vanilla_stack == u16::from(n), format!("nossa {} · vanilla {n}", it.vanilla_stack));
     }
     for &(name, dur) in WEAR {
         let Some(it) = item(name) else {
@@ -790,7 +790,7 @@ fn parity_with_vanilla() {
             continue;
         }
         let got = recipes.craft(&grid, 3);
-        let ok = got.is_some_and(|s| s.item == want && (count == 0 || s.count == count));
+        let ok = got.is_some_and(|s| s.item == want && (count == 0 || s.count == u16::from(count)));
         let ours = got.map(|s| format!("{} ×{}", items.get(s.item).name, s.count)).unwrap_or_else(|| "nada".into());
         r.check(format!("receita {result}"), ok, format!("nossa {ours} · vanilla {result} ×{count}"));
     }

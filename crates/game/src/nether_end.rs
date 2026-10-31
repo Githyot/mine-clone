@@ -488,7 +488,7 @@ impl Game {
         let n = pick.1 + (self.surv.rng.f32() * (pick.2 - pick.1 + 1) as f32) as u8;
         let item = self.items.id(pick.0).or_else(|| self.items.id("gold_nugget"));
         if let Some(item) = item {
-            self.pop_drop(at, ItemStack::new(item, n.max(1)));
+            self.pop_drop(at, ItemStack::new(item, u16::from(n.max(1))));
         }
         // It turns to look at you while it thinks.
         let m = &mut self.mobs.list[i];

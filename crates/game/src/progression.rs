@@ -320,7 +320,7 @@ impl crate::Game {
                 if self.prog.rng.f32() < chance {
                     if let Some(id) = self.items.id(item) {
                         let n = 1 + self.prog.rng.below(max as u32) as u8;
-                        self.pop_drop(pos + Vec3::Y * 0.5, voxel::item::ItemStack::new(id, n));
+                        self.pop_drop(pos + Vec3::Y * 0.5, voxel::item::ItemStack::new(id, u16::from(n)));
                     }
                 }
             }

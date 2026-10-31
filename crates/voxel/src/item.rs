@@ -47,7 +47,7 @@ pub struct ItemDef {
     #[serde(default)]
     pub texture: Option<String>,
     #[serde(default)]
-    pub max_stack: Option<u8>,
+    pub max_stack: Option<u16>,
     #[serde(default)]
     pub tool: Option<ToolDef>,
     #[serde(default)]
@@ -78,12 +78,24 @@ pub enum Look {
     Sprite(u16),
 }
 
+/// How many of one thing fit in a slot, like Terraria since 1.4.4: 9999 of anything that stacks at all
+/// (blocks, ores, food, arrows, potions...). Tools, armour and other one-of items stay at 1.
+pub const PILE: u16 = 9999;
+
+/// The slot size for an item whose Java edition stack is `vanilla` (64, 16 or 1).
+pub fn pile(vanilla: u16) -> u16 {
+    if vanilla > 1 { PILE } else { 1 }
+}
+
 #[derive(Clone, Debug)]
 pub struct Item {
     pub name: String,
     pub display_name: String,
     pub look: Look,
-    pub max_stack: u8,
+    /// Most in one slot: 9999 for anything that stacks (Terraria's pile), 1 otherwise.
+    pub max_stack: u16,
+    /// The stack size the Java edition uses (64, 16 or 1), kept for the parity test.
+    pub vanilla_stack: u16,
     pub tool: Option<ToolDef>,
     pub food: Option<FoodDef>,
     pub armor: Option<ArmorDef>,
@@ -126,7 +138,7 @@ impl ItemRegistry {
     pub fn from_defs(defs: Vec<ItemDef>, blocks: &BlockRegistry) -> Result<Self, String> {
         let mut reg = ItemRegistry { items: Vec::new(), by_name: HashMap::new(), block_item: vec![None; blocks.len()], textures: Vec::new() };
         // Item 0 is unused so a zero id never looks like a real item.
-        reg.items.push(Item { name: "air".into(), display_name: String::new(), look: Look::Block(AIR), max_stack: 0, tool: None, food: None, armor: None, places: None, fuel: 0.0, durability: None });
+        reg.items.push(Item { name: "air".into(), display_name: String::new(), look: Look::Block(AIR), max_stack: 0, vanilla_stack: 0, tool: None, food: None, armor: None, places: None, fuel: 0.0, durability: None });
         for (i, b) in blocks.blocks.iter().enumerate() {
             if i as BlockId == AIR || matches!(b.shape, Shape::Liquid | Shape::Invisible) {
                 continue;
@@ -141,7 +153,8 @@ impl ItemRegistry {
                 name: b.name.clone(),
                 display_name: b.display_name.clone(),
                 look: Look::Block(i as BlockId),
-                max_stack: 64,
+                max_stack: PILE,
+                vanilla_stack: 64,
                 tool: None,
                 food: None,
                 armor: None,
@@ -166,7 +179,8 @@ impl ItemRegistry {
                     it.display_name = n;
                 }
                 if let Some(m) = d.max_stack {
-                    it.max_stack = m;
+                    it.vanilla_stack = m;
+                    it.max_stack = pile(m);
                 }
                 it.fuel = d.fuel.max(it.fuel);
                 it.food = d.food.or(it.food);
@@ -192,7 +206,8 @@ impl ItemRegistry {
                 display_name: d.display_name.unwrap_or_else(|| d.name.replace('_', " ")),
                 name: d.name,
                 look: Look::Sprite(layer),
-                max_stack: max_stack.max(1),
+                max_stack: pile(max_stack.max(1)),
+                vanilla_stack: max_stack.max(1),
                 tool: d.tool,
                 food: d.food,
                 armor: d.armor,
@@ -206,7 +221,7 @@ impl ItemRegistry {
 
     /// A plain item added after loading (by a plugin): a flat sprite named `texture`, at the
     /// end of the list. None when the name is taken.
-    pub fn add_plain(&mut self, name: &str, display_name: &str, texture: &str, max_stack: u8, food: Option<FoodDef>) -> Option<ItemId> {
+    pub fn add_plain(&mut self, name: &str, display_name: &str, texture: &str, max_stack: u16, food: Option<FoodDef>) -> Option<ItemId> {
         if self.by_name.contains_key(name) || self.items.len() >= ItemId::MAX as usize {
             return None;
         }
@@ -217,7 +232,8 @@ impl ItemRegistry {
             name: name.to_string(),
             display_name: display_name.to_string(),
             look: Look::Sprite((self.textures.len() - 1) as u16),
-            max_stack: max_stack.clamp(1, 64),
+            max_stack: pile(max_stack.clamp(1, 64)),
+            vanilla_stack: max_stack.clamp(1, 64),
             tool: None,
             food,
             armor: None,
@@ -260,7 +276,7 @@ impl ItemRegistry {
                 };
                 let upper_door = b.shape == Shape::Door && b.variant & 8 != 0;
                 if let (Some(i), false) = (self.of_block(block), upper_door) {
-                    out.push(ItemStack::new(i, n));
+                    out.push(ItemStack::new(i, n as u16));
                 }
             }
             Some(list) => {
@@ -272,7 +288,7 @@ impl ItemRegistry {
                     let n = if d.max > d.min { d.min + (rng.f32() * (d.max - d.min + 1) as f32) as u8 } else { d.min };
                     let n = n.min(d.max.max(d.min));
                     if n > 0 {
-                        out.push(ItemStack::new(i, n));
+                        out.push(ItemStack::new(i, n as u16));
                     }
                 }
             }
@@ -373,7 +389,7 @@ impl Ench {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ItemStack {
     pub item: ItemId,
-    pub count: u8,
+    pub count: u16,
     /// Wear on tools.
     #[serde(default)]
     pub damage: u16,
@@ -387,7 +403,7 @@ pub struct ItemStack {
 }
 
 impl ItemStack {
-    pub fn new(item: ItemId, count: u8) -> ItemStack {
+    pub fn new(item: ItemId, count: u16) -> ItemStack {
         ItemStack { item, count, damage: 0, ench: Ench::EMPTY, sockets: 0 }
     }
 
@@ -420,7 +436,7 @@ impl ItemStack {
 /// before sockets existed, with the sockets as a fourth number only when there are any, so old
 /// saves load and plain items look the same in new ones.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SavedItem(pub String, pub u8, pub u16, pub u32);
+pub struct SavedItem(pub String, pub u16, pub u16, pub u32);
 
 impl SavedItem {
     pub fn of(reg: &ItemRegistry, s: &ItemStack) -> SavedItem {
@@ -517,7 +533,7 @@ impl Inventory {
     }
 
     /// Take `n` from a slot, emptying it when it runs out.
-    pub fn take(&mut self, i: usize, n: u8) -> Option<ItemStack> {
+    pub fn take(&mut self, i: usize, n: u16) -> Option<ItemStack> {
         let s = self.slots[i].as_mut()?;
         let k = n.min(s.count);
         s.count -= k;
@@ -602,12 +618,27 @@ mod tests {
         let (_, items) = regs();
         let stick = items.id("stick").unwrap();
         let mut inv = Inventory::new(2);
-        assert!(inv.add(&items, ItemStack::new(stick, 60)).is_none());
-        assert!(inv.add(&items, ItemStack::new(stick, 10)).is_none());
-        assert_eq!(inv.slots[0].unwrap().count, 64);
-        assert_eq!(inv.slots[1].unwrap().count, 6);
-        let left = inv.add(&items, ItemStack::new(stick, 100)).unwrap();
-        assert_eq!(left.count, 42);
-        assert_eq!(inv.count_of(stick), 128);
+        assert_eq!(items.get(stick).max_stack, PILE);
+        assert_eq!(items.get(stick).vanilla_stack, 64);
+        assert!(inv.add(&items, ItemStack::new(stick, 9990)).is_none());
+        assert!(inv.add(&items, ItemStack::new(stick, 20)).is_none());
+        assert_eq!(inv.slots[0].unwrap().count, 9999);
+        assert_eq!(inv.slots[1].unwrap().count, 11);
+        let left = inv.add(&items, ItemStack::new(stick, 9999)).unwrap();
+        assert_eq!(left.count, 11);
+        assert_eq!(inv.count_of(stick), 19998);
+        // Tools still sit one to a slot.
+        let pick = items.id("wooden_pickaxe").unwrap();
+        assert_eq!(items.get(pick).max_stack, 1);
+    }
+
+    #[test]
+    fn old_saves_with_small_counts_load() {
+        let (_, items) = regs();
+        let back: Option<SavedItem> = ron::from_str("Some((\"stick\", 64, 0))").unwrap();
+        assert_eq!(back.unwrap().stack(&items).unwrap().count, 64);
+        let big = SavedItem::of(&items, &ItemStack::new(items.id("stick").unwrap(), 9999));
+        let text = ron::to_string(&Some(big.clone())).unwrap();
+        assert_eq!(ron::from_str::<Option<SavedItem>>(&text).unwrap(), Some(big));
     }
 }

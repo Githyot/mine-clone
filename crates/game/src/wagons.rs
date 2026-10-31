@@ -852,7 +852,7 @@ impl Game {
         let mut prices = Vec::new();
         for &(item, count, price) in &offers {
             if let Some(id) = self.items.id(item) {
-                inv.slots[prices.len()] = Some(voxel::item::ItemStack::new(id, count));
+                inv.slots[prices.len()] = Some(voxel::item::ItemStack::new(id, u16::from(count)));
                 prices.push(price);
             }
         }

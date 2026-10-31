@@ -104,7 +104,7 @@ impl Recipes {
                 Ok(vec![items.id(name).ok_or_else(|| format!("unknown item '{name}'"))?])
             }
         };
-        let result = |name: &str, count: u8| -> Result<ItemStack, String> {
+        let result = |name: &str, count: u16| -> Result<ItemStack, String> {
             Ok(ItemStack::new(items.id(name).ok_or_else(|| format!("unknown result '{name}'"))?, count))
         };
         let mut r = Recipes { shaped: Vec::new(), shapeless: Vec::new(), smelting: Vec::new() };
@@ -121,11 +121,11 @@ impl Recipes {
                     }
                 }
             }
-            r.shaped.push(Shaped { w, h, cells, result: result(&d.result, d.count)? });
+            r.shaped.push(Shaped { w, h, cells, result: result(&d.result, u16::from(d.count))? });
         }
         for d in &f.shapeless {
             let ingredients = d.ingredients.iter().map(|n| ing(n)).collect::<Result<Vec<_>, _>>()?;
-            r.shapeless.push(Shapeless { ingredients, result: result(&d.result, d.count)? });
+            r.shapeless.push(Shapeless { ingredients, result: result(&d.result, u16::from(d.count))? });
         }
         for d in &f.smelting {
             r.smelting.push(Smelt { input: ing(&d.input)?, result: result(&d.result, 1)?, xp: d.xp });

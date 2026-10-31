@@ -209,7 +209,7 @@ impl Game {
             }
             if let Some(id) = self.items.id(gems::MATERIALS[r]) {
                 let n = 1 + self.mods.apoth.rng.below(2) as u8;
-                self.pop_drop(at, ItemStack::new(id, n));
+                self.pop_drop(at, ItemStack::new(id, u16::from(n)));
             }
             self.spawn_orbs(at, 10 + 6 * r as u32);
             self.toast(format!("Elite {} derrotado!", gems::RARITY_NAMES[r]), 3.0);
@@ -458,12 +458,12 @@ impl Game {
         let mut out = Vec::new();
         if let Some(g) = Gem::from_name(&name) {
             if let Some(id) = self.items.id("gem_dust") {
-                out.push(ItemStack::new(id, (dust_of(g) * st.count as u32).min(64) as u8));
+                out.push(ItemStack::new(id, (dust_of(g) * st.count as u32).min(voxel::item::PILE as u32) as u16));
             }
         } else {
             if let Some((r, n)) = gems::salvage_yield(st.sockets, &mut self.mods.apoth.rng) {
                 if let Some(id) = self.items.id(gems::MATERIALS[r]) {
-                    out.push(ItemStack::new(id, n));
+                    out.push(ItemStack::new(id, u16::from(n)));
                 }
             }
             for g in gems::gems(st.sockets) {
@@ -531,7 +531,7 @@ impl Game {
     fn cut_gems(&mut self) {
         let (Some(label), _) = self.cutting_preview() else { return };
         let mid = self.slot_get(Slot::Cont(1)).unwrap();
-        let take_mid = |g: &mut Game, n: u8| g.slot_set(Slot::Cont(1), (mid.count > n).then_some(ItemStack { count: mid.count - n, ..mid }));
+        let take_mid = |g: &mut Game, n: u8| g.slot_set(Slot::Cont(1), (mid.count > u16::from(n)).then_some(ItemStack { count: mid.count - u16::from(n), ..mid }));
         let mid_name = self.items.get(mid.item).name.clone();
         match label {
             "Lapidar" => {

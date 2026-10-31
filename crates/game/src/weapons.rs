@@ -246,7 +246,7 @@ impl Game {
                 let ore = n.starts_with("raw_") || matches!(n.as_str(), "coal" | "diamond" | "emerald" | "lapis_lazuli" | "redstone" | "quartz" | "ruby" | "sapphire" | "topaz" | "amethyst" | "amethyst_shard" | "gold_nugget" | "glowstone_dust" | "echo_shard" | "flint" | "wheat_seeds" | "melon_slice");
                 if ore {
                     let bonus = (self.prog.rng.below(fortune + 2) as i32 - 1).max(0) as u32;
-                    d.count = (d.count as u32 * (bonus + 1)).min(64) as u8;
+                    d.count = (d.count as u32 * (bonus + 1)).min(voxel::item::PILE as u32) as u16;
                 }
                 d
             })
